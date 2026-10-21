@@ -1,4 +1,6 @@
 import { data, people, parcel, connectScene, positionPerson, setSceneStatus, setPersonActivity, animateVillagers } from './scene.js';
+import { renderConversation } from './conversation.js';
+import { openLibrary, openDocument } from './library.js';
 import { renderOffice, resetOfficeRender } from './office.js';
 import { BUSY_PHASES, PHASE_LABELS, personActivity } from './live.js';
 
@@ -17,7 +19,10 @@ const residents = {
 };
 let live = { job: null }, online = false, lastPhase, submitting = false;
 function assigned() { return !!live.job?.tabId && live.job.releaseState !== 'released'; }
-function activity(name) { return personActivity(name, live.job, online); }
+function activity(name) {
+  if(name==='ミク' && online && live.secretary?.status==='thinking')return {active:true,reason:'村長と話し、資料や状況を調べています'};
+  return personActivity(name, live.job, online);
+}
 const positions = {ミク:[540,372],ハル:[590,352],レン:[245,556],ソラ:[300,573],ユイ:[333,536],カイ:[778,576],ナギ:[836,553],リツ:[820,296],トワ:[435,679]};
 let selected = null, focusBeforeDialog;
 let history = [];
@@ -43,7 +48,7 @@ function renderPositions() {
 function shopState(index) {
   const job = live.job, phase = job?.phase || 'idle';
   if(index === 0) return { label: online ? ({idle:'依頼待ち',planning:'指示を作成中',connecting:'工房へ接続中',working:'工房で作業中',reporting:'報告を作成中',awaiting_review:live.job?.releaseState==='released'?'確認済み':'報告の確認待ち',completed:'報告が届きました',error:'確認が必要です'})[phase] : '接続確認中', task: job?.request || '秘書Codexが依頼を受け付けます', tone:'green' };
-  if(index === 1) return { label: !assigned() ? 'Agent未配置' : activity('レン').active ? '制作中' : live.job?.phase==='awaiting_review' ? '確認待ち' : '待機中', task: job?.request || 'E-ryzen · レンに自然文で仕事を任せます', tone:activity('レン').active ? 'green' : 'amber' };
+  if(index === 1) return { label: !assigned() ? 'Agent未配置' : activity('レン').active ? '制作中' : live.job?.phase==='awaiting_review' ? '確認待ち' : '待機中', task: job?.request || '秘書が資料を読み、合意した仕事に人員を配置します', tone:activity('レン').active ? 'green' : 'amber' };
   return { label:'未接続', task:'この工房はまだ接続していません', tone:'amber' };
 }
 function renderShops() {
@@ -84,12 +89,13 @@ function renderStage() {
   const job=live.job, phase=job?.phase || 'idle';
   const reviewLabels={held:'報告が届きました · 村長の確認待ち',releasing:'OK済み · Agentを解放中',failed:'OK済み · Agent解放の再試行が必要です',released:'報告はOK済み · Agent解放済み'};
   const phaseLabel=phase==='awaiting_review'?reviewLabels[job.releaseState || 'held']:PHASE_LABELS[phase];
-  $('#status').textContent = online ? phaseLabel : 'コアPCへ接続できません';
+  $('#status').textContent = !online ? 'コアPCへ接続できません' : live.secretary?.status==='thinking' ? 'ミクが考えています…' : '相談も、質問も、いつでもどうぞ';
   $('#chapter-text').textContent = online ? phaseLabel : '接続を確認してください';
-  $('#speech').textContent = !online ? 'コアPCのサーバーとの接続を確認してください。依頼と成果はサーバーに保存されています。' : (phase==='awaiting_review' ? job.releaseState==='released' ? '確認ありがとうございます。工房Agentを解放しました。成果物と報告書は、引き続きここで読むことができます。' : '工房から報告書が届きました。内容を確認してOKを出すと、この仕事のAgentを解放します。' : job?.report) || job?.error || (phase==='reporting' ? 'レンから成果を受け取りました。人間向けの報告をCodexでまとめています。' : job ? `「${job.request}」\n${PHASE_LABELS[phase]}` : '村長、おかえりなさい。第一工房のレンに、つくりたいものを任せてみましょう。');
-  const blocked=(live.jobs || (job?[job]:[])).some(j=>BUSY_PHASES.includes(j.phase) || (j.tabId && j.releaseState!=='released'));
-  $('#send').disabled = submitting || !online || blocked;
-  $('#send').textContent = BUSY_PHASES.includes(phase) ? '依頼を進めています…' : blocked ? '先に報告の確認と解放を完了してください' : '依頼を伝える ↗';
+  $('#speech').hidden = !!live.secretary?.messages?.some(message=>message.role==='user'||message.role==='assistant');
+  $('#speech').textContent = !online ? 'コアPCとの接続を確認してください。会話と資料は保存されています。' : '村長、おかえりなさい。相談や質問から始めましょう。仕事を進めると決まったら、工房へ伝えます。';
+  $('#send').disabled = submitting || !online || live.secretary?.status==='thinking';
+  $('#send').textContent = live.secretary?.status==='thinking' ? 'ミクが考えています…' : 'ミクに話す ↗';
+  renderConversation(live.secretary || {messages:[]}, openDocument);
   const current = ({idle:0,planning:0,connecting:1,working:2,reporting:3,awaiting_review:4,completed:4,error:0})[phase];
   $('#journey').innerHTML = ['相談','工房へ接続','ものづくり','秘書が報告作成','報告の確認'].map((s,i)=>`<span class="${i===current?'current':i<current?'done':''}"><i>${i<current?'✓':i+1}</i>${s}</span>`).join('<b>·</b>');
   renderShops();
@@ -112,10 +118,10 @@ $('#request-form').addEventListener('submit',async e=>{
   e.preventDefault();const request=$('#request').value.trim();if(!request){$('#request').focus();return}
   if(submitting)return; submitting=true; $('#send').disabled=true;
   try {
-    const response=await fetch('/api/jobs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({request})});
+    const response=await fetch('/api/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:request})});
     const body=await response.json(); if(!response.ok)throw new Error(body.error);
     live=body; online=true; $('#request').value=''; $('#char-count').textContent='0 / 2000';
-  } catch(error) { addEvent(error.message); }
+  } catch(error) { addEvent(error.message); $('#office-notice').textContent=error.message; }
   submitting=false; renderStage();
 });
 $('#request').addEventListener('input',()=>$('#char-count').textContent=`${$('#request').value.length} / 2000`);
@@ -145,6 +151,10 @@ function navigate(path, push=true) {
 function historyPush(path){window.history.pushState({},'',path);}
 document.addEventListener('click',e=>{const link=e.target.closest('a[data-nav]');if(link && !e.ctrlKey && !e.metaKey && !e.shiftKey && e.button===0){e.preventDefault();navigate(link.getAttribute('href'));}});
 window.addEventListener('popstate',()=>navigate(location.pathname,false));
+$('#room-library').addEventListener('click',openLibrary);
+$('#open-documents').addEventListener('click',openLibrary);
+$('#open-conversation').addEventListener('click',()=>$('.office-conversation').scrollIntoView({behavior:'smooth',block:'start'}));
+$('#open-reports').addEventListener('click',()=>$('.office-inbox').scrollIntoView({behavior:'smooth',block:'start'}));
 $('#room-secretary').addEventListener('click',()=>{$('#request').focus();$('#request').scrollIntoView({behavior:'smooth',block:'center'});});
 $('#desk-reports').addEventListener('click',()=>$('.office-inbox').scrollIntoView({behavior:'smooth',block:'start'}));
 async function officeAction(url, method='POST') {

@@ -3,9 +3,9 @@ const id='11111111-1111-4111-8111-111111111111';
 
 test('study navigation, live hammer, report review, failed release and retry stay consistent', async ({ page }) => {
   let job=null, approvals=0;const errors=[];page.on('pageerror',error=>errors.push(error.message));
-  const snapshot=()=>({connected:true,job,jobs:job?[job]:[]});
+  const snapshot=()=>({connected:true,job,jobs:job?[job]:[],secretary:{status:'idle',messages:[]}});
   await page.route('**/api/state',route=>route.fulfill({json:snapshot()}));
-  await page.route('**/api/jobs',async route=>{job={id,request:route.request().postDataJSON().request,phase:'planning',releaseState:'held'};await route.fulfill({status:202,json:snapshot()});});
+  await page.route('**/api/messages',async route=>{job={id,request:route.request().postDataJSON().message,phase:'planning',releaseState:'held'};await route.fulfill({status:202,json:snapshot()});});
   await page.route('**/approve',async route=>{
     approvals++; job={...job,approvedAt:'2026-10-22T00:00:00Z',releaseState:approvals===1?'failed':'released',releaseError:approvals===1?'SSH disconnected':null,releasedAt:approvals>1?'2026-10-22T00:01:00Z':null};
     await route.fulfill({json:snapshot()});
@@ -14,15 +14,15 @@ test('study navigation, live hammer, report review, failed release and retry sta
   await page.getByRole('button',{name:'村長の家',exact:true}).click();await expect(page).toHaveURL(/\/office$/);await expect(page.locator('#office-page')).toBeVisible();
   await page.locator('.study-door').click();await expect(page.locator('#village-page')).toBeVisible();
   await page.goBack();await expect(page.locator('#office-page')).toBeVisible();await page.reload();
-  await expect(page.locator('#send')).toBeEnabled();await page.locator('#request').fill('挨拶のページを作って');await page.locator('#send').click();await expect(page.locator('#status')).toContainText('指示');
+  await expect(page.locator('#send')).toBeEnabled();await page.locator('#request').fill('挨拶のページを作って');await page.locator('#send').click();await expect(page.locator('#chapter-text')).toContainText('指示');
   job={...job,phase:'working',workerState:'busy',workspaceId:'ws-real',tabId:'tab-real',sessionName:'session-real',terminalUrl:'http://example.test/?workspace=ws-real&tab=tab-real'};
   await page.locator('.office-exit').click();const ren=page.locator('.person[aria-label^="レン・"]');await expect(ren).toHaveClass(/hammering/);
   const hammer=ren.locator('.hammer-swing'),before=await hammer.getAttribute('transform');await expect.poll(()=>hammer.getAttribute('transform')).not.toBe(before);
   await ren.click();await expect(page.locator('.terminal-link')).toHaveAttribute('href',job.terminalUrl);await page.locator('#detail .close').click();
   await page.getByRole('button',{name:'村長の家',exact:true}).click();
-  job={...job,phase:'reporting',workerFinishedAt:'2026-10-22T00:00:00Z',output:'<script>untrusted output</script>'};await expect(page.locator('#status')).toContainText('報告を作成中');
+  job={...job,phase:'reporting',workerFinishedAt:'2026-10-22T00:00:00Z',output:'<script>untrusted output</script>'};await expect(page.locator('#chapter-text')).toContainText('報告を作成中');
   job={...job,phase:'awaiting_review',report:'工房から greeting.html が届きました。',reportFinishedAt:'2026-10-22T00:00:00Z',artifacts:[{path:'greeting.html',size:120}]};
-  await expect(page.locator('.report-prose')).toHaveText(job.report);await expect(page.locator('.report-badge')).toHaveText('確認待ち');await expect(page.locator('#send')).toBeDisabled();
+  await expect(page.locator('.report-prose')).toHaveText(job.report);await expect(page.locator('.report-badge')).toHaveText('確認待ち');await expect(page.locator('#send')).toBeEnabled();
   await expect(page.locator('.artifact-list a')).toHaveAttribute('href',`/api/jobs/${id}/artifact?path=greeting.html`);
   await page.reload();await expect(page.locator('[data-approve]')).not.toBeChecked();await expect(page.locator('.report-prose')).toHaveText(job.report);
   await page.locator('.report-agent summary').click();await expect(page.locator('.report-agent pre').first()).toHaveText(job.output);expect(await page.locator('.report-agent script').count()).toBe(0);
@@ -50,4 +50,25 @@ test('API rejects external origins, invalid requests and private file access', a
   expect((await request.post('/api/jobs', { data: { request: 'a'.repeat(2001) } })).status()).toBe(400);
   expect((await request.post('/api/jobs', { data: 'invalid', headers: { 'Content-Type': 'application/json' } })).status()).toBe(400);
   for (const path of ['/.runtime/state.json', '/server/bridge.mjs', '/.git/config', '/package.json']) expect((await request.get(path)).status()).toBe(404);
+});
+
+
+test('conversation-only replies and the same Markdown papers stay separate from jobs and reports',async({page})=>{
+  let messages=[], source='# 工房の資料\nssh_host: documented-host\n<script>example text</script>';
+  const snapshot=()=>({job:null,jobs:[],secretary:{status:'idle',messages}});
+  await page.route('**/api/state',route=>route.fulfill({json:snapshot()}));
+  await page.route('**/api/messages',async route=>{
+    const turn='turn-one';messages=[...messages,{id:turn,role:'user',content:route.request().postDataJSON().message,at:new Date().toISOString()},{id:'tool-one',role:'tool',action:'read_document',document:'workshop.md',turnId:turn,content:source},{id:'reply-one',role:'assistant',turnId:turn,content:'資料には documented-host とあります。接続はしていません。',at:new Date().toISOString()}];
+    await route.fulfill({status:202,json:snapshot()});
+  });
+  await page.route('**/api/documents**',route=>{
+    const url=new URL(route.request().url());
+    return route.fulfill({json:url.pathname.endsWith('/content')?{path:url.searchParams.get('path'),content:source,hash:'test'}:{root:'/village',documents:[{path:'README.md',title:'村の目次'},{path:'workshop.md',title:'工房の資料'}]}});
+  });
+  await page.goto('/office');await page.locator('#request').fill('工房にはどう接続する？');await page.locator('#send').click();
+  await expect(page.locator('.chat-assistant')).toContainText('接続はしていません');await expect(page.locator('.report-card')).toHaveCount(0);await expect(page.locator('.person[aria-label^="レン・"]')).toBeHidden();
+  await page.reload();await expect(page.locator('.chat-user')).toContainText('工房にはどう接続する？');
+  await page.locator('[data-read-document]').click();await expect(page.locator('#document-content')).toHaveText(source);expect(await page.locator('#document-content script').count()).toBe(0);
+  source='# 工房の資料\n更新した資料';await page.locator('#refresh-document').click();await expect(page.locator('#document-content')).toHaveText(source);
+  await expect(page.locator('#send')).toBeEnabled();
 });

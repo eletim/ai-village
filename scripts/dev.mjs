@@ -1,12 +1,18 @@
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { resolve, extname } from 'node:path';
+import { VillageLibrary } from '../server/library.mjs';
+import { Secretariat } from '../server/secretariat.mjs';
 import { WorkshopBridge } from '../server/bridge.mjs';
 const args = process.argv.slice(2);
 const value = (name, fallback) => { const i = args.indexOf(name); return i < 0 ? fallback : args[i + 1]; };
 const port = Number(value('--port', 5173)), host = value('--host', '127.0.0.1'), root = resolve('.');
-const bridge = new WorkshopBridge();
+const library = new VillageLibrary();
+const bridge = new WorkshopBridge({ library });
 await bridge.init();
+const secretariat = new Secretariat(bridge, library);
+await secretariat.init();
+const snapshot = () => ({ ...bridge.snapshot(), secretary: secretariat.snapshot() });
 const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };
 const json = (res, status, body) => { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(body)); };
 const server = createServer(async (req, res) => {
@@ -14,14 +20,16 @@ const server = createServer(async (req, res) => {
     const pathname = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
     if (pathname.startsWith('/api/')) {
       if (req.headers.origin && req.headers.origin !== `http://${req.headers.host}`) return json(res, 403, { error: 'Origin rejected' });
-      if (req.method === 'GET' && pathname === '/api/state') return json(res, 200, bridge.snapshot());
+      if (req.method === 'GET' && pathname === '/api/state') return json(res, 200, snapshot());
+      if (req.method === 'GET' && pathname === '/api/documents') return json(res, 200, { root: library.root, documents: await library.catalog() });
+      if (req.method === 'GET' && pathname === '/api/documents/content') return json(res, 200, await library.read(new URL(req.url, 'http://localhost').searchParams.get('path')));
       const jobRoute = pathname.match(/^\/api\/jobs\/([0-9a-f-]{36})\/(approve|artifact|artifacts)$/);
       if (jobRoute && req.method === 'GET' && jobRoute[2] === 'artifacts') {
         const job=bridge.jobById(jobRoute[1]);
         await bridge.update({ artifacts: await bridge.listArtifacts(job), artifactError: null }, job);
-        return json(res, 200, bridge.snapshot());
+        return json(res, 200, snapshot());
       }
-      if (jobRoute && req.method === 'POST' && jobRoute[2] === 'approve') return json(res, 200, await bridge.approve(jobRoute[1]));
+      if (jobRoute && req.method === 'POST' && jobRoute[2] === 'approve') { await bridge.approve(jobRoute[1]); return json(res, 200, snapshot()); }
       if (jobRoute && req.method === 'GET' && jobRoute[2] === 'artifact') {
         const path = new URL(req.url, 'http://localhost').searchParams.get('path');
         const content = await bridge.artifact(jobRoute[1], path);
@@ -29,15 +37,16 @@ const server = createServer(async (req, res) => {
         res.end(content); return;
       }
 
-      if (req.method === 'POST' && pathname === '/api/jobs') {
+      if (req.method === 'POST' && ['/api/messages', '/api/jobs'].includes(pathname)) {
         if (!req.headers['content-type']?.startsWith('application/json')) return json(res, 415, { error: 'JSON required' });
         let body = '';
         for await (const chunk of req) { body += chunk; if (body.length > 12000) return json(res, 413, { error: 'Request too large' }); }
         let parsed;
         try { parsed = JSON.parse(body); } catch { return json(res, 400, { error: 'Invalid JSON' }); }
-        const request = parsed?.request;
+        const request = parsed?.message ?? parsed?.request;
         if (typeof request !== 'string' || !request.trim() || request.length > 2000) return json(res, 400, { error: '依頼を1〜2000文字で入力してください。' });
-        return json(res, 202, await bridge.submit(request.trim()));
+        await secretariat.send(request.trim());
+        return json(res, 202, snapshot());
       }
       return json(res, 404, { error: 'Not found' });
     }

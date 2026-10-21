@@ -8,6 +8,7 @@ import { personActivity } from '../src/live.js';
 
 class FakeWorkshop extends WorkshopBridge {
   constructor(options) { super(options); this.calls = []; this.statuses = []; this.remoteRoot = '/work'; }
+  async submit(request) { return super.submit(request, { name:'試験工房',sshHost:'test-host',remoteRoot:'/work',baseUrl:'http://example.test/' }); }
   async secretary(kind, prompt) {
     this.calls.push({ kind, prompt });
     if (kind === 'report') {

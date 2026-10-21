@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
-import { mkdir, readFile, writeFile, rename, readdir } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, rename, readdir, appendFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { VillageLibrary } from './library.mjs';
 import { randomUUID } from 'node:crypto';
 
 export const activePhases = new Set(['planning', 'connecting', 'working', 'reporting']);
@@ -24,9 +25,7 @@ export function run(command, args, { input, timeout = 60000 } = {}) {
 export class WorkshopBridge {
   constructor(options = {}) {
     this.dir = resolve(options.dir || process.env.VILLAGE_STATE_DIR || '.runtime');
-    this.host = process.env.VILLAGE_SSH_HOST || 'E-ryzen';
-    this.remoteRoot = process.env.VILLAGE_REMOTE_ROOT || '/home/eletim/ai-village-workshop';
-    this.baseUrl = process.env.VILLAGE_PMUX_URL || 'http://e-ryzen.tail6bc726.ts.net:8022/';
+    this.library = options.library || new VillageLibrary();
     this.pollMs = Number(process.env.VILLAGE_POLL_MS || 2000);
     this.timeout = Number(process.env.VILLAGE_JOB_TIMEOUT_MS || 1800000);
     this.job = null;
@@ -51,7 +50,7 @@ export class WorkshopBridge {
       this.jobs.push(stored); this.job = stored;
     }
     for (const job of this.jobs) {
-      job.sshHost ||= this.host;
+      if (!job.sshHost) job.sshHost = (await this.library.firstWorkshop()).sshHost;
       if (job.phase === 'completed') job.phase = 'awaiting_review';
       job.releaseState ||= 'held';
       if (job.releaseState === 'releasing') {
@@ -65,7 +64,7 @@ export class WorkshopBridge {
       else await this.update({ phase: 'error', error: '接続準備中にサーバーが停止しました。専用workspaceを確認してから新しい依頼を送ってください。自動再送はしていません。' });
     }
   }
-  snapshot() { return { connected: true, workshop: this.host, job: this.job, jobs: [...this.jobs].sort((a,b) => (b.createdAt || '').localeCompare(a.createdAt || '')) }; }
+  snapshot() { return { connected: true, workshop: this.job?.workshopName || null, job: this.job, jobs: [...this.jobs].sort((a,b) => (b.createdAt || '').localeCompare(a.createdAt || '')) }; }
   async persist() {
     const data = JSON.stringify({ version: 2, currentJobId: this.job?.id, jobs: this.jobs }, null, 2);
     const operation = this.persistQueue.catch(() => {}).then(async () => {
@@ -85,15 +84,18 @@ export class WorkshopBridge {
       await this.update({ phase: 'error', error: error.message });
     });
   }
-  async submit(request) {
+  async submit(request, connection, instruction = null) {
+    if (!connection?.sshHost || !connection.remoteRoot || !connection.baseUrl) throw new Error('資料から工房の接続先を選んでください。');
     if (this.jobs.some(job => activePhases.has(job.phase) || (job.tabId && job.releaseState !== 'released') || job.releaseState === 'releasing')) throw Object.assign(new Error('先に進行中の仕事と、届いた報告の確認・Agentの解放を完了してください。'), { status: 409 });
-    this.job = { id: randomUUID(), request, phase: 'planning', sshHost: this.host, releaseState: 'held', approvedAt: null, releasedAt: null, createdAt: new Date().toISOString(), workerFinishedAt: null, reportFinishedAt: null };
+    this.job = { id: randomUUID(), request, phase: 'planning', sshHost: connection.sshHost, remoteRoot: connection.remoteRoot, baseUrl: connection.baseUrl, workshopName: connection.name, workshopDocument: connection.document, documentHash: connection.documentHash, instruction, releaseState: 'held', approvedAt: null, releasedAt: null, createdAt: new Date().toISOString(), workerFinishedAt: null, reportFinishedAt: null };
     this.jobs.push(this.job);
     await this.update({});
     this.launch(() => this.execute());
     return this.snapshot();
   }
-  async remote(args, host = this.job?.sshHost || this.host) {
+  async remote(args, host = this.job?.sshHost) {
+    if (!host) throw new Error('保存された接続先がありません。');
+    await appendFile(resolve(this.dir, 'ssh-audit.jsonl'), JSON.stringify({ at: new Date().toISOString(), host, command: args[0], operation: args[0] === 'purplemux' ? args.slice(1,3) : [], jobId: this.job?.id || null }) + '\n', { mode: 0o600 });
     const command = args.map(quote).join(' ');
     return run('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', host, 'bash -lic ' + quote(command)]);
   }
@@ -106,16 +108,16 @@ export class WorkshopBridge {
     return text;
   }
   async execute() {
-    const cwd = `${this.remoteRoot}/${this.job.id}`;
+    const cwd = `${this.job.remoteRoot}/${this.job.id}`;
     await this.update({ cwd });
-    const instruction = await this.secretary('instruction', `あなたはAI村の秘書ミクです。人間の依頼を、工房のCodex Agentレンに渡す自然な日本語の指示にしてください。指示文だけを出力してください。実装やコマンド実行はせず、目的、制作物、確認方法、最後に自然文で成果・ファイルの絶対パス・確認結果・未完了点を報告することを伝えてください。作業は専用ディレクトリ ${cwd} の中で行い、他のセッションに触れないでください。\n人間の依頼:\n${this.job.request}`);
+    const instruction = this.job.instruction || await this.secretary('instruction', `あなたはAI村の秘書ミクです。人間の依頼を、工房のCodex Agentレンに渡す自然な日本語の指示にしてください。指示文だけを出力してください。実装やコマンド実行はせず、目的、制作物、確認方法、最後に自然文で成果・ファイルの絶対パス・確認結果・未完了点を報告することを伝えてください。作業は専用ディレクトリ ${cwd} の中で行い、他のセッションに触れないでください。\n人間の依頼:\n${this.job.request}`);
     await this.update({ instruction, phase: 'connecting' });
     await this.remote(['mkdir', '-p', cwd]);
     // Mutations deliberately have no automatic retries: an unknown outcome may have committed.
     const workspace = await this.pmux('workspace', 'create', '--cwd', cwd, '--name', `AI村 ${this.job.id.slice(0, 8)}`);
     await this.update({ workspaceId: workspace.id, initialTabId: workspace.initialTab?.tabId });
     const tab = await this.pmux('tab', 'create', '-w', workspace.id, '-n', 'レン · 第一工房', '-t', 'codex-cli');
-    const url = new URL(this.baseUrl);
+    const url = new URL(this.job.baseUrl);
     url.searchParams.set('workspace', workspace.id); url.searchParams.set('tab', tab.tabId);
     await this.update({ tabId: tab.tabId, sessionName: tab.sessionName, terminalUrl: url.href });
     const deadline = Date.now() + 60000;
@@ -160,6 +162,7 @@ export class WorkshopBridge {
     let artifacts = [], artifactError = null;
     try { artifacts = await this.listArtifacts(this.job); } catch (error) { artifactError = error.message; }
     await this.update({ phase: 'awaiting_review', report, artifacts, artifactError, reportFinishedAt: new Date().toISOString() });
+    await this.onReport?.(this.job);
   }
 
   // All cleanup mutations are scoped to the immutable IDs captured at creation.
