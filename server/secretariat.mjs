@@ -6,8 +6,8 @@ import { run } from './bridge.mjs';
 const schema = fileURLToPath(new URL('./secretary-action.schema.json', import.meta.url));
 const actions = new Set(['reply','read_document','read_state','check_workshop','dispatch','village']);
 export class Secretariat {
-  constructor(bridge, library, operations) {
-    this.operations = operations; this.bridge = bridge; this.library = library; this.dir = bridge.dir;
+  constructor(bridge, library, operations, notifier) {
+    this.notifier = notifier; this.operations = operations; this.bridge = bridge; this.library = library; this.dir = bridge.dir;
     this.messages = []; this.knownReports = []; this.status = 'idle'; this.queue = Promise.resolve();
     bridge.onReport = job => this.receiveReport(job).catch(error => console.error('Report conversation:', error.message));
   }
@@ -20,7 +20,7 @@ export class Secretariat {
     if (saved) {
       this.messages = saved.messages; this.knownReports = saved.knownReports || [];
       if (saved.status === 'thinking') this.add('assistant', '会話の処理中にサーバーが再起動しました。工房へは自動再送していません。会話の続きを送ってください。', { interrupted: true });
-      for (const job of this.bridge.jobs.filter(job => job.report)) await this.receiveReport(job);
+      for (const job of this.bridge.jobs.filter(job => job.report)) await this.receiveReport(job, { notify: false });
     } else this.knownReports = this.bridge.jobs.filter(job => job.report).map(job => job.id);
     await this.persist();
   }
@@ -36,11 +36,19 @@ export class Secretariat {
     const message = { id: randomUUID(), role, content, at: new Date().toISOString(), ...extra };
     this.messages.push(message); return message;
   }
-  async receiveReport(job) {
+  async publish(content, extra = {}, { notify = true } = {}) {
+    const message = this.add('assistant',content,extra);
+    await this.persist();
+    // Do not await network/CLI: saved conversation and job completion stand alone.
+    if (notify) {
+      try { this.notifier?.enqueue(message)?.catch(()=>{}); } catch { /* Notification failure cannot undo a saved reply. */ }
+    }
+    return message;
+  }
+  async receiveReport(job, options) {
     if (this.knownReports.includes(job.id)) return;
     this.knownReports.push(job.id);
-    this.add('assistant', job.report, { jobId: job.id, kind: 'report' });
-    await this.persist();
+    await this.publish(job.report, { jobId: job.id, kind: 'report' }, options);
   }
   async send(content) {
     if (this.status === 'thinking') throw Object.assign(new Error('ミクが考えています。返答を待ってから続きを送ってください。'),{status:409});
@@ -48,7 +56,7 @@ export class Secretariat {
     const turn = this.add('user',content);
     await this.persist();
     this.running = this.think(turn).catch(async error => {
-      this.add('assistant', `会話の処理を完了できませんでした。${error.message}\n工房の状態を確認したとは言えません。会話履歴と資料は残っています。もう一度続きを送れます。`,{turnId:turn.id,kind:'error'});
+      await this.publish(`会話の処理を完了できませんでした。${error.message}\n工房の状態を確認したとは言えません。会話履歴と資料は残っています。もう一度続きを送れます。`,{turnId:turn.id,kind:'error'});
     }).finally(async()=>{this.status='idle';await this.persist();});
     return this.snapshot();
   }
@@ -94,7 +102,7 @@ ${JSON.stringify(observations)}`;
       const choice = await this.decide(turn,observations,step);
       if (choice.action === 'reply') {
         if (!choice.message.trim()) throw new Error('秘書の返答が空です。');
-        this.add('assistant',choice.message,{turnId:turn.id}); return;
+        await this.publish(choice.message,{turnId:turn.id}); return;
       }
       let result;
       try {
@@ -121,8 +129,7 @@ ${JSON.stringify(observations)}`;
             // The connection is from the file we just read, never from model-supplied host names.
             await this.bridge.submit(choice.message,connection,choice.task);
             this.add('tool',JSON.stringify({ok:true,jobId:this.bridge.job.id}),{turnId:turn.id,action:'dispatch',document:connection.document});
-            this.add('assistant',choice.message,{turnId:turn.id,jobId:this.bridge.job.id});
-            await this.persist(); return;
+            await this.publish(choice.message,{turnId:turn.id,jobId:this.bridge.job.id,kind:'dispatch'}); return;
           }
         }
       } catch (error) { result = { error: error.message, verified: false }; }

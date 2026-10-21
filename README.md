@@ -163,6 +163,7 @@ Nodeテストでは会話の復元、資料更新、ファイル境界、行動�
 - `src/conversation.js` / `src/library.js` — 会話履歴と書棚の閲覧
 - `server/bridge.mjs` / `server/processes.mjs` — 秘書Codex、SSH、PurpleMux CLI、対象プロセスの停止確認、結果取得と永続化
 - `server/operations.mjs` / `scripts/village.mjs` — 共通の村操作窓口・CLI、結果確認と監査
+- `server/notifier.mjs` — notify CLIによる非同期通知、期限、重複防止と監査
 - `src/job-state.js` — 処理済み判定と机の表示状態
 - `scripts/dev.mjs` — 同一オリジンのUI/APIサーバー
 - `src/office.js` — 執務室の報告書、成果物リンク、OK・再試行UI
@@ -173,3 +174,82 @@ Nodeテストでは会話の復元、資料更新、ファイル境界、行動�
 - `docs/concept.md` — AI村の思想と将来の構成案
 
 停止・解放では、実物のPurpleMuxで確認したmanaged tmux socket `purple`と対象のsession名からpane PIDを取得し、その子孫を一時停止してPIDとLinuxの開始時刻を保存します。tab close後に、別プロセス群へ移った専用ツールもpidfdで同一性を確認して停止します。他のtabのプロセス木は除外し、専用作業場所に所有関係が不明な残存プロセスがあれば成功にしません。この接続アダプターは現在のLinux/PurpleMux実装を対象とします。
+
+## ブラウザを閉じて使う
+
+ブラウザは村の表示・操作の窓口です。依頼を送信してサーバーが受け付けた後は、ページを閉じても、秘書Codexの判断・SSHでの工房起動と監視・成果取得・秘書の報告作成がバックエンド内で続きます。ブラウザのポーリングや接続維持は仕事を進める条件ではありません。再び `/office` を開けば、保存された会話・報告・Agentの状態を表示します。
+
+**コアのバックエンドが稼働している必要があります。** `npm run dev` のターミナル、WSLやコアPCを終了すると処理は続きません。ブラウザを閉じることと、Nodeバックエンドを止めることは別です。ターミナルも閉じて使う場合はtmuxや既存のサービス管理でバックエンドを起動してください。サーバー再起動時の復元・未確認処理の扱いは前述のとおりです。
+
+## AWM方式の通知
+
+[AWMのnotifier.py](https://github.com/eletim/agent-workflow-manager/blob/main/src/purplemux_client/notifier.py)・[notification_settings.py](https://github.com/eletim/agent-workflow-manager/blob/main/src/purplemux_client/notification_settings.py)と、[公式notify CLI](https://github.com/eletim/notify-server#notify-cli)を確認した実装です。NotifyServer本体は追加せず、既存サーバーへ次のCLI形式で送信します。
+
+```bash
+notify send --title 'AI村からのお知らせ' --message '通知の内容' --click '端末から到達できる執務室URL'
+```
+
+通常回答、工房へ依頼した返答、成果から作成した秘書の報告、会話エラーの返答が対象です。新しいユーザー向けメッセージを会話ファイルへ保存した後、コア側で非同期に1回送信します。資料参照や内部ツール結果は対象外。会話と報告書の二重表示・ページ再表示・履歴復元・再起動で過去の通知を再送しません。
+
+### notify CLIの導入と認証
+
+AWM等で導入済みなら、そのCLIと設定をそのまま利用できます。なければ公式のCLIだけを導入します（Bashとcurlが必要）。
+
+```bash
+notify_install_dir=$(mktemp -d)
+mkdir -p "$notify_install_dir/bin"
+curl -fsSL https://raw.githubusercontent.com/eletim/notify-server/main/install-cli.sh -o "$notify_install_dir/install-cli.sh"
+curl -fsSL https://raw.githubusercontent.com/eletim/notify-server/main/bin/notify -o "$notify_install_dir/bin/notify"
+bash "$notify_install_dir/install-cli.sh"
+export PATH="$HOME/.local/bin:$PATH"
+notify --help
+```
+
+既定の設定ファイルは `${XDG_CONFIG_HOME:-$HOME/.config}/notify/config`。別の既存設定を使うなら `NOTIFY_CONFIG` を指定します。設定ファイルには次のキーを置き、実際のサーバー・topic・トークンへ置き換えてください。**トークンはこのリポジトリや村の資料へ書きません。**
+
+```text
+NOTIFY_SERVER=https://your-notify-server.example
+NOTIFY_TOPIC=agents
+NOTIFY_TOKEN=tk_REPLACE_WITH_YOUR_TOKEN
+NOTIFY_CONNECT_TIMEOUT=5
+NOTIFY_TIMEOUT=15
+```
+
+```bash
+chmod 600 "$HOME/.config/notify/config"
+export NOTIFY_CONFIG="$HOME/.config/notify/config"
+```
+
+CLIは設定ファイルを送信のたびに読み、明示的な環境変数 `NOTIFY_SERVER`・`NOTIFY_TOPIC`・`NOTIFY_TOKEN` 等がファイルより優先されます。CLIの通信タイムアウトは秒単位。HTTPSが基本で、loopbackの開発用接続だけHTTPを許します。インストーラーの初期値はサーバー `https://eletim.jp`・topic `agents` ですが、トークンは空です。初期ファイルを作っただけでは送信できず、利用する受信先と認証情報の確認が必要です。
+
+### 村の起動とテスト送信
+
+| 環境変数 | 既定値 | 内容 |
+| --- | --- | --- |
+| `VILLAGE_OFFICE_URL` | なし | 通知を開く端末から到達できる完全な `http(s)://…/office` URL。未設定・不正なら送信を見送る |
+| `VILLAGE_NOTIFICATIONS` | `true` | `false` / `0` / `off` で通知を無効化 |
+| `VILLAGE_NOTIFY_BIN` | `notify` | CLI実行ファイル。PATH外なら絶対パスを指定 |
+| `VILLAGE_NOTIFY_TIMEOUT_MS` | `10000` | コア側の送信期限。最大30000ms |
+| `NOTIFY_CONFIG` 等 | CLIの設定に従う | 通知先・topic・トークンはCLIへ継承し、村のAPIでトークンを読み出さない |
+
+Windowsの同じPCで開く場合の例です。別の端末で通知を受けるなら、その端末から到達できるコアのアドレスに変更してください。localhostをコードへ固定してはいません。
+
+```bash
+cd /home/koji/DevEnv/ai-village
+export NOTIFY_CONFIG="$HOME/.config/notify/config"
+export VILLAGE_OFFICE_URL="http://localhost:5173/office"
+npm run dev
+```
+
+別ターミナルで起動中の村に対して確認・テスト送信できます。
+
+```bash
+node scripts/village.mjs notifications status
+node scripts/village.mjs notifications test
+```
+
+`notifications test` はテスト通知1件を実送信し、失敗時はCLI終了コードが非0になります。秘書にも、マニュアルを読んで設定状況の確認や、明確に指示されたテスト送信を実行する窓口があります。設定変更は設定ファイル/環境変数で行います。村側の環境変数を変更した場合はバックエンドを再起動してください。notifyの設定ファイルだけの変更なら再ビルド・再起動は不要です。
+
+通知は会話や仕事の完了処理を待たせません。CLI失敗・接続不能・タイムアウトでも返答・成果・報告は保存され、通常どおり利用できます。期限を超えたCLIのプロセス群は終了します。本文は先頭2000文字まで。結果は状態ディレクトリの `notifications.jsonl` にメッセージIDと固定の診断だけを記録し、CLIのstdout/stderrやトークンは記録しません。`notifications status` の最後の結果から確認できます。
+
+`sent` / `delivered: true` はCLIが終了コード0で返り、サーバーが受理したことを示します。端末への受信・表示・クリックまで確認したという意味ではありません。送信途中でバックエンドが停止すると受理の有無が不明な場合があります。二重通知を避けるため過去の自動再送は行わず、必要なら別のテスト送信で確認します。
