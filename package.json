@@ -3,11 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "A little village of AI workshops \u2014 frontend prototype",
+  "description": "AI village with a core Codex secretary and a live PurpleMux workshop",
   "scripts": {
     "dev": "node scripts/dev.mjs",
-    "check": "node --check src/main.js && node --check src/scene.js && node --check src/simulation.js",
+    "check": "node --check src/main.js && node --check src/scene.js && node --check src/live.js && node --check server/bridge.mjs && node --check scripts/dev.mjs",
     "test": "node --test tests/*.test.js",
-    "build": "node scripts/build.mjs"
+    "build": "node scripts/build.mjs",
+    "test:ui": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.1"
   }
 }

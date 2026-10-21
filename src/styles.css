@@ -67,3 +67,10 @@ textarea::placeholder { color: #7a866f; }
 @media(prefers-reduced-motion:reduce) { .room-working .room-hammer { animation: none; transform: rotate(85deg); } }
 
 :root { color-scheme: only light; }
+
+.bubble, #job-meta { white-space: pre-wrap; overflow-wrap: anywhere; }
+#job-output pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: 11px; line-height: 1.8; }
+#job-meta, #job-output summary { font-size: 10px; line-height: 1.8; }
+#job-output details { margin: 12px 0; }
+.terminal-link { display: block; padding: 12px; background: #587452; color: #fffdf3; border-radius: 8px; text-align: center; font-size: 11px; }
+.send:disabled { opacity: .6; cursor: wait; }

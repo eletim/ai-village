@@ -1,5 +1,5 @@
 import { data, people, parcel, connectScene, positionPerson, setSceneStatus, setPersonActivity, animateVillagers } from './scene.js';
-import { VillageSimulation, STAGES } from './simulation.js';
+import { BUSY_PHASES, PHASE_LABELS, personActivity } from './live.js';
 
 const $ = (s) => document.querySelector(s);
 const escape = (s) => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -14,26 +14,12 @@ const residents = {
   リツ: { role:'第三工房の中心', shop:3, color:'#c1a66a', about:'新しいアイデアを小さな試作品にするのが得意です。' },
   トワ: { role:'次の仕事を待つ人', shop:null, color:'#9aa87c', about:'広場を散歩しています。次にどんな仕事が来るか、楽しみにしているようです。' },
 };
-function activity(name) {
-  const stage = sim.stage;
-  if(name === 'ミク') return { active: stage >= 1 && stage <= 6, reason: stage === 0 ? '村長からの依頼を待っています' : stage === 7 ? '報告を終え、次の依頼を待っています' : STAGES[stage].status };
-  if(name === 'ハル') return { active: stage === 6, reason: stage < 6 ? '成果が届くのを待っています' : stage === 6 ? '届いた成果を確認しています' : '確認を終え、次の仕事を待っています' };
-  if(['レン','ソラ','ユイ'].includes(name)) {
-    const active = stage === 0 ? name === 'レン' : stage >= 2 && stage <= 6;
-    return { active, reason: stage >= 7 ? '仕事が完了し、次の依頼を待っています' : active ? stage === 2 ? '工房で依頼の相談をしています' : '第一工房で制作しています' : 'セッションを開いて、依頼を待っています' };
-  }
-  if(name === 'リツ') return { active: stage === 5, reason: stage < 5 ? '試作が完了し、お届けの準備ができています' : stage === 5 ? '成果を村長の家へ届けています' : 'お届けを終え、次の依頼を待っています' };
-  if(name === 'トワ') return { active: false, reason: '次の仕事を待ちながら、広場を散歩しています' };
-  if(name === 'ナギ') return { active: stage >= 3 && stage <= 6, reason: stage < 3 ? 'セッションを開いて、確認の依頼を待っています' : stage <= 6 ? '第二工房で動作を確認しています' : '確認が完了し、次の依頼を待っています' };
-  return { active: stage <= 6, reason: stage <= 6 ? '第二工房で機能を組み立てています' : '仕事が完了し、次の依頼を待っています' };
-}
+let live = { job: null }, online = false, lastPhase, submitting = false;
+function activity(name) { return personActivity(name, live.job, online); }
 const positions = {ミク:[540,372],ハル:[590,352],レン:[245,556],ソラ:[300,573],ユイ:[333,536],カイ:[778,576],ナギ:[836,553],リツ:[820,296],トワ:[435,679]};
-const secretaryPath = [[540,372],[540,472],[290,580],[280,553]];
-const homePath = [...secretaryPath].reverse();
-const deliveryPath = [[820,296],[790,330],[660,405],[540,472],[540,372]];
-let selected = null, lastTime, focusBeforeDialog;
+let selected = null, focusBeforeDialog;
 let history = [];
-const sim = new VillageSimulation();
+
 function addEvent(message) {
   history.unshift({ message, at: new Date() }); history = history.slice(0, 5);
   $('#feed').replaceChildren(...history.map((event,i) => {
@@ -44,51 +30,30 @@ function addEvent(message) {
     copy.append(time); row.append(mark,copy); return row;
   }));
 }
-function along(points,t) {
-  const lengths=points.slice(1).map((p,i)=>Math.hypot(p[0]-points[i][0],p[1]-points[i][1]));
-  let distance=lengths.reduce((a,b)=>a+b,0)*Math.max(0,Math.min(1,t));
-  for(let i=0;i<lengths.length;i++){if(distance<=lengths[i]){const q=distance/lengths[i];return [points[i][0]+(points[i+1][0]-points[i][0])*q,points[i][1]+(points[i+1][1]-points[i][1])*q]}distance-=lengths[i]}
-  return points.at(-1);
-}
 function renderPositions() {
-  const stage = sim.stage; const p = sim.progress;
-  Object.entries(positions).forEach(([name,[x,y]])=>positionPerson(name,x,y,false));
-  let miku = positions.ミク;
-  if(stage===1)miku=along(secretaryPath,p);
-  if(stage===2)miku=secretaryPath.at(-1);
-  if(stage===3)miku=along(homePath,p);
-  positionPerson('ミク',...miku, stage===1||stage===3);
-  ['レン','ソラ','ユイ'].forEach((name,i)=>{
-    const working=stage>=3&&stage<=6;
-    if(stage===2){const a=positions[name],b=[235+i*60,550+(i%2)*28];positionPerson(name,a[0]+(b[0]-a[0])*p,a[1]+(b[1]-a[1])*p,true)}
-    else if(working)positionPerson(name,235+i*60,550+(i%2)*28);
-    people[name].classList.toggle('at-work',working);
+  Object.entries(positions).forEach(([name,[x,y]]) => {
+    positionPerson(name,x,y,false);
+    people[name].classList.toggle('at-work', activity(name).active);
   });
-  let box=positions.リツ;
-  if(stage===5){box=along(deliveryPath,p);positionPerson('リツ',...box,true)}
-  else if(stage===6){box=deliveryPath.at(-1);positionPerson('リツ',...box)}
-  else if(stage>=7){box=[560,368];positionPerson('リツ',...along([...deliveryPath].reverse(),Math.min(p*2,1)),p<.5)}
-  parcel.setAttribute('transform',`translate(${box[0]+13} ${box[1]-3})`);
-  parcel.style.opacity=stage>=5?'1':'.7';
-  const t=sim.elapsed/1000;positionPerson('トワ',435+Math.sin(t*.2)*13,679+Math.sin(t*.2)*6,true);
+  parcel.style.opacity = '0';
 }
 function shopState(index) {
-  if(index===0) return { label:sim.stage===6?'成果を確認中':sim.stage>=1&&sim.stage<=3?'ミクは工房へ訪問中':'秘書のいる場所', task:STAGES[sim.stage].status, tone:'green' };
-  if(index===1){if(sim.stage<2)return {label:'仲間と制作中',task:sim.request?'村長からの新しい依頼を待っています':'サービスの画面をつくっています',tone:'green'};if(sim.stage===2)return {label:'相談中',task:'ミクから依頼を聞いています',tone:'amber'};return {label:sim.stage>=7?'できあがり':'制作中',task:sim.request||'サービスの画面をつくっています',tone:sim.stage>=7?'amber':'green'}}
-  if(index===2)return {label:'動作確認中',task:'ログインから利用までを確かめています',tone:'green'};
-  return {label:sim.stage<5?'お届け待ち':sim.stage===5?'お届け中':sim.stage===6?'確認中':'お届け済み',task:sim.stage<5?'小さな試作品ができあがりました':sim.stage===5?'リツが成果を村長の家へ運んでいます':sim.stage===6?'ミクとハルが試作品を確かめています':'村長への報告ができました',tone:'amber'};
+  const job = live.job, phase = job?.phase || 'idle';
+  if(index === 0) return { label: online ? ({idle:'依頼待ち',planning:'指示を作成中',connecting:'工房へ接続中',working:'工房で作業中',reporting:'報告を作成中',completed:'報告が届きました',error:'確認が必要です'})[phase] : '接続確認中', task: job?.request || '秘書Codexが依頼を受け付けます', tone:'green' };
+  if(index === 1) return { label: activity('レン').active ? '制作中' : '待機中', task: job?.request || 'E-ryzen · レンに自然文で仕事を任せます', tone:activity('レン').active ? 'green' : 'amber' };
+  return { label:'未接続', task:'この工房はまだ接続していません', tone:'amber' };
 }
 function renderShops() {
   $('#works').replaceChildren(...data.slice(1).map((d,i)=>{
-    const index=i+1,state=shopState(index),names=Object.keys(residents).filter(n=>residents[n].shop===index);
+    const index=i+1,state=shopState(index),names=Object.keys(residents).filter(n=>residents[n].shop===index && (index===0 ? n==='ミク' : n==='レン'));
     const working = names.filter(n=>activity(n).active).length;
     const button=document.createElement('button');button.className='work';button.dataset.shop=index;
     button.innerHTML=`<div class="row"><b><span class="shop-icon shop-${index}">${['','✂','⚒','✦'][index]}</span>${d.name}</b><span class="tag ${state.tone}">${state.label}</span></div><p>${escape(state.task)}</p><div class="residents">${names.map(n=>`<span class="resident-dot ${activity(n).active?'resident-working':'resident-idle'}" style="--resident:${residents[n].color}" title="${n}：${activity(n).active?'作業中':'待機中'}">${n.slice(0,1)}</span>`).join('')}<span>作業中 ${working}人 · 待機中 ${names.length-working}人</span><span class="work-arrow">↗</span></div>`;
     button.addEventListener('click',()=>showShop(index));return button;
   }));
   data.forEach((d,i)=>setSceneStatus(i,`${i===0?'⌂':i===3?'✦':'●'} ${shopState(i).label}`));
-  const activeCount=Object.keys(residents).filter(n=>activity(n).active).length;
-  $('#legend').innerHTML=`<span><i class="dot"></i>作業中 ${activeCount}人</span><span><i class="dot idle-dot"></i>待機中 ${Object.keys(residents).length-activeCount}人</span>`;
+  const activeCount=['ミク','レン'].filter(n=>activity(n).active).length;
+  $('#legend').innerHTML=`<span><i class="dot"></i>作業中 ${activeCount}人</span><span><i class="dot idle-dot"></i>待機中 ${2-activeCount}人</span>`;
   Object.keys(residents).forEach(n=>setPersonActivity(n,activity(n).active));
 }
 function openDetail() {
@@ -101,42 +66,62 @@ function detailShell(content){$('#detail').innerHTML=`<button class="close" aria
 function showShop(index,refresh=false) {
   if(!refresh)openDetail();selected={type:'shop',index};
   document.querySelectorAll('.building')[index].classList.add('selected');
-  const d=data[index],state=shopState(index),names=Object.keys(residents).filter(n=>residents[n].shop===index);
+  const d=data[index],state=shopState(index),names=Object.keys(residents).filter(n=>residents[n].shop===index && (index===0 ? n==='ミク' : n==='レン'));
   detailShell(`<div class="eyebrow">${d.pc}</div><h3>${d.name}</h3><p class="detail-description">${d.desc}</p><div class="interior" aria-label="${d.name}の中の様子"><div class="room-window"></div><div class="room-rug"></div>${names.map((n,i)=>`<button class="room-person ${activity(n).active?'room-working':'room-idle'}" data-person="${n}" style="--resident:${residents[n].color};--slot:${i}"><span class="tiny-head"></span><span class="tiny-body"></span><span class="room-hammer" aria-hidden="true"></span><span class="room-anvil" aria-hidden="true"></span><small>${n}<em>${activity(n).active?'作業中':'待機中'}</em></small></button>`).join('')}<div class="room-table"><span>▤</span><span>⌨</span></div></div><div class="detail-status"><span class="tag ${state.tone}">${state.label}</span><p>${escape(state.task)}</p></div><div class="detail-people">${names.map(n=>`<button data-person="${n}"><span class="resident-dot" style="--resident:${residents[n].color}">${n[0]}</span><span><b>${n}</b><small>${residents[n].role} · ${activity(n).active?'作業中':'待機中'}</small></span><span class="work-arrow">›</span></button>`).join('')}</div>`);
   $('#detail').querySelectorAll('[data-person]').forEach(b=>b.addEventListener('click',()=>showPerson(b.dataset.person)));
 }
 function showPerson(name) {
   openDetail();selected={type:'person',name};const r=residents[name];
-  detailShell(`<div class="eyebrow">VILLAGER PROFILE</div><div class="profile"><div class="profile-character" style="--resident:${r.color}"><span class="tiny-head"></span><span class="tiny-body"></span></div><div><h3>${name}</h3><span>${r.role}</span></div></div><p>${r.about}</p><div class="detail-status"><span class="tag ${activity(name).active?'':'idle-tag'}">${activity(name).active?'● 作業中':'○ 待機中'}</span><p>${activity(name).reason}</p></div>${r.shop!==null?`<button class="go-shop">${data[r.shop].name}を覗く　↗</button>`:''}`);
+  detailShell(`<div class="eyebrow">VILLAGER PROFILE</div><div class="profile"><div class="profile-character" style="--resident:${r.color}"><span class="tiny-head"></span><span class="tiny-body"></span></div><div><h3>${name}</h3><span>${r.role}</span></div></div><p>${r.about}</p><div class="detail-status"><span class="tag ${activity(name).active?'':'idle-tag'}">${activity(name).active?'● 作業中':'○ 待機中'}</span><p>${activity(name).reason}</p></div>${name==='レン' && live.job?.terminalUrl ? `<a class="terminal-link" target="_blank" rel="noopener noreferrer" href="${escape(live.job.terminalUrl)}">PurpleMuxで実際の端末を開く ↗</a><p>未ログインの場合は、ログインしてからこのリンクを開き直してください。</p><p>workspace: ${escape(live.job.workspaceId)}<br>tab: ${escape(live.job.tabId)}</p>` : ''}${r.shop!==null?`<button class="go-shop">${data[r.shop].name}を覗く　↗</button>`:''}`);
   $('#detail .go-shop')?.addEventListener('click',()=>showShop(r.shop));
 }
 connectScene(showShop,showPerson);
 function renderStage() {
-  const def=STAGES[sim.stage];$('#status').textContent=def.status;$('#chapter-text').textContent=def.title;
-  $('#speech').textContent=sim.message;
-  $('#journey').innerHTML=['相談','訪問','ものづくり','お届け','確認・報告'].map((s,i)=>`<span class="${i===def.chapter?'current':i<def.chapter?'done':''}"><i>${i<def.chapter?'✓':i+1}</i>${s}</span>`).join('<b>·</b>');
+  const job=live.job, phase=job?.phase || 'idle';
+  $('#status').textContent = online ? PHASE_LABELS[phase] : 'コアPCへ接続できません';
+  $('#chapter-text').textContent = online ? PHASE_LABELS[phase] : '接続を確認してください';
+  $('#speech').textContent = !online ? 'コアPCのサーバーとの接続を確認してください。依頼と成果はサーバーに保存されています。' : job?.report || job?.error || (phase==='reporting' ? 'レンから成果を受け取りました。人間向けの報告をCodexでまとめています。' : job ? `「${job.request}」\n${PHASE_LABELS[phase]}` : '村長、おかえりなさい。第一工房のレンに、つくりたいものを任せてみましょう。');
+  $('#send').disabled = submitting || !online || BUSY_PHASES.includes(phase);
+  $('#send').textContent = BUSY_PHASES.includes(phase) ? '依頼を進めています…' : '依頼を伝える ↗';
+  const current = ({idle:0,planning:0,connecting:1,working:2,reporting:3,completed:4,error:0})[phase];
+  $('#journey').innerHTML = ['相談','工房へ接続','ものづくり','秘書が報告作成','報告完了'].map((s,i)=>`<span class="${i===current?'current':i<current?'done':''}"><i>${i<current?'✓':i+1}</i>${s}</span>`).join('<b>·</b>');
+  $('#job-output').hidden = !job;
+  $('#worker-output').textContent = job?.output || '工房からの報告はまだ届いていません。';
+  $('#job-meta').textContent = job ? `依頼: ${job.request}\n工房終了: ${job.workerFinishedAt || '未完了'}\n秘書報告完了: ${job.reportFinishedAt || '未完了'}` : '';
+  $('#instruction').textContent = job?.instruction || '秘書が指示を考えています。';
   renderShops();
   if(selected?.type==='shop')showShop(selected.index,true);
   else if(selected?.type==='person')showPerson(selected.name);
 }
-sim.onStage=()=>{addEvent(sim.event);renderStage()};
-$('#request-form').addEventListener('submit',e=>{
+async function poll() {
+  try {
+    const response=await fetch('/api/state', { signal: AbortSignal.timeout(10000) });
+    if(!response.ok) throw new Error('接続失敗');
+    live=await response.json(); online=true;
+    const phase=live.job?.phase || 'idle', key=`${live.job?.id}:${phase}`;
+    if(key!==lastPhase) { addEvent(PHASE_LABELS[phase]); lastPhase=key; }
+  } catch { online=false; }
+  renderStage();
+  setTimeout(poll,1500);
+}
+$('#request-form').addEventListener('submit',async e=>{
   e.preventDefault();const request=$('#request').value.trim();if(!request){$('#request').focus();return}
-  sim.start(request);$('#request').value='';$('#char-count').textContent='0 / 240';
+  if(submitting)return; submitting=true; $('#send').disabled=true;
+  try {
+    const response=await fetch('/api/jobs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({request})});
+    const body=await response.json(); if(!response.ok)throw new Error(body.error);
+    live=body; online=true; $('#request').value=''; $('#char-count').textContent='0 / 2000';
+  } catch(error) { addEvent(error.message); }
+  submitting=false; renderStage();
 });
-$('#request').addEventListener('input',()=>$('#char-count').textContent=`${$('#request').value.length} / 240`);
+$('#request').addEventListener('input',()=>$('#char-count').textContent=`${$('#request').value.length} / 2000`);
 $('#request').addEventListener('keydown',e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey))$('#request-form').requestSubmit()});
 $('#home').addEventListener('click',closeDetail);
 $('#mayor').addEventListener('click',()=>{$('#request').focus();$('#request').scrollIntoView({behavior:'smooth',block:'center'})});
-$('#reset').addEventListener('click',()=>{history=[];closeDetail();sim.reset();addEvent('村の一日が、はじまりました。');renderStage()});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeDetail()});
-// Pause the simulated clock while the page is hidden; never race to catch up.
-document.addEventListener('visibilitychange',()=>{lastTime=undefined});
 function frame(time) {
-  const delta=lastTime===undefined?0:Math.min(time-lastTime,100);lastTime=time;
-  if(!document.hidden)sim.advance(delta);
   renderPositions();
   animateVillagers(time);
   requestAnimationFrame(frame);
 }
-addEvent('村長の家へようこそ。工房の一日を眺めてみましょう。');renderStage();requestAnimationFrame(frame);
+renderStage(); poll(); requestAnimationFrame(frame);
