@@ -49,3 +49,5 @@ purplemux workspace delete -w WORKSPACE_ID --if-empty
 ## 未確認のこと
 
 得意分野や品質、長時間の制作能力はまだ評価していません。専門性があると推測しないでください。CUDA等の開発環境の詳細、追加GPUの統計、あらゆる制作ツールの動作も未確認です。負荷・メモリ使用量・空き容量・Agentの状態は、必要なときに状況照会してください。
+
+2026-10-22の追加確認：インストール済みPurpleMuxの `src/lib/tmux-target.ts` ではmanaged socketは `purple`。`tmux -L purple display-message -p -t =SESSION_NAME: "#{pane_pid}"` で対象セッションのpane PIDを照会できます。Codexのツールが別プロセス群を作るため、村の解放処理はtabを閉じる前に対象paneの子孫を記録し、tab close後にも停止を確認します。他のtabのプロセスは操作しません。

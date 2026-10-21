@@ -11,8 +11,10 @@ class ReleaseWorkshop extends WorkshopBridge {
     this.tabs=[{workspaceId:'ws-own',tabId:'tab-own',sessionName:'session-own',agentSessionId:'agent-own',panelType:'codex-cli'},{workspaceId:'ws-own',tabId:'tab-other',sessionName:'session-other',panelType:'terminal'}];
     this.fail=false; this.loseResponse=false;
   }
+  async stopAgentProcesses() {}
   async remote(args,host) {
     this.calls.push({args,host});
+    if(args[0]==='python3'&&args[2].includes('root=pane'))return '[]';
     if(args[0]!=='purplemux')return Buffer.from('成果物を保持').toString('base64');
     const [,group,action]=args;
     if(group==='workspaces')return JSON.stringify({workspaces:[{id:'ws-own'}]});

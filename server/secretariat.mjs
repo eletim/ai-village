@@ -4,10 +4,10 @@ import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { run } from './bridge.mjs';
 const schema = fileURLToPath(new URL('./secretary-action.schema.json', import.meta.url));
-const actions = new Set(['reply','read_document','read_state','check_workshop','dispatch']);
+const actions = new Set(['reply','read_document','read_state','check_workshop','dispatch','village']);
 export class Secretariat {
-  constructor(bridge, library) {
-    this.bridge = bridge; this.library = library; this.dir = bridge.dir;
+  constructor(bridge, library, operations) {
+    this.operations = operations; this.bridge = bridge; this.library = library; this.dir = bridge.dir;
     this.messages = []; this.knownReports = []; this.status = 'idle'; this.queue = Promise.resolve();
     bridge.onReport = job => this.receiveReport(job).catch(error => console.error('Report conversation:', error.message));
   }
@@ -61,7 +61,8 @@ export class Secretariat {
 - read_state: コアが保存している現在の仕事・Agentの状態を読む。SSHは不要。
 - check_workshop: 工房資料をこのターンで読んだ後、documentにそのパスを指定してSSHで現在の設備・PurpleMux・対象Agentの状況を照会する。読み取り専用でAgentは起動しない。
 - dispatch: 村長の実行指示・合意が成立したときだけ、読んだ工房資料のdocumentと、会話を引き継いだ具体的な自然文のtask（工房への指示）と、村長への説明messageを返す。資料の最新の接続先で実行される。
-message、document、taskは常に文字列。不要なフィールドは空文字列。
+- village: 村の操作窓口を呼ぶ。操作方法は書棚のmanual.mdをread_documentで読み、argvにCLI引数の配列を指定する。helpで実際の操作一覧を調べられる。操作は追加でき、この行動の固定一覧に能力を閉じない。
+message、document、taskは常に文字列。不要なフィールドは空文字列。argvは常に文字列の配列で、village以外では空配列。
 
 重要:
 挨拶、疑問、「作れそう？」「どう思う？」等の相談や提案で勝手に実行してはいけない。「では、それで作って」「それで進めて」は過去の提案への合意として理解し、内容が明確なら同じ同意を繰り返さずdispatchする。最初から明確な制作・実行指示も不要な確認を挟まずdispatchできる。
@@ -69,7 +70,7 @@ message、document、taskは常に文字列。不要なフィールドは空文�
 現在の仕事はread_stateで確認し、資料の設備記録と稼働状態を混同しない。接続方法の説明、挨拶、資料の紹介だけならSSHは不要。実際の工房の現在の状態が必要な場合だけcheck_workshopする。
 SSH失敗は確認できなかった範囲を明示し、資料やコアで分かることを答えて会話を続ける。失敗を隠したり工房を勝手に起動しない。
 進行中や確認待ちの仕事があっても会話は可能。dispatchが保留・失敗した場合は結果を説明し、同じ処理を繰り返さない。
-報告のOKとAgentの解放は報告書のチェック操作で行う。報告に対するOKを、新しい制作指示に取り違えない。
+村長からキャンセル・承認・片付け等の明確な操作指示があれば、manual.mdと対象の記録を調べvillageで実行する。「記録は変更できない」と断定して終えたり、新しい制作指示としてdispatchしない。同じ同意を繰り返し求めない。実行後は対象の詳細を再照会し、結果と未確認点を報告する。成功していない停止や解放を成功と言わない。過去の仕事もvillageの履歴検索で取り出せる。
 工房へのtaskには専用作業場所内で作業し、成果・絶対パス・確認方法と結果・未完了点を自然文で報告することを伝える。結果を予言しない。
 回答は読みやすい短い段落で。Markdownの装飾を多用せず、事実と提案を区別する。
 
@@ -99,6 +100,14 @@ ${JSON.stringify(observations)}`;
       try {
         if (choice.action === 'read_document') {
           result = await this.library.read(choice.document); reads.set(result.path,result.hash);
+        } else if (choice.action === 'village') {
+          if (!this.operations) throw new Error('村の操作窓口がありません。');
+          const {command} = this.operations.resolve(choice.argv);
+          if (command.mutation) {
+            const manual = await this.library.read('manual.md');
+            if (reads.get(manual.path)!==manual.hash) throw new Error('このターンで最新のmanual.mdをread_documentしてから操作してください。');
+          }
+          result = await this.operations.execute(choice.argv,`secretary:${turn.id}`);
         } else if (choice.action === 'read_state') {
           result = this.bridge.snapshot();
         } else {
@@ -117,8 +126,8 @@ ${JSON.stringify(observations)}`;
           }
         }
       } catch (error) { result = { error: error.message, verified: false }; }
-      observations.push({action:choice.action,document:choice.document,result});
-      this.add('tool',JSON.stringify(result),{turnId:turn.id,action:choice.action,document:choice.document});
+      observations.push({action:choice.action,document:choice.document,argv:choice.argv,result});
+      this.add('tool',JSON.stringify(result),{turnId:turn.id,action:choice.action,document:choice.document,argv:choice.argv});
       await this.persist();
     }
     throw new Error('調査の上限に達しました。ここまでの参照結果は会話履歴に保存しています。');

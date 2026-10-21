@@ -18,7 +18,7 @@ test('study navigation, live hammer, report review, failed release and retry sta
   job={...job,phase:'working',workerState:'busy',workspaceId:'ws-real',tabId:'tab-real',sessionName:'session-real',terminalUrl:'http://example.test/?workspace=ws-real&tab=tab-real'};
   await page.locator('.office-exit').click();const ren=page.locator('.person[aria-label^="レン・"]');await expect(ren).toHaveClass(/hammering/);
   const hammer=ren.locator('.hammer-swing'),before=await hammer.getAttribute('transform');await expect.poll(()=>hammer.getAttribute('transform')).not.toBe(before);
-  await ren.click();await expect(page.locator('.terminal-link')).toHaveAttribute('href',job.terminalUrl);await page.locator('#detail .close').click();
+  await ren.click();await expect(page.locator('#detail .terminal-link')).toHaveAttribute('href',job.terminalUrl);await page.locator('#detail .close').click();
   await page.getByRole('button',{name:'村長の家',exact:true}).click();
   job={...job,phase:'reporting',workerFinishedAt:'2026-10-22T00:00:00Z',output:'<script>untrusted output</script>'};await expect(page.locator('#chapter-text')).toContainText('報告を作成中');
   job={...job,phase:'awaiting_review',report:'工房から greeting.html が届きました。',reportFinishedAt:'2026-10-22T00:00:00Z',artifacts:[{path:'greeting.html',size:120}]};
@@ -27,9 +27,9 @@ test('study navigation, live hammer, report review, failed release and retry sta
   await page.reload();await expect(page.locator('[data-approve]')).not.toBeChecked();await expect(page.locator('.report-prose')).toHaveText(job.report);
   await page.locator('.report-agent summary').click();await expect(page.locator('.report-agent pre').first()).toHaveText(job.output);expect(await page.locator('.report-agent script').count()).toBe(0);
   await page.locator('[data-approve]').check();await expect(page.locator('.operation-error')).toContainText('SSH disconnected');await expect(page.locator('[data-approve]')).toBeChecked();await expect(page.locator('[data-approve]')).toBeDisabled();
-  await page.locator('[data-retry]').click();await expect(page.locator('.report-badge')).toHaveText('OK済み · Agent解放済み');await expect(page.locator('#send')).toBeEnabled();
-  await page.reload();await expect(page.locator('[data-approve]')).toBeChecked();expect(approvals).toBe(2);
-  await page.clock.install();await page.clock.fastForward(120000);await expect(page.locator('.report-prose')).toHaveText(job.report);
+  await page.locator('[data-retry]').click();await expect(page.locator('.report-card')).toHaveCount(0);await expect(page.locator('#send')).toBeEnabled();
+  await page.reload();await expect(page.locator('.empty-inbox')).toContainText('机の上に確認が必要な書類はありません');expect(approvals).toBe(2);
+  await page.clock.install();await page.clock.fastForward(120000);await expect(page.locator('.report-card')).toHaveCount(0);
   await page.locator('.office-exit').click();await expect(ren).toBeHidden();expect(errors).toEqual([]);
 });
 
@@ -71,4 +71,24 @@ test('conversation-only replies and the same Markdown papers stay separate from 
   await page.locator('[data-read-document]').click();await expect(page.locator('#document-content')).toHaveText(source);expect(await page.locator('#document-content script').count()).toBe(0);
   source='# 工房の資料\n更新した資料';await page.locator('#refresh-document').click();await expect(page.locator('#document-content')).toHaveText(source);
   await expect(page.locator('#send')).toBeEnabled();
+});
+
+test('desk hides settled history, preserves another pending document and retries failed cancellation',async({page})=>{
+  const archived={id:'22222222-2222-4222-8222-222222222222',phase:'awaiting_review',request:'昔の承認済み報告',report:'履歴に保存',approvedAt:'past',releaseState:'released'};
+  let pending={id,phase:'cancelling',request:'停止できていない仕事',cancelRequestedAt:'now',releaseState:'failed',releaseError:'SSH unavailable'};
+  const other={id:'33333333-3333-4333-8333-333333333333',phase:'awaiting_review',request:'別の未確認書類',report:'この報告は残す',releaseState:'held'};
+  let calls=0;
+  const snapshot=()=>({job:pending,jobs:[archived,pending,other],secretary:{status:'idle',messages:[]}});
+  await page.route('**/api/state',route=>route.fulfill({json:snapshot()}));
+  await page.route('**/cancel',async route=>{calls++;pending={...pending,phase:'cancelled',cancelledAt:'done',releaseState:'released',releasedAt:'done'};await route.fulfill({json:snapshot()});});
+  await page.goto('/office');await expect(page.locator('.report-card')).toHaveCount(2);await expect(page.locator('.operation-error')).toContainText('SSH unavailable');await expect(page.locator('[data-cancel]')).toBeEnabled();
+  await page.locator('[data-cancel]').click();await expect(page.locator('.report-card')).toHaveCount(1);await expect(page.locator('.report-prose')).toHaveText('この報告は残す');
+  await page.reload();await expect(page.locator('.report-card')).toHaveCount(1);expect(calls).toBe(1);await expect(page.locator('#report-inbox')).not.toContainText('昔の承認済み報告');
+});
+
+test('an explicitly retrieved past artifact is downloadable in secretary prose without recreating a desk card',async({page})=>{
+  const content=`履歴の成果物です：[result.txt](/api/jobs/${id}/artifact?path=result.txt)\n[危険なリンク](javascript:alert(1)) <script>unsafe</script>`;
+  await page.route('**/api/state',route=>route.fulfill({json:{job:null,jobs:[],secretary:{status:'idle',messages:[{id:'history-reply',role:'assistant',content,at:'2026-10-22T00:00:00Z'}]}}}));
+  await page.goto('/office');await expect(page.locator('.chat-assistant a')).toHaveAttribute('href',`/api/jobs/${id}/artifact?path=result.txt`);await expect(page.locator('.chat-assistant a')).toHaveAttribute('download','');
+  await expect(page.locator('.chat-assistant')).toContainText('[危険なリンク](javascript:alert(1))');expect(await page.locator('.chat-assistant script').count()).toBe(0);await expect(page.locator('.report-card')).toHaveCount(0);
 });

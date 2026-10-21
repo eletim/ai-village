@@ -1,3 +1,4 @@
+import { isOnDesk } from './job-state.js';
 import { data, people, parcel, connectScene, positionPerson, setSceneStatus, setPersonActivity, animateVillagers } from './scene.js';
 import { renderConversation } from './conversation.js';
 import { openLibrary, openDocument } from './library.js';
@@ -18,10 +19,11 @@ const residents = {
   トワ: { role:'次の仕事を待つ人', shop:null, color:'#9aa87c', about:'広場を散歩しています。次にどんな仕事が来るか、楽しみにしているようです。' },
 };
 let live = { job: null }, online = false, lastPhase, submitting = false;
-function assigned() { return !!live.job?.tabId && live.job.releaseState !== 'released'; }
+function currentJob() { return live.job && isOnDesk(live.job) ? live.job : (live.jobs || []).find(isOnDesk) || null; }
+function assigned() { const job=currentJob();return !!job?.tabId && job.releaseState !== 'released'; }
 function activity(name) {
   if(name==='ミク' && online && live.secretary?.status==='thinking')return {active:true,reason:'村長と話し、資料や状況を調べています'};
-  return personActivity(name, live.job, online);
+  return personActivity(name, currentJob(), online);
 }
 const positions = {ミク:[540,372],ハル:[590,352],レン:[245,556],ソラ:[300,573],ユイ:[333,536],カイ:[778,576],ナギ:[836,553],リツ:[820,296],トワ:[435,679]};
 let selected = null, focusBeforeDialog;
@@ -46,9 +48,9 @@ function renderPositions() {
   parcel.style.opacity = '0';
 }
 function shopState(index) {
-  const job = live.job, phase = job?.phase || 'idle';
-  if(index === 0) return { label: online ? ({idle:'依頼待ち',planning:'指示を作成中',connecting:'工房へ接続中',working:'工房で作業中',reporting:'報告を作成中',awaiting_review:live.job?.releaseState==='released'?'確認済み':'報告の確認待ち',completed:'報告が届きました',error:'確認が必要です'})[phase] : '接続確認中', task: job?.request || '秘書Codexが依頼を受け付けます', tone:'green' };
-  if(index === 1) return { label: !assigned() ? 'Agent未配置' : activity('レン').active ? '制作中' : live.job?.phase==='awaiting_review' ? '確認待ち' : '待機中', task: job?.request || '秘書が資料を読み、合意した仕事に人員を配置します', tone:activity('レン').active ? 'green' : 'amber' };
+  const job = currentJob(), phase = job?.phase || 'idle';
+  if(index === 0) return { label: online ? ({idle:'依頼待ち',planning:'指示を作成中',connecting:'工房へ接続中',working:'工房で作業中',reporting:'報告を作成中',awaiting_review:'報告の確認待ち',completed:'報告が届きました',error:'確認が必要です',cancelling:'停止・解放の確認中'})[phase] : '接続確認中', task: job?.request || '秘書Codexが依頼を受け付けます', tone:'green' };
+  if(index === 1) return { label: !assigned() ? 'Agent未配置' : activity('レン').active ? '制作中' : job?.phase==='awaiting_review' ? '確認待ち' : '待機中', task: job?.request || '秘書が資料を読み、合意した仕事に人員を配置します', tone:activity('レン').active ? 'green' : 'amber' };
   return { label:'未接続', task:'この工房はまだ接続していません', tone:'amber' };
 }
 function renderShops() {
@@ -81,12 +83,12 @@ function showShop(index,refresh=false) {
 }
 function showPerson(name) {
   openDetail();selected={type:'person',name};const r=residents[name];
-  detailShell(`<div class="eyebrow">VILLAGER PROFILE</div><div class="profile"><div class="profile-character" style="--resident:${r.color}"><span class="tiny-head"></span><span class="tiny-body"></span></div><div><h3>${name}</h3><span>${r.role}</span></div></div><p>${r.about}</p><div class="detail-status"><span class="tag ${activity(name).active?'':'idle-tag'}">${activity(name).active?'● 作業中':'○ 待機中'}</span><p>${activity(name).reason}</p></div>${name==='レン' && assigned() && live.job?.terminalUrl ? `<a class="terminal-link" target="_blank" rel="noopener noreferrer" href="${escape(live.job.terminalUrl)}">PurpleMuxで実際の端末を開く ↗</a><p>未ログインの場合は、ログインしてからこのリンクを開き直してください。</p><p>workspace: ${escape(live.job.workspaceId)}<br>tab: ${escape(live.job.tabId)}</p>` : ''}${r.shop!==null?`<button class="go-shop">${data[r.shop].name}を覗く　↗</button>`:''}`);
+  detailShell(`<div class="eyebrow">VILLAGER PROFILE</div><div class="profile"><div class="profile-character" style="--resident:${r.color}"><span class="tiny-head"></span><span class="tiny-body"></span></div><div><h3>${name}</h3><span>${r.role}</span></div></div><p>${r.about}</p><div class="detail-status"><span class="tag ${activity(name).active?'':'idle-tag'}">${activity(name).active?'● 作業中':'○ 待機中'}</span><p>${activity(name).reason}</p></div>${name==='レン' && assigned() && currentJob()?.terminalUrl ? `<a class="terminal-link" target="_blank" rel="noopener noreferrer" href="${escape(currentJob().terminalUrl)}">PurpleMuxで実際の端末を開く ↗</a><p>未ログインの場合は、ログインしてからこのリンクを開き直してください。</p><p>workspace: ${escape(currentJob().workspaceId)}<br>tab: ${escape(currentJob().tabId)}</p>` : ''}${r.shop!==null?`<button class="go-shop">${data[r.shop].name}を覗く　↗</button>`:''}`);
   $('#detail .go-shop')?.addEventListener('click',()=>showShop(r.shop));
 }
 connectScene(showShop,showPerson);
 function renderStage() {
-  const job=live.job, phase=job?.phase || 'idle';
+  const job=currentJob(), phase=job?.phase || 'idle';
   const reviewLabels={held:'報告が届きました · 村長の確認待ち',releasing:'OK済み · Agentを解放中',failed:'OK済み · Agent解放の再試行が必要です',released:'報告はOK済み · Agent解放済み'};
   const phaseLabel=phase==='awaiting_review'?reviewLabels[job.releaseState || 'held']:PHASE_LABELS[phase];
   $('#status').textContent = !online ? 'コアPCへ接続できません' : live.secretary?.status==='thinking' ? 'ミクが考えています…' : '相談も、質問も、いつでもどうぞ';
@@ -95,11 +97,11 @@ function renderStage() {
   $('#speech').textContent = !online ? 'コアPCとの接続を確認してください。会話と資料は保存されています。' : '村長、おかえりなさい。相談や質問から始めましょう。仕事を進めると決まったら、工房へ伝えます。';
   $('#send').disabled = submitting || !online || live.secretary?.status==='thinking';
   $('#send').textContent = live.secretary?.status==='thinking' ? 'ミクが考えています…' : 'ミクに話す ↗';
-  renderConversation(live.secretary || {messages:[]}, openDocument);
+  renderConversation(live.secretary || {messages:[]}, openDocument, live.jobs || []);
   const current = ({idle:0,planning:0,connecting:1,working:2,reporting:3,awaiting_review:4,completed:4,error:0})[phase];
   $('#journey').innerHTML = ['相談','工房へ接続','ものづくり','秘書が報告作成','報告の確認'].map((s,i)=>`<span class="${i===current?'current':i<current?'done':''}"><i>${i<current?'✓':i+1}</i>${s}</span>`).join('<b>·</b>');
   renderShops();
-  renderOffice(live, { approve: approveJob, discover: discoverArtifacts });
+  renderOffice(live, { approve: approveJob, discover: discoverArtifacts, cancel: cancelJob });
   if(selected?.type==='shop')showShop(selected.index,true);
   else if(selected?.type==='person')showPerson(selected.name);
 }
@@ -108,7 +110,7 @@ async function poll() {
     const response=await fetch('/api/state', { signal: AbortSignal.timeout(10000) });
     if(!response.ok) throw new Error('接続失敗');
     live=await response.json(); online=true;
-    const phase=live.job?.phase || 'idle', key=`${live.job?.id}:${phase}`;
+    const job=currentJob(), phase=job?.phase || 'idle', key=`${job?.id}:${phase}`;
     if(key!==lastPhase) { addEvent(PHASE_LABELS[phase]); lastPhase=key; }
   } catch { online=false; }
   renderStage();
@@ -165,6 +167,7 @@ async function officeAction(url, method='POST') {
   } catch(error) { $('#office-notice').textContent=error.message; }
   resetOfficeRender();renderStage();
 }
+function cancelJob(id){return officeAction(`/api/jobs/${encodeURIComponent(id)}/cancel`);}
 function approveJob(id){return officeAction(`/api/jobs/${encodeURIComponent(id)}/approve`);}
 function discoverArtifacts(id){return officeAction(`/api/jobs/${encodeURIComponent(id)}/artifacts`,'GET');}
 navigate(location.pathname,false);renderStage(); poll(); requestAnimationFrame(frame);

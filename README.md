@@ -46,6 +46,7 @@ npm run dev -- --port 5173
 | `read_document` | 相対パスでMarkdown原本を読む | なし |
 | `read_state` | コアのジョブ・Agentの保存状態を読む | なし |
 | `check_workshop` | 最新の工房資料から接続先を取得し、設備・PurpleMux・現在のAgentを読み取り専用で照会 | あり、Agentは起動しない |
+| `village` | マニュアルを読み、共通の操作窓口から仕事の検索・キャンセル・承認・片付けなどを実行。操作の追加はレジストリで行い、LLM行動enumの追加は不要 | 検索はなし、停止・解放はあり |
 | `dispatch` | 明確な指示・文脈上の合意に基づく仕事を工房へ渡す | あり、専用Agentを起動 |
 
 例えば「作れそう？」では相談を続け、続く「では、それで作って」は前の提案への合意として扱います。最初から「作って」と明確な指示がある場合は、同じ同意確認を挟まず進められます。進行中・確認待ちの仕事があっても会話できます。新規Agentの配置は従来どおり1件に限定され、前の仕事が保留なら秘書がその状況を説明します。
@@ -53,6 +54,8 @@ npm run dev -- --port 5173
 Codexのプロセスを常駐させる方式ではなく、各判断に永続化した会話全文・今回の観察結果を引き継ぎます。1ターンの調査は最大12行動。工房への送信は同じターンで一度だけ試み、失敗や保留を自動再実行しません。SSH照会の失敗はツールの観察結果としてCodexに返し、確認できた範囲と未確認の範囲を説明して会話を続けます。
 
 ## 村の資料
+
+操作方法の原本は[村の操作マニュアル](village/manual.md)です。村長の明確な指示があれば、秘書自身が対象を調べ、実際にキャンセルや承認を実行し、結果を再照会して説明します。
 
 原本は[村の案内](village/README.md)、[第一工房の資料](village/workshops/first-workshop.md)、[運用メモ](village/operations.md)です。執務室の書棚か「村の資料」から、同じファイルの本文を閲覧できます。秘書の回答には参照したファイルへのボタンが付きます。
 
@@ -112,6 +115,30 @@ OKは取り消しません。解放に失敗した場合は`failed`と理由を�
 
 本実装の対象は単一バックエンドです。同じ状態ファイルを複数プロセスから同時に扱う運用は対象外です。
 
+## 村の操作と机の片付け
+
+机には未確認・実行中・エラー・停止や解放が未確認の仕事だけを置きます。OKとAgent解放が完了した報告、キャンセルと停止・解放の確認が済んだ仕事は自動で消えます。追加の片付け操作は不要です。通常画面には過去の一覧や件数を置きません。会話の文章・報告・成果物・作業ディレクトリは保存したままです。過去の成果を秘書に尋ねたときの村内ダウンロードリンクは、会話から開けます。
+
+既存記録も、`approvedAt`があり`releaseState: released`なら、古い`phase: awaiting_review`のままでも処理済みと判定します。当時の事実を推測で書き換えません。`src/job-state.js`の同じ判定をUIと操作窓口で使います。解放に失敗した報告は机に残り、OK日時を保持して再試行できます。
+
+起動中のサーバーに接続するCLIとHTTP APIがあります。詳細は[操作マニュアル](village/manual.md)を参照してください。
+
+```bash
+node scripts/village.mjs help
+node scripts/village.mjs jobs list
+node scripts/village.mjs jobs get JOB_ID
+node scripts/village.mjs jobs cancel JOB_ID --reason "村長からの指示"
+node scripts/village.mjs reports approve JOB_ID
+node scripts/village.mjs history search --query "過去の依頼"
+node scripts/village.mjs history get JOB_ID
+```
+
+`VILLAGE_URL`でCLIの接続先を指定できます（既定`http://127.0.0.1:5173`）。HTTPは`POST /api/village`、本文`{"argv":["jobs","list"]}`。CLI・API・秘書の`village`行動は同じ`server/operations.mjs`の拡張可能なコマンドレジストリを使用します。シェル文字列を実行する口ではありません。秘書は変更操作の前にそのターンの最新マニュアルを読む必要があり、自然文の対象理解・操作の選択は実Codexが行います。変更結果は保存済みstate.jsonから読み直し、操作監査を`operations.jsonl`に残します。`ok: false`や`verification.confirmed: false`を成功と解釈しないでください。
+
+実行中のキャンセルは`cancelRequestedAt`を先に保存し、コアのその仕事のCodexを停止します。進行中のSSHによる作成は返答を待ってIDを記録してから、専用のPurpleMux Agent tabを閉じます。作成結果不明・接続不能・識別情報不一致の場合は推測で他のtabを閉じず、停止・解放未確認のまま机に残します。同じキャンセルで再試行できます。完了は`cancelledAt`・`stopConfirmedAt`・`releasedAt`と確認情報で記録し、その後に机から下げます。
+
+同一仕事の停止・解放は処理を共有し、完了済み操作の繰り返しではSSHを実行しません。再起動で停止確認が中断した場合も自動で再送せず、未確認として復元します。古いエラーでworkspace/tabのIDがない場合は、作業場所に対応するworkspaceとAgent関連プロセスがないことを調べ、確認できたときだけ片付けます。対応するリソースを安全に特定できなければ未確認のままです。
+
 ## 検証
 
 ```bash
@@ -134,7 +161,9 @@ Nodeテストでは会話の復元、資料更新、ファイル境界、行動�
 - `server/library.mjs` — 資料の読み込みと接続情報の解釈
 - `server/secretariat.mjs` — Codexによる会話・行動選択と会話の永続化
 - `src/conversation.js` / `src/library.js` — 会話履歴と書棚の閲覧
-- `server/bridge.mjs` — 秘書Codex、SSH、PurpleMux CLI、結果取得と永続化
+- `server/bridge.mjs` / `server/processes.mjs` — 秘書Codex、SSH、PurpleMux CLI、対象プロセスの停止確認、結果取得と永続化
+- `server/operations.mjs` / `scripts/village.mjs` — 共通の村操作窓口・CLI、結果確認と監査
+- `src/job-state.js` — 処理済み判定と机の表示状態
 - `scripts/dev.mjs` — 同一オリジンのUI/APIサーバー
 - `src/office.js` — 執務室の報告書、成果物リンク、OK・再試行UI
 - `src/live.js` — 実行状態と村民の活動の対応
@@ -142,3 +171,5 @@ Nodeテストでは会話の復元、資料更新、ファイル境界、行動�
 - `src/scene.js` / `src/styles.css` — 村の外観とトンカチ
 - `src/simulation.js` — 旧デモ（実動UIからは使用しない）
 - `docs/concept.md` — AI村の思想と将来の構成案
+
+停止・解放では、実物のPurpleMuxで確認したmanaged tmux socket `purple`と対象のsession名からpane PIDを取得し、その子孫を一時停止してPIDとLinuxの開始時刻を保存します。tab close後に、別プロセス群へ移った専用ツールもpidfdで同一性を確認して停止します。他のtabのプロセス木は除外し、専用作業場所に所有関係が不明な残存プロセスがあれば成功にしません。この接続アダプターは現在のLinux/PurpleMux実装を対象とします。

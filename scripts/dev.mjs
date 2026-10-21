@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { resolve, extname } from 'node:path';
 import { VillageLibrary } from '../server/library.mjs';
+import { VillageOperations } from '../server/operations.mjs';
 import { Secretariat } from '../server/secretariat.mjs';
 import { WorkshopBridge } from '../server/bridge.mjs';
 const args = process.argv.slice(2);
@@ -10,7 +11,8 @@ const port = Number(value('--port', 5173)), host = value('--host', '127.0.0.1'),
 const library = new VillageLibrary();
 const bridge = new WorkshopBridge({ library });
 await bridge.init();
-const secretariat = new Secretariat(bridge, library);
+const operations = new VillageOperations(bridge);
+const secretariat = new Secretariat(bridge, library, operations);
 await secretariat.init();
 const snapshot = () => ({ ...bridge.snapshot(), secretary: secretariat.snapshot() });
 const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };
@@ -23,12 +25,13 @@ const server = createServer(async (req, res) => {
       if (req.method === 'GET' && pathname === '/api/state') return json(res, 200, snapshot());
       if (req.method === 'GET' && pathname === '/api/documents') return json(res, 200, { root: library.root, documents: await library.catalog() });
       if (req.method === 'GET' && pathname === '/api/documents/content') return json(res, 200, await library.read(new URL(req.url, 'http://localhost').searchParams.get('path')));
-      const jobRoute = pathname.match(/^\/api\/jobs\/([0-9a-f-]{36})\/(approve|artifact|artifacts)$/);
+      const jobRoute = pathname.match(/^\/api\/jobs\/([0-9a-f-]{36})\/(approve|cancel|artifact|artifacts)$/);
       if (jobRoute && req.method === 'GET' && jobRoute[2] === 'artifacts') {
         const job=bridge.jobById(jobRoute[1]);
         await bridge.update({ artifacts: await bridge.listArtifacts(job), artifactError: null }, job);
         return json(res, 200, snapshot());
       }
+      if (jobRoute && req.method === 'POST' && jobRoute[2] === 'cancel') { await bridge.cancel(jobRoute[1]); return json(res, 200, snapshot()); }
       if (jobRoute && req.method === 'POST' && jobRoute[2] === 'approve') { await bridge.approve(jobRoute[1]); return json(res, 200, snapshot()); }
       if (jobRoute && req.method === 'GET' && jobRoute[2] === 'artifact') {
         const path = new URL(req.url, 'http://localhost').searchParams.get('path');
@@ -37,6 +40,12 @@ const server = createServer(async (req, res) => {
         res.end(content); return;
       }
 
+      if (req.method === 'POST' && pathname === '/api/village') {
+        if (!req.headers['content-type']?.startsWith('application/json')) return json(res,415,{error:'JSON required'});
+        let body='';for await(const chunk of req){body+=chunk;if(body.length>24000)return json(res,413,{error:'Request too large'});}
+        let parsed;try{parsed=JSON.parse(body);}catch{return json(res,400,{error:'Invalid JSON'});}
+        return json(res,200,await operations.execute(parsed.argv,'http'));
+      }
       if (req.method === 'POST' && ['/api/messages', '/api/jobs'].includes(pathname)) {
         if (!req.headers['content-type']?.startsWith('application/json')) return json(res, 415, { error: 'JSON required' });
         let body = '';
