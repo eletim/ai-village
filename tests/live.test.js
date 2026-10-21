@@ -18,6 +18,7 @@ class FakeWorkshop extends WorkshopBridge {
     }
     return kind === 'instruction' ? '自然文の制作指示' : '制作物と検証結果の人間向け報告';
   }
+  async listArtifacts() { return [{ path: 'hello.html', size: 12 }]; }
   async remote(args) { this.calls.push(args); return ''; }
   async pmux(...args) {
     this.calls.push(args);
@@ -37,7 +38,7 @@ test('real state flow separates worker completion from secretary report and pers
   await bridge.init(); await bridge.submit('挨拶のページを作って');
   await assert.rejects(bridge.submit('二重依頼'), { status: 409 });
   await bridge.running;
-  assert.equal(bridge.job.phase, 'completed');
+  assert.equal(bridge.job.phase, 'awaiting_review');
   assert.ok(bridge.job.reportFinishedAt);
   assert.equal(bridge.job.output, '成果は /work/hello.html。確認済み。');
   assert.equal(bridge.job.instruction, '自然文の制作指示');
@@ -46,7 +47,9 @@ test('real state flow separates worker completion from secretary report and pers
   assert.equal(url.searchParams.get('tab'), 'tab-1');
   assert.equal(bridge.calls.filter(c => Array.isArray(c) && c[0] === 'tab' && c[1] === 'send').length, 1);
   const persisted = JSON.parse(await readFile(join(dir, 'state.json'), 'utf8'));
-  assert.equal(persisted.report, bridge.job.report);
+  assert.equal(persisted.jobs[0].report, bridge.job.report);
+  assert.equal(bridge.calls.some(c=>Array.isArray(c)&&c[1]==='close'),false);
+  await assert.rejects(bridge.submit('OK前の新しい依頼'),{status:409});
 });
 
 test('hammer only follows live busy state, stops during report, and never uses demo villagers', () => {
@@ -63,7 +66,7 @@ test('restart resumes result collection without resending a mutation or instruct
   const dir = await mkdtemp(join(tmpdir(), 'village-test-'));
   await writeFile(join(dir, 'state.json'), JSON.stringify({ id: 'recover', phase: 'working', request: '依頼', tabId: 'tab-1', workspaceId: 'ws-1', startedAt: new Date().toISOString(), reportFinishedAt: null }));
   const bridge = new FakeWorkshop({ dir }); await bridge.init(); await bridge.running;
-  assert.equal(bridge.job.phase, 'completed');
+  assert.equal(bridge.job.phase, 'awaiting_review');
   assert.equal(bridge.calls.some(c => Array.isArray(c) && ['create', 'send'].includes(c[1])), false);
 });
 

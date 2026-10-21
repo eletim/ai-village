@@ -1,4 +1,5 @@
 import { data, people, parcel, connectScene, positionPerson, setSceneStatus, setPersonActivity, animateVillagers } from './scene.js';
+import { renderOffice, resetOfficeRender } from './office.js';
 import { BUSY_PHASES, PHASE_LABELS, personActivity } from './live.js';
 
 const $ = (s) => document.querySelector(s);
@@ -15,6 +16,7 @@ const residents = {
   トワ: { role:'次の仕事を待つ人', shop:null, color:'#9aa87c', about:'広場を散歩しています。次にどんな仕事が来るか、楽しみにしているようです。' },
 };
 let live = { job: null }, online = false, lastPhase, submitting = false;
+function assigned() { return !!live.job?.tabId && live.job.releaseState !== 'released'; }
 function activity(name) { return personActivity(name, live.job, online); }
 const positions = {ミク:[540,372],ハル:[590,352],レン:[245,556],ソラ:[300,573],ユイ:[333,536],カイ:[778,576],ナギ:[836,553],リツ:[820,296],トワ:[435,679]};
 let selected = null, focusBeforeDialog;
@@ -34,18 +36,19 @@ function renderPositions() {
   Object.entries(positions).forEach(([name,[x,y]]) => {
     positionPerson(name,x,y,false);
     people[name].classList.toggle('at-work', activity(name).active);
+    if(name==='レン')people[name].style.display=assigned() ? '' : 'none';
   });
   parcel.style.opacity = '0';
 }
 function shopState(index) {
   const job = live.job, phase = job?.phase || 'idle';
-  if(index === 0) return { label: online ? ({idle:'依頼待ち',planning:'指示を作成中',connecting:'工房へ接続中',working:'工房で作業中',reporting:'報告を作成中',completed:'報告が届きました',error:'確認が必要です'})[phase] : '接続確認中', task: job?.request || '秘書Codexが依頼を受け付けます', tone:'green' };
-  if(index === 1) return { label: activity('レン').active ? '制作中' : '待機中', task: job?.request || 'E-ryzen · レンに自然文で仕事を任せます', tone:activity('レン').active ? 'green' : 'amber' };
+  if(index === 0) return { label: online ? ({idle:'依頼待ち',planning:'指示を作成中',connecting:'工房へ接続中',working:'工房で作業中',reporting:'報告を作成中',awaiting_review:live.job?.releaseState==='released'?'確認済み':'報告の確認待ち',completed:'報告が届きました',error:'確認が必要です'})[phase] : '接続確認中', task: job?.request || '秘書Codexが依頼を受け付けます', tone:'green' };
+  if(index === 1) return { label: !assigned() ? 'Agent未配置' : activity('レン').active ? '制作中' : live.job?.phase==='awaiting_review' ? '確認待ち' : '待機中', task: job?.request || 'E-ryzen · レンに自然文で仕事を任せます', tone:activity('レン').active ? 'green' : 'amber' };
   return { label:'未接続', task:'この工房はまだ接続していません', tone:'amber' };
 }
 function renderShops() {
   $('#works').replaceChildren(...data.slice(1).map((d,i)=>{
-    const index=i+1,state=shopState(index),names=Object.keys(residents).filter(n=>residents[n].shop===index && (index===0 ? n==='ミク' : n==='レン'));
+    const index=i+1,state=shopState(index),names=Object.keys(residents).filter(n=>residents[n].shop===index && (index===0 ? n==='ミク' : n==='レン' && assigned()));
     const working = names.filter(n=>activity(n).active).length;
     const button=document.createElement('button');button.className='work';button.dataset.shop=index;
     button.innerHTML=`<div class="row"><b><span class="shop-icon shop-${index}">${['','✂','⚒','✦'][index]}</span>${d.name}</b><span class="tag ${state.tone}">${state.label}</span></div><p>${escape(state.task)}</p><div class="residents">${names.map(n=>`<span class="resident-dot ${activity(n).active?'resident-working':'resident-idle'}" style="--resident:${residents[n].color}" title="${n}：${activity(n).active?'作業中':'待機中'}">${n.slice(0,1)}</span>`).join('')}<span>作業中 ${working}人 · 待機中 ${names.length-working}人</span><span class="work-arrow">↗</span></div>`;
@@ -53,7 +56,7 @@ function renderShops() {
   }));
   data.forEach((d,i)=>setSceneStatus(i,`${i===0?'⌂':i===3?'✦':'●'} ${shopState(i).label}`));
   const activeCount=['ミク','レン'].filter(n=>activity(n).active).length;
-  $('#legend').innerHTML=`<span><i class="dot"></i>作業中 ${activeCount}人</span><span><i class="dot idle-dot"></i>待機中 ${2-activeCount}人</span>`;
+  $('#legend').innerHTML=`<span><i class="dot"></i>作業中 ${activeCount}人</span><span><i class="dot idle-dot"></i>待機中 ${(assigned()?2:1)-activeCount}人</span>`;
   Object.keys(residents).forEach(n=>setPersonActivity(n,activity(n).active));
 }
 function openDetail() {
@@ -64,32 +67,33 @@ function openDetail() {
 function closeDetail(){ $('#detail').hidden=true;selected=null;document.querySelectorAll('.building').forEach(g=>g.classList.remove('selected'));focusBeforeDialog?.focus?.(); }
 function detailShell(content){$('#detail').innerHTML=`<button class="close" aria-label="詳細を閉じる">×</button>${content}`;$('#detail .close').addEventListener('click',closeDetail);}
 function showShop(index,refresh=false) {
+  if(index===0){ navigate('/office'); return; }
   if(!refresh)openDetail();selected={type:'shop',index};
   document.querySelectorAll('.building')[index].classList.add('selected');
-  const d=data[index],state=shopState(index),names=Object.keys(residents).filter(n=>residents[n].shop===index && (index===0 ? n==='ミク' : n==='レン'));
+  const d=data[index],state=shopState(index),names=Object.keys(residents).filter(n=>residents[n].shop===index && (index===0 ? n==='ミク' : n==='レン' && assigned()));
   detailShell(`<div class="eyebrow">${d.pc}</div><h3>${d.name}</h3><p class="detail-description">${d.desc}</p><div class="interior" aria-label="${d.name}の中の様子"><div class="room-window"></div><div class="room-rug"></div>${names.map((n,i)=>`<button class="room-person ${activity(n).active?'room-working':'room-idle'}" data-person="${n}" style="--resident:${residents[n].color};--slot:${i}"><span class="tiny-head"></span><span class="tiny-body"></span><span class="room-hammer" aria-hidden="true"></span><span class="room-anvil" aria-hidden="true"></span><small>${n}<em>${activity(n).active?'作業中':'待機中'}</em></small></button>`).join('')}<div class="room-table"><span>▤</span><span>⌨</span></div></div><div class="detail-status"><span class="tag ${state.tone}">${state.label}</span><p>${escape(state.task)}</p></div><div class="detail-people">${names.map(n=>`<button data-person="${n}"><span class="resident-dot" style="--resident:${residents[n].color}">${n[0]}</span><span><b>${n}</b><small>${residents[n].role} · ${activity(n).active?'作業中':'待機中'}</small></span><span class="work-arrow">›</span></button>`).join('')}</div>`);
   $('#detail').querySelectorAll('[data-person]').forEach(b=>b.addEventListener('click',()=>showPerson(b.dataset.person)));
 }
 function showPerson(name) {
   openDetail();selected={type:'person',name};const r=residents[name];
-  detailShell(`<div class="eyebrow">VILLAGER PROFILE</div><div class="profile"><div class="profile-character" style="--resident:${r.color}"><span class="tiny-head"></span><span class="tiny-body"></span></div><div><h3>${name}</h3><span>${r.role}</span></div></div><p>${r.about}</p><div class="detail-status"><span class="tag ${activity(name).active?'':'idle-tag'}">${activity(name).active?'● 作業中':'○ 待機中'}</span><p>${activity(name).reason}</p></div>${name==='レン' && live.job?.terminalUrl ? `<a class="terminal-link" target="_blank" rel="noopener noreferrer" href="${escape(live.job.terminalUrl)}">PurpleMuxで実際の端末を開く ↗</a><p>未ログインの場合は、ログインしてからこのリンクを開き直してください。</p><p>workspace: ${escape(live.job.workspaceId)}<br>tab: ${escape(live.job.tabId)}</p>` : ''}${r.shop!==null?`<button class="go-shop">${data[r.shop].name}を覗く　↗</button>`:''}`);
+  detailShell(`<div class="eyebrow">VILLAGER PROFILE</div><div class="profile"><div class="profile-character" style="--resident:${r.color}"><span class="tiny-head"></span><span class="tiny-body"></span></div><div><h3>${name}</h3><span>${r.role}</span></div></div><p>${r.about}</p><div class="detail-status"><span class="tag ${activity(name).active?'':'idle-tag'}">${activity(name).active?'● 作業中':'○ 待機中'}</span><p>${activity(name).reason}</p></div>${name==='レン' && assigned() && live.job?.terminalUrl ? `<a class="terminal-link" target="_blank" rel="noopener noreferrer" href="${escape(live.job.terminalUrl)}">PurpleMuxで実際の端末を開く ↗</a><p>未ログインの場合は、ログインしてからこのリンクを開き直してください。</p><p>workspace: ${escape(live.job.workspaceId)}<br>tab: ${escape(live.job.tabId)}</p>` : ''}${r.shop!==null?`<button class="go-shop">${data[r.shop].name}を覗く　↗</button>`:''}`);
   $('#detail .go-shop')?.addEventListener('click',()=>showShop(r.shop));
 }
 connectScene(showShop,showPerson);
 function renderStage() {
   const job=live.job, phase=job?.phase || 'idle';
-  $('#status').textContent = online ? PHASE_LABELS[phase] : 'コアPCへ接続できません';
-  $('#chapter-text').textContent = online ? PHASE_LABELS[phase] : '接続を確認してください';
-  $('#speech').textContent = !online ? 'コアPCのサーバーとの接続を確認してください。依頼と成果はサーバーに保存されています。' : job?.report || job?.error || (phase==='reporting' ? 'レンから成果を受け取りました。人間向けの報告をCodexでまとめています。' : job ? `「${job.request}」\n${PHASE_LABELS[phase]}` : '村長、おかえりなさい。第一工房のレンに、つくりたいものを任せてみましょう。');
-  $('#send').disabled = submitting || !online || BUSY_PHASES.includes(phase);
-  $('#send').textContent = BUSY_PHASES.includes(phase) ? '依頼を進めています…' : '依頼を伝える ↗';
-  const current = ({idle:0,planning:0,connecting:1,working:2,reporting:3,completed:4,error:0})[phase];
-  $('#journey').innerHTML = ['相談','工房へ接続','ものづくり','秘書が報告作成','報告完了'].map((s,i)=>`<span class="${i===current?'current':i<current?'done':''}"><i>${i<current?'✓':i+1}</i>${s}</span>`).join('<b>·</b>');
-  $('#job-output').hidden = !job;
-  $('#worker-output').textContent = job?.output || '工房からの報告はまだ届いていません。';
-  $('#job-meta').textContent = job ? `依頼: ${job.request}\n工房終了: ${job.workerFinishedAt || '未完了'}\n秘書報告完了: ${job.reportFinishedAt || '未完了'}` : '';
-  $('#instruction').textContent = job?.instruction || '秘書が指示を考えています。';
+  const reviewLabels={held:'報告が届きました · 村長の確認待ち',releasing:'OK済み · Agentを解放中',failed:'OK済み · Agent解放の再試行が必要です',released:'報告はOK済み · Agent解放済み'};
+  const phaseLabel=phase==='awaiting_review'?reviewLabels[job.releaseState || 'held']:PHASE_LABELS[phase];
+  $('#status').textContent = online ? phaseLabel : 'コアPCへ接続できません';
+  $('#chapter-text').textContent = online ? phaseLabel : '接続を確認してください';
+  $('#speech').textContent = !online ? 'コアPCのサーバーとの接続を確認してください。依頼と成果はサーバーに保存されています。' : (phase==='awaiting_review' ? job.releaseState==='released' ? '確認ありがとうございます。工房Agentを解放しました。成果物と報告書は、引き続きここで読むことができます。' : '工房から報告書が届きました。内容を確認してOKを出すと、この仕事のAgentを解放します。' : job?.report) || job?.error || (phase==='reporting' ? 'レンから成果を受け取りました。人間向けの報告をCodexでまとめています。' : job ? `「${job.request}」\n${PHASE_LABELS[phase]}` : '村長、おかえりなさい。第一工房のレンに、つくりたいものを任せてみましょう。');
+  const blocked=(live.jobs || (job?[job]:[])).some(j=>BUSY_PHASES.includes(j.phase) || (j.tabId && j.releaseState!=='released'));
+  $('#send').disabled = submitting || !online || blocked;
+  $('#send').textContent = BUSY_PHASES.includes(phase) ? '依頼を進めています…' : blocked ? '先に報告の確認と解放を完了してください' : '依頼を伝える ↗';
+  const current = ({idle:0,planning:0,connecting:1,working:2,reporting:3,awaiting_review:4,completed:4,error:0})[phase];
+  $('#journey').innerHTML = ['相談','工房へ接続','ものづくり','秘書が報告作成','報告の確認'].map((s,i)=>`<span class="${i===current?'current':i<current?'done':''}"><i>${i<current?'✓':i+1}</i>${s}</span>`).join('<b>·</b>');
   renderShops();
+  renderOffice(live, { approve: approveJob, discover: discoverArtifacts });
   if(selected?.type==='shop')showShop(selected.index,true);
   else if(selected?.type==='person')showPerson(selected.name);
 }
@@ -117,11 +121,40 @@ $('#request-form').addEventListener('submit',async e=>{
 $('#request').addEventListener('input',()=>$('#char-count').textContent=`${$('#request').value.length} / 2000`);
 $('#request').addEventListener('keydown',e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey))$('#request-form').requestSubmit()});
 $('#home').addEventListener('click',closeDetail);
-$('#mayor').addEventListener('click',()=>{$('#request').focus();$('#request').scrollIntoView({behavior:'smooth',block:'center'})});
+$('#mayor').addEventListener('click',()=>navigate('/office'));
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeDetail()});
 function frame(time) {
   renderPositions();
   animateVillagers(time);
   requestAnimationFrame(frame);
 }
-renderStage(); poll(); requestAnimationFrame(frame);
+// A real path with history support: the server also serves /office directly.
+const secretary = document.querySelector('.secretary');
+$('#office-secretary').append(secretary);
+const invitation=document.createElement('div'); invitation.className='village-invitation';
+invitation.innerHTML='<p>仕事の相談と報告の確認は、村長の家の執務室で。</p><a href="/office" data-nav>執務室へ入る ↗</a>';
+$('.side .section-title').after(invitation);
+function navigate(path, push=true) {
+  if(push && location.pathname!==path)historyPush(path);
+  const office=path.startsWith('/office');
+  $('#office-page').hidden=!office; $('#village-page').hidden=office;
+  document.title=office?'村長の執務室 — AI村':'AI村 — ものづくりのある風景';
+  if(office)closeDetail();
+  window.scrollTo(0,0);
+}
+function historyPush(path){window.history.pushState({},'',path);}
+document.addEventListener('click',e=>{const link=e.target.closest('a[data-nav]');if(link && !e.ctrlKey && !e.metaKey && !e.shiftKey && e.button===0){e.preventDefault();navigate(link.getAttribute('href'));}});
+window.addEventListener('popstate',()=>navigate(location.pathname,false));
+$('#room-secretary').addEventListener('click',()=>{$('#request').focus();$('#request').scrollIntoView({behavior:'smooth',block:'center'});});
+$('#desk-reports').addEventListener('click',()=>$('.office-inbox').scrollIntoView({behavior:'smooth',block:'start'}));
+async function officeAction(url, method='POST') {
+  try {
+    const response=await fetch(url,{method}); const body=await response.json();
+    if(!response.ok)throw new Error(body.error);live=body;online=true;
+    $('#office-notice').textContent='';
+  } catch(error) { $('#office-notice').textContent=error.message; }
+  resetOfficeRender();renderStage();
+}
+function approveJob(id){return officeAction(`/api/jobs/${encodeURIComponent(id)}/approve`);}
+function discoverArtifacts(id){return officeAction(`/api/jobs/${encodeURIComponent(id)}/artifacts`,'GET');}
+navigate(location.pathname,false);renderStage(); poll(); requestAnimationFrame(frame);
