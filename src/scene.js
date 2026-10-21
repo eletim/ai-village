@@ -33,3 +33,21 @@ export {data,miku,workers,people,parcel};
 export function connectScene(building,person){selectBuilding=building;selectPerson=person;}
 export function positionPerson(name,x,y,walking=false){const g=people[name];if(!g)return;g.setAttribute('transform',`translate(${x} ${y})`);g.classList.toggle('walking',walking);}
 export function setSceneStatus(index,label){const g=document.querySelectorAll('.building')[index];g.querySelector('.building-status').textContent=label;}
+
+export function setPersonActivity(name, active) {
+  const person = people[name];
+  if (!person) return;
+  let marker = person.querySelector('.activity-marker');
+  if (!marker) {
+    marker = el('g', { class: 'activity-marker', 'pointer-events': 'none' }, person);
+    el('rect', { x: -20, y: -52, width: 40, height: 14, rx: 7 }, marker);
+    text(0, -42, '', 8, '#fff', marker);
+  }
+  marker.classList.toggle('is-working', active);
+  marker.classList.toggle('is-idle', !active);
+  marker.querySelector('rect').setAttribute('fill', active ? '#547744' : '#fffdf4');
+  marker.querySelector('rect').setAttribute('stroke', active ? '#547744' : '#aaad98');
+  marker.querySelector('text').textContent = active ? '● 作業中' : '○ 待機中';
+  marker.querySelector('text').setAttribute('fill', active ? '#fffdf4' : '#737b64');
+  person.setAttribute('aria-label', `${name}・${active ? '作業中' : '待機中'}`);
+}

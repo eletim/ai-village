@@ -40,3 +40,14 @@ textarea::placeholder { color: #7a866f; }
 .detail-people small, .profile span { color: #738264; font-size: 10px; }
 .prototype-note { color: #7c896c; }
 .hud button { color: #526747; }
+
+/* Active work and open-but-idle sessions remain visibly distinct. */
+.idle-dot { background: #fffdf4; border: 1px solid #909980; }
+.resident-working { box-shadow: 0 0 0 1.5px #5f834c; }
+.resident-idle { box-shadow: 0 0 0 1px #acb29e; }
+.idle-tag { background: #eeeee4; color: #727b65; }
+.room-person small em { display: block; font-style: normal; font-size: 7px; line-height: 1.5; }
+.room-working small em { color: #416b32; }
+.room-idle { top: 34px; }
+.room-idle small em { color: #757f65; }
+.activity-marker text { font-weight: 500; }

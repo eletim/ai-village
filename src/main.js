@@ -1,4 +1,4 @@
-import { data, people, parcel, connectScene, positionPerson, setSceneStatus } from './scene.js';
+import { data, people, parcel, connectScene, positionPerson, setSceneStatus, setPersonActivity } from './scene.js';
 import { VillageSimulation, STAGES } from './simulation.js';
 
 const $ = (s) => document.querySelector(s);
@@ -14,6 +14,19 @@ const residents = {
   リツ: { role:'第三工房の中心', shop:3, color:'#c1a66a', about:'新しいアイデアを小さな試作品にするのが得意です。' },
   トワ: { role:'次の仕事を待つ人', shop:null, color:'#9aa87c', about:'広場を散歩しています。次にどんな仕事が来るか、楽しみにしているようです。' },
 };
+function activity(name) {
+  const stage = sim.stage;
+  if(name === 'ミク') return { active: stage >= 1 && stage <= 6, reason: stage === 0 ? '村長からの依頼を待っています' : stage === 7 ? '報告を終え、次の依頼を待っています' : STAGES[stage].status };
+  if(name === 'ハル') return { active: stage === 6, reason: stage < 6 ? '成果が届くのを待っています' : stage === 6 ? '届いた成果を確認しています' : '確認を終え、次の仕事を待っています' };
+  if(['レン','ソラ','ユイ'].includes(name)) {
+    const active = stage === 0 ? name === 'レン' : stage >= 2 && stage <= 6;
+    return { active, reason: stage >= 7 ? '仕事が完了し、次の依頼を待っています' : active ? stage === 2 ? '工房で依頼の相談をしています' : '第一工房で制作しています' : 'セッションを開いて、依頼を待っています' };
+  }
+  if(name === 'リツ') return { active: stage === 5, reason: stage < 5 ? '試作が完了し、お届けの準備ができています' : stage === 5 ? '成果を村長の家へ届けています' : 'お届けを終え、次の依頼を待っています' };
+  if(name === 'トワ') return { active: false, reason: '次の仕事を待ちながら、広場を散歩しています' };
+  if(name === 'ナギ') return { active: stage >= 3 && stage <= 6, reason: stage < 3 ? 'セッションを開いて、確認の依頼を待っています' : stage <= 6 ? '第二工房で動作を確認しています' : '確認が完了し、次の依頼を待っています' };
+  return { active: stage <= 6, reason: stage <= 6 ? '第二工房で機能を組み立てています' : '仕事が完了し、次の依頼を待っています' };
+}
 const positions = {ミク:[540,372],ハル:[590,352],レン:[245,556],ソラ:[300,573],ユイ:[333,536],カイ:[778,576],ナギ:[836,553],リツ:[820,296],トワ:[435,679]};
 const secretaryPath = [[540,372],[540,472],[290,580],[280,553]];
 const homePath = [...secretaryPath].reverse();
@@ -46,7 +59,7 @@ function renderPositions() {
   if(stage===3)miku=along(homePath,p);
   positionPerson('ミク',...miku, stage===1||stage===3);
   ['レン','ソラ','ユイ'].forEach((name,i)=>{
-    const working=stage>=3&&stage<=7;
+    const working=stage>=3&&stage<=6;
     if(stage===2){const a=positions[name],b=[255+i*20,515+i*3];positionPerson(name,a[0]+(b[0]-a[0])*p,a[1]+(b[1]-a[1])*p,true)}
     else if(working)positionPerson(name,255+i*20,515+i*3);
     people[name].classList.toggle('at-work',working);
@@ -68,12 +81,15 @@ function shopState(index) {
 function renderShops() {
   $('#works').replaceChildren(...data.slice(1).map((d,i)=>{
     const index=i+1,state=shopState(index),names=Object.keys(residents).filter(n=>residents[n].shop===index);
+    const working = names.filter(n=>activity(n).active).length;
     const button=document.createElement('button');button.className='work';button.dataset.shop=index;
-    button.innerHTML=`<div class="row"><b><span class="shop-icon shop-${index}">${['','✂','⚒','✦'][index]}</span>${d.name}</b><span class="tag ${state.tone}">${state.label}</span></div><p>${escape(state.task)}</p><div class="residents">${names.map(n=>`<span class="resident-dot" style="--resident:${residents[n].color}" title="${n}">${n.slice(0,1)}</span>`).join('')}<span>${names.length}人で${index===2?'確認中':'ものづくり'}</span><span class="work-arrow">↗</span></div>`;
+    button.innerHTML=`<div class="row"><b><span class="shop-icon shop-${index}">${['','✂','⚒','✦'][index]}</span>${d.name}</b><span class="tag ${state.tone}">${state.label}</span></div><p>${escape(state.task)}</p><div class="residents">${names.map(n=>`<span class="resident-dot ${activity(n).active?'resident-working':'resident-idle'}" style="--resident:${residents[n].color}" title="${n}：${activity(n).active?'作業中':'待機中'}">${n.slice(0,1)}</span>`).join('')}<span>作業中 ${working}人 · 待機中 ${names.length-working}人</span><span class="work-arrow">↗</span></div>`;
     button.addEventListener('click',()=>showShop(index));return button;
   }));
   data.forEach((d,i)=>setSceneStatus(i,`${i===0?'⌂':i===3?'✦':'●'} ${shopState(i).label}`));
-  $('#legend').innerHTML=`<span><i class="dot"></i>工房 3棟</span><span><i class="dot amber-dot"></i>${sim.stage===5?'成果をお届け中':sim.stage>=7?'便りが届きました':'今日もものづくり中'}</span>`;
+  const activeCount=Object.keys(residents).filter(n=>activity(n).active).length;
+  $('#legend').innerHTML=`<span><i class="dot"></i>作業中 ${activeCount}人</span><span><i class="dot idle-dot"></i>待機中 ${Object.keys(residents).length-activeCount}人</span>`;
+  Object.keys(residents).forEach(n=>setPersonActivity(n,activity(n).active));
 }
 function openDetail() {
   if(!selected)focusBeforeDialog=document.activeElement;
@@ -86,12 +102,12 @@ function showShop(index,refresh=false) {
   if(!refresh)openDetail();selected={type:'shop',index};
   document.querySelectorAll('.building')[index].classList.add('selected');
   const d=data[index],state=shopState(index),names=Object.keys(residents).filter(n=>residents[n].shop===index);
-  detailShell(`<div class="eyebrow">${d.pc}</div><h3>${d.name}</h3><p class="detail-description">${d.desc}</p><div class="interior" aria-label="${d.name}の中の様子"><div class="room-window"></div><div class="room-rug"></div>${names.map((n,i)=>`<button class="room-person" data-person="${n}" style="--resident:${residents[n].color};--slot:${i}"><span class="tiny-head"></span><span class="tiny-body"></span><small>${n}</small></button>`).join('')}<div class="room-table"><span>▤</span><span>⌨</span></div></div><div class="detail-status"><span class="tag ${state.tone}">${state.label}</span><p>${escape(state.task)}</p></div><div class="detail-people">${names.map(n=>`<button data-person="${n}"><span class="resident-dot" style="--resident:${residents[n].color}">${n[0]}</span><span><b>${n}</b><small>${residents[n].role}</small></span><span class="work-arrow">›</span></button>`).join('')}</div>`);
+  detailShell(`<div class="eyebrow">${d.pc}</div><h3>${d.name}</h3><p class="detail-description">${d.desc}</p><div class="interior" aria-label="${d.name}の中の様子"><div class="room-window"></div><div class="room-rug"></div>${names.map((n,i)=>`<button class="room-person ${activity(n).active?'room-working':'room-idle'}" data-person="${n}" style="--resident:${residents[n].color};--slot:${i}"><span class="tiny-head"></span><span class="tiny-body"></span><small>${n}<em>${activity(n).active?'作業中':'待機中'}</em></small></button>`).join('')}<div class="room-table"><span>▤</span><span>⌨</span></div></div><div class="detail-status"><span class="tag ${state.tone}">${state.label}</span><p>${escape(state.task)}</p></div><div class="detail-people">${names.map(n=>`<button data-person="${n}"><span class="resident-dot" style="--resident:${residents[n].color}">${n[0]}</span><span><b>${n}</b><small>${residents[n].role} · ${activity(n).active?'作業中':'待機中'}</small></span><span class="work-arrow">›</span></button>`).join('')}</div>`);
   $('#detail').querySelectorAll('[data-person]').forEach(b=>b.addEventListener('click',()=>showPerson(b.dataset.person)));
 }
 function showPerson(name) {
   openDetail();selected={type:'person',name};const r=residents[name];
-  detailShell(`<div class="eyebrow">VILLAGER PROFILE</div><div class="profile"><div class="profile-character" style="--resident:${r.color}"><span class="tiny-head"></span><span class="tiny-body"></span></div><div><h3>${name}</h3><span>${r.role}</span></div></div><p>${r.about}</p><div class="detail-status"><span class="tag">いまのようす</span><p>${name==='ミク'?STAGES[sim.stage].status:r.shop===null?'広場を散歩しています':shopState(r.shop).task}</p></div>${r.shop!==null?`<button class="go-shop">${data[r.shop].name}を覗く　↗</button>`:''}`);
+  detailShell(`<div class="eyebrow">VILLAGER PROFILE</div><div class="profile"><div class="profile-character" style="--resident:${r.color}"><span class="tiny-head"></span><span class="tiny-body"></span></div><div><h3>${name}</h3><span>${r.role}</span></div></div><p>${r.about}</p><div class="detail-status"><span class="tag ${activity(name).active?'':'idle-tag'}">${activity(name).active?'● 作業中':'○ 待機中'}</span><p>${activity(name).reason}</p></div>${r.shop!==null?`<button class="go-shop">${data[r.shop].name}を覗く　↗</button>`:''}`);
   $('#detail .go-shop')?.addEventListener('click',()=>showShop(r.shop));
 }
 connectScene(showShop,showPerson);
