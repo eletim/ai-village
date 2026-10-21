@@ -1,0 +1,13 @@
+{
+  "name": "ai-village",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A little village of AI workshops \u2014 frontend prototype",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "check": "node --check src/main.js && node --check src/scene.js && node --check src/simulation.js",
+    "test": "node --test tests/*.test.js",
+    "build": "node scripts/build.mjs"
+  }
+}
