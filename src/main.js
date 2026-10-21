@@ -18,7 +18,7 @@ const positions = {ミク:[540,372],ハル:[590,352],レン:[245,556],ソラ:[30
 const secretaryPath = [[540,372],[540,472],[290,580],[280,553]];
 const homePath = [...secretaryPath].reverse();
 const deliveryPath = [[820,296],[790,330],[660,405],[540,472],[540,372]];
-let selected = null, paused = false, speed = 1, lastTime, renderKey = '', focusBeforeDialog;
+let selected = null, lastTime, focusBeforeDialog;
 let history = [];
 const sim = new VillageSimulation();
 function addEvent(message) {
@@ -44,20 +44,20 @@ function renderPositions() {
   if(stage===1)miku=along(secretaryPath,p);
   if(stage===2)miku=secretaryPath.at(-1);
   if(stage===3)miku=along(homePath,p);
-  positionPerson('ミク',...miku, !paused && (stage===1||stage===3));
+  positionPerson('ミク',...miku, stage===1||stage===3);
   ['レン','ソラ','ユイ'].forEach((name,i)=>{
     const working=stage>=3&&stage<=7;
-    if(stage===2){const a=positions[name],b=[255+i*20,515+i*3];positionPerson(name,a[0]+(b[0]-a[0])*p,a[1]+(b[1]-a[1])*p,!paused)}
+    if(stage===2){const a=positions[name],b=[255+i*20,515+i*3];positionPerson(name,a[0]+(b[0]-a[0])*p,a[1]+(b[1]-a[1])*p,true)}
     else if(working)positionPerson(name,255+i*20,515+i*3);
     people[name].classList.toggle('at-work',working);
   });
   let box=positions.リツ;
-  if(stage===5){box=along(deliveryPath,p);positionPerson('リツ',...box,!paused)}
+  if(stage===5){box=along(deliveryPath,p);positionPerson('リツ',...box,true)}
   else if(stage===6){box=deliveryPath.at(-1);positionPerson('リツ',...box)}
-  else if(stage>=7){box=[560,368];positionPerson('リツ',...along([...deliveryPath].reverse(),Math.min(p*2,1)),!paused&&p<.5)}
+  else if(stage>=7){box=[560,368];positionPerson('リツ',...along([...deliveryPath].reverse(),Math.min(p*2,1)),p<.5)}
   parcel.setAttribute('transform',`translate(${box[0]+13} ${box[1]-3})`);
   parcel.style.opacity=stage>=5?'1':'.7';
-  const t=sim.elapsed/1000;positionPerson('トワ',435+Math.sin(t*.2)*13,679+Math.sin(t*.2)*6,!paused);
+  const t=sim.elapsed/1000;positionPerson('トワ',435+Math.sin(t*.2)*13,679+Math.sin(t*.2)*6,true);
 }
 function shopState(index) {
   if(index===0) return { label:sim.stage===6?'成果を確認中':sim.stage>=1&&sim.stage<=3?'ミクは工房へ訪問中':'秘書のいる場所', task:STAGES[sim.stage].status, tone:'green' };
@@ -106,26 +106,21 @@ function renderStage() {
 sim.onStage=()=>{addEvent(sim.event);renderStage()};
 $('#request-form').addEventListener('submit',e=>{
   e.preventDefault();const request=$('#request').value.trim();if(!request){$('#request').focus();return}
-  sim.start(request);$('#request').value='';$('#char-count').textContent='0 / 240';paused=false;updateControls();
+  sim.start(request);$('#request').value='';$('#char-count').textContent='0 / 240';
 });
 $('#request').addEventListener('input',()=>$('#char-count').textContent=`${$('#request').value.length} / 240`);
 $('#request').addEventListener('keydown',e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey))$('#request-form').requestSubmit()});
-function updateControls() { $('#play').textContent=paused?'▶ 再開':'Ⅱ 一時停止';$('#play').setAttribute('aria-pressed',String(paused));$('#speed').textContent=speed+'×';document.querySelector('.world').classList.toggle('paused',paused); }
-$('#play').addEventListener('click',()=>{paused=!paused;updateControls()});
-$('#speed').addEventListener('click',()=>{speed=speed===1?2:speed===2?4:1;updateControls()});
 $('#home').addEventListener('click',closeDetail);
 $('#mayor').addEventListener('click',()=>{$('#request').focus();$('#request').scrollIntoView({behavior:'smooth',block:'center'})});
-$('#reset').addEventListener('click',()=>{history=[];paused=false;speed=1;closeDetail();sim.reset();updateControls();addEvent('村の一日が、はじまりました。');renderStage()});
+$('#reset').addEventListener('click',()=>{history=[];closeDetail();sim.reset();addEvent('村の一日が、はじまりました。');renderStage()});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeDetail()});
 // Pause the simulated clock while the page is hidden; never race to catch up.
 document.addEventListener('visibilitychange',()=>{lastTime=undefined});
-const motion = window.matchMedia('(prefers-reduced-motion: reduce)');
-if(motion.matches){paused=true;updateControls()}
 function frame(time) {
   const delta=lastTime===undefined?0:Math.min(time-lastTime,100);lastTime=time;
-  if(!paused&&!document.hidden)sim.advance(delta*speed);
+  if(!document.hidden)sim.advance(delta);
   renderPositions();
-  const key=`${sim.stage}:${paused}`;if(key!==renderKey){renderKey=key;document.querySelectorAll('.at-work').forEach(g=>g.classList.toggle('working',!paused))}
+  const key=`${sim.stage}:${paused}`;if(key!==renderKey){renderKey=key;document.querySelectorAll('.at-work').forEach(g=>g.classList.toggle('working',true))}
   requestAnimationFrame(frame);
 }
 addEvent('村長の家へようこそ。工房の一日を眺めてみましょう。');renderStage();requestAnimationFrame(frame);
