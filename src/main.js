@@ -1,4 +1,4 @@
-import { data, people, parcel, connectScene, positionPerson, setSceneStatus, setPersonActivity } from './scene.js';
+import { data, people, parcel, connectScene, positionPerson, setSceneStatus, setPersonActivity, animateVillagers } from './scene.js';
 import { VillageSimulation, STAGES } from './simulation.js';
 
 const $ = (s) => document.querySelector(s);
@@ -60,8 +60,8 @@ function renderPositions() {
   positionPerson('ミク',...miku, stage===1||stage===3);
   ['レン','ソラ','ユイ'].forEach((name,i)=>{
     const working=stage>=3&&stage<=6;
-    if(stage===2){const a=positions[name],b=[255+i*20,515+i*3];positionPerson(name,a[0]+(b[0]-a[0])*p,a[1]+(b[1]-a[1])*p,true)}
-    else if(working)positionPerson(name,255+i*20,515+i*3);
+    if(stage===2){const a=positions[name],b=[235+i*60,550+(i%2)*28];positionPerson(name,a[0]+(b[0]-a[0])*p,a[1]+(b[1]-a[1])*p,true)}
+    else if(working)positionPerson(name,235+i*60,550+(i%2)*28);
     people[name].classList.toggle('at-work',working);
   });
   let box=positions.リツ;
@@ -102,7 +102,7 @@ function showShop(index,refresh=false) {
   if(!refresh)openDetail();selected={type:'shop',index};
   document.querySelectorAll('.building')[index].classList.add('selected');
   const d=data[index],state=shopState(index),names=Object.keys(residents).filter(n=>residents[n].shop===index);
-  detailShell(`<div class="eyebrow">${d.pc}</div><h3>${d.name}</h3><p class="detail-description">${d.desc}</p><div class="interior" aria-label="${d.name}の中の様子"><div class="room-window"></div><div class="room-rug"></div>${names.map((n,i)=>`<button class="room-person ${activity(n).active?'room-working':'room-idle'}" data-person="${n}" style="--resident:${residents[n].color};--slot:${i}"><span class="tiny-head"></span><span class="tiny-body"></span><small>${n}<em>${activity(n).active?'作業中':'待機中'}</em></small></button>`).join('')}<div class="room-table"><span>▤</span><span>⌨</span></div></div><div class="detail-status"><span class="tag ${state.tone}">${state.label}</span><p>${escape(state.task)}</p></div><div class="detail-people">${names.map(n=>`<button data-person="${n}"><span class="resident-dot" style="--resident:${residents[n].color}">${n[0]}</span><span><b>${n}</b><small>${residents[n].role} · ${activity(n).active?'作業中':'待機中'}</small></span><span class="work-arrow">›</span></button>`).join('')}</div>`);
+  detailShell(`<div class="eyebrow">${d.pc}</div><h3>${d.name}</h3><p class="detail-description">${d.desc}</p><div class="interior" aria-label="${d.name}の中の様子"><div class="room-window"></div><div class="room-rug"></div>${names.map((n,i)=>`<button class="room-person ${activity(n).active?'room-working':'room-idle'}" data-person="${n}" style="--resident:${residents[n].color};--slot:${i}"><span class="tiny-head"></span><span class="tiny-body"></span><span class="room-hammer" aria-hidden="true"></span><span class="room-anvil" aria-hidden="true"></span><small>${n}<em>${activity(n).active?'作業中':'待機中'}</em></small></button>`).join('')}<div class="room-table"><span>▤</span><span>⌨</span></div></div><div class="detail-status"><span class="tag ${state.tone}">${state.label}</span><p>${escape(state.task)}</p></div><div class="detail-people">${names.map(n=>`<button data-person="${n}"><span class="resident-dot" style="--resident:${residents[n].color}">${n[0]}</span><span><b>${n}</b><small>${residents[n].role} · ${activity(n).active?'作業中':'待機中'}</small></span><span class="work-arrow">›</span></button>`).join('')}</div>`);
   $('#detail').querySelectorAll('[data-person]').forEach(b=>b.addEventListener('click',()=>showPerson(b.dataset.person)));
 }
 function showPerson(name) {
@@ -136,7 +136,7 @@ function frame(time) {
   const delta=lastTime===undefined?0:Math.min(time-lastTime,100);lastTime=time;
   if(!document.hidden)sim.advance(delta);
   renderPositions();
-  const key=`${sim.stage}:${paused}`;if(key!==renderKey){renderKey=key;document.querySelectorAll('.at-work').forEach(g=>g.classList.toggle('working',true))}
+  animateVillagers(time);
   requestAnimationFrame(frame);
 }
 addEvent('村長の家へようこそ。工房の一日を眺めてみましょう。');renderStage();requestAnimationFrame(frame);

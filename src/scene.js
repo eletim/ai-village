@@ -37,6 +37,8 @@ export function setSceneStatus(index,label){const g=document.querySelectorAll('.
 export function setPersonActivity(name, active) {
   const person = people[name];
   if (!person) return;
+  attachWorkbench(person);
+  person.dataset.active = String(active);
   let marker = person.querySelector('.activity-marker');
   if (!marker) {
     marker = el('g', { class: 'activity-marker', 'pointer-events': 'none' }, person);
@@ -50,4 +52,37 @@ export function setPersonActivity(name, active) {
   marker.querySelector('text').textContent = active ? '● 作業中' : '○ 待機中';
   marker.querySelector('text').setAttribute('fill', active ? '#fffdf4' : '#737b64');
   person.setAttribute('aria-label', `${name}・${active ? '作業中' : '待機中'}`);
+}
+
+const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+function attachWorkbench(person) {
+  if (person.querySelector('.work-props')) return;
+  const props = el('g', {class:'work-props', 'pointer-events':'none'}, person);
+  const bench = el('g', {class:'workbench'}, props);
+  el('path', {d:'M14 0V16M40 1V17', stroke:'#806044', 'stroke-width':4, 'stroke-linecap':'round'}, bench);
+  poly('9,-7 35,-13 47,-6 20,0', '#c39a64', bench);
+  poly('9,-7 20,0 20,6 9,-1', '#997347', bench);
+  poly('20,0 47,-6 47,0 20,6', '#ad8251', bench);
+  poly('21,-10 30,-12 36,-8 27,-5', '#8c9b9a', bench);
+  const arm = el('g', {transform:'translate(5 -14)'}, props);
+  const swing = el('g', {class:'hammer-swing'}, arm);
+  el('path', {d:'M0 0L0 -13',stroke:'#efd5ae','stroke-width':6,'stroke-linecap':'round'}, swing);
+  el('path', {d:'M0 -10V-27',stroke:'#815734','stroke-width':4,'stroke-linecap':'round'}, swing);
+  el('rect', {x:-10,y:-30,width:20,height:9,rx:2,fill:'#65787d',stroke:'#46595e','stroke-width':1.3}, swing);
+  el('path', {d:'M-8 -28H7',stroke:'#b6c8c8','stroke-width':2}, swing);
+  const hit = el('g', {class:'hammer-impact'}, props);
+  el('path', {d:'M28 -17V-23M36 -15L41 -20M19 -16L15 -21',stroke:'#f4d27d','stroke-width':2.4,'stroke-linecap':'round',fill:'none'},hit);
+}
+
+export function animateVillagers(time) {
+  Object.values(people).forEach((person,index)=>{
+    const working=person.dataset.active==='true'&&!person.classList.contains('walking');
+    person.classList.toggle('hammering',working);
+    if(!working)return;
+    const phase=(time/1100+index*.17)%1;
+    // A slow lift, a quick strike, then a short rest on the workpiece.
+    const angle=reducedMotion.matches?105:phase<.4?105-140*(phase/.4):phase<.52?-35+140*((phase-.4)/.12):105;
+    person.querySelector('.hammer-swing').setAttribute('transform',`rotate(${angle})`);
+    person.querySelector('.hammer-impact').setAttribute('opacity',!reducedMotion.matches&&phase>=.51&&phase<.68?'1':'0');
+  });
 }
