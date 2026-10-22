@@ -111,6 +111,7 @@ export class WorkshopBridge {
   }
   async submit(request, connection, instruction = null, options = {}) {
     if (!connection?.sshHost || !connection.remoteRoot || !connection.baseUrl) throw new Error('資料から工房の接続先を選んでください。');
+    await this.canSubmit?.();
     if (this.jobs.some(job => activePhases.has(job.phase) || (job.tabId && job.releaseState !== 'released') || job.releaseState === 'releasing')) throw Object.assign(new Error('先に進行中の仕事と、届いた報告の確認・Agentの解放を完了してください。'), { status: 409 });
     this.job = { id: randomUUID(), development: options.development || null, request, phase: 'planning', sshHost: connection.sshHost, remoteRoot: connection.remoteRoot, baseUrl: connection.baseUrl, workshopName: connection.name, workshopDocument: connection.document, documentHash: connection.documentHash, instruction, resourceStep: 'local', releaseState: 'held', approvedAt: null, releasedAt: null, createdAt: new Date().toISOString(), workerFinishedAt: null, reportFinishedAt: null };
     this.jobs.push(this.job);

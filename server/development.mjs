@@ -17,6 +17,7 @@ export async function developmentProfile(library){
 export class Development {
   constructor(bridge,library,{port=5173}={}){
     this.bridge=bridge;this.library=library;this.dir=resolve(bridge.dir,'deployments');this.healthUrl=`http://127.0.0.1:${port}`;this.transports=new Map();this.delivering=new Set();this.applying=new Map();
+    bridge.canSubmit=async()=>{if((await this.list()).some(record=>!terminal.has(record.phase)))throw Object.assign(new Error('村への反映中です。新しい工房の配置は反映結果の確認後に行ってください。'),{status:409});};
     bridge.prepareJob=job=>job.development?this.prepare(job):undefined;
     bridge.inspectResult=job=>job.development?this.inspect(job.id).catch(async error=>{await bridge.update({development:{...job.development,inspectionError:error.message}},job);}):undefined;
     bridge.onDevelopmentReady=job=>job.development?.autoApply?this.apply(job.id).catch(error=>console.error('Automatic deployment:',error.message)):undefined;
@@ -80,7 +81,7 @@ export class Development {
     if(this.bridge.jobs.some(j=>activePhases.has(j.phase)))throw new Error('実行中の仕事があるため、反映は保留します。完了後に実行してください。');
     const job=this.bridge.jobById(jobId);if(!job.report||job.cancelRequestedAt)throw new Error('完成報告のある村開発の仕事だけを反映できます。');
     const cfg=await this.profile(),d=await this.inspect(jobId);if(cfg.repository!==d.repository||cfg.branch!==d.branch)throw new Error('仕事と現在の開発対象が異なります。');
-    const id=randomUUID(),record={id,jobId,createdAt:new Date().toISOString(),phase:'queued',targetCommit:d.result.commit,changeBranch:d.changeBranch,branch:cfg.branch,repository:cfg.repository,root:cfg.sourceDir,stateDir:this.bridge.dir,healthUrl:this.healthUrl};
+    const id=randomUUID(),record={id,jobId,createdAt:new Date().toISOString(),phase:'queued',targetCommit:d.result.commit,workshopVerification:d.result,changeBranch:d.changeBranch,branch:cfg.branch,repository:cfg.repository,root:cfg.sourceDir,stateDir:this.bridge.dir,healthUrl:this.healthUrl};
     const folder=resolve(this.dir,id);await mkdir(folder,{recursive:true});await copyFile(resolve('scripts/apply.mjs'),resolve(folder,'runner.mjs'));
     const file=resolve(this.dir,id+'.json');await writeFile(file,JSON.stringify(record,null,2),{mode:0o600});
     await this.bridge.update({development:{...job.development,deploymentId:id,deploymentPhase:'queued'}},job);
@@ -95,7 +96,7 @@ export class Development {
         try{
           const job=this.bridge.jobById(record.jobId);
           await this.bridge.update({development:{...job.development,deploymentId:record.id,deploymentPhase:record.phase,applied:!!record.appliedCommit,appliedCommit:record.appliedCommit || null,verification:record.verification || null}},job);
-          await secretary.receiveDeployment(record);
+          await secretary.receiveDeployment({...record,workshopVerification:record.workshopVerification || job.development?.result,workshopReport:job.report});
         }catch(error){console.error('Deployment report unavailable:',error.message);}finally{this.delivering.delete(record.id);}
       }
     };

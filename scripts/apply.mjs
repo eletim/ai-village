@@ -31,6 +31,7 @@ try{
   await command('npm',['run','build'],candidate);
   await clean();if(await git('rev-parse','HEAD')!==from)throw new Error('検証中にコアHEADが変わりました。');
   await save({phase:'applying'});await git('merge','--ff-only',record.targetCommit);await save({appliedCommit:await git('rev-parse','HEAD'),appliedAt:new Date().toISOString()});
+  await command('npm',['ci']);
   await command('npm',['run','build']);
   const before=await(await fetch(record.healthUrl+'/api/health',{signal:AbortSignal.timeout(5000)})).json();
   await save({phase:'restarting',beforeInstance:before.instanceId});

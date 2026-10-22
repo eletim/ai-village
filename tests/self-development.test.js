@@ -48,3 +48,9 @@ test('lost deployment worker becomes unconfirmed failure without erasing the act
   await writeFile(join(dir,'deployments',id+'.json'),JSON.stringify({id,jobId:'job',phase:'restarting',workerPid:99999999,appliedCommit:sha,createdAt:new Date().toISOString()}));
   const development=new Development({dir,jobs:[]},{});const [record]=await development.list();assert.equal(record.phase,'failed');assert.equal(record.appliedCommit,sha);assert.match(record.error,/未確認/);
 });
+
+test('a durable pending deployment blocks new workshop allocation before creating any job',async()=>{
+  const {WorkshopBridge}=await import('../server/bridge.mjs');const dir=await mkdtemp(join(tmpdir(),'village-deployment-gate-'));await mkdir(join(dir,'deployments'));const id='33333333-3333-4333-8333-333333333333';await writeFile(join(dir,'deployments',id+'.json'),JSON.stringify({id,phase:'checking',workerPid:process.pid,createdAt:new Date().toISOString()}));
+  const bridge=new WorkshopBridge({dir});new Development(bridge,{});
+  await assert.rejects(bridge.submit('new task',{sshHost:'host',remoteRoot:'/work',baseUrl:'http://example.test'}),{status:409});assert.equal(bridge.job,null);assert.equal(bridge.jobs.length,0);
+});
