@@ -55,7 +55,8 @@ export class VillageNotifier {
       // Claim before the external side effect; neither restart nor UI restoration retries it.
       await this.record({...base,at:new Date().toISOString(),status:'attempting',delivered:false});
       const title=message.kind==='deployment'?'AI村 · 村への変更反映':message.kind==='report'?'AI村 · 工房からの報告':message.kind==='error'?'AI村 · ミクからのお知らせ':message.kind==='test'?'AI村 · 通知テスト':'AI村 · ミクからの返答';
-      const content=Array.from(message.content).slice(0,2000).join('')+(Array.from(message.content).length>2000?'…':'');
+      const prose=message.content || (message.attachments?.length ? `ミクから画像が${message.attachments.length}枚届きました。執務室で確認できます。` : '');
+      const content=Array.from(prose).slice(0,2000).join('')+(Array.from(prose).length>2000?'…':'');
       const outcome=await this.send(title,content);
       const result={...base,at:new Date().toISOString(),...outcome};
       await this.record(result);return result;

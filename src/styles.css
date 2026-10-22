@@ -174,3 +174,44 @@ textarea::placeholder { color: #7a866f; }
 #refresh-document,#close-library { border:1px solid #d4dac5; background:#edf0e2; color:#7c8c69; padding:7px 10px; border-radius:6px; font-size:10px; }#library-error { color:#a36248; font-size:12px; }
 @media(max-width:900px) { .office-workspace { grid-template-columns:1fr; }.library-layout { grid-template-columns:170px minmax(0,1fr); }.conversation-log { max-height:500px; } }
 @media(max-width:680px) { .library-layout { grid-template-columns:1fr; }.village-library { padding:16px; }.document-paper { padding:16px; }.office-access button { padding:10px 12px; font-size:11px; }.conversation-log { max-height:480px; } }
+
+/* The study keeps its live desk, with the conversation taking the full width. */
+.office-page { max-width:1160px; padding-top:16px; }
+.office-title { margin:16px 0; }.office-title h1 { font-size:25px; }
+.office-room { height:154px; }
+.office-room .study-window { height:72px; width:68px; top:12px; }
+.office-room .study-shelf { top:20px; }
+.office-room .wall-picture { top:14px; height:64px; }
+.office-room .study-door { bottom:12px; height:126px; }
+.office-room .study-secretary { bottom:30px; transform:scale(.8); transform-origin:bottom; }
+.office-room .study-desk { bottom:12px; height:40px; }
+.office-room .study-desk::before,.office-room .study-desk::after { top:30px; height:14px; }
+.office-room .study-plant { bottom:16px; font-size:44px; }
+.office-room .desk-papers span { top:48px; }
+.office-room .room-caption { display:none; }
+.office-access { margin-top:12px; }
+.office-workspace { grid-template-columns:minmax(0,1fr); gap:28px; margin-top:20px; }
+.office-conversation .secretary { padding:18px; }
+.office-conversation .bubble { min-height:0; font-size:12px; line-height:1.7; }
+.office-conversation textarea { height:94px; min-height:72px; max-height:280px; resize:vertical; font-size:16px; }
+.conversation-log { height:clamp(260px,46dvh,620px); max-height:none; }
+.chat-message { max-width:900px; font-size:15px; }.chat-user { margin-left:auto; width:fit-content; min-width:180px; max-width:94%; }
+.attachment-tools { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-top:8px; }
+.attachment-tools button,.attachment-preview button { border:1px solid #bac8ac; background:#fffdf6; color:#425a38; padding:10px 14px; border-radius:8px; min-height:44px; }
+.attachment-tools span { font-size:11px; color:#65735b; }
+.attachment-preview,.chat-images { display:flex; flex-wrap:wrap; gap:12px; }
+.attachment-preview figure { width:140px; margin:10px 0; }
+.attachment-preview img { width:140px; height:90px; object-fit:contain; background:#eee; border-radius:6px; }
+.attachment-preview figcaption { font-size:11px; overflow-wrap:anywhere; }.attachment-preview button { margin-top:6px; }
+#attachment-error { font-size:13px; color:#a3442c; margin:6px 0; }
+.chat-images a { display:flex; flex-direction:column; max-width:100%; color:#4f6841; font-size:12px; overflow-wrap:anywhere; }
+.chat-images img { display:block; width:auto; height:auto; max-width:100%; max-height:320px; object-fit:contain; border-radius:8px; margin-top:10px; }
+@media(max-width:680px) {
+  .office-page { padding:12px 12px 32px; }.office-title { margin:12px 0; }.office-title h1 { font-size:22px; }
+  .office-room { height:132px; }.office-room .study-door { height:112px; }.office-room .study-secretary { bottom:24px; }
+  .office-conversation .secretary { padding:12px; }.office-section-heading { margin-bottom:10px; }
+  .office-access { gap:6px; }.office-workspace { margin-top:16px; }
+  .chat-message { padding:10px; font-size:14px; }.chat-assistant { margin-right:0; }
+  .conversation-log { height:40dvh; min-height:230px; }.office-conversation textarea { height:88px; }
+  .chat-images img { max-height:260px; }.attachment-tools { gap:6px; }
+}

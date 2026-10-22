@@ -1,3 +1,4 @@
+import { ImageStore, MAX_IMAGE_BYTES } from '../server/images.mjs';
 import { randomUUID } from 'node:crypto';
 import { run } from '../server/bridge.mjs';
 import { WebReader } from '../server/web-reader.mjs';
@@ -19,8 +20,10 @@ await bridge.init();
 const notifier = new VillageNotifier({ dir: bridge.dir });
 await notifier.init();
 const development = new Development(bridge, library, {port});
-const operations = new VillageOperations(bridge, notifier, {web:new WebReader(),development});
-const secretariat = new Secretariat(bridge, library, operations, notifier);
+const images = new ImageStore(bridge.dir);
+await images.init();
+const operations = new VillageOperations(bridge, notifier, {web:new WebReader(),development,images});
+const secretariat = new Secretariat(bridge, library, operations, notifier, images);
 await secretariat.init();
 development.watch(secretariat);
 const instanceId=randomUUID(), runningCommit=(await run('git',['rev-parse','HEAD'])).trim();
@@ -36,6 +39,19 @@ const server = createServer(async (req, res) => {
       if (req.method === 'GET' && pathname === '/api/state') return json(res, 200, snapshot());
       if (req.method === 'GET' && pathname === '/api/documents') return json(res, 200, { root: library.root, documents: await library.catalog() });
       if (req.method === 'GET' && pathname === '/api/documents/content') return json(res, 200, await library.read(new URL(req.url, 'http://localhost').searchParams.get('path')));
+      const imageRoute = pathname.match(/^\/api\/images\/([0-9a-f-]{36})$/);
+      if (req.method === 'GET' && imageRoute) {
+        const content = await images.content(imageRoute[1]);
+        res.writeHead(200, {'Content-Type':'image/png','X-Content-Type-Options':'nosniff','Cache-Control':'private, no-cache'});
+        res.end(content); return;
+      }
+      if (req.method === 'POST' && pathname === '/api/images') {
+        if (!['image/png','image/jpeg','image/webp'].includes(req.headers['content-type'])) return json(res,415,{error:'PNG・JPEG・WebPを選んでください。'});
+        const chunks=[]; let size=0;
+        for await (const chunk of req) { size+=chunk.length; if(size>MAX_IMAGE_BYTES)return json(res,413,{error:'画像は1枚8 MiB以内にしてください。'}); chunks.push(chunk); }
+        const name = new URL(req.url,'http://localhost').searchParams.get('name') || '画像';
+        return json(res,201,await images.save(Buffer.concat(chunks),name));
+      }
       const jobRoute = pathname.match(/^\/api\/jobs\/([0-9a-f-]{36})\/(approve|cancel|artifact|artifacts)$/);
       if (jobRoute && req.method === 'GET' && jobRoute[2] === 'artifacts') {
         const job=bridge.jobById(jobRoute[1]);
@@ -64,8 +80,8 @@ const server = createServer(async (req, res) => {
         let parsed;
         try { parsed = JSON.parse(body); } catch { return json(res, 400, { error: 'Invalid JSON' }); }
         const request = parsed?.message ?? parsed?.request;
-        if (typeof request !== 'string' || !request.trim() || request.length > 2000) return json(res, 400, { error: '依頼を1〜2000文字で入力してください。' });
-        await secretariat.send(request.trim());
+        if (typeof request !== 'string' || (!request.trim() && !parsed.attachments?.length) || request.length > 2000) return json(res, 400, { error: '文章（2000文字以内）または画像を添付してください。' });
+        await secretariat.send(request.trim(), parsed.attachments);
         return json(res, 202, snapshot());
       }
       return json(res, 404, { error: 'Not found' });

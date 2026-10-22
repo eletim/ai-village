@@ -1,3 +1,4 @@
+import { attachmentComposer } from './attachments.js';
 import { isOnDesk } from './job-state.js';
 import { data, people, parcel, connectScene, positionPerson, setSceneStatus, setPersonActivity, animateVillagers } from './scene.js';
 import { renderConversation } from './conversation.js';
@@ -120,15 +121,17 @@ async function poll() {
   renderStage();
   setTimeout(poll,1500);
 }
+const attachments = attachmentComposer();
 $('#request-form').addEventListener('submit',async e=>{
-  e.preventDefault();const request=$('#request').value.trim();if(!request){$('#request').focus();return}
-  if(submitting)return; submitting=true; $('#send').disabled=true;
+  e.preventDefault();const request=$('#request').value.trim();if(!request && !attachments.count){$('#request').focus();return}
+  if(submitting || live.secretary?.status==='thinking')return; submitting=true; $('#send').disabled=true; attachments.lock(true); $('#request').disabled=true;
   try {
-    const response=await fetch('/api/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:request})});
+    const ids=await attachments.upload();
+    const response=await fetch('/api/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:request,attachments:ids})});
     const body=await response.json(); if(!response.ok)throw new Error(body.error);
-    live=body; online=true; $('#request').value=''; $('#char-count').textContent='0 / 2000';
+    live=body; online=true; attachments.clear(); $('#office-notice').textContent=''; $('#request').value=''; $('#char-count').textContent='0 / 2000';
   } catch(error) { addEvent(error.message); $('#office-notice').textContent=error.message; }
-  submitting=false; renderStage();
+  submitting=false; attachments.lock(false); $('#request').disabled=false; renderStage();
 });
 $('#request').addEventListener('input',()=>$('#char-count').textContent=`${$('#request').value.length} / 2000`);
 $('#request').addEventListener('keydown',e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey))$('#request-form').requestSubmit()});

@@ -63,3 +63,8 @@ test('unreadable deduplication journal disables delivery without losing conversa
   assert.equal(secretary.status,'idle');assert.equal((await calls()).length,0);assert.equal(notifier.status().journalAvailable,false);
   assert.match(await readFile(join(dir,'conversation.json'),'utf8'),/返答は保存/);
 });
+
+test('image-only assistant replies have a readable notification without sending image bytes',async()=>{
+  const {secretary,notifier}=await setup();const calls=[];notifier.send=async(title,content)=>{calls.push({title,content});return {delivered:true,status:'delivered'};};
+  await secretary.publish('',{attachments:[{id:'saved-image'}]});await notifier.flush();assert.equal(calls.length,1);assert.match(calls[0].content,/画像が1枚/);assert.doesNotMatch(calls[0].content,/saved-image/);
+});

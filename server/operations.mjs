@@ -6,10 +6,13 @@ import { isOnDesk, isSettled, jobStatus } from '../src/job-state.js';
 // The same registry serves the secretary, HTTP and the human CLI. Adding a village
 // operation doesn't require adding a new LLM action or teaching a keyword router.
 export class VillageOperations {
-  constructor(bridge, notifier, {web, development} = {}) {
+  constructor(bridge, notifier, {web, development, images} = {}) {
     this.bridge = bridge;
     const detail = id => this.describe(bridge.jobById(id));
     this.commands = [
+      { name:'images list', usage:'images list', run:args=>{if(args.length)throw new Error('usage: images list');return images.list();} },
+      { name:'images import', usage:'images import JOB_ID RELATIVE_PATH', run:args=>{if(args.length!==2)throw new Error('usage: images import JOB_ID RELATIVE_PATH');return images.importArtifact(bridge,...args);} },
+      { name:'jobs artifacts', usage:'jobs artifacts JOB_ID', run:async args=>{const job=bridge.jobById(this.id(args));await bridge.update({artifacts:await bridge.listArtifacts(job)},job);return this.describe(job);} },
       { name:'help', usage:'help', run:args=>{if(args.length)throw new Error('usage: help');return this.commands.map(({name,usage,mutation})=>({name,usage,mutation:!!mutation}));} },
       { name:'notifications status', usage:'notifications status', run:args=>{if(args.length)throw new Error('usage: notifications status');return notifier?.status() || {enabled:false,unavailable:true};} },
       { name:'notifications test', usage:'notifications test', mutation:true, run:async args=>{if(args.length)throw new Error('usage: notifications test');if(!notifier)throw new Error('通知処理がありません。');const result=await notifier.test();return {...result,ok:result.delivered};} },
