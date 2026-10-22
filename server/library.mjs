@@ -39,6 +39,16 @@ export class VillageLibrary {
     if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new Error('PurpleMux URLが不正です。');
     return { name: fields.name, sshHost: fields.ssh_host, remoteRoot: fields.work_root, baseUrl: url.href, document: doc.path, documentHash: doc.hash };
   }
+  async workshops() {
+    const workshops = [];
+    for (const doc of await this.catalog()) {
+      try {
+        const { name, document } = await this.workshop(doc.path);
+        workshops.push({ name, document });
+      } catch { /* Only documents with valid connection metadata are registered. */ }
+    }
+    return workshops;
+  }
   async firstWorkshop() {
     for (const doc of await this.catalog()) {
       try { return await this.workshop(doc.path); } catch { /* prose documents have no connection header */ }

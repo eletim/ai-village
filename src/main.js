@@ -1,32 +1,19 @@
 import { attachmentComposer } from './attachments.js';
 import { isOnDesk } from './job-state.js';
-import { data, people, parcel, connectScene, positionPerson, setSceneStatus, setPersonActivity, animateVillagers } from './scene.js';
+import { data, people, parcel, connectScene, syncScene, setSceneStatus, setPersonActivity, animateVillagers } from './scene.js';
 import { renderConversation } from './conversation.js';
 import { openLibrary, openDocument } from './library.js';
 import { renderOffice, resetOfficeRender } from './office.js';
-import { BUSY_PHASES, PHASE_LABELS, personActivity } from './live.js';
+import { PHASE_LABELS } from './live.js';
+
+import { placedAgents, agentState, workshopAgents } from './village-state.js';
 
 const $ = (s) => document.querySelector(s);
 const escape = (s) => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const residents = {
-  ミク: { role:'秘書', shop:0, color:'#c49671', about:'村長のアイデアを聞き、工房に伝える。できあがったものを確かめて、わかりやすい言葉で届けます。' },
-  ハル: { role:'動作を確かめる人', shop:0, color:'#8da6a0', about:'村長の家に届いたものを実際に触って、使い心地を確かめています。' },
-  レン: { role:'第一工房の中心', shop:1, color:'#7c96ac', about:'仲間と相談しながら、依頼を動くかたちにしていきます。' },
-  ソラ: { role:'設計を考える人', shop:1, color:'#b3a078', about:'レンと一緒に、つくりたいものの仕組みを考えています。' },
-  ユイ: { role:'見た目をつくる人', shop:1, color:'#c6968f', about:'画面の色やかたち、触れたときの気持ちよさを整えています。' },
-  カイ: { role:'第二工房の中心', shop:2, color:'#849f7c', about:'サービスの機能を組み立て、ナギと一緒に仕上げています。' },
-  ナギ: { role:'動作を確かめる人', shop:2, color:'#a395b7', about:'工房でできたものを、いろいろな使い方で試しています。' },
-  リツ: { role:'第三工房の中心', shop:3, color:'#c1a66a', about:'新しいアイデアを小さな試作品にするのが得意です。' },
-  トワ: { role:'次の仕事を待つ人', shop:null, color:'#9aa87c', about:'広場を散歩しています。次にどんな仕事が来るか、楽しみにしているようです。' },
-};
 let live = { job: null }, online = false, lastPhase, submitting = false;
 function currentJob() { return live.job && isOnDesk(live.job) ? live.job : (live.jobs || []).find(isOnDesk) || null; }
-function assigned() { const job=currentJob();return !!job?.tabId && job.releaseState !== 'released'; }
-function activity(name) {
-  if(name==='ミク' && online && live.secretary?.status==='thinking')return {active:true,reason:'村長と話し、資料や状況を調べています'};
-  return personActivity(name, currentJob(), online);
-}
-const positions = {ミク:[540,372],ハル:[590,352],レン:[245,556],ソラ:[300,573],ユイ:[333,536],カイ:[778,576],ナギ:[836,553],リツ:[820,296],トワ:[435,679]};
+const agents=()=>placedAgents(live);
+const shops=()=>live.workshops || [];
 let selected = null, focusBeforeDialog;
 let history = [];
 
@@ -41,34 +28,29 @@ function addEvent(message) {
   }));
 }
 function renderPositions() {
-  Object.entries(positions).forEach(([name,[x,y]]) => {
-    positionPerson(name,x,y,false);
-    people[name].classList.toggle('at-work', activity(name).active);
-    if(name==='レン') {
-      people[name].style.display=assigned() ? '' : 'none';
-      people[name].style.visibility=assigned() ? '' : 'hidden';
-    }
+  syncScene(shops(),agents());
+  agents().forEach(job=>{
+    const state=agentState(job,online);
+    setPersonActivity(job.id,state.active,state.label,'レン');
   });
-  parcel.style.opacity = '0';
+  parcel.style.opacity='0';
 }
 function shopState(index) {
-  const job = currentJob(), phase = job?.phase || 'idle';
-  if(index === 0) return { label: online ? ({idle:'依頼待ち',planning:'指示を作成中',connecting:'工房へ接続中',working:'工房で作業中',reporting:'報告を作成中',awaiting_review:'報告の確認待ち',completed:'報告が届きました',error:'確認が必要です',cancelling:'停止・解放の確認中'})[phase] : '接続確認中', task: job?.request || '秘書Codexが依頼を受け付けます', tone:'green' };
-  if(index === 1) return { label: !assigned() ? 'Agent未配置' : activity('レン').active ? '制作中' : job?.phase==='awaiting_review' ? '確認待ち' : '待機中', task: job?.request || '秘書が資料を読み、合意した仕事に人員を配置します', tone:activity('レン').active ? 'green' : 'amber' };
-  return { label:'未接続', task:'この工房はまだ接続していません', tone:'amber' };
+  if(index===0)return {label:'執務室',task:'秘書と相談し、報告を確認する場所',tone:'green'};
+  const jobs=workshopAgents(data[index],agents());
+  const disconnected=jobs.some(job=>job.connectionError);
+  return {label:!online?'接続未確認':disconnected?'接続不能':jobs.length?jobs.map(job=>agentState(job,online).label).join('・'):'Agent未配置',task:jobs.map(job=>job.request).join(' / ') || '登録済み · 接続状態は未確認です',tone:disconnected?'amber':'green'};
 }
 function renderShops() {
   $('#works').replaceChildren(...data.slice(1).map((d,i)=>{
-    const index=i+1,state=shopState(index),names=Object.keys(residents).filter(n=>residents[n].shop===index && (index===0 ? n==='ミク' : n==='レン' && assigned()));
-    const working = names.filter(n=>activity(n).active).length;
+    const index=i+1,state=shopState(index),jobs=workshopAgents(d,agents());
     const button=document.createElement('button');button.className='work';button.dataset.shop=index;
-    button.innerHTML=`<div class="row"><b><span class="shop-icon shop-${index}">${['','✂','⚒','✦'][index]}</span>${d.name}</b><span class="tag ${state.tone}">${state.label}</span></div><p>${escape(state.task)}</p><div class="residents">${names.map(n=>`<span class="resident-dot ${activity(n).active?'resident-working':'resident-idle'}" style="--resident:${residents[n].color}" title="${n}：${activity(n).active?'作業中':'待機中'}">${n.slice(0,1)}</span>`).join('')}<span>作業中 ${working}人 · 待機中 ${names.length-working}人</span><span class="work-arrow">↗</span></div>`;
+    button.innerHTML=`<div class="row"><b>${escape(d.name)}</b><span class="tag ${state.tone}">${escape(state.label)}</span></div><p>${escape(state.task)}</p><div class="residents">配置 ${jobs.length}人 · 作業中 ${jobs.filter(j=>agentState(j,online).active).length}人</div>`;
     button.addEventListener('click',()=>showShop(index));return button;
   }));
-  data.forEach((d,i)=>setSceneStatus(i,`${i===0?'⌂':i===3?'✦':'●'} ${shopState(i).label}`));
-  const activeCount=['ミク','レン'].filter(n=>activity(n).active).length;
-  $('#legend').innerHTML=`<span><i class="dot"></i>作業中 ${activeCount}人</span><span><i class="dot idle-dot"></i>待機中 ${(assigned()?2:1)-activeCount}人</span>`;
-  Object.keys(residents).forEach(n=>setPersonActivity(n,activity(n).active));
+  data.forEach((d,i)=>{setSceneStatus(i,shopState(i).label);const smoke=document.querySelectorAll('.building')[i].querySelector('.smoke');if(smoke)smoke.style.display=workshopAgents(d,agents()).some(j=>agentState(j,online).active)?'':'none';});
+  $('#workshop-count').textContent=`${shops().length} 登録工房`;
+  $('#legend').textContent=`配置Agent ${agents().length}人 · 作業中 ${agents().filter(j=>agentState(j,online).active).length}人`;
 }
 function openDetail() {
   if(!selected)focusBeforeDialog=document.activeElement;
@@ -79,16 +61,17 @@ function closeDetail(){ $('#detail').hidden=true;selected=null;document.querySel
 function detailShell(content){$('#detail').innerHTML=`<button class="close" aria-label="詳細を閉じる">×</button>${content}`;$('#detail .close').addEventListener('click',closeDetail);}
 function showShop(index,refresh=false) {
   if(index===0){ navigate('/office'); return; }
+  const d=data[index];if(!d){closeDetail();return;}
   if(!refresh)openDetail();selected={type:'shop',index};
   document.querySelectorAll('.building')[index].classList.add('selected');
-  const d=data[index],state=shopState(index),names=Object.keys(residents).filter(n=>residents[n].shop===index && (index===0 ? n==='ミク' : n==='レン' && assigned()));
-  detailShell(`<div class="eyebrow">${d.pc}</div><h3>${d.name}</h3><p class="detail-description">${d.desc}</p><div class="interior" aria-label="${d.name}の中の様子"><div class="room-window"></div><div class="room-rug"></div>${names.map((n,i)=>`<button class="room-person ${activity(n).active?'room-working':'room-idle'}" data-person="${n}" style="--resident:${residents[n].color};--slot:${i}"><span class="tiny-head"></span><span class="tiny-body"></span><span class="room-hammer" aria-hidden="true"></span><span class="room-anvil" aria-hidden="true"></span><small>${n}<em>${activity(n).active?'作業中':'待機中'}</em></small></button>`).join('')}<div class="room-table"><span>▤</span><span>⌨</span></div></div><div class="detail-status"><span class="tag ${state.tone}">${state.label}</span><p>${escape(state.task)}</p></div><div class="detail-people">${names.map(n=>`<button data-person="${n}"><span class="resident-dot" style="--resident:${residents[n].color}">${n[0]}</span><span><b>${n}</b><small>${residents[n].role} · ${activity(n).active?'作業中':'待機中'}</small></span><span class="work-arrow">›</span></button>`).join('')}</div>`);
+  const state=shopState(index),jobs=workshopAgents(d,agents());
+  detailShell(`<div class="eyebrow">REGISTERED WORKSHOP</div><h3>${escape(d.name)}</h3><p>${escape(d.desc)}</p><div class="detail-status"><span class="tag">${escape(state.label)}</span><p>${escape(state.task)}</p></div><p>配置Agent ${jobs.length}人</p><div class="detail-people">${jobs.map(j=>`<button data-person="${escape(j.id)}">レン · ${escape(agentState(j,online).label)}</button>`).join('')}</div>`);
   $('#detail').querySelectorAll('[data-person]').forEach(b=>b.addEventListener('click',()=>showPerson(b.dataset.person)));
 }
-function showPerson(name) {
-  openDetail();selected={type:'person',name};const r=residents[name];
-  detailShell(`<div class="eyebrow">VILLAGER PROFILE</div><div class="profile"><div class="profile-character" style="--resident:${r.color}"><span class="tiny-head"></span><span class="tiny-body"></span></div><div><h3>${name}</h3><span>${r.role}</span></div></div><p>${r.about}</p><div class="detail-status"><span class="tag ${activity(name).active?'':'idle-tag'}">${activity(name).active?'● 作業中':'○ 待機中'}</span><p>${activity(name).reason}</p></div>${name==='レン' && assigned() && currentJob()?.terminalUrl ? `<a class="terminal-link" target="_blank" rel="noopener noreferrer" href="${escape(currentJob().terminalUrl)}">PurpleMuxで実際の端末を開く ↗</a><p>未ログインの場合は、ログインしてからこのリンクを開き直してください。</p><p>workspace: ${escape(currentJob().workspaceId)}<br>tab: ${escape(currentJob().tabId)}</p>` : ''}${r.shop!==null?`<button class="go-shop">${data[r.shop].name}を覗く　↗</button>`:''}`);
-  $('#detail .go-shop')?.addEventListener('click',()=>showShop(r.shop));
+function showPerson(id) {
+  const job=agents().find(j=>j.id===id);if(!job){closeDetail();return;}
+  openDetail();selected={type:'person',name:id};const state=agentState(job,online);
+  detailShell(`<div class="eyebrow">ASSIGNED AGENT</div><h3>レン</h3><p>${escape(job.workshopName || '配置中のAgent')}</p><div class="detail-status"><span class="tag">${escape(state.label)}</span><p>${escape(state.reason)}</p></div>${job.terminalUrl?`<a class="terminal-link" target="_blank" rel="noopener noreferrer" href="${escape(job.terminalUrl)}">PurpleMuxで実際の端末を開く ↗</a><p>未ログインの場合は、ログインしてからこのリンクを開き直してください。</p>`:''}`);
 }
 connectScene(showShop,showPerson);
 function renderStage() {

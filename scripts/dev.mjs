@@ -27,7 +27,7 @@ const secretariat = new Secretariat(bridge, library, operations, notifier, image
 await secretariat.init();
 development.watch(secretariat);
 const instanceId=randomUUID(), runningCommit=(await run('git',['rev-parse','HEAD'])).trim();
-const snapshot = () => ({ ...bridge.snapshot(), secretary: secretariat.snapshot() });
+const snapshot = async () => ({ ...bridge.snapshot(), workshops: await library.workshops(), secretary: secretariat.snapshot() });
 const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };
 const json = (res, status, body) => { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(body)); };
 const server = createServer(async (req, res) => {
@@ -36,7 +36,7 @@ const server = createServer(async (req, res) => {
     if (pathname.startsWith('/api/')) {
       if (req.headers.origin && req.headers.origin !== `http://${req.headers.host}`) return json(res, 403, { error: 'Origin rejected' });
       if (req.method === 'GET' && pathname === '/api/health') return json(res,200,{commit:runningCommit,instanceId,supervised:process.env.VILLAGE_SUPERVISED==='1'});
-      if (req.method === 'GET' && pathname === '/api/state') return json(res, 200, snapshot());
+      if (req.method === 'GET' && pathname === '/api/state') return json(res, 200, await snapshot());
       if (req.method === 'GET' && pathname === '/api/documents') return json(res, 200, { root: library.root, documents: await library.catalog() });
       if (req.method === 'GET' && pathname === '/api/documents/content') return json(res, 200, await library.read(new URL(req.url, 'http://localhost').searchParams.get('path')));
       const imageRoute = pathname.match(/^\/api\/images\/([0-9a-f-]{36})$/);
@@ -56,10 +56,10 @@ const server = createServer(async (req, res) => {
       if (jobRoute && req.method === 'GET' && jobRoute[2] === 'artifacts') {
         const job=bridge.jobById(jobRoute[1]);
         await bridge.update({ artifacts: await bridge.listArtifacts(job), artifactError: null }, job);
-        return json(res, 200, snapshot());
+        return json(res, 200, await snapshot());
       }
-      if (jobRoute && req.method === 'POST' && jobRoute[2] === 'cancel') { await bridge.cancel(jobRoute[1]); return json(res, 200, snapshot()); }
-      if (jobRoute && req.method === 'POST' && jobRoute[2] === 'approve') { await bridge.approve(jobRoute[1]); return json(res, 200, snapshot()); }
+      if (jobRoute && req.method === 'POST' && jobRoute[2] === 'cancel') { await bridge.cancel(jobRoute[1]); return json(res, 200, await snapshot()); }
+      if (jobRoute && req.method === 'POST' && jobRoute[2] === 'approve') { await bridge.approve(jobRoute[1]); return json(res, 200, await snapshot()); }
       if (jobRoute && req.method === 'GET' && jobRoute[2] === 'artifact') {
         const path = new URL(req.url, 'http://localhost').searchParams.get('path');
         const content = await bridge.artifact(jobRoute[1], path);
@@ -82,7 +82,7 @@ const server = createServer(async (req, res) => {
         const request = parsed?.message ?? parsed?.request;
         if (typeof request !== 'string' || (!request.trim() && !parsed.attachments?.length) || request.length > 2000) return json(res, 400, { error: '文章（2000文字以内）または画像を添付してください。' });
         await secretariat.send(request.trim(), parsed.attachments);
-        return json(res, 202, snapshot());
+        return json(res, 202, await snapshot());
       }
       return json(res, 404, { error: 'Not found' });
     }
