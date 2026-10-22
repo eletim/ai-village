@@ -43,7 +43,10 @@ function renderPositions() {
   Object.entries(positions).forEach(([name,[x,y]]) => {
     positionPerson(name,x,y,false);
     people[name].classList.toggle('at-work', activity(name).active);
-    if(name==='レン')people[name].style.display=assigned() ? '' : 'none';
+    if(name==='レン') {
+      people[name].style.display=assigned() ? '' : 'none';
+      people[name].style.visibility=assigned() ? '' : 'hidden';
+    }
   });
   parcel.style.opacity = '0';
 }
@@ -88,6 +91,7 @@ function showPerson(name) {
 }
 connectScene(showShop,showPerson);
 function renderStage() {
+  renderPositions();
   const job=currentJob(), phase=job?.phase || 'idle';
   const reviewLabels={held:'報告が届きました · 村長の確認待ち',releasing:'OK済み · Agentを解放中',failed:'OK済み · Agent解放の再試行が必要です',released:'報告はOK済み · Agent解放済み'};
   const phaseLabel=phase==='awaiting_review'?reviewLabels[job.releaseState || 'held']:PHASE_LABELS[phase];
