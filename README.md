@@ -253,3 +253,25 @@ node scripts/village.mjs notifications test
 通知は会話や仕事の完了処理を待たせません。CLI失敗・接続不能・タイムアウトでも返答・成果・報告は保存され、通常どおり利用できます。期限を超えたCLIのプロセス群は終了します。本文は先頭2000文字まで。結果は状態ディレクトリの `notifications.jsonl` にメッセージIDと固定の診断だけを記録し、CLIのstdout/stderrやトークンは記録しません。`notifications status` の最後の結果から確認できます。
 
 `sent` / `delivered: true` はCLIが終了コード0で返り、サーバーが受理したことを示します。端末への受信・表示・クリックまで確認したという意味ではありません。送信途中でバックエンドが停止すると受理の有無が不明な場合があります。二重通知を避けるため過去の自動再送は行わず、必要なら別のテスト送信で確認します。
+
+## 外部資料を読み、村自身を修正する
+
+秘書にはGitHub/WebのURLをそのまま渡せます。`web read URL` を実行して本文と取得元・参照ブランチ・確定commitを読み、相談や仕事の指示へ利用します。GitHubのREADME・branch/tag/commitのファイル・ディレクトリ・Issue・PRを扱い、通常のWebは静的HTMLの本文を取得します。本文50000文字、Web応答1MB、コメントやPR差分の件数に上限があり、切り詰めを明示します。動的なブラウザ処理やログイン代行はしません。失敗時は未取得として扱います。
+
+GitHubはWSLのGitHub REST APIを使用します。既存のgh認証、またはGH_TOKEN/GITHUB_TOKENを私有環境から使えます。ChatGPTプラグインの接続は仮定しません。取得した外部文章は未信頼の資料として扱い、操作許可へ置き換えません。認証値をURL、会話、資料、Gitへ記録しないでください。
+
+村の開発対象の原本は [village/development.md](village/development.md) です。工房接続は同資料が指す既存の工房資料から取得します。秘書は `development start --task TEXT` を選び、通常のレンの実行経路へつなぎます。コアのパスは工房で使わず、仕事専用の作業場所にcloneし、割当ブランチで修正・検証・commit・Pushします。
+
+工房に有効なGitHub認証がないため、コアの認証を使う仕事専用Git HTTP接続をSSH逆転送します。認証値は工房へ渡さず、Push先はその仕事専用ブランチだけに制限します。工房がPushしたcommitはコアからGitHubへ照会して確認し、自然文の報告から推測しません。接続はAgent解放時またはコア停止時に終了します。
+
+村長が反映まで指示した場合は `development start --task TEXT --apply`、工房の報告を見て後から反映する場合は `development apply JOB_ID` を使います。結果は `deployments list/get` で確認できます。秘書に自然文で頼む例：
+
+- 「https://github.com/eletim/agent-workflow-manager を読み、通知の実装ファイルまで調べて説明して」
+- 「この村の執務室の副題を○○へ変えて。工房で検証・commit・Pushし、この村へ反映して結果を報告して」
+- 「その仕事のcommitを村へ反映して。再起動後の確認結果も教えて」
+
+`npm run dev` は `scripts/supervise.mjs` でバックエンドを起動し、反映時の再起動を管理します。起動コマンドとURLは従来どおりです。直接 `node scripts/dev.mjs` を使った単独の検証サーバーでは反映再起動の管理をしません。`/api/health` に起動時commit・instanceId・監視下かを返します。
+
+反映処理はバックエンドから独立し、対象commitの作業ツリーで依存導入・check・Nodeテスト・独立ポートのブラウザテスト・buildを行います。その後、コアがクリーンか再確認し、開発ブランチへfast-forwardで取り込み、ビルド・再起動・稼働commit・執務室・保存会話/仕事の復元を確認してPushします。未commit変更はstash/reset/上書きせず停止します。mainへのマージはしません。失敗後もどこまで適用されたかを反映記録に残し、自動ロールバックはしません。
+
+記録と実行時のrunnerは `.runtime/deployments/` に保持され、起動した秘書が再起動で中断しても結果を照会できます。秘書は完了記録を実Codexで説明し、保存後に既存の非同期通知を行います。工房の完成報告と、村に反映した結果の報告は別です。OK・Agent解放も反映とは独立し、反映しても村長のOKまではAgentを保持します。

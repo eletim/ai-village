@@ -1,3 +1,7 @@
+import { randomUUID } from 'node:crypto';
+import { run } from '../server/bridge.mjs';
+import { WebReader } from '../server/web-reader.mjs';
+import { Development } from '../server/development.mjs';
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { resolve, extname } from 'node:path';
@@ -14,9 +18,12 @@ const bridge = new WorkshopBridge({ library });
 await bridge.init();
 const notifier = new VillageNotifier({ dir: bridge.dir });
 await notifier.init();
-const operations = new VillageOperations(bridge, notifier);
+const development = new Development(bridge, library, {port});
+const operations = new VillageOperations(bridge, notifier, {web:new WebReader(),development});
 const secretariat = new Secretariat(bridge, library, operations, notifier);
 await secretariat.init();
+development.watch(secretariat);
+const instanceId=randomUUID(), runningCommit=(await run('git',['rev-parse','HEAD'])).trim();
 const snapshot = () => ({ ...bridge.snapshot(), secretary: secretariat.snapshot() });
 const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };
 const json = (res, status, body) => { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(body)); };
@@ -25,6 +32,7 @@ const server = createServer(async (req, res) => {
     const pathname = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
     if (pathname.startsWith('/api/')) {
       if (req.headers.origin && req.headers.origin !== `http://${req.headers.host}`) return json(res, 403, { error: 'Origin rejected' });
+      if (req.method === 'GET' && pathname === '/api/health') return json(res,200,{commit:runningCommit,instanceId,supervised:process.env.VILLAGE_SUPERVISED==='1'});
       if (req.method === 'GET' && pathname === '/api/state') return json(res, 200, snapshot());
       if (req.method === 'GET' && pathname === '/api/documents') return json(res, 200, { root: library.root, documents: await library.catalog() });
       if (req.method === 'GET' && pathname === '/api/documents/content') return json(res, 200, await library.read(new URL(req.url, 'http://localhost').searchParams.get('path')));

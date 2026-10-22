@@ -109,10 +109,10 @@ export class WorkshopBridge {
     }).finally(() => this.executions.delete(job.id));
     this.executions.set(job.id, { controller, promise }); this.running = promise;
   }
-  async submit(request, connection, instruction = null) {
+  async submit(request, connection, instruction = null, options = {}) {
     if (!connection?.sshHost || !connection.remoteRoot || !connection.baseUrl) throw new Error('資料から工房の接続先を選んでください。');
     if (this.jobs.some(job => activePhases.has(job.phase) || (job.tabId && job.releaseState !== 'released') || job.releaseState === 'releasing')) throw Object.assign(new Error('先に進行中の仕事と、届いた報告の確認・Agentの解放を完了してください。'), { status: 409 });
-    this.job = { id: randomUUID(), request, phase: 'planning', sshHost: connection.sshHost, remoteRoot: connection.remoteRoot, baseUrl: connection.baseUrl, workshopName: connection.name, workshopDocument: connection.document, documentHash: connection.documentHash, instruction, resourceStep: 'local', releaseState: 'held', approvedAt: null, releasedAt: null, createdAt: new Date().toISOString(), workerFinishedAt: null, reportFinishedAt: null };
+    this.job = { id: randomUUID(), development: options.development || null, request, phase: 'planning', sshHost: connection.sshHost, remoteRoot: connection.remoteRoot, baseUrl: connection.baseUrl, workshopName: connection.name, workshopDocument: connection.document, documentHash: connection.documentHash, instruction, resourceStep: 'local', releaseState: 'held', approvedAt: null, releasedAt: null, createdAt: new Date().toISOString(), workerFinishedAt: null, reportFinishedAt: null };
     this.jobs.push(this.job);
     await this.update({});
     this.launch(() => this.execute());
@@ -142,6 +142,8 @@ export class WorkshopBridge {
     this.assertRunning();
     await this.remote(['mkdir', '-p', cwd]);
     this.assertRunning();
+    await this.prepareJob?.(this.job);
+    this.assertRunning();
     await this.update({ resourceStep: 'workspace-create' });
     this.assertRunning();
     // Mutations deliberately have no automatic retries: an unknown outcome may have committed.
@@ -165,7 +167,7 @@ export class WorkshopBridge {
     this.assertRunning();
     await this.update({ resourceStep: 'sending', phase: 'working', startedAt: new Date().toISOString(), workerState: 'dispatching' });
     this.assertRunning();
-    await this.pmux('tab', 'send', '-w', workspace.id, tab.tabId, instruction);
+    await this.pmux('tab', 'send', '-w', workspace.id, tab.tabId, this.job.instruction);
     this.assertRunning();
     await this.collect();
   }
@@ -199,13 +201,16 @@ export class WorkshopBridge {
   }
   async report() {
     this.assertRunning();
-    const report = await this.secretary('report', `あなたはAI村の秘書ミクです。人間にわかりやすく日本語で成果を報告してください。表示先はプレーンテキストです。Markdown記法を使わず短い段落で書いてください。以下は工房Agentから受け取った自然文です。依頼・成果・保存場所・Agentが実際に行った確認・残る問題を簡潔に説明してください。自分が検証したとは言わず、工房からの報告であることを示してください。工房が失敗や未完了を報告していたら正直に伝えてください。追加の作業やツール実行は不要です。\n人間の依頼:\n${this.job.request}\n作業ディレクトリ:\n${this.job.cwd}\n工房の報告:\n${this.job.output}`);
+    await this.inspectResult?.(this.job);
+    this.assertRunning();
+    const report = await this.secretary('report', `あなたはAI村の秘書ミクです。人間にわかりやすく日本語で成果を報告してください。表示先はプレーンテキストです。Markdown記法を使わず短い段落で書いてください。以下は工房Agentから受け取った自然文です。依頼・成果・保存場所・Agentが実際に行った確認・残る問題を簡潔に説明してください。自分が検証したとは言わず、工房からの報告であることを示してください。工房が失敗や未完了を報告していたら正直に伝えてください。追加の作業やツール実行は不要です。\n村開発の構造化された確認結果（工房のPushとコアへの反映は別。applied未記録なら村へ反映済みと書かない）:\n${JSON.stringify(this.job.development || null)}\n人間の依頼:\n${this.job.request}\n作業ディレクトリ:\n${this.job.cwd}\n工房の報告:\n${this.job.output}`);
     this.assertRunning();
     let artifacts = [], artifactError = null;
     try { artifacts = await this.listArtifacts(this.job); } catch (error) { artifactError = error.message; }
     this.assertRunning();
     await this.update({ phase: 'awaiting_review', report, artifacts, artifactError, reportFinishedAt: new Date().toISOString() });
     await this.onReport?.(this.job);
+    await this.onDevelopmentReady?.(this.job);
   }
 
   // All cleanup mutations are scoped to the immutable IDs captured at creation.
@@ -296,6 +301,7 @@ print(base64.b64encode(data).decode())`;
       try {
         const verification = await this.cleanupResources(job);
         const at = new Date().toISOString();
+        this.onReleased?.(job);
         await this.update({ releaseState: 'released', releasedAt: at, deskClearedAt: at, cleanupVerification: { ...verification, at }, releaseError: null }, job);
       } catch (error) { await this.update({ releaseState: 'failed', releaseError: error.message }, job); }
       return this.snapshot();
@@ -319,6 +325,7 @@ print(base64.b64encode(data).decode())`;
       if (execution) await execution.promise;
       try {
         const verification = await this.cleanupResources(job), at = new Date().toISOString();
+        this.onReleased?.(job);
         await this.update({ phase: 'cancelled', cancelledAt: at, stopConfirmedAt: at, releaseState: 'released', releasedAt: job.releasedAt || at, deskClearedAt: at, cleanupVerification: { ...verification, at }, releaseError: null }, job);
       } catch (error) {
         await this.update({ phase: 'cancelling', releaseState: 'failed', releaseError: error.message, stopConfirmedAt: null }, job);

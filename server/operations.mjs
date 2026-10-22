@@ -6,13 +6,20 @@ import { isOnDesk, isSettled, jobStatus } from '../src/job-state.js';
 // The same registry serves the secretary, HTTP and the human CLI. Adding a village
 // operation doesn't require adding a new LLM action or teaching a keyword router.
 export class VillageOperations {
-  constructor(bridge, notifier) {
+  constructor(bridge, notifier, {web, development} = {}) {
     this.bridge = bridge;
     const detail = id => this.describe(bridge.jobById(id));
     this.commands = [
       { name:'help', usage:'help', run:args=>{if(args.length)throw new Error('usage: help');return this.commands.map(({name,usage,mutation})=>({name,usage,mutation:!!mutation}));} },
       { name:'notifications status', usage:'notifications status', run:args=>{if(args.length)throw new Error('usage: notifications status');return notifier?.status() || {enabled:false,unavailable:true};} },
       { name:'notifications test', usage:'notifications test', mutation:true, run:async args=>{if(args.length)throw new Error('usage: notifications test');if(!notifier)throw new Error('通知処理がありません。');const result=await notifier.test();return {...result,ok:result.delivered};} },
+      { name:'web read', usage:'web read URL', run:async args=>{if(args.length!==1)throw new Error('usage: web read URL');return web.read(args[0]);} },
+      { name:'development status', usage:'development status', run:()=>development.profile() },
+      { name:'development start', usage:'development start --task TEXT [--apply]', mutation:true, run:args=>{if(args[0]!=='--task'||!args[1]||args.length>3||(args[2]&&args[2]!=='--apply'))throw new Error('usage: development start --task TEXT [--apply]');return development.start(args[1],{autoApply:args[2]==='--apply'});} },
+      { name:'development inspect', usage:'development inspect JOB_ID', run:args=>development.inspect(this.id(args)) },
+      { name:'development apply', usage:'development apply JOB_ID [--retry]', mutation:true, run:args=>{if(!args[0]||args.length>2||(args[1]&&args[1]!=='--retry'))throw new Error('usage: development apply JOB_ID [--retry]');return development.apply(args[0],{retry:args[1]==='--retry'});} },
+      { name:'deployments list', usage:'deployments list', run:()=>development.list() },
+      { name:'deployments get', usage:'deployments get ID', run:args=>{if(args.length!==1)throw new Error('usage: deployments get ID');return development.get(args[0]);} },
       { name:'jobs list', usage:'jobs list [--scope desk|all]', run:args=>this.list(args) },
       { name:'jobs get', usage:'jobs get ID', run:args=>detail(this.id(args)) },
       { name:'reports list', usage:'reports list [--scope desk|all]', run:args=>this.list(args).filter(job=>job.hasReport) },

@@ -294,3 +294,15 @@ WSL Chromiumから依頼を送信し、POST /api/messagesの202応答後、秘�
 Nodeテスト36件、ブラウザテスト6件、構文チェック、ビルドが成功。通知のテストでは、保存後の実行、対象4種と内部出力の除外、報告の二重通知防止、再起動と履歴補完の無通知、失敗の分離、CLI不在・設定不足・タイムアウト、認証値を診断へ漏らさないこと、監査が読めない場合の継続を確認した。ブラウザテストは従来の表示・状態・解放・履歴リンク等の回帰確認であり、実通知成功の証拠としていない。
 
 検証スクリプト、会話・状態・通知監査、fixtureの捕捉記録、画面は `.runtime/notify-validation/` と通常の状態ディレクトリに保存した（git対象外）。導入・設定・テスト送信はREADME、秘書が参照する手順は `village/manual.md` に記載した。
+
+# 外部資料と村自身の開発・反映（2026-10-22 JST）
+
+`a631cff` を引き継ぎ、開始時の作業ツリーはクリーン。元の15仕事・会話を `.runtime/before-self-development-*` に退避した。追加のローカルAGENTS.mdはなかった。
+
+コアのgh認証とHTTPSによるGitHub操作を確認。工房のGitHub CLI認証は失効しており、GitHubへのSSH接続（22、ssh.github.comの443、IPv4指定）も使用できなかった。認証値を工房へコピーする代わりに、コアが認証する仕事専用のGit smart HTTP仲介とSSH逆転送を実装した。実工房からこの経路で `git ls-remote` でき、GitHub上のfeat/live-workshopの完全SHAと一致した。Push先は専用ブランチだけに制限する。
+
+執務室からAWMのURLと通知実装の調査を依頼。実秘書Codexがweb readでREADME、notifier.py、notification_settings.pyを取得した。参照はmainの `903b78f24fa888ec50079dbfb3e00291f0371298`。2つのコードは完全取得、READMEは50000文字上限による切り詰めを明示。秘書は送信コマンド・認証設定・20秒の期限・失敗処理を読み、未取得の呼び出し側については断定しなかった。工房Agentは起動していない。通常のWebについてもexample.comを実取得した。
+
+反映処理は独立runnerと監視プロセスを用意。対象commitを別worktreeで検証してから、クリーンなコアをfast-forwardし、再起動後のcommit・instanceId・/office・会話と仕事の復元を確認する。実runnerを一時Gitリポジトリで動かすテストで、未commit編集を残してHEADを動かさないこと、mainを拒否することを確認した。ブラウザテストは本番と別ポート/別状態で起動し、サーバーの起動ログを待つ方式で既存の5173を使わない。
+
+実操作の会話、取得元、スクリーンショット、Git接続・反映記録は `.runtime/self-development-validation/`、通常の状態と `.runtime/deployments/` に保持する（git対象外）。
