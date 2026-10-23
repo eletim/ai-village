@@ -76,5 +76,151 @@ test('large tool output is sent once with a bounded excerpt and full result rema
   secretary.runCodex=async(_bin,args,options)=>{input=options.input;await writeFile(args[args.indexOf('-o')+1],JSON.stringify({action:'reply',message:'ok',document:'',task:'',argv:[],attachments:[]}));return JSON.stringify({type:'thread.started',thread_id:'bounded-test'});};
   const turn=secretary.add('user','コードを確認');const content='code'.repeat(300000);secretary.add('tool',content);await secretary.decide(turn,[{result:content}],0);
   assert.ok(input.length<20000);assert.match(input,/省略/);assert.equal(secretary.messages.at(-1).content.length,content.length);
-  secretary.decide=async()=>{throw new Error('PRIVATE_INTERNAL_TRACE'.repeat(1000));};await send(secretary,'質問');assert.ok(secretary.messages.at(-1).content.length<160);assert.ok(!secretary.messages.at(-1).content.includes('PRIVATE_INTERNAL_TRACE'));assert.match(await readFile(join(dir,'secretary-errors.jsonl'),'utf8'),/PRIVATE_INTERNAL_TRACE/);
+  secretary.decide=async()=>{throw new Error('PRIVATE_INTERNAL_TRACE'.repeat(1000));};await send(secretary,'質問');assert.ok(secretary.messages.at(-1).content.length<160);assert.ok(!secretary.messages.at(-1).content.includes('PRIVATE_INTERNAL_TRACE'));assert.doesNotMatch(await readFile(join(dir,'secretary-errors.jsonl'),'utf8'),/PRIVATE_INTERNAL_TRACE/);assert.match(await readFile(join(dir,'secretary-errors.jsonl'),'utf8'),/general/);
+});
+
+const memo = (topic='現在の話題') => ({topic,purpose:'目的',decisions:'決定',permissions:'村長発言IDを参照',unfinished:'未完了',references:'manual.md'});
+function mockCodex(secretary, handler) {
+  delete secretary.decide; const calls=[];
+  secretary.observeContext=async()=>({source:'unknown',tokens:null,window:null});
+  secretary.runCodex=async(_bin,args,{input})=>{
+    const n=calls.push({args,input}); const result=await handler(n,args,input);
+    if (result instanceof Error) throw result;
+    await writeFile(args[args.indexOf('-o')+1],JSON.stringify({action:'reply',message:'返答',document:'',task:'',argv:[],attachments:[],...result?.choice}));
+    return [JSON.stringify({type:'thread.started',thread_id:result?.id || (args.includes('resume')?args[args.indexOf('resume')+1]:'new-session')}),JSON.stringify({type:'turn.completed',usage:{input_tokens:999999999,output_tokens:100}})].join('\n');
+  };return calls;
+}
+test('memo is a bounded replacement, committed with reply; invalid updates retain valid checkpoint',async()=>{
+  const {secretary,dir}=await setup();const calls=mockCodex(secretary,async n=>({choice:{memo:n===1?memo():memo('x'.repeat(4001))}}));
+  await send(secretary,'新しい目的');const before=JSON.parse(await readFile(join(dir,'conversation.json')));
+  assert.deepEqual(before.memo.value,memo());assert.equal(before.messages.at(-1).content,'返答');
+  await send(secretary,'こんにちは');const after=JSON.parse(await readFile(join(dir,'conversation.json')));
+  assert.deepEqual(after.memo,before.memo);assert.equal(after.diagnostics.memoUpdate,'rejected');
+  assert.ok(calls[1].args.includes('resume'));assert.doesNotMatch(calls[1].input,/村長発言IDを参照/);assert.ok(calls[1].input.length<1000);
+  assert.ok(after.diagnostics.memoChars<=4000);
+});
+test('failed atomic memo/reply persistence keeps old memo and never notifies failed reply',async()=>{
+  const {secretary,dir}=await setup();let notices=0;secretary.notifier={enqueue(){notices++;}};
+  secretary.memo={value:memo(),cursor:null,updatedAt:'old'};await secretary.persist();
+  // Make the temp destination unwritable as a file even when tests run as root.
+  await mkdir(join(dir,'conversation.tmp'));
+  await assert.rejects(secretary.completeReply('must not appear',{turnId:'t'},memo('changed')));
+  assert.equal(secretary.memo.value.topic,'現在の話題');assert.equal(notices,0);assert.ok(!secretary.messages.some(m=>m.content==='must not appear'));
+  assert.equal(JSON.parse(await readFile(join(dir,'conversation.json'))).memo.value.topic,'現在の話題');
+});
+test('measured usage rotates at boundary, never cumulative billed tokens; unknown usage has finite local budget',async()=>{
+  const {secretary}=await setup();const calls=mockCodex(secretary,async()=>({choice:{memo:memo()}}));
+  await send(secretary,'first');await send(secretary,'normal');assert.ok(calls[1].args.includes('resume'));
+  secretary.session.context={source:'rollout-last',tokens:85,window:100};await send(secretary,'switch');
+  assert.ok(!calls[2].args.includes('resume'));assert.match(calls[2].input,/現在の話題/);assert.equal(secretary.diagnostics.switchReason,'measured-context-80-percent');
+  secretary.session.calls=32;await send(secretary,'fallback');assert.ok(!calls[3].args.includes('resume'));assert.equal(secretary.diagnostics.switchReason,'unknown-usage-local-budget');
+});
+test('context and missing-session errors recover once, preserving current request and observation; general errors do not retry',async()=>{
+  for (const message of ['context_length_exceeded','No saved session found with ID abc']) {
+    const {secretary}=await setup();secretary.session={id:'old',cursor:null};
+    const calls=mockCodex(secretary,async n=>n===1?new Error(message):{});
+    const turn=secretary.add('user','村長の未完了指示');await secretary.decide(turn,[{result:'操作済みの結果'}],0);
+    assert.equal(calls.length,2);assert.ok(calls[0].args.includes('resume'));assert.ok(!calls[1].args.includes('resume'));assert.match(calls[1].input,/村長の未完了指示/);assert.match(calls[1].input,/操作済みの結果/);
+  }
+  for (const message of ['401 authentication failed','network timeout','rate limit exceeded','context_length_exceeded']) {
+    const {secretary}=await setup();const calls=mockCodex(secretary,async()=>new Error(message));
+    await send(secretary,'request');assert.equal(calls.length,message==='context_length_exceeded'?2:1);assert.equal(secretary.messages.at(-1).kind,'error');
+  }
+});
+test('all pending reports and long mayor messages are delivered in order without tail loss',async()=>{
+  const {secretary}=await setup();const calls=mockCodex(secretary,async()=>({}));
+  for(let n=0;n<27;n++) await secretary.receiveReport({id:`j${n}`,report:`REPORT_${n}:`+'a'.repeat(1100)});
+  await send(secretary,'MAYOR_START'+'b'.repeat(25000)+'MAYOR_END');
+  const input=calls.map(c=>c.input).join('\n');for(let n=0;n<27;n++) assert.ok(input.includes(`REPORT_${n}:`));
+  assert.match(input,/MAYOR_START/);assert.match(input,/MAYOR_END/);assert.ok(calls.length>=5);assert.equal(secretary.messages.at(-1).content,'返答');
+});
+test('restart during switch restores intent, memo and unfinished position; old records work without memo',async()=>{
+  const {secretary,bridge,library,dir}=await setup();const turn=secretary.add('user','unfinished');
+  secretary.activeTurn={id:turn.id,recoveryAttempts:1};secretary.status='thinking';secretary.memo={value:memo(),cursor:null,updatedAt:'old'};secretary.session={id:'old'};
+  await secretary.switchSession('context-limit');
+  const restored=new Secretariat(bridge,library);await restored.init();const calls=mockCodex(restored,async()=>({}));await send(restored,'続けて');
+  assert.ok(!calls[0].args.includes('resume'));assert.match(calls[0].input,/unfinished/);assert.match(calls[0].input,/現在の話題/);
+  const saved=JSON.parse(await readFile(join(dir,'conversation.json')));assert.equal(saved.transition,null);
+  await writeFile(join(dir,'conversation.json'),JSON.stringify({version:2,messages:[turn],codexSession:{id:'legacy'},knownReports:[],status:'idle'}));
+  const old=new Secretariat(bridge,library);await old.init();const oldCalls=mockCodex(old,async n=>n===1?new Error('session_not_found'):{});await send(old,'旧データ');
+  assert.equal(oldCalls.length,2);assert.match(oldCalls[1].input,/unfinished/);assert.match(oldCalls[1].input,/旧メモなし/);
+});
+test('operation write-ahead survives crashes; completed and uncertain mutations never execute again',async()=>{
+  const {secretary,bridge,library}=await setup();const turn=secretary.add('user','変更して');secretary.activeTurn={id:turn.id,recoveryAttempts:0};secretary.status='thinking';
+  const action={action:'village',argv:['development','apply','job'],document:'',task:''};let executions=0;
+  await secretary.recordOperation(turn,action,async()=>{executions++;return {deploymentId:'d1'};});
+  await secretary.switchSession('context-limit');
+  const restored=new Secretariat(bridge,library);await restored.init();
+  assert.deepEqual(await restored.recordOperation(turn,action,async()=>{executions++;}),{deploymentId:'d1'});assert.equal(executions,1);
+  await assert.rejects(restored.recordOperation(turn,{...action,argv:['development','apply','other']},async()=>{executions++;}),/復旧中/);assert.equal(executions,1);
+  restored.activeTurn={id:'uncertain'};
+  await assert.rejects(restored.recordOperation(turn,{...action,argv:['notify']},async()=>{executions++;throw new Error('lost connection after commit');}));
+  const again=new Secretariat(bridge,library);await again.init();const result=await again.recordOperation(turn,{...action,argv:['notify']},async()=>{executions++;});
+  assert.equal(result.verified,false);assert.equal(executions,2);
+});
+
+test('report arriving during Codex execution stays pending until next decision',async()=>{
+  const {secretary}=await setup();const calls=mockCodex(secretary,async n=>{if(n===1) await secretary.receiveReport({id:'late',report:'LATE_REPORT'});return {choice:{memo:memo()}};});
+  await send(secretary,'hello');assert.doesNotMatch(calls[0].input,/LATE_REPORT/);
+  await send(secretary,'next');assert.match(calls[1].input,/LATE_REPORT/);
+});
+test('completed response checkpoint survives crash before idle finalizer without duplicate notification',async()=>{
+  const {secretary,bridge,library}=await setup();let notices=0;secretary.notifier={enqueue(){notices++;}};
+  const calls=mockCodex(secretary,async()=>({choice:{memo:memo()}}));await send(secretary,'hello');
+  secretary.status='thinking';await secretary.persist();
+  const restored=new Secretariat(bridge,library,null,secretary.notifier);await restored.init();
+  assert.equal(restored.session.id,'new-session');assert.equal(restored.messages.filter(m=>m.interrupted).length,0);assert.equal(notices,1);assert.equal(calls.length,1);
+});
+test('full turn recovers after mutation without dispatch/apply/notification replay',async()=>{
+  for(const argv of [['development','apply','job'],['notifications','test'],['development','start','--task','work']]) {
+    const {secretary,root}=await setup();await writeFile(join(root,'manual.md'),'manual');let operations=0;
+    secretary.operations={resolve(){return {command:{mutation:true}};},async execute(){operations++;return {ok:true,operationId:'saved-op'};}};
+    const action={action:'village',argv,document:'',task:''};
+    const calls=mockCodex(secretary,async n=>{
+      if(n===1)return {choice:{action:'read_document',document:'manual.md'}};
+      if(n===2||n===5)return {choice:action};
+      if(n===3)return new Error('context_length_exceeded');
+      if(n===4)return {choice:{action:'read_document',document:'manual.md'}};
+      return {choice:{memo:memo()}};
+    });
+    await send(secretary,'許可した操作を実行');assert.equal(operations,1);assert.equal(calls.length,6);assert.match(calls[3].input,/saved-op/);assert.equal(secretary.messages.at(-1).content,'返答');
+  }
+});
+test('uncertain dispatch result cannot be published as a successful new job',async()=>{
+  const {secretary,bridge}=await setup();let submitted=0;bridge.submit=async()=>{submitted++;throw new Error('transport lost');};
+  secretary.decide=async(_turn,_obs,step)=> step===0?choice('read_document','','workshop.md'):step===1?choice('dispatch','開始','workshop.md','作成'):choice('reply','成否不明');
+  await send(secretary,'作って');assert.equal(submitted,1);assert.equal(secretary.messages.filter(m=>m.kind==='dispatch').length,0);
+  assert.equal(secretary.operationLog[0].state,'started');
+});
+
+test('reports present without a conversation file are restored without notification or omission',async()=>{
+  const {dir,bridge,library}=await setup();
+  // A separate fresh directory simulates an old installation with jobs but no conversation.
+  const fresh=join(dir,'fresh');bridge.dir=fresh;bridge.jobs=[{id:'old-report',report:'まだ届いていない報告'}];
+  let notices=0;const s=new Secretariat(bridge,library,null,{enqueue(){notices++;}});await s.init();
+  assert.equal(s.messages[0].content,'まだ届いていない報告');assert.equal(notices,0);
+  const calls=mockCodex(s,async()=>({}));await send(s,'報告を確認');assert.match(calls[0].input,/まだ届いていない報告/);
+});
+test('unchanged observation is not resent during pending-input draining',async()=>{
+  const {secretary}=await setup();const calls=mockCodex(secretary,async()=>({}));const turn=secretary.add('user','x'.repeat(20000));
+  await secretary.decide(turn,[{result:'ONCE_ONLY'}],0);await secretary.decide(turn,[{result:'ONCE_ONLY'}],1);
+  assert.match(calls[0].input,/ONCE_ONLY/);assert.doesNotMatch(calls[1].input,/ONCE_ONLY/);
+});
+
+test('unchanged memo advances completion position without resending completed history on rotation',async()=>{
+  const {secretary}=await setup();const calls=mockCodex(secretary,async n=>({choice:{memo:n===1?memo():null}}));
+  await send(secretary,'initial');const updatedAt=secretary.memo.updatedAt;
+  await send(secretary,'already completed');assert.equal(secretary.memo.updatedAt,updatedAt);assert.equal(secretary.memo.cursor.id,secretary.messages.find(m=>m.content==='already completed').id);
+  secretary.session.context={source:'rollout-last',tokens:90,window:100};await send(secretary,'new request');
+  assert.doesNotMatch(calls.at(-1).input,/already completed/);assert.match(calls.at(-1).input,/現在の話題/);
+});
+test('legacy memo respects JSON character limit even with control characters',async()=>{
+  const {bridge,library,dir}=await setup();await writeFile(join(dir,'conversation.json'),JSON.stringify({version:2,status:'idle',messages:[{id:'u',role:'user',content:'\u0001'.repeat(5000)},{id:'a',role:'assistant',content:'\u0002'.repeat(5000)}]}));
+  const restored=new Secretariat(bridge,library);await restored.init();assert.ok(JSON.stringify(restored.memo.value).length<=4000);
+});
+
+test('legacy resume gets new memo protocol once, without repeated handoff',async()=>{
+  const {secretary}=await setup();secretary.session={id:'legacy'};const calls=mockCodex(secretary,async()=>({choice:{memo:memo()}}));
+  await send(secretary,'hello');await send(secretary,'next');
+  assert.ok(calls[0].args.includes('resume'));assert.match(calls[0].input,/会話方式の更新/);assert.doesNotMatch(calls[1].input,/会話方式の更新|引き継ぎ/);
 });

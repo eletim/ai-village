@@ -5,5 +5,5 @@ export default defineConfig({
   use: { baseURL: `http://127.0.0.1:${port}`, viewport: { width: 1440, height: 1050 }, launchOptions: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? {executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE} : {} },
   webServer: { command: `node scripts/dev.mjs --port ${port}`,
     ...(isolated?{wait:{stdout:/AI村 →/}}:{url:`http://127.0.0.1:${port}`,reuseExistingServer:true}),
-    env: { VILLAGE_STATE_DIR: process.env.VILLAGE_TEST_STATE || '/tmp/ai-village-browser-tests', VILLAGE_NOTIFICATIONS:'false' } },
+    env: { ...(process.env.VILLAGE_TEST_CODEX_BIN ? {VILLAGE_CODEX_BIN:process.env.VILLAGE_TEST_CODEX_BIN} : {}), VILLAGE_STATE_DIR: process.env.VILLAGE_TEST_STATE || '/tmp/ai-village-browser-tests', VILLAGE_NOTIFICATIONS:'false' } },
 });

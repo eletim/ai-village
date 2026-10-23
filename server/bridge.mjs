@@ -17,7 +17,7 @@ export function run(command, args, { input, timeout = 60000, signal } = {}) {
     const finish = (error, result) => {
       if (settled) return; settled = true; clearTimeout(timer); clearTimeout(killTimer);
       signal?.removeEventListener('abort', abort);
-      error ? reject(error) : resolve(result);
+      if (error) { Object.defineProperty(error,'stdout',{value:stdout,configurable:true}); reject(error); } else resolve(result);
     };
     const stop = error => {
       stopped ||= error;
