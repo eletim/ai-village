@@ -56,3 +56,25 @@ test('Markdown is the single source, re-read without caching, with path and syml
   await writeFile(join(root,'workshop.md'),markdown('host-two','更新テスト'));assert.equal((await library.workshop('workshop.md')).sshHost,'host-two');assert.match((await library.read('workshop.md')).content,/更新テスト/);
   await writeFile(join(dir,'outside.md'),'secret');await symlink(join(dir,'outside.md'),join(root,'link.md'));await assert.rejects(library.read('link.md'),/範囲外/);await assert.rejects(library.read('../outside.md'),/範囲外/);await assert.rejects(library.read('not-json.json'),/Markdown/);
 });
+
+test('persistent Codex session receives only new input and latest observation, including after restart',async()=>{
+  const {secretary,bridge,library,dir}=await setup();delete secretary.decide;
+  secretary.add('tool','OLD_CODE'.repeat(180000));secretary.add('assistant','OLD_ERROR'.repeat(150000),{kind:'error'});
+  const turn=secretary.add('user','短い相談');const calls=[];
+  const capture=async(_bin,args,{input})=>{calls.push({args,input});await writeFile(args[args.indexOf('-o')+1],JSON.stringify({action:'reply',message:'返答',document:'',task:'',argv:[],attachments:[]}));return JSON.stringify({type:'thread.started',thread_id:'persistent-test'});};
+  secretary.runCodex=capture;await secretary.decide(turn,[],0);
+  assert.ok(calls[0].input.length<4000);assert.ok(!calls[0].input.includes('OLD_CODE'));assert.ok(!calls[0].args.includes('--ephemeral'));assert.ok(!calls[0].args.includes('resume'));
+  secretary.add('tool','ALREADY_READ'.repeat(100000));
+  await secretary.decide(turn,[{result:'ALREADY_READ'.repeat(100000)},{result:{value:'latest-only'}}],1);
+  assert.ok(calls[1].args.includes('resume'));assert.ok(calls[1].args.includes('persistent-test'));assert.ok(calls[1].input.length<500);assert.ok(!calls[1].input.includes('ALREADY_READ'));assert.match(calls[1].input,/latest-only/);
+  const restored=new Secretariat(bridge,library);await restored.init();restored.runCodex=capture;
+  const next=restored.add('user','続き');await restored.decide(next,[],0);assert.ok(calls[2].args.includes('persistent-test'));assert.match(calls[2].input,/続き/);assert.ok(calls[2].input.length<500);
+  assert.equal(JSON.parse(await readFile(join(dir,'conversation.json'))).codexSession.id,'persistent-test');
+});
+test('large tool output is sent once with a bounded excerpt and full result remains archived',async()=>{
+  const {secretary,dir}=await setup();delete secretary.decide;let input;
+  secretary.runCodex=async(_bin,args,options)=>{input=options.input;await writeFile(args[args.indexOf('-o')+1],JSON.stringify({action:'reply',message:'ok',document:'',task:'',argv:[],attachments:[]}));return JSON.stringify({type:'thread.started',thread_id:'bounded-test'});};
+  const turn=secretary.add('user','コードを確認');const content='code'.repeat(300000);secretary.add('tool',content);await secretary.decide(turn,[{result:content}],0);
+  assert.ok(input.length<20000);assert.match(input,/省略/);assert.equal(secretary.messages.at(-1).content.length,content.length);
+  secretary.decide=async()=>{throw new Error('PRIVATE_INTERNAL_TRACE'.repeat(1000));};await send(secretary,'質問');assert.ok(secretary.messages.at(-1).content.length<160);assert.ok(!secretary.messages.at(-1).content.includes('PRIVATE_INTERNAL_TRACE'));assert.match(await readFile(join(dir,'secretary-errors.jsonl'),'utf8'),/PRIVATE_INTERNAL_TRACE/);
+});

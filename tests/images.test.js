@@ -32,7 +32,7 @@ test('image-only turns, assistant attachments and conversation restore retain im
 });
 test('actual exec adapter passes image files separately from stdin and reads old images on demand',async()=>{
   const {dir,images}=await setup();const image=await images.save(await fixture(),'neutral.png');
-  const bin=join(dir,'capture.mjs');await writeFile(bin,`#!/usr/bin/env node\nimport {writeFileSync} from 'node:fs';\nconst args=process.argv.slice(2);let input='';for await(const chunk of process.stdin)input+=chunk;writeFileSync(${JSON.stringify(join(dir,'captured.json'))},JSON.stringify({args,input}));writeFileSync(args[args.indexOf('-o')+1],JSON.stringify({action:'reply',message:'test',document:'',task:'',argv:[],attachments:[]}));\n`,{mode:0o700});
+  const bin=join(dir,'capture.mjs');await writeFile(bin,`#!/usr/bin/env node\nimport {writeFileSync} from 'node:fs';\nconst args=process.argv.slice(2);let input='';for await(const chunk of process.stdin)input+=chunk;writeFileSync(${JSON.stringify(join(dir,'captured.json'))},JSON.stringify({args,input}));console.log(JSON.stringify({type:'thread.started',thread_id:'image-test-session'}));writeFileSync(args[args.indexOf('-o')+1],JSON.stringify({action:'reply',message:'test',document:'',task:'',argv:[],attachments:[]}));\n`,{mode:0o700});
   const previous=process.env.VILLAGE_CODEX_BIN;process.env.VILLAGE_CODEX_BIN=bin;
   try{
     const secretary=new Secretariat({dir,jobs:[]},{root:dir,catalog:async()=>[]},undefined,undefined,images);
