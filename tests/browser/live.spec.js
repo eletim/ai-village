@@ -41,6 +41,9 @@ test('direct study URL works on mobile with readable reports and no horizontal o
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   expect((await page.locator('.report-heading>div').boundingBox()).width).toBeGreaterThan(180);
   await page.reload();await expect(page.locator('#office-page')).toBeVisible();
+  await page.getByLabel('配色',{exact:true}).selectOption('dark');
+  await page.locator('.report-card').scrollIntoViewIfNeeded();
+  await page.screenshot({path:new URL('../../../verification/mobile-dark-report.png',import.meta.url).pathname,fullPage:true});
 });
 
 test('API rejects external origins, invalid requests and private file access', async ({ request }) => {

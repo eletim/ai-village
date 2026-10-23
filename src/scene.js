@@ -42,6 +42,7 @@ export function syncScene(workshops, agents) {
     const d={...shop,...site,pc:'REGISTERED WORKSHOP',color:'#d5b591',roof:'#ad765d',desc:'村の資料に接続情報が登録されている工房。'};
     data.push(d);building(d,i+1);
   });
+  person('miku',500,365,'#b08e6f').classList.add('resident-secretary');
   agents.forEach((agent,i)=>{
     const site=data.find(d=>d.document===agent.workshopDocument) || data[0];
     person(agent.id,site.x-40+(i%3)*35,site.y+35,'#7c96ac');
@@ -55,7 +56,7 @@ export function setSceneStatus(index,label){const g=document.querySelectorAll('.
 export function setPersonActivity(name, active, label, displayName = name) {
   const person = people[name];
   if (!person) return;
-  attachWorkbench(person);
+  if(name!=='miku')attachWorkbench(person);
   person.dataset.active = String(active);
   let marker = person.querySelector('.activity-marker');
   if (!marker) {
@@ -94,7 +95,7 @@ function attachWorkbench(person) {
 
 export function animateVillagers(time) {
   Object.values(people).forEach((person,index)=>{
-    const working=person.dataset.active==='true'&&!person.classList.contains('walking');
+    const working=!person.classList.contains('resident-secretary')&&person.dataset.active==='true'&&!person.classList.contains('walking');
     person.classList.toggle('hammering',working);
     if(!working)return;
     const phase=(time/1100+index*.17)%1;

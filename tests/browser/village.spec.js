@@ -10,7 +10,7 @@ test('registered buildings, empty land and real assigned agents on desktop and n
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.goto('/');
   await expect(page.locator('.building')).toHaveCount(2);
-  await expect(page.locator('.person')).toHaveCount(0);
+  await expect(page.locator('.person:not(.resident-secretary)')).toHaveCount(0);
   await expect(page.locator('#workshop-count')).toHaveText('1 登録工房');
   await page.screenshot({path:shots+'village-desktop-empty.png',fullPage:true});
   await page.setViewportSize({width:390,height:844});
@@ -20,7 +20,7 @@ test('registered buildings, empty land and real assigned agents on desktop and n
   await page.setViewportSize({width:1440,height:1050});
   const job={id:'test-agent',workshopDocument:actual.workshops[0].document,workshopName:'第一工房',tabId:'fixture-tab',phase:'working',workerState:'busy',releaseState:'held',request:'表示検証'};
   state={...state,job,jobs:[job]};
-  const agent=page.locator('.person');await expect(agent).toHaveCount(1);await expect(agent).toHaveAttribute('aria-label','レン・作業中');
+  const agent=page.locator('.person:not(.resident-secretary)');await expect(agent).toHaveCount(1);await expect(agent).toHaveAttribute('aria-label','レン・作業中');
   await page.screenshot({path:shots+'village-working.png',fullPage:true});
   job.phase='awaiting_review';await expect(agent).toHaveAttribute('aria-label','レン・確認待ち');
   await page.screenshot({path:shots+'village-review.png',fullPage:true});

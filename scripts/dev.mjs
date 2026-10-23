@@ -1,3 +1,5 @@
+import { TodoStore } from '../server/todos.mjs';
+import { accessPolicy } from '../server/access.mjs';
 import { ImageStore, MAX_IMAGE_BYTES } from '../server/images.mjs';
 import { randomUUID } from 'node:crypto';
 import { run } from '../server/bridge.mjs';
@@ -14,9 +16,12 @@ import { WorkshopBridge } from '../server/bridge.mjs';
 const args = process.argv.slice(2);
 const value = (name, fallback) => { const i = args.indexOf(name); return i < 0 ? fallback : args[i + 1]; };
 const port = Number(value('--port', 5173)), host = value('--host', '127.0.0.1'), root = resolve('.');
+const allowRequest = await accessPolicy({host,port});
 const library = new VillageLibrary();
 const bridge = new WorkshopBridge({ library });
 await bridge.init();
+const todos = new TodoStore(bridge.dir);
+await todos.init();
 const notifier = new VillageNotifier({ dir: bridge.dir });
 await notifier.init();
 const development = new Development(bridge, library, {port});
@@ -32,9 +37,18 @@ const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; cha
 const json = (res, status, body) => { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(body)); };
 const server = createServer(async (req, res) => {
   try {
+    if(!allowRequest(req,res))return;
     const pathname = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
     if (pathname.startsWith('/api/')) {
-      if (req.headers.origin && req.headers.origin !== `http://${req.headers.host}`) return json(res, 403, { error: 'Origin rejected' });
+      if (pathname === '/api/todos') {
+        if(req.method==='GET')return json(res,200,todos.snapshot());
+        if(req.method==='POST'){
+          if(!req.headers['content-type']?.startsWith('application/json'))return json(res,415,{error:'JSON required'});
+          let body='';for await(const chunk of req){body+=chunk;if(body.length>8000)return json(res,413,{error:'Request too large'});}
+          let input;try{input=JSON.parse(body);}catch{return json(res,400,{error:'Invalid JSON'});}
+          return json(res,200,await todos.update(input));
+        }
+      }
       if (req.method === 'GET' && pathname === '/api/health') return json(res,200,{commit:runningCommit,instanceId,supervised:process.env.VILLAGE_SUPERVISED==='1'});
       if (req.method === 'GET' && pathname === '/api/state') return json(res, 200, await snapshot());
       if (req.method === 'GET' && pathname === '/api/documents') return json(res, 200, { root: library.root, documents: await library.catalog() });

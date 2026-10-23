@@ -1,3 +1,6 @@
+import { initTheme } from './theme.js';
+import { initTodos } from './todos.js';
+import { updateUnread } from './unread.js';
 import { attachmentComposer } from './attachments.js';
 import { isOnDesk } from './job-state.js';
 import { data, people, parcel, connectScene, syncScene, setSceneStatus, setPersonActivity, animateVillagers } from './scene.js';
@@ -33,6 +36,7 @@ function renderPositions() {
     const state=agentState(job,online);
     setPersonActivity(job.id,state.active,state.label,'レン');
   });
+  setPersonActivity('miku',online&&live.secretary?.status==='thinking',!online?'接続未確認':live.secretary?.status==='thinking'?'応答中':'待機中','ミク');
   parcel.style.opacity='0';
 }
 function shopState(index) {
@@ -50,7 +54,7 @@ function renderShops() {
   }));
   data.forEach((d,i)=>{setSceneStatus(i,shopState(i).label);const smoke=document.querySelectorAll('.building')[i].querySelector('.smoke');if(smoke)smoke.style.display=workshopAgents(d,agents()).some(j=>agentState(j,online).active)?'':'none';});
   $('#workshop-count').textContent=`${shops().length} 登録工房`;
-  $('#legend').textContent=`配置Agent ${agents().length}人 · 作業中 ${agents().filter(j=>agentState(j,online).active).length}人`;
+  $('#legend').textContent=`常駐秘書 1人 · 工房配置Agent ${agents().length}人 · 作業中 ${agents().filter(j=>agentState(j,online).active).length}人`;
 }
 function openDetail() {
   if(!selected)focusBeforeDialog=document.activeElement;
@@ -69,6 +73,7 @@ function showShop(index,refresh=false) {
   $('#detail').querySelectorAll('[data-person]').forEach(b=>b.addEventListener('click',()=>showPerson(b.dataset.person)));
 }
 function showPerson(id) {
+  if(id==='miku'){navigate('/office');return;}
   const job=agents().find(j=>j.id===id);if(!job){closeDetail();return;}
   openDetail();selected={type:'person',name:id};const state=agentState(job,online);
   detailShell(`<div class="eyebrow">ASSIGNED AGENT</div><h3>レン</h3><p>${escape(job.workshopName || '配置中のAgent')}</p><div class="detail-status"><span class="tag">${escape(state.label)}</span><p>${escape(state.reason)}</p></div>${job.terminalUrl?`<a class="terminal-link" target="_blank" rel="noopener noreferrer" href="${escape(job.terminalUrl)}">PurpleMuxで実際の端末を開く ↗</a><p>未ログインの場合は、ログインしてからこのリンクを開き直してください。</p>`:''}`);
@@ -86,6 +91,8 @@ function renderStage() {
   $('#send').disabled = submitting || !online || live.secretary?.status==='thinking';
   $('#send').textContent = live.secretary?.status==='thinking' ? 'ミクが考えています…' : 'ミクに話す ↗';
   renderConversation(live.secretary || {messages:[]}, openDocument, live.jobs || []);
+  if(online)updateUnread(live.secretary?.messages || []);
+  $('#room-secretary small').textContent=`ミク ／ ${!online?'接続未確認':live.secretary?.status==='thinking'?'応答中':'待機中'}`;
   const current = ({idle:0,planning:0,connecting:1,working:2,reporting:3,awaiting_review:4,completed:4,error:0})[phase];
   $('#journey').innerHTML = ['相談','工房へ接続','ものづくり','秘書が報告作成','報告の確認'].map((s,i)=>`<span class="${i===current?'current':i<current?'done':''}"><i>${i<current?'✓':i+1}</i>${s}</span>`).join('<b>·</b>');
   renderShops();
@@ -160,4 +167,4 @@ async function officeAction(url, method='POST') {
 function cancelJob(id){return officeAction(`/api/jobs/${encodeURIComponent(id)}/cancel`);}
 function approveJob(id){return officeAction(`/api/jobs/${encodeURIComponent(id)}/approve`);}
 function discoverArtifacts(id){return officeAction(`/api/jobs/${encodeURIComponent(id)}/artifacts`,'GET');}
-navigate(location.pathname,false);renderStage(); poll(); requestAnimationFrame(frame);
+initTheme();initTodos();navigate(location.pathname,false);renderStage(); poll(); requestAnimationFrame(frame);

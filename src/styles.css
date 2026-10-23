@@ -215,3 +215,46 @@ textarea::placeholder { color: #7a866f; }
   .conversation-log { height:40dvh; min-height:230px; }.office-conversation textarea { height:88px; }
   .chat-images img { max-height:260px; }.attachment-tools { gap:6px; }
 }
+
+/* Shared controls and small-screen flow; the page can scroll above a software keyboard. */
+.theme-control{display:flex;align-items:center;gap:6px;white-space:nowrap}
+select,input,button{font:inherit}select{padding:8px;border:1px solid #bac8ac;border-radius:8px;background:#fffdf6;color:#425a38}
+.todo-panel{margin-top:20px;padding:18px;border:1px solid #dbe2cd;border-radius:14px;background:#f0f2e5}
+.todo-panel h2{margin:0;font-size:18px}.todo-panel p{line-height:1.7}.todo-panel form{display:flex;gap:8px;flex-wrap:wrap}
+.todo-panel input[type=text],#todo-text{flex:1;min-width:160px;padding:10px;border:1px solid #bac8ac;border-radius:8px;background:#fffdf6;color:#303e35;font-size:16px}
+.todo-panel button{padding:10px;border:1px solid #bac8ac;border-radius:8px;background:#fffdf6;color:#425a38;min-height:44px}
+#todo-list{list-style:none;padding:0;margin:0}#todo-list li{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid #c7d2ba}#todo-list span{flex:1;min-width:0;overflow-wrap:anywhere;white-space:pre-wrap}#todo-list input{width:24px;height:24px;flex-shrink:0}.todo-done{text-decoration:line-through;opacity:.7}
+#todo-notice{min-height:1.7em}.office-page,.office-workspace,.office-conversation,.office-inbox,.side{min-width:0}
+button,a,input,textarea,select{touch-action:manipulation}a,button{overflow-wrap:anywhere}textarea{scroll-margin-block:24px}
+.resident-secretary[data-active=true]{filter:drop-shadow(0 0 4px #eac573)}
+@media(max-width:680px){
+ header{height:auto;min-height:70px;padding:10px 12px;gap:8px;flex-wrap:wrap}.top{gap:8px;flex-wrap:wrap}.top>span{display:none}.theme-control{font-size:12px}select{min-height:44px}
+ button,.office-nav a,.chat-sources button,.chat-report-link{min-height:44px}.detail .close{width:44px;height:44px}.detail{padding-top:52px}
+ .journey{white-space:normal;flex-wrap:wrap;justify-content:center}.journey b{display:none}.world{height:680px}.map{top:165px}
+ .office-nav{flex-wrap:wrap}.office-title p{line-height:1.8}.office-conversation textarea{font-size:16px;max-height:40dvh}.conversation-log{min-height:140px;height:45dvh}
+ .compose-meta{flex-wrap:wrap;gap:6px}.office-page{padding-bottom:max(32px,env(safe-area-inset-bottom))}.office-room .study-secretary small{white-space:nowrap}
+ #todo-list li{flex-wrap:wrap}#todo-list span{flex-basis:calc(100% - 44px)}.report-card,.chat-message{min-width:0}.report-heading h3{overflow-wrap:anywhere}
+}
+@media(max-height:500px) and (max-width:950px){.conversation-log{height:55dvh;min-height:120px}.office-conversation textarea{height:80px}.office-room{height:132px}}
+:root{color-scheme:light}
+:root[data-theme=dark]{color-scheme:dark}
+[data-theme=dark] body{background:#202721;color:#e3e8d9}
+[data-theme=dark] header,[data-theme=dark] .side,[data-theme=dark] .detail,[data-theme=dark] .document-paper,[data-theme=dark] .report-card{background:#283229;color:#e3e8d9;border-color:#52634c}
+[data-theme=dark] .secretary,[data-theme=dark] .todo-panel,[data-theme=dark] .village-library,[data-theme=dark] .detail-status,[data-theme=dark] .village-invitation{background:#313d30;color:#e3e8d9;border-color:#52634c}
+[data-theme=dark] .bubble,[data-theme=dark] .chat-message,[data-theme=dark] input,[data-theme=dark] textarea,[data-theme=dark] select,[data-theme=dark] button:not(.send):not(.study-secretary):not(.study-shelf):not(.desk-papers),[data-theme=dark] #document-list button{background:#263025;color:#e1e7d6;border-color:#617455}
+[data-theme=dark] .chat-user{background:#40503a}[data-theme=dark] .world{background:#29392e}
+[data-theme=dark] .map>rect:first-of-type{fill:#344334}[data-theme=dark] .map>rect:nth-of-type(2){opacity:.3}
+[data-theme=dark] .map .building>.label{fill:#e1e7cf}
+[data-theme=dark] .chapter,[data-theme=dark] .journey,[data-theme=dark] .hud{background:#263025ed;color:#dce6cb;border-color:#617455}
+[data-theme=dark] :is(.intro p,.eyebrow,.section-title span,.who small,.compose-meta,.work p,.residents,.feed,.feed small,.legend,.detail p,.prototype-note,.office-nav,.office-title p,.office-date,.office-section-heading span,.chat-meta,.chat-sources,.chat-inspection,.library-intro,#document-location,#document-content,.document-toolbar b,.attachment-tools span,.report-prose,.report-request,.report-meta){color:#becbb0}
+[data-theme=dark] :is(a,.office-nav a,.chat-images a){color:#cee5b8}[data-theme=dark] textarea::placeholder,[data-theme=dark] input::placeholder{color:#a9b79c}
+[data-theme=dark] .tag{background:#435736;color:#e4eed7}[data-theme=dark] .tag.amber{background:#594c2c;color:#ffdf9a}
+[data-theme=dark] .office-room{filter:brightness(.75)}[data-theme=dark] :is(.office-notice,.operation-error,#attachment-error,#library-error){color:#ffb3a1}
+[data-theme=dark] .journey .current{color:#e0edca}[data-theme=dark] .report-card pre{color:#dce6cf;background:#253025}
+[data-theme=dark] #todo-text{background:#263025;color:#e1e7d6;border-color:#617455}
+[data-theme=dark] .office-title h1,[data-theme=dark] .office-section-heading h2{color:#e3e8d9}
+[data-theme=dark] .office-nav .office-exit,[data-theme=dark] .artifact-section,[data-theme=dark] .empty-inbox{background:#303d2e;color:#d3dec4;border-color:#617455}
+[data-theme=dark] :is(.report-agent,.report-heading small,.saved-location,.report-review>small,.approval-control,.top,.hint){color:#becbb0}
+@media(max-width:680px){.person-hit-target{x:-60px;y:-80px;width:126px;height:126px}}
+[data-theme=dark] #refresh-document,[data-theme=dark] #close-library{background:#263025;color:#e1e7d6;border-color:#617455}
+@media(max-width:680px){.report-badge{white-space:normal;max-width:100%}}
