@@ -258,3 +258,5 @@ button,a,input,textarea,select{touch-action:manipulation}a,button{overflow-wrap:
 @media(max-width:680px){.person-hit-target{x:-60px;y:-80px;width:126px;height:126px}}
 [data-theme=dark] #refresh-document,[data-theme=dark] #close-library{background:#263025;color:#e1e7d6;border-color:#617455}
 @media(max-width:680px){.report-badge{white-space:normal;max-width:100%}}
+
+.memo-panel{margin-top:20px;padding:18px;border:1px solid #bac8ac;border-radius:14px;background:#f0f2e5}.memo-panel h2{font-size:18px;margin:0}.memo-panel p{line-height:1.7}.memo-panel dt{font-weight:bold;margin-top:12px}.memo-panel dd{margin:4px 0;white-space:pre-wrap;overflow-wrap:anywhere}[data-theme=dark] .memo-panel{background:#313d30;color:#e3e8d9;border-color:#617455}

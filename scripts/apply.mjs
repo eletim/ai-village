@@ -15,6 +15,9 @@ const git=(...args)=>command('git',args);
 const clean=async()=>{if(await git('status','--porcelain'))throw new Error('コアに未commit変更があります。上書きせず停止しました。');};
 let candidate;
 try{
+  // Keep credentials out of logs; failure is recorded by the deployment catch.
+  const probeHeaders=process.env.VILLAGE_PUBLIC_ORIGIN ? {Authorization:'Basic '+Buffer.from((await readFile(process.env.VILLAGE_AUTH_FILE,'utf8')).trim()).toString('base64')} : {};
+  const testEnv={...process.env,VILLAGE_PUBLIC_ORIGIN:'',VILLAGE_AUTH_FILE:''};
   const stat=await readFile(`/proc/${process.pid}/stat`,'utf8');
   await save({phase:'checking',workerPid:process.pid,workerStart:stat.slice(stat.lastIndexOf(')')+2).split(' ')[19],checks:[]});
   const supervisor=JSON.parse(await readFile(resolve(record.stateDir,'supervisor.json'),'utf8'));process.kill(supervisor.pid,0);
@@ -25,23 +28,23 @@ try{
   await git('merge-base','--is-ancestor',from,record.targetCommit);
   candidate=resolve(record.stateDir,'deployments',record.id,'candidate');await git('worktree','add','--detach',candidate,record.targetCommit);
   await command('npm',['ci'],candidate);
-  await command('npm',['run','check'],candidate);await command('npm',['test'],candidate);
+  await command('npm',['run','check'],candidate);await command('npm',['test'],candidate,testEnv);
   const probe=createServer();await new Promise(r=>probe.listen(0,'127.0.0.1',r));const port=probe.address().port;await new Promise(r=>probe.close(r));
-  await command('npm',['run','test:ui'],candidate,{...process.env,VILLAGE_TEST_PORT:String(port),VILLAGE_TEST_STATE:resolve(record.stateDir,'deployments',record.id,'browser-state'),VILLAGE_NOTIFICATIONS:'false'});
+  await command('npm',['run','test:ui'],candidate,{...testEnv,VILLAGE_TEST_PORT:String(port),VILLAGE_TEST_STATE:resolve(record.stateDir,'deployments',record.id,'browser-state'),VILLAGE_NOTIFICATIONS:'false'});
   await command('npm',['run','build'],candidate);
   await clean();if(await git('rev-parse','HEAD')!==from)throw new Error('検証中にコアHEADが変わりました。');
   await save({phase:'applying'});await git('merge','--ff-only',record.targetCommit);await save({appliedCommit:await git('rev-parse','HEAD'),appliedAt:new Date().toISOString()});
   await command('npm',['ci']);
   await command('npm',['run','build']);
-  const before=await(await fetch(record.healthUrl+'/api/health',{signal:AbortSignal.timeout(5000)})).json();
+  const before=await(await fetch(record.healthUrl+'/api/health',{headers:probeHeaders,signal:AbortSignal.timeout(5000)})).json();
   await save({phase:'restarting',beforeInstance:before.instanceId});
   const restart=resolve(record.stateDir,'restart.json');await writeFile(restart+'.tmp',JSON.stringify({id:record.id,targetCommit:record.targetCommit}));await rename(restart+'.tmp',restart);
   const deadline=Date.now()+60000;let verified;
   while(Date.now()<deadline){try{
-    const health=await(await fetch(record.healthUrl+'/api/health',{signal:AbortSignal.timeout(2000)})).json();
+    const health=await(await fetch(record.healthUrl+'/api/health',{headers:probeHeaders,signal:AbortSignal.timeout(2000)})).json();
     if(health.commit!==record.targetCommit||health.instanceId===before.instanceId)throw new Error('waiting');
-    const office=await fetch(record.healthUrl+'/office',{signal:AbortSignal.timeout(3000)});if(!office.ok)throw new Error('office failed');
-    const state=await(await fetch(record.healthUrl+'/api/state',{signal:AbortSignal.timeout(3000)})).json();if(!state.secretary.messages.length||!state.jobs.some(j=>j.id===record.jobId))throw new Error('persisted state missing');
+    const office=await fetch(record.healthUrl+'/office',{headers:probeHeaders,signal:AbortSignal.timeout(3000)});if(!office.ok)throw new Error('office failed');
+    const state=await(await fetch(record.healthUrl+'/api/state',{headers:probeHeaders,signal:AbortSignal.timeout(3000)})).json();if(!state.secretary.messages.length||!state.jobs.some(j=>j.id===record.jobId))throw new Error('persisted state missing');
     verified={health,officeStatus:office.status,conversationMessages:state.secretary.messages.length,jobRestored:true};break;
   }catch{await new Promise(r=>setTimeout(r,500));}}
   if(!verified)throw new Error('再起動後のcommit・執務室・保存状態を確認できません。');await save({verification:verified,restarted:true});

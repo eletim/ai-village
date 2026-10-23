@@ -16,6 +16,8 @@ test('VPN proxy requires explicit HTTPS origin and authentication; reject forged
  const authorization='Basic '+Buffer.from('mayor:long-test-password-123456').toString('base64');
  assert.deepEqual(probe({host:'village.example',origin:'https://evil.example',authorization}),[false,403]);
  assert.deepEqual(probe({host:'village.example',origin:'https://village.example',authorization}),[true,200]);
- assert.deepEqual(probe({host:'localhost:1234'}),[true,200]);
+ assert.deepEqual(probe({host:'localhost:1234'}),[false,401]);
+ assert.deepEqual(probe({host:'localhost:1234',authorization}),[true,200]);
+ assert.deepEqual(probe({host:'localhost:1234','x-forwarded-host':'village.example'}),[false,401]);
  }finally{await rm(dir,{recursive:true,force:true});}
 });

@@ -1,3 +1,4 @@
+import { refreshMemo } from './memo.js';
 import { initTheme } from './theme.js';
 import { initTodos } from './todos.js';
 import { updateUnread } from './unread.js';
@@ -104,7 +105,7 @@ async function poll() {
   try {
     const response=await fetch('/api/state', { signal: AbortSignal.timeout(10000) });
     if(!response.ok) throw new Error('接続失敗');
-    live=await response.json(); online=true;
+    live=await response.json(); online=true;await refreshMemo();
     const job=currentJob(), phase=job?.phase || 'idle', key=`${job?.id}:${phase}`;
     if(key!==lastPhase) { addEvent(PHASE_LABELS[phase]); lastPhase=key; }
   } catch { online=false; }

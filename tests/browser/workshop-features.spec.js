@@ -7,14 +7,15 @@ test('TODO is shared by independent browsers, survives reload, handles edit conf
  const original=await (await request.get('/api/state')).json();
  await page.getByLabel('TODOの内容').fill('端末間共有');await page.getByRole('button',{name:'TODOを追加',exact:true}).click();
  const row=page.locator('#todo-list li').filter({hasText:'端末間共有'}),remote=other.locator('#todo-list li').filter({hasText:'端末間共有'});
- await expect(remote).toBeVisible();await row.getByRole('button',{name:'編集',exact:true}).click();
- await remote.getByRole('checkbox').check();await expect(row.getByRole('checkbox')).toBeChecked();
+ await expect(remote).toBeVisible();await row.getByRole('button',{name:'編集',exact:true}).evaluate(el=>{el.setAttribute('aria-label','編集');el.innerHTML='<span aria-hidden="true">✎</span>編集';});await row.getByRole('button',{name:'編集',exact:true}).locator('span').click();
+ await page.getByLabel('TODOの内容').fill('同期中も残る下書き');await remote.getByRole('checkbox').check();await expect(row.getByRole('checkbox')).toBeChecked();await expect(page.getByLabel('TODOの内容')).toHaveValue('同期中も残る下書き');
  await page.getByLabel('TODOの内容').fill('競合しても入力保持');await page.getByRole('button',{name:'変更を保存'}).click();
  await expect(page.locator('#todo-notice')).toContainText('別の端末');await expect(page.getByLabel('TODOの内容')).toHaveValue('競合しても入力保持');
  await row.getByRole('button',{name:'編集',exact:true}).click();await page.getByLabel('TODOの内容').fill('更新済み');await page.getByRole('button',{name:'変更を保存'}).click();
  await other.reload();await expect(other.locator('#todo-list')).toContainText('更新済み');
  await other.locator('#todo-list li').filter({hasText:'更新済み'}).getByRole('checkbox').uncheck();
  await expect(page.locator('#todo-list li').filter({hasText:'更新済み'}).getByRole('checkbox')).not.toBeChecked();
+ const edited=page.locator('#todo-list li').filter({hasText:'更新済み'});await edited.getByRole('button',{name:'編集',exact:true}).click();await page.getByLabel('TODOの内容').fill('完了変更でも残る下書き');await edited.getByRole('checkbox').check();await expect(page.locator('#todo-notice')).toContainText('保存しました');await expect(page.getByLabel('TODOの内容')).toHaveValue('完了変更でも残る下書き');await page.locator('#todo-cancel').click();
  await page.locator('#todo-list li').filter({hasText:'更新済み'}).getByRole('button',{name:'削除'}).click();await expect(other.locator('#todo-list')).not.toContainText('更新済み');
  expect((await (await request.get('/api/state')).json()).jobs).toEqual(original.jobs);await context.close();
 });
@@ -68,4 +69,28 @@ test('mobile touch, long reply, documents and image attachment stay usable in da
  await page.locator('#image-picker').setInputFiles({name:'mobile.png',mimeType:'image/png',buffer:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1cAAAAASUVORK5CYII=','base64')});await expect(page.locator('.attachment-preview img')).toBeVisible();
  await page.locator('#open-documents').tap();await expect(page.locator('#document-content')).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  await page.screenshot({path:shots+'mobile-dark-documents-conversation.png',fullPage:true});await context.close();
+});
+test('memo empty state, safe text rendering, saved reply refresh and responsive themes',async({page})=>{
+ let memo=null;await page.route('**/api/secretary/memo',route=>route.fulfill({json:{memo}}));await page.goto('/office');
+ await expect(page.locator('#memo-status')).toContainText('まだありません');
+ memo={updatedAt:'2026-10-24T00:00:00Z',value:{topic:'<img src=x onerror=alert(1)>',purpose:'村長と進めること',decisions:'共有TODO',permissions:'村長発言の参照',unfinished:'確認待ち',references:'manual.md'}};
+ await expect(page.locator('#secretary-memo dt')).toHaveCount(6);await expect(page.locator('#secretary-memo')).toContainText('<img src=x');await expect(page.locator('#secretary-memo img')).toHaveCount(0);
+ for(const [device,width,height] of [['desktop',1440,1050],['mobile',390,844]])for(const theme of ['light','dark']){
+  await page.setViewportSize({width,height});await page.getByLabel('配色',{exact:true}).selectOption(theme);await page.locator('.memo-panel').scrollIntoViewIfNeeded();
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  await page.screenshot({path:shots+`${device}-${theme}-memo.png`,fullPage:true});
+ }
+});
+test('bounded read markers migrate and simultaneous tabs retain independent reads',async({page,context})=>{
+ const state={jobs:[],workshops:[],secretary:{status:'idle',messages:Array.from({length:700},(_,i)=>({id:`bounded-${i}`,role:'assistant',content:`返信${i}`,at:new Date().toISOString()}))}};
+ await context.route('**/api/state',route=>route.fulfill({json:state}));await page.goto('/');
+ await expect(page.locator('link[rel=icon]')).toHaveAttribute('data-unread','false');
+ expect(await page.evaluate(()=>Object.keys(localStorage).filter(k=>k.startsWith('village-read-v2:')).length)).toBeLessThanOrEqual(512);
+ const other=await context.newPage();await other.goto('/');
+ // Emulate simultaneous independent message visibility writes; storage events must union, not replace.
+ await Promise.all([page.evaluate(()=>localStorage.setItem('village-read-v2:race-a',String(Date.now()))),other.evaluate(()=>localStorage.setItem('village-read-v2:race-b',String(Date.now())))]);
+ state.secretary.messages=state.secretary.messages.slice(-510).concat([{id:'race-a',role:'assistant',content:'A'},{id:'race-b',role:'assistant',content:'B'}]);
+ await page.waitForTimeout(1800);await page.reload();await other.reload();
+ await expect(page.locator('link[rel=icon]')).toHaveAttribute('data-unread','false');await expect(other.locator('link[rel=icon]')).toHaveAttribute('data-unread','false');
+ expect(await page.evaluate(()=>Object.keys(localStorage).filter(k=>k.startsWith('village-read-v2:')).length)).toBeLessThanOrEqual(512);await other.close();
 });

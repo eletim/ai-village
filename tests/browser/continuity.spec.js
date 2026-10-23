@@ -15,4 +15,9 @@ test('real HTTP conversation saves memo and resumes; Chrome reload retains mayor
   expect(saved.memo.value.topic).toBe('ブラウザ継続確認');expect(JSON.stringify(saved.memo.value).length).toBeLessThanOrEqual(4000);
   expect(saved.diagnostics.lastMode).toBe('resume');expect(saved.diagnostics.lastInputChars).toBeLessThan(1500);
   expect(saved.operationLog).toEqual([]);
+  await expect(page.locator('#secretary-memo')).toContainText('ブラウザ継続確認');
+  await expect(page.locator('#secretary-memo dt')).toHaveCount(6);
+  const snapshot=await (await page.request.get('/api/secretary/memo')).json();
+  expect(Object.keys(snapshot)).toEqual(['memo']);expect(Object.keys(snapshot.memo).sort()).toEqual(['updatedAt','value']);
+  expect(JSON.stringify(snapshot)).not.toMatch(/browser-session|operationLog|codexSession|diagnostics/);
 });

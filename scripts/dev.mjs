@@ -27,7 +27,7 @@ await notifier.init();
 const development = new Development(bridge, library, {port});
 const images = new ImageStore(bridge.dir);
 await images.init();
-const operations = new VillageOperations(bridge, notifier, {web:new WebReader(),development,images});
+const operations = new VillageOperations(bridge, notifier, {web:new WebReader(),development,images,todos});
 const secretariat = new Secretariat(bridge, library, operations, notifier, images);
 await secretariat.init();
 development.watch(secretariat);
@@ -49,6 +49,7 @@ const server = createServer(async (req, res) => {
           return json(res,200,await todos.update(input));
         }
       }
+      if (req.method === 'GET' && pathname === '/api/secretary/memo') return json(res,200,await secretariat.memoSnapshot());
       if (req.method === 'GET' && pathname === '/api/health') return json(res,200,{commit:runningCommit,instanceId,supervised:process.env.VILLAGE_SUPERVISED==='1'});
       if (req.method === 'GET' && pathname === '/api/state') return json(res, 200, await snapshot());
       if (req.method === 'GET' && pathname === '/api/documents') return json(res, 200, { root: library.root, documents: await library.catalog() });

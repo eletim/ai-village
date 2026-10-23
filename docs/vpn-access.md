@@ -19,7 +19,7 @@ export VILLAGE_OFFICE_URL="$VILLAGE_PUBLIC_ORIGIN/office"
 npm run dev -- --port 5173 --host 127.0.0.1
 ```
 
-ブラウザはHTTP Basicのログイン画面を表示する。認証はサーバー側で毎要求に検証し、公開HostのHTML・API・画像すべてに適用。Originは設定したHTTPS originとの完全一致が必要。localhost制御口は従来どおりローカル専用。認証ファイルの変更はバックエンド再起動が必要。
+ブラウザはHTTP Basicのログイン画面を表示する。認証はサーバー側で毎要求に検証し、公開Host・localhostともHTML・API・画像すべてに適用。Hostをlocalhostへ書き換えても認証を省略しない。Originは設定したHTTPS originとの完全一致が必要。localhost制御口も同じ認証が必要。CLIと反映ヘルスチェックは同じ環境のVILLAGE_AUTH_FILEから認証を読み、出力には含めない。独立UIテストのサーバーはVPN設定を継承しない。認証ファイルの変更はバックエンド再起動が必要。
 
 同じネットワーク名前空間にあるnginxを使う場合の設定ひな型（配置・起動は未実施）：
 

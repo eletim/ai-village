@@ -14,7 +14,7 @@ export async function accessPolicy({host,port,origin=process.env.VILLAGE_PUBLIC_
     if(!remote&&!local.has(req.headers.host)){res.writeHead(403);res.end('Host rejected');return false;}
     const allowed=remote?publicUrl.origin:`http://${req.headers.host}`;
     if(req.headers.origin&&req.headers.origin!==allowed){res.writeHead(403);res.end('Origin rejected');return false;}
-    if(remote){const actual=Buffer.from(req.headers.authorization||'');if(actual.length!==expected.length||!timingSafeEqual(actual,expected)){res.writeHead(401,{'WWW-Authenticate':'Basic realm="AI Village", charset="UTF-8"','Cache-Control':'no-store'});res.end('Authentication required');return false;}}
+    if(expected){const actual=Buffer.from(req.headers.authorization||'');if(actual.length!==expected.length||!timingSafeEqual(actual,expected)){res.writeHead(401,{'WWW-Authenticate':'Basic realm="AI Village", charset="UTF-8"','Cache-Control':'no-store'});res.end('Authentication required');return false;}}
     return true;
   };
 }
