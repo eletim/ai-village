@@ -13,31 +13,50 @@ for(let i=0;i<42;i++){let x=80+(i*137%830),y=200+(i*79%570);el('circle',{cx:x,cy
 function bench(x,y){const g=el('g',{transform:`translate(${x} ${y})`});poly('-24,-10 9,5 23,-3 -10,-18','#b3926e',g);el('path',{d:'M-19 -8V4M16 -3V9M-20 -19L13 -4',stroke:'#8b7b5c','stroke-width':4},g)}
 bench(410,637);bench(625,415);
 function fence(x,y,n){const g=el('g',{transform:`translate(${x} ${y})`});for(let i=0;i<n;i++){el('path',{d:`M${i*16} ${i*7}v-19`,stroke:'#c0ae87','stroke-width':4},g);if(i<n-1)el('path',{d:`M${i*16} ${i*7-12}l16 7`,stroke:'#cbb995','stroke-width':3},g)}}
-fence(165,601,5);fence(815,620,5);
+
 for(let i=0;i<8;i++){const x=430+i%4*15,y=278+Math.floor(i/4)*11;el('ellipse',{cx:x,cy:y,rx:6,ry:3,fill:'#b0aa82'});el('path',{d:`M${x} ${y}v-8`,stroke:'#9eac75','stroke-width':2});el('circle',{cx:x,cy:y-9,r:3,fill:i%2?'#e6bb93':'#f1dba1'})}
 // Pond stones and ripples.
 [[1030,290],[1014,470],[1090,600]].forEach(([x,y])=>el('path',{d:`M${x-15} ${y}q15 4 30 0`,stroke:'#e9f4e6','stroke-width':2,fill:'none'}));
-const data=[{name:'村長の家',pc:'CORE PC',x:540,y:320,color:'#81966c',roof:'#697e5b',desc:'村の方針を話し、工房から届いた成果を確認する場所。',people:'ミク · 秘書 / ハル · テスト担当',task:'工房からの便りを確認中'},{name:'第一工房',pc:'WORKSHOP PC 01',x:290,y:540,color:'#d5b591',roof:'#ad765d',desc:'画面や体験をかたちにする工房。',people:'レン · 画面づくり / ソラ · 設計 / ユイ · デザイン',task:'サービスの画面をつくっています'},{name:'第二工房',pc:'WORKSHOP PC 02',x:800,y:540,color:'#c8bc96',roof:'#858c6a',desc:'できあがったものを動かし、使い心地を確かめる工房。',people:'カイ · 実装 / ナギ · 動作確認',task:'ログインから利用までを確認中'},{name:'第三工房',pc:'WORKSHOP PC 03',x:790,y:260,color:'#c4b7cd',roof:'#8f8098',desc:'小さなアイデアを試し、次のものづくりを準備する工房。',people:'リツ · 試作',task:'試作品が完成。村長の家へお届け'}];
+const data=[{name:'村長の家',pc:'CORE PC',x:540,y:320,color:'#81966c',roof:'#697e5b',desc:'村の方針を話し、工房から届いた成果を確認する場所。'}];
+const sites=[{x:290,y:540},{x:800,y:540},{x:790,y:260}];
 function building(d,i){const g=el('g',{transform:`translate(${d.x} ${d.y})`,class:'building',tabindex:0,role:'button','aria-label':d.name});el('ellipse',{cx:0,cy:35,rx:105,ry:29,fill:'#82916b',opacity:.18},g);poly('-78,-28 15,12 89,-28 0,-70','#c9c6ab',g);poly('-78,-28 15,12 15,-68 -78,-108',d.color,g);poly('15,12 89,-28 89,-108 15,-68',i===0?'#a0ad89':'#b09d85',g);poly('-94,-112 5,-162 105,-112 15,-59',d.roof,g);poly('-94,-112 5,-162 -3,-181 -108,-126',i===0?'#8da078':d.roof,g);poly('5,-162 105,-112 106,-126 -3,-181',i===0?'#a2b18c':'#c49b80',g);el('path',{d:'M-95 -119L8 -67M-70 -133L34 -81M-43 -146L61 -95M-18 -158L84 -107',stroke:'#fff',opacity:.13,'stroke-width':2},g);poly('-46,-40 -20,-29 -20,-77 -46,-88','#695f49',g);poly('40,-32 65,-45 65,-76 40,-63','#e6e5b6',g);el('path',{d:'M52 -70V-38M40 -48L65 -61',stroke:'#8d8d71','stroke-width':3},g);poly('-67,-75 -53,-69 -53,-90 -67,-96','#f5e3ad',g);if(i===0){el('rect',{x:-3,y:-218,width:3,height:40,fill:'#8a8265'},g);poly('0,-218 34,-207 0,-196','#dfbc70',g)}else{poly('51,-155 63,-149 63,-180 51,-186','#9b8e79',g);el('circle',{cx:57,cy:-199,r:9,fill:'#fffdf2',class:'smoke'},g)}// Doorstep, planter, workshop insignia.
 poly('-52,-24 -13,-7 -13,0 -52,-17','#cabda0',g);
 poly('-77,0 -56,9 -44,3 -65,-6','#a48a66',g);
 for(let k=0;k<3;k++){el('circle',{cx:-67+k*7,cy:-3+k*2,r:5,fill:k%2?'#a8b281':'#8fa16a'},g);el('circle',{cx:-66+k*7,cy:-8+k*2,r:2.3,fill:'#f3d6a1'},g)}
-if(i>0){el('rect',{x:-44,y:-110,width:30,height:21,rx:3,fill:'#e6d6ac',transform:'rotate(22 -29 -100)'},g);text(-29,-95,['','✂','⚒','✦'][i],13,'#7f7054',g)}
-text(0,62,d.name,15,'#46553c',g);text(0,80,d.pc,9,'#8d987d',g);const badge=el('g',{transform:i>0?'translate(0 345)':'translate(0 0)'},g);el('rect',{x:-55,y:-249,width:110,height:24,rx:12,fill:i===3?'#fff4d7':'#fffef3'},badge);text(0,-233,i===0?'⌂ 秘書のいる場所':i===3?'✦ お届け待ち':'● ものづくり中',10,i===3?'#a88442':'#74875d',badge).classList.add('building-status');g.onclick=()=>selectBuilding(i);g.onkeydown=e=>{if(e.key==='Enter')selectBuilding(i)}}data.forEach(building);
-function person(name,x,y,color){const g=el('g',{transform:`translate(${x} ${y})`,class:'person',role:'button',tabindex:0,'aria-label':name});el('ellipse',{cx:0,cy:7,rx:10,ry:5,fill:'#75836b',opacity:.22},g);el('path',{d:'M-4 0L-5 8M4 0L5 8',stroke:'#5b6559','stroke-width':4},g);el('rect',{x:-7,y:-17,width:14,height:19,rx:5,fill:color},g);el('circle',{cx:0,cy:-24,r:8,fill:'#efd5ae'},g);el('path',{d:'M-8 -24Q-11 -39 3 -34Q11 -33 8 -22L4 -28L-6 -26',fill:'#695845'},g);people[name]=g;g.onclick=()=>selectPerson(name);g.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();selectPerson(name)}};return g}
+if(i>0){el('rect',{x:-44,y:-110,width:30,height:21,rx:3,fill:'#e6d6ac',transform:'rotate(22 -29 -100)'},g);text(-29,-95,'⚒',13,'#7f7054',g)}
+text(0,62,d.name,15,'#46553c',g);text(0,80,d.pc,9,'#8d987d',g);const badge=el('g',{transform:i>0?'translate(0 345)':'translate(0 0)'},g);el('rect',{x:-55,y:-249,width:110,height:24,rx:12,fill:i===3?'#fff4d7':'#fffef3'},badge);text(0,-233,i===0?'⌂ 秘書のいる場所':i===3?'✦ お届け待ち':'● ものづくり中',10,i===3?'#a88442':'#74875d',badge).classList.add('building-status');g.onclick=()=>selectBuilding(i);g.onkeydown=e=>{if(e.key==='Enter')selectBuilding(i)}}building(data[0],0);
+function person(name,x,y,color){const g=el('g',{transform:`translate(${x} ${y})`,class:'person',role:'button',tabindex:0,'aria-label':name});el('ellipse',{cx:0,cy:7,rx:10,ry:5,fill:'#75836b',opacity:.22},g);el('path',{d:'M-4 0L-5 8M4 0L5 8',stroke:'#5b6559','stroke-width':4},g);el('rect',{x:-7,y:-17,width:14,height:19,rx:5,fill:color},g);el('circle',{cx:0,cy:-24,r:8,fill:'#efd5ae'},g);el('path',{d:'M-8 -24Q-11 -39 3 -34Q11 -33 8 -22L4 -28L-6 -26',fill:'#695845'},g);el('rect',{x:-22,y:-55,width:72,height:76,fill:'transparent',class:'person-hit-target'},g);people[name]=g;g.onclick=()=>selectPerson(name);g.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();selectPerson(name)}};return g}
 const people={};
-const miku=person('ミク',520,372,'#c49671');const workers=[person('レン',245,556,'#7c96ac'),person('ソラ',300,573,'#b3a078'),person('ユイ',333,536,'#c6968f')];person('カイ',778,576,'#849f7c');person('ナギ',836,553,'#a395b7');person('リツ',820,296,'#c1a66a');person('ハル',590,352,'#8da6a0');person('トワ',435,679,'#9aa87c');
-const parcel=el('g',{transform:'translate(770 340)',class:'person'});poly('-10,0 0,5 10,0 0,-5','#e5c58d',parcel);poly('-10,0 0,5 0,19 -10,14','#c99c62',parcel);poly('0,5 10,0 10,14 0,19','#ad814c',parcel);
-
-export {data,miku,workers,people,parcel};
+const parcel=el('g',{style:'display:none'});
+let sceneKey='';
+export function syncScene(workshops, agents) {
+  const key=JSON.stringify([workshops,agents.map(a=>[a.id,a.workshopDocument])]);
+  if(key===sceneKey)return;
+  sceneKey=key;
+  svg.querySelectorAll('.building').forEach((g,i)=>{if(i)g.remove();});
+  Object.values(people).forEach(g=>g.remove());
+  for(const id of Object.keys(people))delete people[id];
+  data.splice(1);
+  workshops.forEach((shop,i)=>{
+    const site=sites[i] || {x:180+(i%4)*230,y:760};
+    const d={...shop,...site,pc:'REGISTERED WORKSHOP',color:'#d5b591',roof:'#ad765d',desc:'村の資料に接続情報が登録されている工房。'};
+    data.push(d);building(d,i+1);
+  });
+  person('miku',500,365,'#b08e6f').classList.add('resident-secretary');
+  agents.forEach((agent,i)=>{
+    const site=data.find(d=>d.document===agent.workshopDocument) || data[0];
+    person(agent.id,site.x-40+(i%3)*35,site.y+35,'#7c96ac');
+  });
+}
+export {data,people,parcel};
 export function connectScene(building,person){selectBuilding=building;selectPerson=person;}
 export function positionPerson(name,x,y,walking=false){const g=people[name];if(!g)return;g.setAttribute('transform',`translate(${x} ${y})`);g.classList.toggle('walking',walking);}
 export function setSceneStatus(index,label){const g=document.querySelectorAll('.building')[index];g.querySelector('.building-status').textContent=label;}
 
-export function setPersonActivity(name, active) {
+export function setPersonActivity(name, active, label, displayName = name) {
   const person = people[name];
   if (!person) return;
-  attachWorkbench(person);
+  if(name!=='miku')attachWorkbench(person);
   person.dataset.active = String(active);
   let marker = person.querySelector('.activity-marker');
   if (!marker) {
@@ -49,9 +68,9 @@ export function setPersonActivity(name, active) {
   marker.classList.toggle('is-idle', !active);
   marker.querySelector('rect').setAttribute('fill', active ? '#547744' : '#fffdf4');
   marker.querySelector('rect').setAttribute('stroke', active ? '#547744' : '#aaad98');
-  marker.querySelector('text').textContent = active ? '● 作業中' : '○ 待機中';
+  marker.querySelector('text').textContent = label || (active ? '● 作業中' : '○ 待機中');
   marker.querySelector('text').setAttribute('fill', active ? '#fffdf4' : '#737b64');
-  person.setAttribute('aria-label', `${name}・${active ? '作業中' : '待機中'}`);
+  person.setAttribute('aria-label', `${displayName}・${label || (active ? '作業中' : '待機中')}`);
 }
 
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -76,7 +95,7 @@ function attachWorkbench(person) {
 
 export function animateVillagers(time) {
   Object.values(people).forEach((person,index)=>{
-    const working=person.dataset.active==='true'&&!person.classList.contains('walking');
+    const working=!person.classList.contains('resident-secretary')&&person.dataset.active==='true'&&!person.classList.contains('walking');
     person.classList.toggle('hammering',working);
     if(!working)return;
     const phase=(time/1100+index*.17)%1;
