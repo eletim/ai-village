@@ -1,3 +1,4 @@
+import { PullRequests } from '../server/pull-requests.mjs';
 import { listenAddresses } from '../server/network.mjs';
 import { TodoStore } from '../server/todos.mjs';
 import { accessPolicy } from '../server/access.mjs';
@@ -29,7 +30,7 @@ await notifier.init();
 const development = new Development(bridge, library, {port});
 const images = new ImageStore(bridge.dir);
 await images.init();
-const operations = new VillageOperations(bridge, notifier, {web:new WebReader(),development,images,todos});
+const operations = new VillageOperations(bridge, notifier, {web:new WebReader(),development,images,todos,prs:new PullRequests(bridge.dir,library)});
 const secretariat = new Secretariat(bridge, library, operations, notifier, images);
 await secretariat.init();
 development.watch(secretariat);
