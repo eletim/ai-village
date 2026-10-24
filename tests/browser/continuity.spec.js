@@ -21,3 +21,14 @@ test('real HTTP conversation saves memo and resumes; Chrome reload retains mayor
   expect(Object.keys(snapshot)).toEqual(['memo']);expect(Object.keys(snapshot.memo).sort()).toEqual(['updatedAt','value']);
   expect(JSON.stringify(snapshot)).not.toMatch(/browser-session|operationLog|codexSession|diagnostics/);
 });
+
+ test('real secretary processing and errors stop progress, including browser reload during processing',async({page})=>{
+ test.skip(!process.env.VILLAGE_TEST_CODEX_BIN || !process.env.VILLAGE_TEST_STATE,'Requires isolated fixture Codex boundary');
+ await page.goto('/office');await expect(page.locator('#send')).toBeEnabled();
+ await page.locator('#request').fill('UI_PROGRESS_OK');await page.locator('#send').click();
+ await expect(page.locator('.thinking-spinner')).toBeVisible();await page.reload();await expect(page.locator('.thinking-spinner')).toBeVisible();
+ await expect(page.locator('#send')).toBeEnabled();await expect(page.locator('.thinking-spinner')).toBeHidden();
+ await page.locator('#request').fill('UI_PROGRESS_ERROR');await page.locator('#send').click();await expect(page.locator('.thinking-spinner')).toBeVisible();
+ await expect(page.locator('#send')).toBeEnabled();await expect(page.locator('.thinking-spinner')).toBeHidden();
+ const saved=JSON.parse(await readFile(resolve(process.env.VILLAGE_TEST_STATE,'conversation.json'),'utf8'));expect(saved.status).toBe('idle');expect(saved.messages.at(-1).kind).toBe('error');
+ });

@@ -2,6 +2,8 @@
 // Deterministic CLI boundary for the real HTTP/browser persistence test. No network/tools.
 import { writeFile } from 'node:fs/promises';
 const args=process.argv.slice(2);let prompt='';for await (const chunk of process.stdin) prompt+=chunk;
+if (prompt.includes('UI_PROGRESS_')) await new Promise(resolve=>setTimeout(resolve,2200));
+if (prompt.includes('UI_PROGRESS_ERROR')) { console.error('test response failure');process.exit(1); }
 const resume=args.indexOf('resume');
 if (resume>=0 && args[resume+1]==='00000000-0000-0000-0000-000000000000') {
   console.error('Error: thread/resume failed: no rollout found for thread id 00000000-0000-0000-0000-000000000000');process.exit(1);

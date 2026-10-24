@@ -317,3 +317,44 @@ body.in-office { height:100dvh; overflow:hidden; display:flex; flex-direction:co
  .office-conversation .attachment-preview { max-height:56px; }.office-conversation .attachment-preview:empty { display:none; }
 }
 [hidden] { display:none !important; }
+
+/* The existing illustrated room is the full-width study header. */
+.office-workspace.chat-wide { grid-template-columns:minmax(0,1fr); }
+.office-room { position:relative; inset:auto; flex:none; display:block; width:100%; height:132px; margin:4px 0 12px; }
+.office-room .office-title { position:absolute; z-index:2; left:16px; top:10px; display:block; min-height:0; margin:0; padding:6px 12px; border-radius:10px; background:#fffdf5ee; }
+.office-room .office-title p { display:none; }
+.office-room .office-access { position:absolute; z-index:2; inset:auto 12px 8px; margin:0; flex-wrap:nowrap; overflow-x:auto; padding:3px; }
+.office-room .office-access button { flex:none; }
+.office-room .study-window { left:47%; top:10px; height:58px; width:60px; }
+.office-room .study-secretary { left:72%; bottom:44px; transform:scale(.65); }
+.office-room .study-desk { left:68%; bottom:35px; width:150px; }
+.office-room .study-door { right:24px; height:106px; }
+[data-theme=dark] .office-room { filter:none; background:#424a37; }
+[data-theme=dark] .office-room .office-title { background:#253021ee; }
+.secretary-progress { flex:none; display:flex; align-items:center; gap:8px; font-size:13px; color:#425b36; }
+.secretary-progress:has(#secretary-progress-text:empty) { display:none; }
+.thinking-spinner { width:16px; height:16px; border:2px solid #a5b995; border-top-color:currentColor; border-radius:50%; animation:thinking-turn .9s linear infinite; }
+@keyframes thinking-turn { to { transform:rotate(360deg); } }
+[data-theme=dark] .secretary-progress { color:#d9e9ca; }
+@media(prefers-reduced-motion:reduce) { .thinking-spinner { animation:none; } }
+@media(max-width:760px) {
+ .office-room { height:114px; margin-bottom:8px; }
+ .office-room .office-title { left:8px; top:6px; }
+ .office-room .office-access { left:4px; right:4px; bottom:5px; }
+ .office-room .study-secretary { left:72%; }
+}
+@media(max-height:550px) {
+ .office-room { height:88px; margin:0 0 4px; }
+ .office-room .office-title { top:0; padding:2px 8px; }
+ .office-room .office-title h1 { font-size:16px; }
+ .office-room .office-access { bottom:0; }
+}
+.office-room .office-title,.office-room .office-access { z-index:5; }
+.office-room .study-door { top:8px; bottom:auto; height:62px; }
+@media(max-width:760px) and (min-height:551px) {
+ .office-room { height:156px; }
+ .office-room .office-access { flex-wrap:wrap; gap:4px; }
+ .office-room .office-access button { padding:8px 10px; }
+ .office-room .study-secretary { bottom:88px; }
+ .office-room .study-desk { bottom:82px; }
+}

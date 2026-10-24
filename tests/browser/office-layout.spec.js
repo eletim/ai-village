@@ -23,11 +23,12 @@ test('desktop split preserves chat, attachments and independent scroll across ev
   const controlled=await page.locator(`#open-${name}`).getAttribute('aria-controls');await expect(page.locator(`#${controlled}`)).toHaveAttribute('aria-hidden','false');
  }
  expect(await top(reports)).toBe(250);
- await page.locator('#open-documents').click();await expect(page.locator('#document-content')).not.toBeEmpty();await page.locator('#close-library').click();await expect(reports).toBeVisible();await expect(page.locator('#open-documents')).toBeFocused();expect(await top(log)).toBe(kept);
+ await page.locator('#open-documents').click();await expect(page.locator('#document-content')).not.toBeEmpty();await page.locator('#close-library').click();await expect(reports).toBeHidden();await expect(page.locator('#request')).toBeFocused();expect(await top(log)).toBe(kept);
  let release;const gate=new Promise(r=>release=r);await page.route('**/api/documents/content?**',async r=>{await gate;await r.fulfill({json:{path:'README.md',content:'遅れて届いた資料'}});});
  await page.locator('#open-documents').click();await page.locator('#open-memo').click();release();await expect(page.locator('#document-content')).toHaveText('遅れて届いた資料');await expect(page.locator('#village-library')).toBeHidden();
  await page.waitForTimeout(1700);await expect(page.locator('.memo-panel')).toBeVisible();await expect(page.locator('.todo-panel')).toBeHidden();
- await page.locator('#open-conversation').focus();await page.keyboard.press('Enter');await expect(page.locator('#request')).toBeFocused();await expect(page.locator('.memo-panel')).toBeVisible();
+ await page.locator('#open-conversation').focus();await page.keyboard.press('Enter');await expect(page.locator('#request')).toBeFocused();await expect(page.locator('.memo-panel')).toBeHidden();
+ await page.locator('#open-memo').click();
  for(const width of [800,1024,1920]) {
   await page.setViewportSize({width,height:768});await expect(chat).toBeVisible();await expect(page.locator('#send')).toBeInViewport();const left=await chat.boundingBox(),right=await page.locator('.office-panels').boundingBox();expect(left.x+left.width).toBeLessThan(right.x);expect(Math.abs(left.width-right.width)).toBeLessThan(2);
  }
@@ -76,3 +77,26 @@ test('conversation report link opens and scrolls only the matching report on des
  await expect(page.locator(`[data-report="${id}"] h3`)).toBeInViewport();await expect(page.locator('.office-conversation')).toBeHidden();await expect(page.locator('#open-reports')).toHaveAttribute('aria-pressed','true');
  await page.route('**/approve',r=>r.fulfill({status:503,json:{error:'接続失敗の検証'}}));await page.locator(`[data-report="${id}"] [data-approve]`).check();await expect(page.locator('#report-notice')).toBeInViewport();await expect(page.locator('#report-notice')).toHaveText('接続失敗の検証');
 });
+
+ test('full width and every close preserve draft, attachment and scroll; secretary state alone controls progress',async({page})=>{
+ const state=await fixture(page);await page.goto('/office');await expect(page.locator('.chat-message')).toHaveCount(30);
+ await page.locator('#request').fill('全幅の下書き');await page.locator('#image-picker').setInputFiles({name:'draft.png',mimeType:'image/png',buffer:png});
+ const log=page.locator('#conversation-log');await log.evaluate(el=>el.scrollTop=120);
+ for(const name of ['reports','documents','memo','todos']) {
+  await page.locator(`#open-${name}`).click();
+  const panel=page.locator('#'+await page.locator(`#open-${name}`).getAttribute('aria-controls'));
+  await panel.getByRole('button',{name:/閉じる/}).click();
+  await expect(page.locator('.office-panels')).toBeHidden();
+  expect((await page.locator('.office-conversation').boundingBox()).width).toBe((await page.locator('.office-workspace').boundingBox()).width);
+  await expect(page.locator('#request')).toHaveValue('全幅の下書き');await expect(page.locator('#attachment-preview img')).toHaveCount(1);expect(await top(log)).toBe(120);
+ }
+ state.jobs[0].phase='working';await expect(page.locator('.thinking-spinner')).toBeHidden();
+ state.secretary.status='thinking';await expect(page.locator('.thinking-spinner')).toBeVisible();await expect(page.locator('#secretary-progress')).toContainText('ミクが考えています');
+ await page.screenshot({path:shots+'study-thinking.png'});
+ await page.emulateMedia({reducedMotion:'reduce'});await expect(page.locator('.thinking-spinner')).toHaveCSS('animation-name','none');
+ await page.route('**/api/state',r=>r.fulfill({status:503,json:{error:'offline'}}));await expect(page.locator('#secretary-progress')).toContainText('接続を確認中');await expect(page.locator('.thinking-spinner')).toBeHidden();
+ await page.unroute('**/api/state');await page.route('**/api/state',r=>r.fulfill({json:state}));await expect(page.locator('.thinking-spinner')).toBeVisible();
+ state.secretary.status='idle';state.secretary.messages.push({id:'error',role:'assistant',content:'応答処理が終了しました',at:'2026-10-24T00:00:00Z'});
+ await expect(page.locator('.thinking-spinner')).toBeHidden();await expect(page.locator('#send')).toBeEnabled();await page.reload();await expect(page.locator('.thinking-spinner')).toBeHidden();
+ await page.screenshot({path:shots+'study-finished.png'});
+ });

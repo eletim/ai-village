@@ -87,6 +87,10 @@ function renderStage() {
   const reviewLabels={held:'報告が届きました · 村長の確認待ち',releasing:'OK済み · Agentを解放中',failed:'OK済み · Agent解放の再試行が必要です',released:'報告はOK済み · Agent解放済み'};
   const phaseLabel=phase==='awaiting_review'?reviewLabels[job.releaseState || 'held']:PHASE_LABELS[phase];
   $('#status').textContent = !online ? 'コアPCへ接続できません' : live.secretary?.status==='thinking' ? 'ミクが考えています…' : '相談も、質問も、いつでもどうぞ';
+  const thinking = online && live.secretary?.status === 'thinking';
+  const progressText = !online ? '接続を確認中です。ミクの応答状況は再接続後に確認します。' : thinking ? 'ミクが考えています…' : '';
+  if ($('#secretary-progress-text').textContent !== progressText) $('#secretary-progress-text').textContent = progressText;
+  $('.thinking-spinner').hidden = !thinking;
   $('#chapter-text').textContent = online ? phaseLabel : '接続を確認してください';
   $('#speech').hidden = !!live.secretary?.messages?.some(message=>message.role==='user'||message.role==='assistant');
   $('#speech').textContent = !online ? 'コアPCとの接続を確認してください。会話と資料は保存されています。' : '村長、おかえりなさい。相談や質問から始めましょう。仕事を進めると決まったら、工房へ伝えます。';
