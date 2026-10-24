@@ -3,7 +3,7 @@ import {mkdir} from 'node:fs/promises';
 const shots=new URL('../../../verification/',import.meta.url).pathname;
 test('TODO is shared by independent browsers, survives reload, handles edit conflict without starting work',async({page,browser,request})=>{
  const context=await browser.newContext(),other=await context.newPage();
- await page.goto('/office');await other.goto('/office');
+ await page.goto('/office');await other.goto('/office');await page.locator('#open-todos').click();await other.locator('#open-todos').click();
  const original=await (await request.get('/api/state')).json();
  await page.getByLabel('TODOの内容').fill('端末間共有');await page.getByRole('button',{name:'TODOを追加',exact:true}).click();
  const row=page.locator('#todo-list li').filter({hasText:'端末間共有'}),remote=other.locator('#todo-list li').filter({hasText:'端末間共有'});
@@ -12,7 +12,7 @@ test('TODO is shared by independent browsers, survives reload, handles edit conf
  await page.getByLabel('TODOの内容').fill('競合しても入力保持');await page.getByRole('button',{name:'変更を保存'}).click();
  await expect(page.locator('#todo-notice')).toContainText('別の端末');await expect(page.getByLabel('TODOの内容')).toHaveValue('競合しても入力保持');
  await row.getByRole('button',{name:'編集',exact:true}).click();await page.getByLabel('TODOの内容').fill('更新済み');await page.getByRole('button',{name:'変更を保存'}).click();
- await other.reload();await expect(other.locator('#todo-list')).toContainText('更新済み');
+ await other.reload();await expect(other.locator('.todo-panel')).toBeHidden();await other.locator('#open-todos').click();await expect(other.locator('#todo-list')).toContainText('更新済み');
  await other.locator('#todo-list li').filter({hasText:'更新済み'}).getByRole('checkbox').uncheck();
  await expect(page.locator('#todo-list li').filter({hasText:'更新済み'}).getByRole('checkbox')).not.toBeChecked();
  const edited=page.locator('#todo-list li').filter({hasText:'更新済み'});await edited.getByRole('button',{name:'編集',exact:true}).click();await page.getByLabel('TODOの内容').fill('完了変更でも残る下書き');await edited.getByRole('checkbox').check();await expect(page.locator('#todo-notice')).toContainText('保存しました');await expect(page.getByLabel('TODOの内容')).toHaveValue('完了変更でも残る下書き');await page.locator('#todo-cancel').click();
@@ -57,7 +57,7 @@ test('theme persistence, system changes, desktop/mobile/landscape and keyboard-s
  }
 });
 test('TODO save failure preserves draft and reports failure',async({page})=>{
- await page.goto('/office');await expect(page.locator('#todo-save')).toBeEnabled();
+ await page.goto('/office');await page.locator('#open-todos').click();await expect(page.locator('#todo-save')).toBeEnabled();
  await page.route('**/api/todos',route=>route.request().method()==='POST'?route.fulfill({status:500,json:{error:'保存失敗の検証'}}):route.continue());
  await page.getByLabel('TODOの内容').fill('失敗しても残る入力');await page.locator('#todo-save').click();await expect(page.locator('#todo-notice')).toContainText('保存失敗');await expect(page.getByLabel('TODOの内容')).toHaveValue('失敗しても残る入力');
 });
@@ -76,7 +76,7 @@ test('memo empty state, safe text rendering, saved reply refresh and responsive 
  memo={updatedAt:'2026-10-24T00:00:00Z',value:{topic:'<img src=x onerror=alert(1)>',purpose:'村長と進めること',decisions:'共有TODO',permissions:'村長発言の参照',unfinished:'確認待ち',references:'manual.md'}};
  await expect(page.locator('#secretary-memo dt')).toHaveCount(6);await expect(page.locator('#secretary-memo')).toContainText('<img src=x');await expect(page.locator('#secretary-memo img')).toHaveCount(0);
  for(const [device,width,height] of [['desktop',1440,1050],['mobile',390,844]])for(const theme of ['light','dark']){
-  await page.setViewportSize({width,height});await page.getByLabel('配色',{exact:true}).selectOption(theme);await page.locator('.memo-panel').scrollIntoViewIfNeeded();
+  await page.setViewportSize({width,height});await page.getByLabel('配色',{exact:true}).selectOption(theme);await page.locator('#open-memo').click();await page.locator('.memo-panel').scrollIntoViewIfNeeded();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   await page.screenshot({path:shots+`${device}-${theme}-memo.png`,fullPage:true});
  }

@@ -1,3 +1,4 @@
+import { selectOfficePanel, closeOfficeLibrary } from './office-panels.js';
 let current='README.md', root='';
 const $=selector=>document.querySelector(selector);
 async function get(url) { const response=await fetch(url,{cache:'no-store'});const body=await response.json();if(!response.ok)throw new Error(body.error);return body; }
@@ -9,14 +10,16 @@ async function catalog() {
   }));
 }
 export async function openDocument(path='README.md') {
-  $('#village-library').hidden=false;$('#library-error').textContent='';
+  selectOfficePanel('documents');$('#library-error').textContent='';
   try {
     await catalog();const doc=await get(`/api/documents/content?path=${encodeURIComponent(path)}`);current=doc.path;
     $('#document-name').textContent=doc.path;$('#document-location').textContent=`原本：${root}/${doc.path}`;$('#document-content').textContent=doc.content;
-    $('#document-list').querySelectorAll('button').forEach(button=>button.classList.toggle('selected',button.dataset.document===doc.path));
+    $('#document-list').querySelectorAll('button').forEach(button=>{
+      const selected=button.dataset.document===doc.path;
+      button.classList.toggle('selected',selected);button.setAttribute('aria-current',String(selected));
+    });
   } catch(error){$('#library-error').textContent=error.message;}
-  $('#village-library').scrollIntoView({behavior:'smooth',block:'start'});
 }
 export function openLibrary(){return openDocument('README.md');}
-document.querySelector('#close-library').addEventListener('click',()=>{$('#village-library').hidden=true;});
+document.querySelector('#close-library').addEventListener('click',closeOfficeLibrary);
 document.querySelector('#refresh-document').addEventListener('click',()=>openDocument(current));

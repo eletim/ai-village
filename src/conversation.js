@@ -1,3 +1,4 @@
+import { selectOfficePanel } from './office-panels.js';
 import { isOnDesk } from './job-state.js';
 import { escape } from './office.js';
 // Secretary prose stays plain text; only local artifact downloads become links.
@@ -30,8 +31,12 @@ export function renderConversation(secretary, openDocument, jobs = []) {
   }).join('');
   log.querySelectorAll('[data-read-document]').forEach(button=>button.addEventListener('click',()=>openDocument(button.dataset.readDocument)));
   log.querySelectorAll('[data-job]').forEach(button=>button.addEventListener('click',()=>{
+    selectOfficePanel('reports');
     const report=document.querySelector(`[data-report="${CSS.escape(button.dataset.job)}"]`);
-    (report||document.querySelector('.office-inbox')).scrollIntoView({behavior:'smooth',block:'start'});
+    if(report) {
+      const inbox=document.querySelector('.office-inbox');
+      inbox.scrollTop+=report.getBoundingClientRect().top-inbox.getBoundingClientRect().top-inbox.clientTop;
+    }
   }));
   log.querySelectorAll('.chat-images img').forEach(img=>img.addEventListener('error',()=>{const notice=document.createElement('span');notice.className='operation-error';notice.textContent='画像を表示できません。保存画像が見つからないか、接続に失敗しました。';img.replaceWith(notice);}));
   if (nearBottom) log.scrollTop=log.scrollHeight;

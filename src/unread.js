@@ -15,7 +15,7 @@ function check(){
   if(!read)return;
   let changed=false;
   const log=document.querySelector('#conversation-log'),bounds=log.getBoundingClientRect();
-  if(document.visibilityState==='visible'&&!document.querySelector('#office-page').hidden){
+  if(document.visibilityState==='visible'&&!document.querySelector('#office-page').hidden&&log.getClientRects().length&&bounds.height>0){
     for(const message of messages){const article=log.querySelector(`[data-message="${CSS.escape(message.id)}"]`);if(!article)continue;const rect=article.getBoundingClientRect();
       // Reaching the end of the rendered message counts as reading, including long replies.
       if(rect.bottom>Math.max(0,bounds.top)&&rect.bottom<=Math.min(innerHeight,bounds.bottom)&&rect.right>0&&rect.left<innerWidth&&!read.has(message.id)){mark(message.id);changed=true;}
@@ -41,3 +41,5 @@ export function updateUnread(history){
 }
 document.addEventListener('scroll',check,true);document.addEventListener('visibilitychange',check);window.addEventListener('resize',check);
 window.addEventListener('storage',e=>{if(e.key?.startsWith(prefix)&&e.newValue){read.add(e.key.slice(prefix.length));check();}});
+
+document.addEventListener('office-panel-change',()=>requestAnimationFrame(check));

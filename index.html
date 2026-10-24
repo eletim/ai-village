@@ -12,12 +12,13 @@
     <div class="study-desk"><span class="desk-cup">☕</span><span class="desk-pen">✎</span><button id="desk-reports" class="desk-papers" aria-label="届いた報告書を読む">▤<span id="desk-report-count">報告書を受け取る机</span></button></div>
     <div class="study-plant"><span>♣</span><i></i></div><p class="room-caption">「おかえりなさい、村長。今日はどんなことを話しましょう？」</p>
   </section>
-  <nav class="office-access" aria-label="執務室の机"><button id="open-conversation">♙ ミクと話す</button><button id="open-reports">▤ 届いた報告書</button><button id="open-documents">▥ 村の資料</button></nav>
+  <nav class="office-access" aria-label="執務室の机"><button id="open-conversation">♙ ミクと話す</button><button id="open-reports">▤ 届いた報告書</button><button id="open-documents">▥ 村の資料</button><button id="open-memo">秘書のメモ</button><button id="open-todos">TODO</button></nav>
+  <div class="office-workspace"><section id="office-conversation" class="office-conversation" aria-label="秘書との会話"><div class="office-section-heading"><h2>ミクと話す</h2><span>SECRETARY</span></div><div id="office-secretary"></div><p id="office-notice" role="status" class="office-notice"></p></section>
+  <div class="office-panels">
   <section id="village-library" class="village-library" aria-label="村の資料" hidden><div class="office-section-heading"><h2>村の資料</h2><button id="close-library" aria-label="資料を閉じる">閉じる ×</button></div><p class="library-intro">村長とミクが読む、同じMarkdownの原本です。</p><div class="library-layout"><nav id="document-list" aria-label="資料の目次"></nav><article class="document-paper"><div class="document-toolbar"><b id="document-name"></b><button id="refresh-document">資料を読み直す ↻</button></div><p id="document-location"></p><pre id="document-content"></pre></article></div><p id="library-error" role="status"></p></section>
-  <section class="memo-panel" aria-label="秘書のメモ"><h2>秘書のメモ</h2><p>会話を引き継ぐための参照です。操作許可の原本ではありません。</p><p id="memo-status" role="status">読み込み中…</p><dl id="secretary-memo"></dl></section>
-  <section class="todo-panel" aria-label="簡易TODO"><h2>TODO</h2><p>秘書ミクが会話に応じて管理する共有リストです。村長も編集できます。追加しても工房Agentは起動しません。</p><form id="todo-form"><input id="todo-text" aria-label="TODOの内容" maxlength="500" required placeholder="やることをメモ"><button id="todo-save">TODOを追加</button><button type="button" id="todo-cancel">編集をやめる</button></form><p id="todo-notice" role="status"></p><ul id="todo-list"></ul></section>
-  <div class="office-workspace"><section class="office-conversation" aria-label="秘書との会話"><div class="office-section-heading"><h2>ミクと話す</h2><span>SECRETARY</span></div><div id="office-secretary"></div><p id="office-notice" role="status" class="office-notice"></p></section>
-  <section class="office-inbox" aria-label="届いた報告書"><div class="office-section-heading"><h2>届いた報告書</h2><span id="inbox-count"></span></div><div id="report-inbox"></div></section></div>
+  <section id="office-memo" hidden class="memo-panel" aria-label="秘書のメモ"><h2>秘書のメモ</h2><p>会話を引き継ぐための参照です。操作許可の原本ではありません。</p><p id="memo-status" role="status">読み込み中…</p><dl id="secretary-memo"></dl></section>
+  <section id="office-todos" hidden class="todo-panel" aria-label="簡易TODO"><h2>TODO</h2><p>秘書ミクが会話に応じて管理する共有リストです。村長も編集できます。追加しても工房Agentは起動しません。</p><form id="todo-form"><input id="todo-text" aria-label="TODOの内容" maxlength="500" required placeholder="やることをメモ"><button id="todo-save">TODOを追加</button><button type="button" id="todo-cancel">編集をやめる</button></form><p id="todo-notice" role="status"></p><ul id="todo-list"></ul></section>
+  <section id="office-reports" class="office-inbox" aria-label="届いた報告書"><div class="office-section-heading"><h2>届いた報告書</h2><span id="inbox-count"></span></div><p id="report-notice" class="office-notice" role="alert"></p><div id="report-inbox"></div></section></div></div>
 </main>
 
 <script type="module" src="/src/main.js"></script></body></html>

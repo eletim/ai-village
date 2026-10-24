@@ -1,3 +1,4 @@
+import { initOfficePanels, selectOfficePanel } from './office-panels.js';
 import { refreshMemo } from './memo.js';
 import { initTheme } from './theme.js';
 import { initTodos } from './todos.js';
@@ -143,6 +144,7 @@ $('.side .section-title').after(invitation);
 function navigate(path, push=true) {
   if(push && location.pathname!==path)historyPush(path);
   const office=path.startsWith('/office');
+  document.body.classList.toggle('in-office',office);
   $('#office-page').hidden=!office; $('#village-page').hidden=office;
   document.title=office?'村長の執務室 — AI村':'AI村 — ものづくりのある風景';
   if(office)closeDetail();
@@ -153,19 +155,19 @@ document.addEventListener('click',e=>{const link=e.target.closest('a[data-nav]')
 window.addEventListener('popstate',()=>navigate(location.pathname,false));
 $('#room-library').addEventListener('click',openLibrary);
 $('#open-documents').addEventListener('click',openLibrary);
-$('#open-conversation').addEventListener('click',()=>$('.office-conversation').scrollIntoView({behavior:'smooth',block:'start'}));
-$('#open-reports').addEventListener('click',()=>$('.office-inbox').scrollIntoView({behavior:'smooth',block:'start'}));
-$('#room-secretary').addEventListener('click',()=>{$('#request').focus();$('#request').scrollIntoView({behavior:'smooth',block:'center'});});
-$('#desk-reports').addEventListener('click',()=>$('.office-inbox').scrollIntoView({behavior:'smooth',block:'start'}));
+$('#open-conversation').addEventListener('click',()=>selectOfficePanel('conversation'));
+$('#open-reports').addEventListener('click',()=>selectOfficePanel('reports'));
+$('#room-secretary').addEventListener('click',()=>selectOfficePanel('conversation'));
+$('#desk-reports').addEventListener('click',()=>selectOfficePanel('reports'));
 async function officeAction(url, method='POST') {
   try {
     const response=await fetch(url,{method}); const body=await response.json();
     if(!response.ok)throw new Error(body.error);live=body;online=true;
-    $('#office-notice').textContent='';
-  } catch(error) { $('#office-notice').textContent=error.message; }
+    $('#report-notice').textContent='';
+  } catch(error) { $('#report-notice').textContent=error.message; $('.office-inbox').scrollTop=0; }
   resetOfficeRender();renderStage();
 }
 function cancelJob(id){return officeAction(`/api/jobs/${encodeURIComponent(id)}/cancel`);}
 function approveJob(id){return officeAction(`/api/jobs/${encodeURIComponent(id)}/approve`);}
 function discoverArtifacts(id){return officeAction(`/api/jobs/${encodeURIComponent(id)}/artifacts`,'GET');}
-initTheme();initTodos();navigate(location.pathname,false);renderStage(); poll(); requestAnimationFrame(frame);
+initOfficePanels();initTheme();initTodos();navigate(location.pathname,false);renderStage(); poll(); requestAnimationFrame(frame);
