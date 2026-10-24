@@ -1,0 +1,14 @@
+{
+  "mode": "real Codex + real Chrome + real bwrap",
+  "checks": [
+    "Python PNG creation",
+    "ImageStore registration",
+    "read_image",
+    "reply attachments display",
+    "document download",
+    "restart",
+    "session switch and file retrieval"
+  ],
+  "imageId": "7c7e465d-d4f0-403e-a06b-9518a128ff2d",
+  "reply": "依頼されていた保存済みファイルの確認と調査メモの再取得について、完了しました。PNGとメモの2ファイルが保存されており、メモは「ミクが依頼を整理し、複数工房のAgentが制作・調査・確認を分担して、成果・根拠・未完了点を統合し村長へ返す」という構想です。Computer別の役割は説明用の例で、外部調査や実環境の測定結果ではありません。"
+}

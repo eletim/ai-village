@@ -1,3 +1,4 @@
+import { Scratch } from '../server/scratch.mjs';
 import { PullRequests } from '../server/pull-requests.mjs';
 import { listenAddresses } from '../server/network.mjs';
 import { TodoStore } from '../server/todos.mjs';
@@ -30,7 +31,8 @@ await notifier.init();
 const development = new Development(bridge, library, {port});
 const images = new ImageStore(bridge.dir);
 await images.init();
-const operations = new VillageOperations(bridge, notifier, {web:new WebReader(),development,images,todos,prs:new PullRequests(bridge.dir,library)});
+const scratch = new Scratch(bridge.dir, images);
+const operations = new VillageOperations(bridge, notifier, {scratch,web:new WebReader(),development,images,todos,prs:new PullRequests(bridge.dir,library)});
 const secretariat = new Secretariat(bridge, library, operations, notifier, images);
 await secretariat.init();
 development.watch(secretariat);
@@ -57,6 +59,12 @@ const handleRequest = async (req, res) => {
       if (req.method === 'GET' && pathname === '/api/state') return json(res, 200, await snapshot());
       if (req.method === 'GET' && pathname === '/api/documents') return json(res, 200, { root: library.root, documents: await library.catalog() });
       if (req.method === 'GET' && pathname === '/api/documents/content') return json(res, 200, await library.read(new URL(req.url, 'http://localhost').searchParams.get('path')));
+      const downloadRoute = pathname.match(/^\/api\/secretary-files\/([0-9a-f-]{36})$/);
+      if(req.method==='GET' && downloadRoute) {
+        const file=await scratch.download(downloadRoute[1]);
+        res.writeHead(200,{'Content-Type':'application/octet-stream','Content-Disposition':`attachment; filename*=UTF-8''${encodeURIComponent(file.name)}`,'X-Content-Type-Options':'nosniff','Content-Security-Policy':"sandbox; default-src 'none'",'Cache-Control':'no-store'});
+        res.end(file.bytes);return;
+      }
       const imageRoute = pathname.match(/^\/api\/images\/([0-9a-f-]{36})$/);
       if (req.method === 'GET' && imageRoute) {
         const content = await images.content(imageRoute[1]);

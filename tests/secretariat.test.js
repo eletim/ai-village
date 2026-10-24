@@ -277,7 +277,7 @@ test('reporting policy reaches new and legacy resumed sessions; detail requests 
   await send(secretary,'続き');
   assert.ok(calls[1].args.includes('resume'));assert.match(calls[1].input,/原則1〜3文/);
   assert.match(calls[1].input,/既存の仕事・反映・会話記録や成果物を参照/);
-  assert.equal(secretary.session.protocolVersion,5);
+  assert.equal(secretary.session.protocolVersion,6);
   await send(secretary,'commitと検証結果の詳細を教えて');
   assert.doesNotMatch(calls[2].input,/会話方式の更新/);
   assert.equal(secretary.messages.at(-1).content,detailed);
