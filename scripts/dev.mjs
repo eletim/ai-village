@@ -1,3 +1,4 @@
+import { listenAddresses } from '../server/network.mjs';
 import { TodoStore } from '../server/todos.mjs';
 import { accessPolicy } from '../server/access.mjs';
 import { ImageStore, MAX_IMAGE_BYTES } from '../server/images.mjs';
@@ -16,7 +17,8 @@ import { WorkshopBridge } from '../server/bridge.mjs';
 const args = process.argv.slice(2);
 const value = (name, fallback) => { const i = args.indexOf(name); return i < 0 ? fallback : args[i + 1]; };
 const port = Number(value('--port', 5173)), host = value('--host', '127.0.0.1'), root = resolve('.');
-const allowRequest = await accessPolicy({host,port});
+const addresses = listenAddresses({host});
+const allowRequest = await accessPolicy({host:addresses[0],port,vpnAddress:addresses.find(address=>address.startsWith('100.'))});
 const library = new VillageLibrary();
 const bridge = new WorkshopBridge({ library });
 await bridge.init();
@@ -35,7 +37,7 @@ const instanceId=randomUUID(), runningCommit=(await run('git',['rev-parse','HEAD
 const snapshot = async () => ({ ...bridge.snapshot(), workshops: await library.workshops(), secretary: secretariat.snapshot() });
 const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };
 const json = (res, status, body) => { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(body)); };
-const server = createServer(async (req, res) => {
+const handleRequest = async (req, res) => {
   try {
     if(!allowRequest(req,res))return;
     const pathname = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
@@ -110,6 +112,9 @@ const server = createServer(async (req, res) => {
     if (error.code === 'ENOENT') { res.writeHead(404); res.end('Not found'); }
     else json(res, error.status || 500, { error: error.message });
   }
-});
-server.on('error', error => { console.error(error.message); process.exit(1); });
-server.listen(port, host, () => console.log(`AI村 → http://${host}:${port}`));
+};
+for (const address of addresses) {
+  const server = createServer(handleRequest);
+  server.on('error', error => { console.error(error.message); process.exit(1); });
+  server.listen(port, address, () => console.log(`AI村 → http://${address}:${port}`));
+}

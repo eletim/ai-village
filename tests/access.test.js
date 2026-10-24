@@ -21,3 +21,14 @@ test('VPN proxy requires explicit HTTPS origin and authentication; reject forged
  assert.deepEqual(probe({host:'localhost:1234','x-forwarded-host':'village.example'}),[false,401]);
  }finally{await rm(dir,{recursive:true,force:true});}
 });
+
+test('direct VPN listener accepts only VPN peers and exact Host/Origin',async()=>{
+ const allow=await accessPolicy({host:'127.0.0.1',port:5173,vpnAddress:'100.78.154.38'});
+ const probe=(headers,remoteAddress='100.80.1.2',localAddress='100.78.154.38')=>{let status=200;const ok=allow({headers,socket:{localAddress,remoteAddress}},{writeHead(code){status=code;},end(){}});return [ok,status];};
+ assert.deepEqual(probe({host:'100.78.154.38:5173',origin:'http://100.78.154.38:5173'}),[true,200]);
+ assert.deepEqual(probe({host:'100.78.154.38:5173'},'192.168.11.2'),[false,403]);
+ assert.deepEqual(probe({host:'100.78.154.38:5173'},'127.0.0.1','127.0.0.1'),[false,403]);
+ assert.deepEqual(probe({host:'attacker.example'}),[false,403]);
+ assert.deepEqual(probe({host:'100.78.154.38:5173',origin:'https://attacker.example'}),[false,403]);
+ assert.deepEqual(probe({host:'localhost:5173'},'127.0.0.1','127.0.0.1'),[true,200]);
+});

@@ -361,3 +361,13 @@ Nodeテスト36件、ブラウザテスト6件、構文チェック、ビルド�
 実Codexの独立検証で初回1078文字、同じセッションを復元した続き153文字で合言葉を保持。さらに稼働中の執務室のブラウザから依頼し、初回1864文字、バックエンド再起動後も同じセッションIDで続き182文字となり、直前の合言葉に正答した。元の274メッセージと全仕事の状態が変更されていないことを比較確認した。続いて実資料development.mdをread_documentし、同じセッションの次の判断で開発ブランチを答えた。工房やSSHは起動していない。会話画面も実ブラウザで確認。証拠は.runtime/session-office-evidence.json、session-document-evidence.json、session-office-final.png。
 
 構文チェック、Nodeテスト55件、独立ポートのブラウザテスト9件、ビルドが成功。セッションID・送信済み位置の復元、古い巨大ツール出力とエラーの入力除外、直前の観察結果だけの送信、長い出力の抜粋、詳細エラーの分離、画像入力の継続をテストした。Codexの公式手順 https://learn.chatgpt.com/docs/non-interactive-mode と実機exec resumeのhelp・JSONイベントを確認した。
+
+## 2026-10-24 VPN対応の起動失敗と復旧
+
+村長の「同じVPNからもアクセスできるようにする」という指示に対して、b7d4cfeへ至る工房変更はHTTPSプロキシ手順書を用意したがコアの実ネットワークを構成せず、accessPolicyが既存supervisorの--host 0.0.0.0を拒否していた。00:46 UTC開始の反映795f6bda-4624-484c-8054-7c44814eaa12はコード取込後、起動直後に終了するため再起動確認に失敗。5173はlistenしていなかった。過去の反映記録は失敗の事実を保持し、成功へ書き換えていない。
+
+コアの実インターフェースでVPN IPv4 100.78.154.38とLAN 192.168.11.5を確認。新しいlistenAddressesはlocalhostと割当済みVPN IPv4へ個別にbindする。VILLAGE_VPN_ADDRESSで明示でき、旧--host 0.0.0.0も一意なVPN IPv4を検出してこの2つだけに限定する。全インターフェース・LANへ公開しない。VPN側の実接続元、Host、Originを検証し、既存のHTTPSプロキシ認証モードも維持した。
+
+稼働中の元supervisorが同じ起動引数のまま復旧し、ssで127.0.0.1:5173と100.78.154.38:5173だけのlistenを確認。E-ryzenという別PCから実VPN経由で/api/healthと/officeにHTTP200、異なるOriginで403を確認した。コアの実ChromiumでもlocalhostとVPN URLのスマートフォンサイズの執務室を開き、API状態を読み込めた。村長のWindows実ブラウザとスマートフォン自体は未観察。OSファイアウォール、Tailscale ACL、WSL設定、既存の仕事や成果は変更していない。
+
+構文・Nodeテスト82件・ビルド成功。独立ポートのブラウザテスト17件成功、既存の任意実環境用1件はskip（成功としていない）。割当済みVPNの検出、未割当・複数候補の拒否、LAN bind拒否、非VPN接続元と偽Host/Origin拒否、既存HTTPS認証の維持を自動テストで確認した。詳細はdocs/vpn-access.md。
