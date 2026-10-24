@@ -3,7 +3,7 @@ import { isOnDesk } from './job-state.js';
 import { escape } from './office.js';
 // Secretary prose stays plain text; only local artifact downloads become links.
 function prose(content) {
-  const pattern = /\[([^\]\n]+)\]\((\/api\/jobs\/[0-9a-f-]{36}\/artifact\?path=[^\s)]+)\)/g;
+  const pattern = /\[([^\]\n]+)\]\((\/api\/(?:jobs\/[0-9a-f-]{36}\/artifact\?path=[^\s)]+|secretary-files\/[0-9a-f-]{36}))\)/g;
   let html='', offset=0;
   for (const match of String(content).matchAll(pattern)) {
     html+=escape(content.slice(offset,match.index))+`<a href="${escape(match[2])}" download>${escape(match[1])}</a>`;

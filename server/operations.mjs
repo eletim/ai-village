@@ -6,11 +6,11 @@ import { isOnDesk, isSettled, jobStatus } from '../src/job-state.js';
 // The same registry serves the secretary, HTTP and the human CLI. Adding a village
 // operation doesn't require adding a new LLM action or teaching a keyword router.
 export class VillageOperations {
-  constructor(bridge, notifier, {web, development, images, todos, prs, tools} = {}) {
+  constructor(bridge, notifier, {web, development, images, todos, prs, tools, scratch} = {}) {
     this.bridge = bridge;
     const detail = id => this.describe(bridge.jobById(id));
     this.commands = [
-      ...(prs?.commands() || []), ...(tools?.commands() || []),
+      ...(scratch?.commands() || []), ...(prs?.commands() || []), ...(tools?.commands() || []),
       {name:'operations list',usage:'operations list',run:()=>this.secretariat.operationLog.map(({key,state,action,turnId})=>({key,state,action,turnId}))},
       {name:'operations get',usage:'operations get KEY',run:a=>this.secretariat.operationLog.find(o=>o.key===a[0])||{error:'記録がありません。'}},
       {name:'operations reconcile',usage:'operations reconcile KEY',mutation:true,recovery:true,run:a=>this.secretariat.reconcile(a[0])},
