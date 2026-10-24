@@ -266,3 +266,19 @@ test('memo snapshot projects only committed six fields and timestamp, including 
  const saved=JSON.parse(await readFile(join(dir,'conversation.json')));saved.memo.value.extra='PRIVATE';await writeFile(join(dir,'conversation.json'),JSON.stringify(saved));assert.deepEqual(await secretary.memoSnapshot(),{memo:null});
  await writeFile(join(dir,'conversation.json'),'broken PRIVATE_SECRET');await assert.rejects(secretary.memoSnapshot(),error=>!error.message.includes('PRIVATE'));
 });
+
+test('reporting policy reaches new and legacy resumed sessions; detail requests retain full generated answers',async()=>{
+  const {secretary}=await setup();
+  const detailed='確認したcommitは'+ 'a'.repeat(40)+'です。\n'+'検証の詳細。'.repeat(100);
+  const calls=mockCodex(secretary,async n=>({choice:{message:n===3?detailed:'依頼されていた修正について、完了しました。'}}));
+  await send(secretary,'修正を報告して');
+  assert.match(calls[0].input,/原則1〜3文/);assert.match(calls[0].input,/未確認を成功と言わない/);
+  secretary.session.protocolVersion=4;
+  await send(secretary,'続き');
+  assert.ok(calls[1].args.includes('resume'));assert.match(calls[1].input,/原則1〜3文/);
+  assert.match(calls[1].input,/既存の仕事・反映・会話記録や成果物を参照/);
+  assert.equal(secretary.session.protocolVersion,5);
+  await send(secretary,'commitと検証結果の詳細を教えて');
+  assert.doesNotMatch(calls[2].input,/会話方式の更新/);
+  assert.equal(secretary.messages.at(-1).content,detailed);
+});

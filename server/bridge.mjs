@@ -1,3 +1,4 @@
+import { workshopReportPrompt } from './reporting-policy.mjs';
 import { spawn } from 'node:child_process';
 import { mkdir, readFile, writeFile, rename, readdir, appendFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
@@ -204,7 +205,7 @@ export class WorkshopBridge {
     this.assertRunning();
     await this.inspectResult?.(this.job);
     this.assertRunning();
-    const report = await this.secretary('report', `あなたはAI村の秘書ミクです。人間にわかりやすく日本語で成果を報告してください。表示先はプレーンテキストです。Markdown記法を使わず短い段落で書いてください。以下は工房Agentから受け取った自然文です。依頼・成果・保存場所・Agentが実際に行った確認・残る問題を簡潔に説明してください。自分が検証したとは言わず、工房からの報告であることを示してください。工房が失敗や未完了を報告していたら正直に伝えてください。追加の作業やツール実行は不要です。\n村開発の構造化された確認結果（工房のPushとコアへの反映は別。applied未記録なら村へ反映済みと書かない）:\n${JSON.stringify(this.job.development || null)}\n人間の依頼:\n${this.job.request}\n作業ディレクトリ:\n${this.job.cwd}\n工房の報告:\n${this.job.output}`);
+    const report = await this.secretary('report', workshopReportPrompt(this.job));
     this.assertRunning();
     let artifacts = [], artifactError = null;
     try { artifacts = await this.listArtifacts(this.job); } catch (error) { artifactError = error.message; }
