@@ -295,7 +295,10 @@ print(base64.b64encode(data).decode())`;
   approve(id) {
     const job = this.jobById(id);
     if (job.cancelRequestedAt) throw Object.assign(new Error('キャンセルの停止確認を先に完了してください。'), {status:409});
-    if (job.releaseState === 'released') return Promise.resolve(this.snapshot());
+    if (job.releaseState === 'released') {
+      if(job.retiredForHandoffAt && job.report && !job.approvedAt) {const at=new Date().toISOString();return this.update({approvedAt:at,deskClearedAt:at},job).then(()=>this.snapshot());}
+      return Promise.resolve(this.snapshot());
+    }
     if (this.releases.has(id)) return this.releases.get(id);
     if (job.phase !== 'awaiting_review' || !job.report) throw Object.assign(new Error('報告が届いてからOKを出してください。'), { status: 409 });
     const operation = (async () => {
