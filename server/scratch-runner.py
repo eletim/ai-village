@@ -10,7 +10,7 @@ resource.setrlimit(resource.RLIMIT_FSIZE, (8*1024*1024,)*2)
 resource.setrlimit(resource.RLIMIT_NOFILE, (64, 64))
 # Fail closed before evaluating code. No processes/threads, new namespaces,
 # network sockets, ptrace or filesystem mounts can be created by user code.
-lib = ctypes.CDLL('libseccomp.so.2')
+lib = ctypes.CDLL('/runtime/libseccomp.so.2' if os.path.isfile('/runtime/libseccomp.so.2') else 'libseccomp.so.2')
 lib.seccomp_init.restype = ctypes.c_void_p
 lib.seccomp_rule_add.argtypes = [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_int, ctypes.c_uint]
 lib.seccomp_load.argtypes = [ctypes.c_void_p]

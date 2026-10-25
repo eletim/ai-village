@@ -1,6 +1,7 @@
+import {scratchEnvironment} from '../../scripts/scratch-config.mjs';
 import {test,expect} from '@playwright/test';
 import {randomUUID} from 'node:crypto';
-const runtime=process.env.VILLAGE_SCRATCH_RUNTIME;
+const runtime=scratchEnvironment().VILLAGE_SCRATCH_RUNTIME;
 test('scratch document download remains inert and local links render safely',async({page,request})=>{
  const operation=async argv=>(await(await request.post('/api/village',{data:{argv}})).json());
  expect((await operation(['work','write','notes.html','<script>window.pwned=true</script>資料'])).ok).toBe(true);

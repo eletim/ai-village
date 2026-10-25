@@ -1,3 +1,4 @@
+import {scratchEnvironment} from '../scripts/scratch-config.mjs';
 import { mkdir, readFile, writeFile, rename, readdir, mkdtemp, rm } from 'node:fs/promises';
 import { resolve, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -9,11 +10,12 @@ const runner = fileURLToPath(new URL('./scratch-runner.py', import.meta.url));
 const valid = name => typeof name==='string' && /^[\p{L}\p{N}_-][\p{L}\p{N}_. -]{0,119}$/u.test(name);
 const idOK = id => /^[0-9a-f-]{36}$/.test(id);
 export class Scratch {
-  constructor(dir, images, runtime=process.env.VILLAGE_SCRATCH_RUNTIME) { this.root=resolve(dir,'secretary-work'); this.images=images; this.runtime=runtime; this.busy=false; this.ready=false; }
+  constructor(dir, images, runtime=process.env.VILLAGE_SCRATCH_RUNTIME) { this.root=resolve(dir,'secretary-work'); this.images=images; try{this.settings=scratchEnvironment();this.runtime=runtime ?? this.settings.VILLAGE_SCRATCH_RUNTIME;}catch(e){this.configError=e.message;this.settings={};this.runtime='';} this.busy=false; this.ready=false; }
   async prepare() {
     this.ready=false;
+    if(this.configError)return this.availability={available:false,reason:this.configError,checks:[]};
     if(!this.runtime)return this.availability={available:false,reason:'VILLAGE_SCRATCH_RUNTIME 未設定。隔離実行は無効です。',checks:[]};
-    if(!isAbsolute(this.runtime) || (process.env.VILLAGE_SCRATCH_BWRAP && !isAbsolute(process.env.VILLAGE_SCRATCH_BWRAP)))return this.availability={available:false,reason:'runtime/bwrap は反映worktreeに依存しない絶対パスが必要です。',checks:[]};
+    if(!isAbsolute(this.runtime) || (this.settings.VILLAGE_SCRATCH_BWRAP && !isAbsolute(this.settings.VILLAGE_SCRATCH_BWRAP)))return this.availability={available:false,reason:'runtime/bwrap は反映worktreeに依存しない絶対パスが必要です。',checks:[]};
     let dir;
     try {
       dir=await mkdtemp(resolve(tmpdir(),'village-scratch-probe-'));
@@ -53,14 +55,16 @@ im.save('probe.png')`);
     const record={id,state:'running',at:new Date().toISOString(),codeHash:createHash('sha256').update(code).digest('hex')};
     try {
       await this.save('run-'+id,record);
+      if(this.configError)throw Error(this.configError);
+      if(this.settings.VILLAGE_SCRATCH_FONT && !isAbsolute(this.settings.VILLAGE_SCRATCH_FONT))throw Error('font must be absolute');
       if(!this.runtime)throw Error('VILLAGE_SCRATCH_RUNTIME 未設定');
       const args=['--unshare-all','--die-with-parent','--new-session','--cap-drop','ALL','--clearenv','--setenv','PATH','/usr/bin','--setenv','PYTHONPATH','/runtime','--setenv','HOME','/work',
-        '--ro-bind','/usr/bin','/usr/bin','--ro-bind','/usr/lib','/usr/lib','--ro-bind','/lib','/lib','--ro-bind','/lib64','/lib64','--ro-bind','/usr/share/fonts','/usr/share/fonts',
+        '--ro-bind','/usr/bin','/usr/bin','--ro-bind','/usr/lib','/usr/lib','--ro-bind','/lib','/lib','--ro-bind','/lib64','/lib64','--ro-bind',this.settings.VILLAGE_SCRATCH_FONT ?? '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc','/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
         '--ro-bind',resolve(this.runtime),'/runtime','--ro-bind',runner,'/runner.py','--proc','/proc','--dir','/dev','--ro-bind','/dev/null','/dev/null','--ro-bind','/dev/urandom','/dev/urandom','--size','67108864','--tmpfs','/work','--remount-ro','/','--chdir','/work','/usr/bin/python3','-B','/runner.py'];
       const snapshot=await this.files(); this.validate(snapshot);
       if(this.cancelled)throw Error('cancelled');
       const result=await new Promise((accept,reject)=>{
-        const child=spawn(process.env.VILLAGE_SCRATCH_BWRAP || '/usr/bin/bwrap',args,{env:{},stdio:['pipe','pipe','pipe']});let output=[],size=0,killed=false;
+        const child=spawn(this.settings.VILLAGE_SCRATCH_BWRAP ?? '/usr/bin/bwrap',args,{env:{},stdio:['pipe','pipe','pipe']});let output=[],size=0,killed=false;
         const timer=setTimeout(()=>{killed=true;child.kill('SIGKILL');},10000);
         child.stdout.on('data',chunk=>{size+=chunk.length;if(size>24*1024*1024){killed=true;child.kill('SIGKILL');}else output.push(chunk);});
         let stderr=[],stderrBytes=0;child.stderr.on('data',chunk=>{stderrBytes+=chunk.length;if(stderrBytes<=16000)stderr.push(chunk);if(stderrBytes>16000){killed=true;child.kill('SIGKILL');}});child.stdin.on('error',()=>{});

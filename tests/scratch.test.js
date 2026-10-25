@@ -1,3 +1,4 @@
+import {scratchEnvironment} from '../scripts/scratch-config.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp, rm} from 'node:fs/promises';
@@ -6,7 +7,7 @@ import {resolve} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {Scratch} from '../server/scratch.mjs';
 import {ImageStore} from '../server/images.mjs';
-const runtime=process.env.VILLAGE_SCRATCH_RUNTIME;
+const runtime=scratchEnvironment().VILLAGE_SCRATCH_RUNTIME;
 test('scratch validates paths, persists files and downloads, retains unknown executions',async()=>{
  const dir=await mkdtemp(resolve(tmpdir(),'scratch-'));try{
  const s=new Scratch(dir,new ImageStore(dir));const write=s.commands().find(c=>c.name==='work write');
@@ -25,7 +26,7 @@ test('real bwrap/seccomp isolation, limits, persistence and PNG', {skip:!runtime
  const dir=await mkdtemp(resolve(tmpdir(),'scratch-'));try{
  const s=new Scratch(dir,new ImageStore(dir),runtime);
  const run=code=>s.execute(randomUUID(),code);
- let result=await run(`import os, socket\nassert not os.path.exists('/home')\nassert not os.path.exists('/etc')\nassert not os.path.exists('/proc/1/root/home')\nassert not os.path.exists('/runtime/../runner-secrets')\nassert 'SSH_AUTH_SOCK' not in os.environ\nfor action in [os.fork, lambda: socket.socket(), lambda: open('/outside','w')]:\n try: action()\n except OSError: pass\n else: raise Exception('boundary')\nopen('memo.txt','w').write('日本語')\nprint('isolated')`);
+ let result=await run(`import os, socket\nassert not os.path.exists('/home')\nassert not os.path.exists('/etc')\nassert not os.path.exists('/proc/1/root/home')\nassert not os.path.exists('/runtime/../runner-secrets')\nassert 'SSH_AUTH_SOCK' not in os.environ\nassert os.listdir('/usr/share/fonts/opentype/noto') == ['NotoSansCJK-Regular.ttc']\nfor action in [os.fork, lambda: socket.socket(), lambda: open('/outside','w'), lambda: open('/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc','wb')]:\n try: action()\n except OSError: pass\n else: raise Exception('boundary')\nopen('memo.txt','w').write('日本語')\nprint('isolated')`);
  assert.equal(result.state,'succeeded',JSON.stringify(result));assert.equal(result.output.trim(),'isolated');
  assert.equal((await new Scratch(dir).files())['memo.txt'],Buffer.from('日本語').toString('base64'));
  result=await run("import os\nos.symlink('/etc/passwd','link')");assert.equal(result.state,'failed');
@@ -101,7 +102,7 @@ test('disabled scratch does not advertise execution or remove trusted workspace,
 
 test('deployment diagnosis distinguishes disabled from required or broken equipment and exits nonzero for missing required verification',async()=>{
  const {spawnSync}=await import('node:child_process');
- const env={...process.env};for(const key of ['VILLAGE_SCRATCH_RUNTIME','VILLAGE_SCRATCH_BWRAP','VILLAGE_SCRATCH_REQUIRED'])delete env[key];
+ const env={...process.env,VILLAGE_SCRATCH_CONFIG:''};for(const key of ['VILLAGE_SCRATCH_RUNTIME','VILLAGE_SCRATCH_BWRAP','VILLAGE_SCRATCH_FONT','VILLAGE_SCRATCH_REQUIRED'])delete env[key];
  const probe=(args=[],extra={})=>spawnSync(process.execPath,['scripts/diagnose-scratch.mjs',...args],{env:{...env,...extra},encoding:'utf8'});
  let result=probe(['--deployment']);assert.equal(result.status,0);assert.equal(JSON.parse(result.stdout).verification,'NOT RUN');assert.equal(JSON.parse(result.stdout).available,false);
  result=probe();assert.equal(result.status,1);assert.match(result.stdout,/未設定/);

@@ -12,7 +12,8 @@
     "test:ui": "playwright test",
     "scratch:setup": "sh scripts/setup-scratch.sh",
     "scratch:doctor": "node scripts/diagnose-scratch.mjs",
-    "test:scratch": "node scripts/require-scratch.mjs"
+    "test:scratch": "node scripts/require-scratch.mjs",
+    "scratch:preflight": "node scripts/preflight-scratch.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.64.1"

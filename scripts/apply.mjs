@@ -1,4 +1,5 @@
-// Copied to the durable deployment directory before launch. No project imports:
+import {scratchEnvironment} from './scratch-config.mjs';
+// Copied with scratch-config.mjs to the durable deployment directory before launch:
 // a checkout/restart cannot replace the code currently managing this operation.
 import { readFile,writeFile,rename,mkdir,access } from 'node:fs/promises';
 import { resolve } from 'node:path';
@@ -17,7 +18,7 @@ let candidate;
 try{
   // Keep credentials out of logs; failure is recorded by the deployment catch.
   const probeHeaders=process.env.VILLAGE_PUBLIC_ORIGIN ? {Authorization:'Basic '+Buffer.from((await readFile(process.env.VILLAGE_AUTH_FILE,'utf8')).trim()).toString('base64')} : {};
-  const testEnv={...process.env,VILLAGE_PUBLIC_ORIGIN:'',VILLAGE_AUTH_FILE:''};
+  const testEnv={...scratchEnvironment(process.env,record.stateDir),VILLAGE_PUBLIC_ORIGIN:'',VILLAGE_AUTH_FILE:''};
   const stat=await readFile(`/proc/${process.pid}/stat`,'utf8');
   await save({phase:'checking',workerPid:process.pid,workerStart:stat.slice(stat.lastIndexOf(')')+2).split(' ')[19],checks:[]});
   const supervisor=JSON.parse(await readFile(resolve(record.stateDir,'supervisor.json'),'utf8'));process.kill(supervisor.pid,0);
@@ -32,9 +33,10 @@ try{
   const hasScratch=await access(resolve(candidate,'scripts/diagnose-scratch.mjs')).then(()=>true,()=>false);
   if(hasScratch){
     await command(process.execPath,['scripts/diagnose-scratch.mjs','--deployment'],candidate,testEnv);
-    if(testEnv.VILLAGE_SCRATCH_RUNTIME || testEnv.VILLAGE_SCRATCH_BWRAP || testEnv.VILLAGE_SCRATCH_REQUIRED){
+    if(testEnv.VILLAGE_SCRATCH_RUNTIME || testEnv.VILLAGE_SCRATCH_BWRAP || testEnv.VILLAGE_SCRATCH_FONT || testEnv.VILLAGE_SCRATCH_REQUIRED){
       testEnv.VILLAGE_SCRATCH_REQUIRED='1';
-      await command('npm',['run','test:scratch'],candidate,testEnv);
+      const preflight=await access(resolve(candidate,'scripts/preflight-scratch.mjs')).then(()=>true,()=>false);
+      await command('npm',['run',preflight?'scratch:preflight':'test:scratch'],candidate,testEnv);
     }
   }
   await command('npm',['run','check'],candidate);await command('npm',['test'],candidate,testEnv);
@@ -52,6 +54,7 @@ try{
   while(Date.now()<deadline){try{
     const health=await(await fetch(record.healthUrl+'/api/health',{headers:probeHeaders,signal:AbortSignal.timeout(2000)})).json();
     if(health.commit!==record.targetCommit||health.instanceId===before.instanceId)throw new Error('waiting');
+    if((testEnv.VILLAGE_SCRATCH_RUNTIME || testEnv.VILLAGE_SCRATCH_BWRAP || testEnv.VILLAGE_SCRATCH_FONT || testEnv.VILLAGE_SCRATCH_REQUIRED) && !health.scratch?.available)throw new Error('scratch unavailable after restart');
     const office=await fetch(record.healthUrl+'/office',{headers:probeHeaders,signal:AbortSignal.timeout(3000)});if(!office.ok)throw new Error('office failed');
     const state=await(await fetch(record.healthUrl+'/api/state',{headers:probeHeaders,signal:AbortSignal.timeout(3000)})).json();if(!state.secretary.messages.length||!state.jobs.some(j=>j.id===record.jobId))throw new Error('persisted state missing');
     verified={health,officeStatus:office.status,conversationMessages:state.secretary.messages.length,jobRestored:true};break;

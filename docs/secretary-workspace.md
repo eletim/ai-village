@@ -29,7 +29,9 @@ PNGは既存ImageStoreでデコード検証・再エンコードして登録。`
 
 実行記録・公開snapshotは永続保存するため累積容量は増える。保存上限は各実行と現在の作業ファイルに対するものであり、履歴全体のディスクquota/自動削除は未実装。現行村と同じく1つの状態ディレクトリにつきバックエンド1プロセスで運用する。ホスト障害時のfsyncによる耐電断保証はない。
 
-## 導入と再現
+## 旧版の導入記録（現行手順ではない）
+
+現行のsudo不要bootstrap・永続設定・初回旧worker対策は [コア導入手順](scratch-core-bootstrap.md) を使う。以下は旧成果の経緯であり、古いsetup引数・環境設定・再実行可能という説明は現行には適用しない。
 
 Linux x86_64、Python3、libseccomp.so.2、Noto CJKフォント、bubblewrapの`--size`対応版が必要。今回の工房の既設bubblewrapは`--size`未対応で、当初の実行はfail closedになった。0.11.0を工房内でビルドして成功した。Ubuntuの管理者が事前に必要なシステム依存を用意する場合のパッケージは `python3 python3-pip gcc pkg-config libcap-dev libseccomp2 fonts-noto-cjk`。この仕事ではsudoやホストパッケージ変更をしていない。
 
@@ -65,7 +67,7 @@ node scripts/verify-scratch.mjs
 この工房の成果ルート: `/home/eletim/ai-village-workshop/6c61f1c5-ff96-4683-bad9-98e9f528b65b/source`。実Codexの保存状態と元証拠は `.runtime/scratch-live-final/`、Nodeログは `.runtime/node-tests-final.log`、UIログは `.runtime/ui-final.log` / `.runtime/ui-last.log`、導入ログは `.runtime/setup-scratch.log`。これらの内部状態はGitに含めない。共有する図・画面・要約結果だけを `docs/secretary-work-evidence/` に収録する。
 
 
-## レビュー修正とコア反映への接続
+## 前回レビューの記録（現行の導入は上記リンクを参照）
 
 今回の基盤は `7000a41834ce3a2b7d6764c62fed3d736db0e010`。旧保存commit `07272feb9626b6dcb9008eb4399b3ecda5b5c296` を今回のGit接続で照合して取り込んだ。信頼済みworkspace exec、担当workshop cli、operations reconcile、復旧改修を保持している。隔離型scratchの失敗からworkspace execへfallbackしてはならない。
 
@@ -82,7 +84,7 @@ cancelの返値は `accepted`（要求受付）、`state`、`stopConfirmed` を�
 
 累積quota・自動削除は追加していない。履歴と公開snapshotは増え続けるため運用者の容量監視が必要。保存済み成果の勝手な削除で制約を隠さない。
 
-## 今回の工房実測（2026-10-25）
+## 前回工房の実測（2026-10-25、今回とは別作業）
 
 成果ルート: `/home/eletim/ai-village-workshop/6b1b4e36-d5db-4e7a-a3ab-3b972ae9f725/source`。旧工房・workspace・tabは利用していない。旧画像・旧実Codex記録は履歴資料として保持し、今回の成功件数には含めない。
 

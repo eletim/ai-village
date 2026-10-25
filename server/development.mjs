@@ -82,7 +82,7 @@ export class Development {
     const job=this.bridge.jobById(jobId);if(!job.report||job.cancelRequestedAt)throw new Error('完成報告のある村開発の仕事だけを反映できます。');
     const cfg=await this.profile(),d=await this.inspect(jobId);if(cfg.repository!==d.repository||cfg.branch!==d.branch)throw new Error('仕事と現在の開発対象が異なります。');
     const id=randomUUID(),record={id,jobId,createdAt:new Date().toISOString(),phase:'queued',targetCommit:d.result.commit,workshopVerification:d.result,changeBranch:d.changeBranch,branch:cfg.branch,repository:cfg.repository,root:cfg.sourceDir,stateDir:this.bridge.dir,healthUrl:this.healthUrl};
-    const folder=resolve(this.dir,id);await mkdir(folder,{recursive:true});await copyFile(resolve('scripts/apply.mjs'),resolve(folder,'runner.mjs'));
+    const folder=resolve(this.dir,id);await mkdir(folder,{recursive:true});await copyFile(resolve('scripts/apply.mjs'),resolve(folder,'runner.mjs'));await copyFile(resolve('scripts/scratch-config.mjs'),resolve(folder,'scratch-config.mjs'));
     const file=resolve(this.dir,id+'.json');await writeFile(file,JSON.stringify(record,null,2),{mode:0o600});
     await this.bridge.update({development:{...job.development,deploymentId:id,deploymentPhase:'queued'}},job);
     const log=await open(resolve(folder,'runner.log'),'a',0o600);

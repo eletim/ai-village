@@ -60,7 +60,7 @@ const handleRequest = async (req, res) => {
         }
       }
       if (req.method === 'GET' && pathname === '/api/secretary/memo') return json(res,200,await secretariat.memoSnapshot());
-      if (req.method === 'GET' && pathname === '/api/health') return json(res,200,{commit:runningCommit,instanceId,supervised:process.env.VILLAGE_SUPERVISED==='1'});
+      if (req.method === 'GET' && pathname === '/api/health') return json(res,200,{commit:runningCommit,instanceId,supervised:process.env.VILLAGE_SUPERVISED==='1',scratch:scratch.availability});
       if (req.method === 'GET' && pathname === '/api/state') return json(res, 200, await snapshot());
       if (req.method === 'GET' && pathname === '/api/documents') return json(res, 200, { root: library.root, documents: await library.catalog() });
       if (req.method === 'GET' && pathname === '/api/documents/content') return json(res, 200, await library.read(new URL(req.url, 'http://localhost').searchParams.get('path')));
