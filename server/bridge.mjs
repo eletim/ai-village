@@ -26,8 +26,8 @@ export function run(command, args, { input, timeout = 60000, signal } = {}) {
       kill('SIGTERM'); killTimer ||= setTimeout(() => kill('SIGKILL'), 1000);
     };
     const abort = () => stop(new Error('処理はキャンセルされました。'));
-    const timer = setTimeout(() => stop(new Error(`${command}: timeout`)), timeout);
-    child.stdout.on('data', chunk => { stdout += chunk; if (stdout.length > 15e6) stop(new Error(`${command}: output too large`)); });
+    const timer = setTimeout(() => stop(Object.assign(new Error(`${command}: timeout`),{code:'ETIMEDOUT'})), timeout);
+    child.stdout.on('data', chunk => { stdout += chunk; if (stdout.length > 15e6) stop(Object.assign(new Error(`${command}: output too large`),{code:'output-limit'})); });
     child.stderr.on('data', chunk => { stderr = (stderr + chunk).slice(-12000); });
     child.on('error', error => finish(error));
     child.on('close', code => finish(stopped || (code === 0 ? null : new Error(`${command} exited ${code}: ${stderr || stdout}`)), stdout));

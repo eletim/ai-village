@@ -40,7 +40,7 @@ test('dispatch requires a document actually read this turn, and changed document
 });
 test('SSH inspection failure is a tool result; conversation and documents remain available',async()=>{
   const {secretary,calls,bridge}=await setup([choice('read_document','','workshop.md'),choice('check_workshop','','workshop.md'),choice('reply','接続できず、現在値は未確認です'),choice('reply','こんにちは')]);
-  await send(secretary,'現在の工房を確認して');assert.equal(calls.filter(c=>c==='ssh').length,2);assert.equal(bridge.jobs.length,0);assert.ok(secretary.messages.some(m=>m.role==='tool'&&m.content.includes('SSH unavailable')));await send(secretary,'こんにちは');assert.equal(secretary.messages.at(-1).content,'こんにちは');
+  await send(secretary,'現在の工房を確認して');assert.equal(calls.filter(c=>c==='ssh').length,2);assert.equal(bridge.jobs.length,0);assert.ok(secretary.messages.some(m=>m.role==='tool'&&m.content.includes('原因を特定できないエラー')));await send(secretary,'こんにちは');assert.equal(secretary.messages.at(-1).content,'こんにちは');
 });
 test('a held job never blocks conversation; rejected dispatch does not repeat or create a report',async()=>{
   const {secretary,bridge}=await setup([choice('read_document','','workshop.md'),choice('dispatch','進める','workshop.md','作る'),choice('dispatch','再実行','workshop.md','作る'),choice('reply','前の報告の確認が必要です'),choice('reply','相談しましょう')]);let attempts=0;bridge.submit=async()=>{attempts++;throw new Error('確認待ち');};
@@ -281,4 +281,130 @@ test('reporting policy reaches new and legacy resumed sessions; detail requests 
   await send(secretary,'commitと検証結果の詳細を教えて');
   assert.doesNotMatch(calls[2].input,/会話方式の更新/);
   assert.equal(secretary.messages.at(-1).content,detailed);
+});
+
+import { failureClass, stopReport } from '../server/conversation-progress.mjs';
+test('long confirmation completes across durable batches without another mayor message',async()=>{
+  const {secretary,dir}=await setup();let calls=0;const checkpoints=[];
+  // Different observations represent actual progress, not repeated identical reads.
+  secretary.decide=async()=>++calls<=25?{...choice('read_conversation','','index'),argv:[String(calls)]}:choice('reply','確認が完了しました');
+  const persist=secretary.persist.bind(secretary);
+  secretary.persist=async()=>{await persist();if(secretary.activeTurn?.continuation?.state==='queued')checkpoints.push(JSON.parse(await readFile(join(dir,'conversation.json'))));};
+  await send(secretary,'長い確認');
+  assert.equal(calls,26);assert.equal(secretary.messages.at(-1).content,'確認が完了しました');
+  assert.equal(secretary.messages.filter(m=>m.role==='user').length,1);
+  assert.ok(checkpoints.some(s=>s.activeTurn.continuation.steps===12));
+  assert.ok(checkpoints.some(s=>s.activeTurn.continuation.steps===24));
+  assert.equal(JSON.parse(await readFile(join(dir,'conversation.json'))).activeTurn,null);
+});
+test('queued continuation resumes autonomously after restart with counters and manual safety',async()=>{
+  const {secretary,bridge,library,root}=await setup();await writeFile(join(root,'manual.md'),'manual');
+  const turn=secretary.add('user','長い作業');secretary.status='thinking';secretary.activeTurn={id:turn.id,continuation:{state:'queued',steps:0,startedAt:Date.now(),fingerprints:[],drains:0}};
+  let n=0;secretary.decide=async()=>++n===1?choice('read_document','','manual.md'):{...choice('read_conversation','','index'),argv:[String(n)]};
+  assert.equal(await secretary.think(turn),true);
+  const restored=new Secretariat(bridge,library);let executions=0;restored.operations={resolve:()=>({command:{mutation:true}}),execute:async()=>{executions++;return {ok:true};}};
+  const decisions=[{...choice('village'),argv:['notifications','test']},choice('reply','復元完了')];restored.decide=async()=>decisions.shift();
+  await restored.init();assert.equal(restored.status,'thinking');await restored.running;
+  assert.equal(executions,0);assert.ok(restored.messages.some(m=>m.role==='tool'&&m.content.includes('最新のmanual')));
+  assert.equal(restored.messages.at(-1).content,'復元完了');assert.equal(restored.messages.filter(m=>m.role==='user').length,1);
+});
+test('restart after write-ahead never repeats a completed or unknown side effect',async()=>{
+  for(const uncertain of [false,true]) {
+    const {secretary,bridge,library,root}=await setup();await writeFile(join(root,'manual.md'),'manual');
+    const turn=secretary.add('user','操作');secretary.status='thinking';secretary.activeTurn={id:turn.id,continuation:{state:'running',steps:4,startedAt:Date.now(),fingerprints:[],drains:0}};
+    const action={...choice('village'),argv:['notifications','test']};let executed=0;
+    try {await secretary.recordOperation(turn,action,async()=>{executed++;if(uncertain)throw new Error('PRIVATE_STDERR');return {ok:true};});} catch {}
+    const restored=new Secretariat(bridge,library);restored.operations={resolve:()=>({command:{mutation:true}}),execute:async()=>{executed++;return {ok:true};}};
+    const decisions=[choice('read_document','','manual.md'),action,choice('reply','保存記録を確認しました')];restored.decide=async()=>decisions.shift();
+    await restored.init();await restored.running;assert.equal(executed,1);
+    assert.equal(restored.operationLog[0].state,uncertain?'started':'completed');
+  }
+});
+test('unchanged or cycling observations stop even when audit timestamps change',async()=>{
+  const {secretary}=await setup();let n=0;
+  secretary.bridge.snapshot=()=>({phase:++n%2?'one':'two',checkedAt:String(n)});
+  secretary.decide=async()=>choice('read_state');await send(secretary,'確認');
+  assert.ok(n<=16);assert.match(secretary.messages.at(-1).content,/同じ確認結果の反復/);
+  assert.equal(secretary.activeTurn.continuation.state,'stopped');
+  assert.doesNotMatch(secretary.messages.at(-1).content,/次に.*確認/);
+});
+test('operation and wall-clock budgets survive persisted restart',async()=>{
+  for(const [steps,startedAt,expected] of [[192,Date.now(),'操作回数'],[1,Date.now()-31*60000,'継続時間']]) {
+    const {secretary,bridge,library}=await setup();const turn=secretary.add('user','確認');
+    secretary.status='thinking';secretary.activeTurn={id:turn.id,continuation:{state:'queued',steps,startedAt,fingerprints:[],drains:0}};await secretary.persist();
+    const restored=new Secretariat(bridge,library);restored.decide=async()=>{assert.fail('exhausted budget called model');};
+    await restored.init();await restored.running;assert.match(restored.messages.at(-1).content,new RegExp(expected));
+  }
+});
+test('typed failures distinguish cause and effect without leaking stderr, prompts or IDs',async()=>{
+  const cases=[['ETIMEDOUT','応答の制限時間'],['ECONNRESET','通信障害'],['invalid_api_key','認証エラー'],['invalid-output','応答形式'],['output-limit','出力量'],['operation-limit','操作回数'],[undefined,'原因を特定できない']];
+  for(const [code,expected] of cases) {
+    const {secretary,dir}=await setup();secretary.decide=async()=>{throw Object.assign(new Error('PRIVATE_SECRET timeout authentication 401'),{code});};
+    await send(secretary,'確認');const message=secretary.messages.at(-1);
+    assert.match(message.content,new RegExp(expected));assert.match(message.content,/変更操作は未実行/);
+    assert.doesNotMatch(JSON.stringify(message),/PRIVATE_SECRET|diagnosticId|次に.*確認/);
+    assert.doesNotMatch(await readFile(join(dir,'secretary-errors.jsonl'),'utf8'),/PRIVATE_SECRET|turnId|prompt|stderr/);
+  }
+  assert.equal(failureClass(new Error('timeout 401 connection lost')),'general');
+  assert.equal(failureClass({stdout:JSON.stringify({type:'turn.failed',error:{code:'invalid_api_key',message:'PRIVATE'}})}),'authentication');
+  const report=stopReport({code:'ETIMEDOUT'},[
+    {state:'completed',result:{ok:true}}, {state:'completed',result:{ok:false,verified:true}},
+    {state:'completed',result:{ok:false,notStarted:true}}, {state:'started'},
+    {state:'completed',result:{ok:true,result:{status:'unknown'}}},
+  ]);
+  assert.match(report,/成功1件・失敗1件、未実行1件、成否不明2件/);assert.match(report,/再送せず/);
+});
+test('invalid JSON output stops with a safe output classification',async()=>{
+  const {secretary}=await setup();delete secretary.decide;
+  secretary.runCodex=async(_bin,args)=>{await writeFile(args[args.indexOf('-o')+1],'PRIVATE invalid json');return JSON.stringify({type:'thread.started',thread_id:'private-session'});};
+  await send(secretary,'確認');assert.match(secretary.messages.at(-1).content,/応答形式の不正/);assert.doesNotMatch(secretary.messages.at(-1).content,/PRIVATE|private-session/);
+});
+test('heavy verification schedules bounded read-only polling and resumes after restart',async()=>{
+  const {secretary,bridge,library}=await setup();const turn=secretary.add('user','検証結果を確認');
+  secretary.status='thinking';secretary.activeTurn={id:turn.id};let reads=0;
+  secretary.operations={resolve:()=>({command:{mutation:false}}),execute:async()=>{reads++;return {ok:true,result:{phase:'running'}};}};
+  secretary.decide=async()=>({...choice('village'),argv:['workspace','get','owned-execution']});
+  assert.equal(await secretary.think(turn),true);assert.equal(reads,1);assert.ok(secretary.activeTurn.continuation.nextAt>Date.now());
+  // Simulate the reserved time having elapsed during downtime.
+  secretary.activeTurn.continuation.nextAt=Date.now()-1;await secretary.persist();
+  const restored=new Secretariat(bridge,library);restored.operations={resolve:()=>({command:{mutation:false}}),execute:async()=>{reads++;return {ok:true,result:{phase:'completed'}};}};
+  restored.decide=async()=>choice('reply','検証が完了しました');
+  await restored.init();await restored.running;assert.equal(reads,2);assert.equal(restored.messages.at(-1).content,'検証が完了しました');
+});
+
+test('autonomous polling has a persistent no-progress deadline and never asks the model while pending',async()=>{
+  const {secretary,bridge,library}=await setup();const turn=secretary.add('user','検証確認');
+  secretary.status='thinking';secretary.activeTurn={id:turn.id};let decisions=0;
+  secretary.operations={resolve:()=>({command:{mutation:false}}),execute:async()=>({ok:true,result:{phase:'running'}})};
+  secretary.decide=async()=>{decisions++;return {...choice('village'),argv:['workspace','get','owned']};};
+  await secretary.think(turn);assert.equal(decisions,1);
+  secretary.activeTurn.continuation.poll.since=Date.now()-11*60000;
+  secretary.activeTurn.continuation.nextAt=Date.now()-1;await secretary.persist();
+  const restored=new Secretariat(bridge,library);restored.operations=secretary.operations;
+  restored.decide=async()=>assert.fail('host polling must not invoke model');
+  await restored.init();await restored.running;
+  assert.match(restored.messages.at(-1).content,/同じ確認結果の反復/);
+  assert.equal(restored.activeTurn.continuation.state,'stopped');
+});
+test('raw tool error and stderr never enter the saved conversation or public diagnostics',async()=>{
+  const {secretary,dir}=await setup();let n=0;
+  secretary.operations={resolve:()=>({command:{mutation:false}}),execute:async()=>({ok:false,error:'PRIVATE_SECRET prompt stderr',errorClass:'authentication',result:{stderr:'PRIVATE_SECRET',releaseError:'PRIVATE_SECRET'}})};
+  secretary.decide=async()=>++n===1?{...choice('village'),argv:['workspace','get','owned']}:choice('reply','認証を確認してください。');
+  await send(secretary,'確認');
+  assert.doesNotMatch(await readFile(join(dir,'conversation.json'),'utf8'),/PRIVATE_SECRET/);
+  assert.match(secretary.messages.find(m=>m.role==='tool').content,/認証エラー/);
+  const report=stopReport({},[{state:'completed',result:{ok:true,result:{phase:'starting'}}},{state:'completed',result:{ok:true,result:{phase:'unknown'}}},{state:'completed',result:{ok:true,result:{phase:'failed'}}}]);
+  assert.match(report,/成功0件・失敗1件/);assert.match(report,/成否不明1件/);assert.match(report,/受付済み・完了未確認1件/);
+});
+
+test('resuming a stopped request preserves the latest response turn and observation across restart',async()=>{
+  const {secretary,bridge,library}=await setup();
+  const old=secretary.add('user','元の依頼'),turn=secretary.add('user','保存結果から再開して');
+  secretary.status='thinking';secretary.activeTurn={id:old.id,responseTurnId:turn.id};let n=0;
+  secretary.decide=async()=>({...choice('read_conversation','','index'),argv:[String(++n)]});
+  await secretary.think(turn);
+  const restored=new Secretariat(bridge,library);
+  restored.decide=async(actual,observations)=>{assert.equal(actual.id,turn.id);assert.deepEqual(observations.at(-1).argv,['12']);return choice('reply','再開完了');};
+  await restored.init();await restored.running;
+  assert.equal(restored.messages.at(-1).turnId,turn.id);assert.equal(restored.completedTurnId,turn.id);
 });

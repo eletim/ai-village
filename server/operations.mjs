@@ -1,3 +1,4 @@
+import { failureClass } from './conversation-progress.mjs';
 import { appendFile, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -80,7 +81,7 @@ export class VillageOperations {
     const {command,args}=this.resolve(argv), operationId=randomUUID();
     let result;
     try {const value=await command.run(args);result={ok:value?.ok!==false,operation:command.name,result:value};}
-    catch(error){result={ok:false,operation:command.name,error:error.message};}
+    catch(error){result={ok:false,operation:command.name,error:error.message,errorClass:failureClass(error)};}
     if(command.mutation)await appendFile(resolve(this.bridge.dir,'operations.jsonl'),JSON.stringify({at:new Date().toISOString(),operationId,issuer,argv,result})+'\n',{mode:0o600});
     return {...result,operationId};
   }
