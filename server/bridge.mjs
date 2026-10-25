@@ -112,8 +112,8 @@ export class WorkshopBridge {
   }
   async submit(request, connection, instruction = null, options = {}) {
     if (!connection?.sshHost || !connection.remoteRoot || !connection.baseUrl) throw new Error('資料から工房の接続先を選んでください。');
-    await this.canSubmit?.();
-    if (this.jobs.some(job => activePhases.has(job.phase) || (job.tabId && job.releaseState !== 'released') || job.releaseState === 'releasing')) throw Object.assign(new Error('先に進行中の仕事と、届いた報告の確認・Agentの解放を完了してください。'), { status: 409 });
+    try { await this.canSubmit?.(); } catch(error) { error.operationNotStarted=true; throw error; }
+    if (this.jobs.some(job => activePhases.has(job.phase) || (job.tabId && job.releaseState !== 'released') || job.releaseState === 'releasing')) throw Object.assign(new Error('先に進行中の仕事と、届いた報告の確認・Agentの解放を完了してください。'), { status: 409, operationNotStarted:true });
     this.job = { id: randomUUID(), development: options.development || null, request, phase: 'planning', sshHost: connection.sshHost, remoteRoot: connection.remoteRoot, baseUrl: connection.baseUrl, workshopName: connection.name, workshopDocument: connection.document, documentHash: connection.documentHash, instruction, resourceStep: 'local', releaseState: 'held', approvedAt: null, releasedAt: null, createdAt: new Date().toISOString(), workerFinishedAt: null, reportFinishedAt: null };
     this.jobs.push(this.job);
     await this.update({});
@@ -192,7 +192,7 @@ export class WorkshopBridge {
       await this.update({ workerState: status.cliState, agentSessionId: result.agentSessionId || status.agentSessionId, connectionError: null, permissionRequest: status.permissionRequest || null });
       this.assertRunning();
       if (result.interrupted || result.status === 'interrupted') throw new Error('工房の作業が中断されました。端末リンクで確認してください。');
-      if (result.status === 'completed' && result.text && status.cliState !== 'busy') {
+      if (result.status === 'completed' && result.text && result.text !== this.job.previousOutput && status.cliState !== 'busy') {
         await this.update({ phase: 'reporting', output: result.text, workerFinishedAt: new Date().toISOString() });
         await this.report(); return;
       }

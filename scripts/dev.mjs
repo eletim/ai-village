@@ -1,3 +1,4 @@
+import { SecretaryTools } from '../server/secretary-tools.mjs';
 import { PullRequests } from '../server/pull-requests.mjs';
 import { listenAddresses } from '../server/network.mjs';
 import { TodoStore } from '../server/todos.mjs';
@@ -30,7 +31,8 @@ await notifier.init();
 const development = new Development(bridge, library, {port});
 const images = new ImageStore(bridge.dir);
 await images.init();
-const operations = new VillageOperations(bridge, notifier, {web:new WebReader(),development,images,todos,prs:new PullRequests(bridge.dir,library)});
+const tools = new SecretaryTools(bridge,images);await tools.init();
+const operations = new VillageOperations(bridge, notifier, {web:new WebReader(),development,images,todos,tools,prs:new PullRequests(bridge.dir,library)});
 const secretariat = new Secretariat(bridge, library, operations, notifier, images);
 await secretariat.init();
 development.watch(secretariat);
@@ -43,6 +45,8 @@ const handleRequest = async (req, res) => {
     if(!allowRequest(req,res))return;
     const pathname = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
     if (pathname.startsWith('/api/')) {
+      if(req.method==='GET'&&pathname==='/api/workspace/file'){const path=new URL(req.url,'http://localhost').searchParams.get('path');const bytes=await tools.file(path);res.writeHead(200,{'Content-Type':'application/octet-stream','Content-Disposition':"attachment; filename*=UTF-8''"+encodeURIComponent(path.split('/').at(-1)),'X-Content-Type-Options':'nosniff','Cache-Control':'no-store'});res.end(bytes);return;}
+
       if (pathname === '/api/todos') {
         if(req.method==='GET')return json(res,200,todos.snapshot());
         if(req.method==='POST'){

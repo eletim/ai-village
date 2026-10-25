@@ -1,5 +1,8 @@
 # AI村の案内と資料の目次
 
+[ミクの専用作業場所・担当工房CLI・未確認操作の復旧](secretary-work.md): workspace status/exec/get/list/publish/image、workshop cli、operations list/get/reconcile、jobs retire。必要に応じてこの資料を読んでコードとCLIを選ぶ。
+
+
 ここは村長と秘書ミクが同じ書類を読むための書棚です。Markdownファイルを編集すると、次の閲覧・秘書の参照に反映されます。資料は設備や接続方法についての記録であり、現在の作業中・確認待ち・解放状態は村の実状態を確認してください。
 
 - [第一工房の資料](workshops/first-workshop.md)：接続先、PurpleMux、作業場所、確認済みの設備。

@@ -6,11 +6,14 @@ import { isOnDesk, isSettled, jobStatus } from '../src/job-state.js';
 // The same registry serves the secretary, HTTP and the human CLI. Adding a village
 // operation doesn't require adding a new LLM action or teaching a keyword router.
 export class VillageOperations {
-  constructor(bridge, notifier, {web, development, images, todos, prs} = {}) {
+  constructor(bridge, notifier, {web, development, images, todos, prs, tools} = {}) {
     this.bridge = bridge;
     const detail = id => this.describe(bridge.jobById(id));
     this.commands = [
-      ...(prs?.commands() || []),
+      ...(prs?.commands() || []), ...(tools?.commands() || []),
+      {name:'operations list',usage:'operations list',run:()=>this.secretariat.operationLog.map(({key,state,action,turnId})=>({key,state,action,turnId}))},
+      {name:'operations get',usage:'operations get KEY',run:a=>this.secretariat.operationLog.find(o=>o.key===a[0])||{error:'記録がありません。'}},
+      {name:'operations reconcile',usage:'operations reconcile KEY',mutation:true,recovery:true,run:a=>this.secretariat.reconcile(a[0])},
       { name:'todos list', usage:'todos list', run:args=>{if(args.length)throw new Error('usage: todos list');return todos.snapshot();} },
       ...['add','edit','toggle','delete'].map(action=>({name:`todos ${action}`,usage:`todos ${action} REVISION ${action==='add'?'TEXT':action==='edit'?'ID TEXT':action==='toggle'?'ID true|false':'ID'}`,mutation:true,run:args=>{
         const count=action==='edit'||action==='toggle'?3:2;
@@ -62,7 +65,7 @@ export class VillageOperations {
     return this.bridge.jobs.filter(job=>args[1]==='all'||isOnDesk(job)).map(job=>this.summary(job));
   }
   resolve(argv) {
-    if(!Array.isArray(argv)||!argv.length||argv.length>12||argv.some(arg=>typeof arg!=='string'||arg.length>2000))throw new Error('argvは1〜12個の文字列で指定してください。');
+    if(!Array.isArray(argv)||!argv.length||argv.length>12||argv.some(arg=>typeof arg!=='string'||arg.length>(['workspace','workshop'].includes(argv[0])?16000:2000)))throw new Error('argvは1〜12個の文字列で指定してください。');
     const command=this.commands.find(command=>argv.slice(0,command.name.split(' ').length).join(' ')===command.name);
     if(!command)throw new Error('未対応の操作です。helpでマニュアルと操作一覧を確認してください。');
     return {command,args:argv.slice(command.name.split(' ').length)};

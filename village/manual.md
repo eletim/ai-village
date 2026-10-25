@@ -1,5 +1,8 @@
 # 村の操作マニュアル
 
+[ミクの専用作業場所・担当工房CLI・未確認操作の復旧](secretary-work.md): workspace status/exec/get/list/publish/image、workshop cli、operations list/get/reconcile、jobs retire。必要に応じてこの資料を読んでコードとCLIを選ぶ。
+
+
 秘書と村長が同じ操作窓口を利用します。仕事を操作する明確な指示があれば、その指示を実行してください。対象が記録から一意に決まるなら同じ同意を取り直しません。相談や状況の質問だけで工房Agentを配置しません。
 
 ## 呼び出し方

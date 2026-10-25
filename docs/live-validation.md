@@ -371,3 +371,15 @@ Nodeテスト36件、ブラウザテスト6件、構文チェック、ビルド�
 稼働中の元supervisorが同じ起動引数のまま復旧し、ssで127.0.0.1:5173と100.78.154.38:5173だけのlistenを確認。E-ryzenという別PCから実VPN経由で/api/healthと/officeにHTTP200、異なるOriginで403を確認した。コアの実ChromiumでもlocalhostとVPN URLのスマートフォンサイズの執務室を開き、API状態を読み込めた。村長のWindows実ブラウザとスマートフォン自体は未観察。OSファイアウォール、Tailscale ACL、WSL設定、既存の仕事や成果は変更していない。
 
 構文・Nodeテスト82件・ビルド成功。独立ポートのブラウザテスト17件成功、既存の任意実環境用1件はskip（成功としていない）。割当済みVPNの検出、未割当・複数候補の拒否、LAN bind拒否、非VPN接続元と偽Host/Origin拒否、既存HTTPS認証の維持を自動テストで確認した。詳細はdocs/vpn-access.md。
+
+## 2026-10-25 未確認操作の照合と柔軟な秘書作業
+
+HEAD eb8108dから開始。作業ツリーはクリーン。資料・直近会話・operationLog・operations.jsonl・ssh-audit.jsonl・実PurpleMuxを確認し、conversation/state/監査を.runtime/before-tools-recoveryへ退避した。未確認はdispatch 96289495…の1件。2026-10-25T00:28:25.103Zの事前記録に対し、25.131Zの実ツール結果f846f861…が「確認待ちAgentの解放が必要」と拒否していた。該当区間の仕事作成0・SSH0を照合。実旧Agentはready-for-review、旧ソースは07272feb9626b6dcb9008eb4399b3ecda5b5c296で未commit変更なしだった。操作を再送せず、専用のoperations reconcileを実HTTP経由で実行し、元記録をreconciled/not_started、根拠付きへ更新した。既存全仕事の状態がバックアップと完全一致することを照合した（引継ぎ用の端末解放前）。
+
+新しい事前拒否はoperationNotStartedを識別して完了記録に残す。不明な外部操作は依然unknownとして再実行しない。停止範囲は資源分野単位とし、工房の不明操作が専用作業場所やTODOまで止めない。照合操作は不明操作による停止から除外する。自動照合の対象外や証拠不足は書き換えない。
+
+workspaceは信頼されたローカルコードを専用cwd/HOME/tmp・認証環境を引き継がず実行する。これはOS隔離ではなく、同一OSユーザーのファイル権限を持つ。旧隔離型scratchの成果を取り込んだとは説明していない。実行IDと原要求を保存し、最大60秒・出力64k、同一要求の再送防止、独立runner、消失はunknown、公開ファイル8MiB/境界確認/添付ダウンロード、ImageStore登録を追加した。workshop cliは実help/api-guideと担当workspace/tabの汎用CLI、追加指示のround監視と旧報告保持を提供。jobs retireは引継ぎ用に端末だけを解放し、承認・成果・報告を変えない。
+
+実際の執務室から実ミクCodexへ依頼し、Pythonでmiku-check.mdを作成、workspace getで正常終了・内容を確認、公開URLを返し、担当工房statusをCLIで照会した。ブラウザは受付直後に閉じても完了。ダウンロードHTTP200と日本語本文の一致を確認。会話・操作・実行の証拠は.runtime/tools-live-evidence.json、tools-recovery-evidence.jsonとsecretary-work/runs。
+
+構文、Node107件、build成功。独立state/ポートでブラウザ26件成功（実Codexの判断とは別にfixture使用）。新規テストは汎用コード実行・再起動後の保存と同一要求・タイムアウト・失われたrunner・公開境界・別端末ID拒否・未承認の引継ぎ解放・照合証拠不足拒否・事前拒否・資源別停止を含む。新セッションへのレビュー引継ぎは、旧仕事6c61f1c5…/commit07272feb…の保存成果と原レビュー要求を元に行い、隔離型scratchの導入診断・必須検証のskipを成功扱いしない・cancel終了確認を対象とする。反映前にAgent承認を自動では行わない。
