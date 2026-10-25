@@ -30,7 +30,7 @@ with contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
     try: exec(request['code'], {'__name__':'__main__'})
     except BaseException as e:
         ok = False
-        output.seek(0); output.truncate(); output.write(type(e).__name__ + ': execution failed')
+        output.seek(0); output.truncate(); output.write(type(e).__name__ + ': ' + str(e)[:1000])
 files = {}
 for name in os.listdir('.'):
     info = os.lstat(name)

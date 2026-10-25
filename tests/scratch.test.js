@@ -21,7 +21,7 @@ test('scratch validates paths, persists files and downloads, retains unknown exe
  const write1=write.run(['one.txt','one']);await assert.rejects(()=>write.run(['two.txt','two']),/実行中/);await write1;
  }finally{await rm(dir,{recursive:true,force:true});}
 });
-test('real bwrap/seccomp isolation, limits, persistence and PNG', {skip:!runtime},async()=>{
+test('real bwrap/seccomp isolation, limits, persistence and PNG', {skip:!runtime && !process.env.VILLAGE_SCRATCH_REQUIRED && '設備未設定: VILLAGE_SCRATCH_RUNTIME（実隔離未検証）'},async()=>{
  const dir=await mkdtemp(resolve(tmpdir(),'scratch-'));try{
  const s=new Scratch(dir,new ImageStore(dir),runtime);
  const run=code=>s.execute(randomUUID(),code);
@@ -40,24 +40,24 @@ test('real bwrap/seccomp isolation, limits, persistence and PNG', {skip:!runtime
  const image=await s.publish('diagram.png');assert.equal(image.mime,'image/png');assert.equal((await s.images.get(image.id)).width,800);
  }finally{await rm(dir,{recursive:true,force:true});}
 });
-test('cancellation and actual backend interruption retain inquiry records without replay', {skip:!runtime}, async()=>{
+test('cancellation and actual backend interruption retain inquiry records without replay', {skip:!runtime && !process.env.VILLAGE_SCRATCH_REQUIRED && '設備未設定: VILLAGE_SCRATCH_RUNTIME（実隔離未検証）'}, async()=>{
  const {spawn}=await import('node:child_process');const {once}=await import('node:events');const {pathToFileURL}=await import('node:url');
  const dir=await mkdtemp(resolve(tmpdir(),'scratch-crash-'));try{
  const s=new Scratch(dir,new ImageStore(dir),runtime);const id=randomUUID();
  const running=s.execute(id,"import time\ntime.sleep(30)");
  while(!s.child)await new Promise(r=>setTimeout(r,10));
- await s.commands().find(c=>c.name==='work cancel').run([id]);assert.equal((await running).state,'cancelled');
+ const receipt=await s.commands().find(c=>c.name==='work cancel').run([id]);assert.equal(receipt.accepted,true);assert.equal((await running).state,'cancelled');const endedRecord=await s.get(id);assert.equal(endedRecord.state,'cancelled');assert.ok(endedRecord.finishedAt);assert.equal(s.child,null);
  const crashId=randomUUID();
  const child=spawn(process.execPath,['--input-type=module','-e',`import {Scratch} from ${JSON.stringify(pathToFileURL(resolve('server/scratch.mjs')).href)};const s=new Scratch(${JSON.stringify(dir)},null,${JSON.stringify(runtime)});s.execute(${JSON.stringify(crashId)},"import time\\nopen('interrupted.txt','w').write('partial')\\ntime.sleep(30)");const timer=setInterval(()=>{if(s.child){process.send('started');clearInterval(timer);}},10);`],{stdio:['ignore','ignore','ignore','ipc'],env:process.env});
  await once(child,'message');const ended=once(child,'exit');child.kill('SIGKILL');await ended;
  const restored=new Scratch(dir,null,runtime);assert.equal((await restored.get(crashId)).state,'unknown');assert.equal((await restored.execute(crashId,"open('replayed','w').write('bad')")).state,'unknown');assert.deepEqual(await restored.files(),{});
  }finally{await rm(dir,{recursive:true,force:true});}
 });
-test('fixture secretary uses operations, ImageStore, read_image and reply attachments', {skip:!runtime},async()=>{
+test('fixture secretary uses operations, ImageStore, read_image and reply attachments', {skip:!runtime && !process.env.VILLAGE_SCRATCH_REQUIRED && '設備未設定: VILLAGE_SCRATCH_RUNTIME（実隔離未検証）'},async()=>{
  const {VillageOperations}=await import('../server/operations.mjs');const {Secretariat}=await import('../server/secretariat.mjs');
  const dir=await mkdtemp(resolve(tmpdir(),'scratch-fixture-'));try{
  const images=new ImageStore(dir),scratch=new Scratch(dir,images,runtime),bridge={dir,jobs:[]};
- const operations=new VillageOperations(bridge,null,{scratch,images});const secretary=new Secretariat(bridge,{root:dir,read:async()=>({path:'manual.md',hash:'fixture',content:'fixture manual'})},operations,null,images);await secretary.init();
+ assert.equal((await scratch.prepare()).available,true);const operations=new VillageOperations(bridge,null,{scratch,images});const secretary=new Secretariat(bridge,{root:dir,read:async()=>({path:'manual.md',hash:'fixture',content:'fixture manual'})},operations,null,images);await secretary.init();
  let imageId;let step=0;
  secretary.decide=async(turn,observations)=>{
  const last=observations.at(-1);switch(step++){
@@ -70,4 +70,41 @@ test('fixture secretary uses operations, ImageStore, read_image and reply attach
  await secretary.send('画像を作成');await secretary.running;
  assert.equal(secretary.messages.at(-1).attachments?.[0]?.id,imageId);assert.ok(imageId);assert.ok(secretary.messages.some(m=>m.action==='read_image'));
  }finally{await rm(dir,{recursive:true,force:true});}
+});
+
+test('fixture cancel receipt is not termination; get confirms the later durable terminal record',async()=>{
+ const dir=await mkdtemp(resolve(tmpdir(),'scratch-cancel-receipt-'));
+ try {
+  const s=new Scratch(dir,null,''),id=randomUUID();let signal;
+  s.activeId=id;s.child={kill:value=>{signal=value;}};
+  await s.save('run-'+id,{id,state:'running'});
+  const receipt=await s.commands().find(c=>c.name==='work cancel').run([id]);
+  assert.equal(receipt.accepted,true);assert.equal(receipt.stopConfirmed,false);assert.equal(receipt.state,'running');assert.equal(signal,'SIGKILL');
+  assert.equal((await s.get(id)).state,'running');
+  await s.save('run-'+id,{id,state:'cancelled',finishedAt:new Date().toISOString()});s.activeId=null;
+  assert.equal((await s.get(id)).state,'cancelled');
+  const again=await s.commands().find(c=>c.name==='work cancel').run([id]);assert.equal(again.accepted,false);assert.equal(again.stopConfirmed,true);
+ }finally{await rm(dir,{recursive:true,force:true});}
+});
+
+test('disabled scratch does not advertise execution or remove trusted workspace, workshop CLI and recovery commands',async()=>{
+ const {VillageOperations}=await import('../server/operations.mjs');
+ const dir=await mkdtemp(resolve(tmpdir(),'scratch-disabled-'));
+ try {
+  const scratch=new Scratch(dir,null,'');assert.equal((await scratch.prepare()).available,false);
+  const operations=new VillageOperations({dir,jobs:[]},null,{scratch,tools:{commands:()=>[{name:'workspace exec'},{name:'workshop cli'}]}});
+  const names=operations.commands.map(c=>c.name);
+  assert.ok(!names.includes('work run'));
+  for(const name of ['work status','work get','work write','workspace exec','workshop cli','operations reconcile'])assert.ok(names.includes(name),name);
+ }finally{await rm(dir,{recursive:true,force:true});}
+});
+
+test('deployment diagnosis distinguishes disabled from required or broken equipment and exits nonzero for missing required verification',async()=>{
+ const {spawnSync}=await import('node:child_process');
+ const env={...process.env};for(const key of ['VILLAGE_SCRATCH_RUNTIME','VILLAGE_SCRATCH_BWRAP','VILLAGE_SCRATCH_REQUIRED'])delete env[key];
+ const probe=(args=[],extra={})=>spawnSync(process.execPath,['scripts/diagnose-scratch.mjs',...args],{env:{...env,...extra},encoding:'utf8'});
+ let result=probe(['--deployment']);assert.equal(result.status,0);assert.equal(JSON.parse(result.stdout).verification,'NOT RUN');assert.equal(JSON.parse(result.stdout).available,false);
+ result=probe();assert.equal(result.status,1);assert.match(result.stdout,/未設定/);
+ result=probe(['--deployment'],{VILLAGE_SCRATCH_REQUIRED:'1'});assert.equal(result.status,1);
+ result=probe(['--deployment'],{VILLAGE_SCRATCH_RUNTIME:resolve('.runtime/nonexistent'),VILLAGE_SCRATCH_BWRAP:resolve('.runtime/missing-bwrap')});assert.equal(result.status,1);assert.match(result.stdout,/ENOENT/);
 });

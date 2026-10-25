@@ -1,6 +1,6 @@
 // Copied to the durable deployment directory before launch. No project imports:
 // a checkout/restart cannot replace the code currently managing this operation.
-import { readFile,writeFile,rename,mkdir } from 'node:fs/promises';
+import { readFile,writeFile,rename,mkdir,access } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -28,6 +28,15 @@ try{
   await git('merge-base','--is-ancestor',from,record.targetCommit);
   candidate=resolve(record.stateDir,'deployments',record.id,'candidate');await git('worktree','add','--detach',candidate,record.targetCommit);
   await command('npm',['ci'],candidate);
+  // Older candidates without scratch remain deployable. Configured scratch must pass real probes.
+  const hasScratch=await access(resolve(candidate,'scripts/diagnose-scratch.mjs')).then(()=>true,()=>false);
+  if(hasScratch){
+    await command(process.execPath,['scripts/diagnose-scratch.mjs','--deployment'],candidate,testEnv);
+    if(testEnv.VILLAGE_SCRATCH_RUNTIME || testEnv.VILLAGE_SCRATCH_BWRAP || testEnv.VILLAGE_SCRATCH_REQUIRED){
+      testEnv.VILLAGE_SCRATCH_REQUIRED='1';
+      await command('npm',['run','test:scratch'],candidate,testEnv);
+    }
+  }
   await command('npm',['run','check'],candidate);await command('npm',['test'],candidate,testEnv);
   const probe=createServer();await new Promise(r=>probe.listen(0,'127.0.0.1',r));const port=probe.address().port;await new Promise(r=>probe.close(r));
   await command('npm',['run','test:ui'],candidate,{...testEnv,VILLAGE_TEST_PORT:String(port),VILLAGE_TEST_STATE:resolve(record.stateDir,'deployments',record.id,'browser-state'),VILLAGE_NOTIFICATIONS:'false'});
