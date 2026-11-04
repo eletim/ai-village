@@ -8,6 +8,7 @@ test('direct workshop editor, safe output and persistent instruction draft',asyn
   await route.fulfill({json:state});
  });
  await page.goto('/agents');
+ await page.getByRole('button',{name:'起動・工房設定',exact:true}).click();
  await page.locator('#workshop-form [name=name]').fill('First');
  await page.locator('[name=sshHost]').fill('E-frontier');
  await page.locator('[name=baseUrl]').fill('http://localhost:8022/');
@@ -18,6 +19,7 @@ test('direct workshop editor, safe output and persistent instruction draft',asyn
  await page.locator('#workshop-form [name=name]').fill('Edited');
  await page.locator('#workshop-form button').first().click();
  await expect(page.locator('#workshops')).toContainText('Edited');
+ await page.locator('#settings-dialog [data-close]').click();
  state.agents.push({id:'agent',name:'Agent',connection:{name:'Edited'},cwd:'/tmp/a',state:'idle',tabId:'tab',terminalUrl:'http://localhost:8022/?workspace=ws&tab=tab'});
  state.runs.push({id:'run',agentId:'agent',state:'completed',instruction:'<script>bad()</script>',output:'<img src=x onerror=bad()>',notification:{status:'sent'}});
  await expect(page.locator('[data-send]')).toBeVisible();
@@ -46,6 +48,7 @@ test('local workshop registration and editing do not require an SSH host',async(
   await route.fulfill({json:state});
  });
  await page.goto('/agents');
+ await page.getByRole('button',{name:'起動・工房設定',exact:true}).click();
  await page.locator('[name=connectionType]').selectOption('local');
  await expect(page.locator('#ssh-host-field')).toBeHidden();
  await page.locator('#workshop-form [name=name]').fill('E-ryzen');
@@ -66,13 +69,42 @@ test('Agent launch creates an idempotency key without secure-context randomUUID'
   await route.fulfill({json:state});
  });
  await page.goto('/agents');
+ await page.getByRole('button',{name:'起動・工房設定',exact:true}).click();
  await expect(page.locator('#agent-form [name=cwd]')).toHaveValue('/tmp/local');
  await page.locator('#agent-form button').click();
  await expect.poll(()=>submitted?.requestId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
 });
-test('three places, focused view, provider identity and native waiting state',async({page})=>{
- const state={workshops:[{id:'local',name:'E-ryzen',connectionType:'local',workplaces:['/tmp']},{id:'remote',name:'E-frontier',connectionType:'ssh',workplaces:['/tmp']}],runs:[],notification:{},agents:[{id:'mayor',location:'mayor',name:'ミク',provider:'codex',state:'idle',connection:{name:'E-ryzen'},workshopId:'local'},{id:'remote-agent',name:'Claude係',provider:'claude',state:'waiting_input',connection:{name:'E-frontier'},workshopId:'remote'}]};
- await page.route('**/api/direct',route=>route.fulfill({json:state}));await page.goto('/agents');
- await expect(page.locator('[data-place]')).toHaveCount(3);await expect(page.locator('#place-mayor')).toContainText('ミク · Codex');await expect(page.locator('#place-remote')).toContainText('Claude係 · Claude');await expect(page.locator('#place-remote')).toContainText('入力待ち');
- await page.locator('[data-view=remote]').click();await expect(page.locator('#place-mayor')).toBeHidden();await expect(page.locator('#place-remote')).toBeVisible();await page.locator('[data-view=all]').click();await expect(page.locator('#place-mayor')).toBeVisible();
+function boardFixture(){
+ const workshops=Array.from({length:4},(_,i)=>({id:'w'+i,name:'工房 '+i,connectionType:i?'ssh':'local',workplaces:['/tmp']}));
+ const agents=Array.from({length:13},(_,i)=>({id:'a'+i,location:i===0?'mayor':'workshop',workshopId:'w'+(i%4),name:i===0?'秘書':'Agent '+i,provider:i%2?'claude':'codex',state:i===2?'waiting_input':'idle',tabId:'tab'+i,connection:{name:'工房 '+(i%4)},cwd:'/tmp'}));
+ const runs=agents.map(a=>({id:'run-'+a.id,agentId:a.id,state:'completed',instruction:'長い会話の確認',output:Array.from({length:90},(_,i)=>'会話の行 '+i).join('\n')}));
+ agents.push({id:'ended',name:'終了済み',state:'terminated',connection:{name:'工房 0'}});runs.push({id:'ended-run',agentId:'ended',state:'completed',instruction:'保存された指示',output:'終了後も履歴を保持'});
+ return {workshops,agents,runs,notification:{}};
+}
+test('dynamic places, nine panels, overflow paging, three filters and archived termination',async({page})=>{
+ const state=boardFixture();await page.route('**/api/direct',r=>r.fulfill({json:state}));await page.goto('/agents');
+ await expect(page.getByRole('tab')).toHaveCount(13);await expect(page.locator('#agent-ended')).toHaveCount(0);
+ await page.locator('#layout').selectOption('9');await expect(page.locator('.agent-panel:visible')).toHaveCount(9);await page.locator('#next').click();await expect(page.locator('.agent-panel:visible')).toHaveCount(4);await expect(page.locator('#agent-a12')).toBeVisible();
+ await page.getByRole('tab',{name:'Agent 1 工房 1',exact:true}).click();await expect(page.locator('#agent-a1')).toBeVisible();await expect(page.locator('#page-count')).toContainText('1 / 2');
+ await page.locator('#scope').selectOption('workshop');await expect(page.locator('#place option')).toHaveCount(5);await page.locator('#place').selectOption('w3');await expect(page.getByRole('tab')).toHaveCount(3);
+ await page.locator('#scope').selectOption('agent');await page.locator('#agent-choice').selectOption('a7');await expect(page.locator('.agent-panel:visible')).toHaveCount(1);await expect(page.locator('#agent-a7')).toBeVisible();
+ await page.locator('#place').selectOption('mayor');await expect(page.getByRole('tab')).toHaveCount(1);await expect(page.locator('#agent-a0')).toContainText('秘書 · Codex');
+ await page.locator('#scope').selectOption('all');await page.locator('#layout').selectOption('1');await page.getByRole('tab',{name:'Agent 2 工房 2',exact:true}).click();await expect(page.locator('#agent-a2')).toContainText('入力待ち');
+ state.agents.find(a=>a.id==='a2').state='stop_unknown';await expect(page.locator('#agent-a2')).toContainText('終了結果不明');state.agents.find(a=>a.id==='a2').state='terminated';await expect(page.locator('#agent-a2')).toHaveCount(0);await expect(page.locator('#tab-a2')).toHaveCount(0);await expect(page.locator('.agent-panel:visible')).toHaveCount(1);
+ await page.getByRole('button',{name:'終了Agentの履歴',exact:true}).click();await page.locator('#history-agent').selectOption('ended');await expect(page.locator('#history-content')).toContainText('終了後も履歴を保持');
+});
+test('independent conversation scroll and drafts survive tabs, filters, polling and layout switches',async({page})=>{
+ const state=boardFixture();await page.route('**/api/direct',r=>r.fulfill({json:state}));await page.goto('/agents');await page.locator('#layout').selectOption('2');
+ const first=page.locator('#agent-a0'),second=page.locator('#agent-a1');await first.locator('textarea').fill('秘書への書きかけ');await second.locator('textarea').fill('別Agentの書きかけ');
+ await first.locator('.runs').evaluate(el=>el.scrollTop=215);await second.locator('.runs').evaluate(el=>el.scrollTop=83);
+ await page.waitForTimeout(2300);expect(await first.locator('.runs').evaluate(el=>el.scrollTop)).toBe(215);expect(await second.locator('.runs').evaluate(el=>el.scrollTop)).toBe(83);
+ await page.locator('#layout').selectOption('1');await page.getByRole('tab',{name:'Agent 9 工房 1',exact:true}).click();await expect(page.locator('#agent-a9')).toBeVisible();
+ await page.locator('#scope').selectOption('workshop');await page.locator('#place').selectOption('w3');await page.locator('#scope').selectOption('all');await page.getByRole('tab',{name:'秘書 村長の家（秘書）',exact:true}).click();await page.locator('#layout').selectOption('2');
+ await expect(first.locator('textarea')).toHaveValue('秘書への書きかけ');await expect(second.locator('textarea')).toHaveValue('別Agentの書きかけ');expect(await first.locator('.runs').evaluate(el=>el.scrollTop)).toBe(215);expect(await second.locator('.runs').evaluate(el=>el.scrollTop)).toBe(83);
+ const body=await page.evaluate(()=>({scroll:document.documentElement.scrollHeight,height:innerHeight}));expect(body.scroll).toBeLessThanOrEqual(body.height);
+ await page.locator('#layout').selectOption('9');await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);expect(await page.evaluate(()=>document.documentElement.scrollHeight<=innerHeight)).toBe(true);
+});
+test('notification link to a terminated Agent opens saved history, not an Agent tab',async({page})=>{
+ const id='bdeab87b-6247-4355-9b5c-3a17c1a3c955',state={workshops:[],agents:[{id,name:'Archived',state:'terminated',connection:{name:'Local'}}],runs:[{id:'run',agentId:id,state:'completed',instruction:'saved',output:'archive reply'}],notification:{}};
+ await page.route('**/api/direct',r=>r.fulfill({json:state}));await page.goto('/agents#agent-'+id);await expect(page.locator('#history-dialog')).toBeVisible();await expect(page.locator('#history-content')).toContainText('archive reply');await expect(page.getByRole('tab')).toHaveCount(0);await expect(page.locator('.agent-panel')).toHaveCount(0);
 });
