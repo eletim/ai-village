@@ -76,3 +76,27 @@ test('native API failure is recorded without a completion notification',async t=
  Object.assign(f.input('hello'),{state:'failed',output:'Login expired',error:'authentication_failed',completionEvent:'native-error'});
  await f.service.tick();assert.equal(r.state,'failed');assert.equal(r.error,'authentication_failed');assert.equal(r.output,'Login expired');assert.equal(f.notices(),0);
 });
+test('fresh runtime observation overrides stale UI state; terminal results reopen the input gate',async t=>{
+ const f=await fixture(t);f.a.state='waiting_input';f.a.canSend=false;
+ for(const end of ['completed','failed','interrupted']){
+  const r=await f.service.send(f.a.id,{instruction:end,requestId:'request-'+end});assert.equal(f.a.canSend,false);
+  Object.assign(f.input(end),{state:end,output:'plain text'});await f.service.tick();assert.equal(r.state,end);assert.equal(f.a.canSend,true);assert.equal(f.a.lifecycle,'alive');assert.equal(f.a.activityState,'idle');
+ }
+ f.disconnect(true);await f.service.tick();assert.equal(f.a.canSend,false);assert.notEqual(f.a.lifecycle,'terminated');await assert.rejects(f.service.send(f.a.id,{instruction:'offline',requestId:'request-offline'}));
+ f.disconnect(false);await f.service.tick();assert.equal(f.a.canSend,true);assert.equal(f.sends(),3);
+ const restored=new DirectAgents(f.options);await restored.init({watch:false});assert.equal(restored.data.agents[0].canSend,false);await restored.tick();assert.equal(restored.data.agents[0].canSend,true);assert.equal(f.sends(),3);
+});
+test('uncertain delivery retains uncertainty but a later native terminal boundary releases new input',async t=>{
+ const f=await fixture(t);f.lose();const r=await f.service.send(f.a.id,{instruction:'unknown delivery',requestId:'request-uncertain'});await f.service.tick();assert.equal(f.a.canSend,false);
+ Object.assign(f.input('unknown delivery'),{state:'completed',output:'native result'});await f.service.tick();assert.equal(r.state,'unknown');assert.equal(r.blocksInput,false);assert.equal(f.a.canSend,true);assert.equal(f.notices(),0);assert.equal(f.sends(),1);
+ assert.equal((await f.service.send(f.a.id,{instruction:'unknown delivery',requestId:'request-uncertain'})).id,r.id);assert.equal(f.sends(),1);
+});
+test('concurrent launch retries return one identity and terminated agents do not block new launch',async t=>{
+ const f=await fixture(t),input={workshopId:f.w.id,cwd:'/tmp',requestId:'concurrent-create',provider:'claude'};
+ const [a,b]=await Promise.all([f.service.create(input),f.service.create(input)]);assert.equal(a.id,b.id);await f.service.stop(a.id);
+ const next=await f.service.create({...input,requestId:'after-stop-create'});assert.notEqual(next.id,a.id);assert.equal(next.provider,'claude');
+});
+test('an old terminal result cannot release uncertain input; stopping preserves uncertain outcome',async t=>{
+ const f=await fixture(t);Object.assign(f.input('old'),{state:'completed',completedAt:'2099-01-01T00:00:00Z'});
+ f.lose();const r=await f.service.send(f.a.id,{instruction:'new',requestId:'new-unknown'});await f.service.tick();assert.equal(f.a.canSend,false);assert.equal(r.state,'unknown');await f.service.stop(f.a.id);assert.equal(r.state,'unknown');assert.equal(r.blocksInput,false);assert.equal(f.a.lifecycle,'terminated');
+});

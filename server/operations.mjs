@@ -1,3 +1,4 @@
+import {hasReport} from '../src/job-state.js';
 import { appendFile, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -55,7 +56,7 @@ export class VillageOperations {
     if(!args[0]||(!extras&&args.length!==1))throw new Error('仕事IDを1つ指定してください。');
     this.bridge.jobById(args[0]);return args[0];
   }
-  summary(job) {return {id:job.id,request:job.request,status:jobStatus(job),onDesk:isOnDesk(job),hasReport:!!job.report,releaseState:job.releaseState,approvedAt:job.approvedAt,cancelledAt:job.cancelledAt,releasedAt:job.releasedAt,releaseError:job.releaseError};}
+  summary(job) {return {id:job.id,request:job.request,status:jobStatus(job),onDesk:isOnDesk(job),hasReport:hasReport(job),releaseState:job.releaseState,approvedAt:job.approvedAt,cancelledAt:job.cancelledAt,releasedAt:job.releasedAt,releaseError:job.releaseError};}
   describe(job) {return {...job,...this.summary(job),artifacts:(job.artifacts||[]).map(file=>({...file,url:`/api/jobs/${job.id}/artifact?path=${encodeURIComponent(file.path)}`}))};}
   list(args) {
     if(args.length && (args.length!==2||args[0]!=='--scope'||!['desk','all'].includes(args[1])))throw new Error('usage: jobs/reports list [--scope desk|all]');

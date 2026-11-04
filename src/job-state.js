@@ -10,3 +10,6 @@ export function jobStatus(job) {
   if (job.releaseState === 'failed') return 'cleanup_failed';
   return job.phase;
 }
+
+// Report presence is a persisted host fact, never a test of model prose.
+export function hasReport(job){return !!job.reportFinishedAt || job.phase==='awaiting_review' || typeof job.report==='string';}

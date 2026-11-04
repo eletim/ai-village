@@ -1,3 +1,4 @@
+import {hasReport} from '../src/job-state.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { MEMO_LIMIT, RESULT_LIMIT, validMemo, recoveryReason, rotationReason, observeContext, pendingBatch } from './secretary-continuity.mjs';
 import { ImageStore } from './images.mjs';
@@ -63,9 +64,9 @@ export class Secretariat {
         }
       }
       if (interrupted) this.add('assistant', '会話の処理中にサーバーが再起動しました。未完了の発言と操作記録は保存しています。操作は再実行せず、次の発言で続きと成否を確認します。', { interrupted: true });
-      for (const job of this.bridge.jobs.filter(job => job.report)) await this.receiveReport(job, { notify: false });
+      for (const job of this.bridge.jobs.filter(hasReport)) await this.receiveReport(job, { notify: false });
     } else {
-      for (const job of this.bridge.jobs.filter(job=>job.report)) await this.receiveReport(job,{notify:false});
+      for (const job of this.bridge.jobs.filter(hasReport)) await this.receiveReport(job,{notify:false});
     }
     await this.persist();
   }
@@ -101,7 +102,7 @@ export class Secretariat {
     if (this.knownDeployments.includes(record.id)) return;
     const file=resolve(this.dir,`deployment-report-${record.id}.txt`);
     await run(process.env.VILLAGE_CODEX_BIN || 'codex',['exec','--disable','shell_tool','--disable','multi_agent','--ephemeral','--skip-git-repo-check','-s','read-only','-C',this.dir,'-o',file,'-'],{input:`あなたはAI村の秘書ミクです。村長へ変更反映の実測結果を日本語で簡潔に報告してください。以下の記録のみを根拠に、工房で作成・Pushしたcommitと、実際にコアへ反映したcommitを区別してください。対象commitの完全SHA、検証の成否、再起動・稼働確認・Pushの結果、失敗や未確認点を明記。appliedCommitがなければ反映済みと言わない。報告のOKとAgent解放は別でまだ確認待ちの場合があると伝える。本文だけを返し、ツールは実行しない。\n${JSON.stringify(record)}`,timeout:300000});
-    const text=(await readFile(file,'utf8')).trim();if(!text)throw new Error('反映結果の説明が空です。');
+    const text=(await readFile(file,'utf8')).trim();
     if (this.knownDeployments.includes(record.id)) return;
     this.knownDeployments.push(record.id);
     try { await this.publish(text,{kind:'deployment',deploymentId:record.id,jobId:record.jobId}); }

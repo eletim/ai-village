@@ -79,7 +79,7 @@ export class WorkshopBridge {
     await this.persist();
     if (this.job && activePhases.has(this.job.phase) && !this.job.cancelRequestedAt) {
       if (this.job.phase === 'working' && this.job.tabId) this.launch(() => this.collect());
-      else if (this.job.phase === 'reporting' && this.job.output) this.launch(() => this.report());
+      else if (this.job.phase === 'reporting') this.launch(() => this.report());
       else await this.update({ phase: 'error', error: '接続準備中にサーバーが停止しました。専用workspaceを確認してから新しい依頼を送ってください。自動再送はしていません。' });
     }
   }
@@ -303,7 +303,7 @@ print(base64.b64encode(data).decode())`;
     if (job.cancelRequestedAt) throw Object.assign(new Error('キャンセルの停止確認を先に完了してください。'), {status:409});
     if (job.releaseState === 'released') return Promise.resolve(this.snapshot());
     if (this.releases.has(id)) return this.releases.get(id);
-    if (job.phase !== 'awaiting_review' || !job.report) throw Object.assign(new Error('報告が届いてからOKを出してください。'), { status: 409 });
+    if (job.phase !== 'awaiting_review') throw Object.assign(new Error('報告が届いてからOKを出してください。'), { status: 409 });
     const operation = (async () => {
       await this.update({ approvedAt: job.approvedAt || new Date().toISOString(), releaseState: 'releasing', releaseError: null }, job);
       try {

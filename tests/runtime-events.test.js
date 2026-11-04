@@ -37,3 +37,8 @@ test('Claude native UUID ancestry and stop reasons distinguish replies from API 
  const s=JSON.parse(execFileSync('python3',['-c',runtimeScript,'claude',sid],{env:{...process.env,HOME:home}}));
  assert.equal(s.inputs.length,2);assert.equal(s.turns[0].state,'completed');assert.equal(s.turns[0].output,'arbitrary prose');assert.equal(s.turns[1].state,'failed');assert.equal(s.turns[1].error,'authentication_failed');
 });
+test('all visible Codex assistant messages are retained without using their contents for completion',async t=>{
+ const dir=await mkdtemp(join(tmpdir(),'native-prose-'));t.after(()=>rm(dir,{recursive:true,force:true}));await mkdir(join(dir,'sessions'));const sid='11111111-2222-3333-4444-555555555555';
+ const rows=[{type:'event_msg',payload:{type:'task_started',turn_id:'t'}},...['commentary','final_answer'].map(phase=>({type:'response_item',payload:{role:'assistant',phase,content:[{type:'output_text',text:phase+' free prose'}]}})),{type:'event_msg',payload:{type:'task_complete',turn_id:'t',last_agent_message:'final_answer free prose'}}];
+ await writeFile(join(dir,'sessions',sid+'.jsonl'),rows.map(JSON.stringify).join('\n')+'\n');const s=JSON.parse(execFileSync('python3',['-c',runtimeScript,'codex',sid],{env:{...process.env,CODEX_HOME:dir}}));assert.equal(s.turns[0].state,'completed');assert.equal(s.turns[0].output,'commentary free prose\n\nfinal_answer free prose');
+});

@@ -88,3 +88,11 @@ test('interrupted worker does not generate a successful secretary report', async
   await bridge.init(); await bridge.submit('依頼'); await bridge.running;
   assert.equal(bridge.job.phase, 'error'); assert.equal(bridge.job.report, undefined);
 });
+
+test('empty model prose does not block reporting recovery or human approval',async()=>{
+ const dir=await mkdtemp(join(tmpdir(),'village-empty-report-'));
+ await writeFile(join(dir,'state.json'),JSON.stringify({id:'empty-report',phase:'reporting',output:'',workerFinishedAt:new Date().toISOString(),reportFinishedAt:null}));
+ const bridge=new FakeWorkshop({dir});bridge.secretary=async()=>'';bridge.cleanupResources=async()=>({remainingOwned:0});
+ await bridge.init();await bridge.running;assert.equal(bridge.job.phase,'awaiting_review');assert.equal(bridge.job.report,'');assert(bridge.job.reportFinishedAt);
+ await bridge.approve(bridge.job.id);assert.equal(bridge.job.releaseState,'released');
+});
