@@ -2,3 +2,5 @@
 
 article:target{outline:2px solid #b9c5ff;scroll-margin-top:20px}
 [hidden]{display:none!important}
+
+.locations{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;align-items:start}.locations.focused{grid-template-columns:minmax(0,1fr)}.location{min-width:0;padding:14px;background:#131d2d}.location article{padding:14px;background:#202c40}.location h2{font-size:18px;overflow-wrap:anywhere}.settings{display:grid;grid-template-columns:1fr 1fr;gap:24px}#views{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:20px}#views [aria-pressed=true]{background:#e2d7a2}article .runs{max-height:520px;overflow:auto}.locations.focused article .runs{max-height:700px}@media(max-width:900px){.locations,.settings{grid-template-columns:1fr}}

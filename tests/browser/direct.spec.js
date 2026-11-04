@@ -70,3 +70,9 @@ test('Agent launch creates an idempotency key without secure-context randomUUID'
  await page.locator('#agent-form button').click();
  await expect.poll(()=>submitted?.requestId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
 });
+test('three places, focused view, provider identity and native waiting state',async({page})=>{
+ const state={workshops:[{id:'local',name:'E-ryzen',connectionType:'local',workplaces:['/tmp']},{id:'remote',name:'E-frontier',connectionType:'ssh',workplaces:['/tmp']}],runs:[],notification:{},agents:[{id:'mayor',location:'mayor',name:'ミク',provider:'codex',state:'idle',connection:{name:'E-ryzen'},workshopId:'local'},{id:'remote-agent',name:'Claude係',provider:'claude',state:'waiting_input',connection:{name:'E-frontier'},workshopId:'remote'}]};
+ await page.route('**/api/direct',route=>route.fulfill({json:state}));await page.goto('/agents');
+ await expect(page.locator('[data-place]')).toHaveCount(3);await expect(page.locator('#place-mayor')).toContainText('ミク · Codex');await expect(page.locator('#place-remote')).toContainText('Claude係 · Claude');await expect(page.locator('#place-remote')).toContainText('入力待ち');
+ await page.locator('[data-view=remote]').click();await expect(page.locator('#place-mayor')).toBeHidden();await expect(page.locator('#place-remote')).toBeVisible();await page.locator('[data-view=all]').click();await expect(page.locator('#place-mayor')).toBeVisible();
+});

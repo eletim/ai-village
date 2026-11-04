@@ -1,3 +1,4 @@
+import {runtimeScript,inputHash,correlate} from './runtime-events.mjs';
 import { run } from './bridge.mjs';
 import { captureProcessesScript, stopProcessesScript } from './processes.mjs';
 import { createServer } from 'node:net';
@@ -8,8 +9,8 @@ import { resolve } from 'node:path';
 const fail = (message, status=409) => { throw Object.assign(new Error(message), {status}); };
 const now = () => new Date().toISOString();
 const ready = s => ['idle','ready-for-review'].includes(s.cliState);
-const active = r => ['sending','running','send_unknown'].includes(r.state);
-const fingerprint = r => JSON.stringify([r.agentSessionId,r.completionTimestamp,r.timestamp,r.text]);
+const active = r => ['sending','running','send_unknown','unknown','waiting_input'].includes(r.state);
+
 
 // Human and future secretary callers share this service. No model-generated
 // instruction, approval, or report is required. One server owns a state directory.
@@ -83,12 +84,15 @@ export class DirectAgents {
     return this.localRun(args[0]==='purplemux'?this.localBin:args[0],args.slice(1));
   }
   async pmux(a,...args){return JSON.parse(await this.execute(a,['purplemux',...args]));}
-  async create({workshopId,cwd,name='Agent',requestId}){
+  async runtime(a,status){return JSON.parse(await this.execute(a,['python3','-c',runtimeScript,a.provider||'codex',status.agentSessionId||'']));}
+  async create({workshopId,cwd,name='Agent',requestId,provider='codex',location='workshop'}){
     if(typeof requestId!=='string'||! /^[\w-]{8,100}$/.test(requestId))fail('requestIdが必要です',400);
-    const old=this.data.agents.find(a=>a.requestId===requestId);if(old){if(old.workshopId!==workshopId||old.cwd!==cwd||old.name!==name)fail('requestIdの再利用です');return old;}
+    const old=this.data.agents.find(a=>a.requestId===requestId);if(old){if(old.workshopId!==workshopId||old.cwd!==cwd||old.name!==name||(old.provider||'codex')!==provider||(old.location||'workshop')!==location)fail('requestIdの再利用です');return old;}
+    if(!['codex','claude'].includes(provider)||!['mayor','workshop'].includes(location))fail('Agent種類または場所が不正です',400);
     const w=this.data.workshops.find(w=>w.id===workshopId);if(!w||!w.workplaces.includes(cwd))fail('工房と登録済み作業場所を選んでください',400);
+    if(location==='mayor'&&w.connectionType!=='local')fail('秘書はローカル工房の実行環境を選んでください',400);
     if(typeof name!=='string'||!name.trim()||name.length>120)fail('Agent名が不正です',400);
-    const a={id:randomUUID(),requestId,workshopId,connection:structuredClone(w),cwd,name,state:'creating',createdAt:now()};
+    const a={id:randomUUID(),requestId,workshopId,connection:structuredClone(w),cwd,name,provider,location,state:'creating',createdAt:now()};
     this.data.agents.push(a);await this.save();
     return this.locked(a.id,async()=>{
       try{
@@ -96,7 +100,7 @@ export class DirectAgents {
         const ws=await this.pmux(a,'workspace','create','--cwd',cwd,'--name',`AI村 direct ${a.id}`);
         if(!ws.id||!ws.initialTab?.tabId)throw Error('workspace応答の識別情報が不足しています');
         Object.assign(a,{workspaceId:ws.id,initialTabId:ws.initialTab.tabId});await this.save();
-        const tab=await this.pmux(a,'tab','create','-w',a.workspaceId,'-n',name,'-t','codex-cli');
+        const tab=await this.pmux(a,'tab','create','-w',a.workspaceId,'-n',name,'-t',provider==='claude'?'claude-code':'codex-cli');
         if(!tab.tabId||!tab.sessionName)throw Error('tab応答の識別情報が不足しています');
         const url=new URL(w.baseUrl);url.searchParams.set('workspace',ws.id);url.searchParams.set('tab',tab.tabId);
         Object.assign(a,{tabId:tab.tabId,sessionName:tab.sessionName,terminalUrl:url.href,state:'starting'});
@@ -118,11 +122,11 @@ export class DirectAgents {
         const capture=await this.pmux(a,'tab','capture','-w',a.workspaceId,a.tabId);
         if(/Do you trust|trust this|trust the contents/i.test(capture.content||''))fail('作業場所の信頼確認が必要です。PurpleMuxのタブを開いて確認してください');
       }
-      const baseline=await this.pmux(a,'tab','result','-w',a.workspaceId,a.tabId);
-      const r={id:randomUUID(),requestId,agentId:id,instruction,state:'sending',baseline:fingerprint(baseline),agentSessionId:status.agentSessionId||null,createdAt:now(),achievement:'unverified'};
-      r.marker=`[AI_VILLAGE_RUN:${r.id}]`;
+      const baseline=await this.runtime(a,status);
+      if(!baseline.available||baseline.turns.at(-1)?.state==='running'||(!status.agentSessionId&&a.observedSessionId))fail('ランタイムの待機状態を確認できないため送信しません');
+      const r={id:randomUUID(),requestId,agentId:id,instruction,state:'sending',dispatchConfirmed:false,baselineRuntime:{sessionId:baseline.sessionId,cursor:baseline.cursor,fileIdentity:baseline.fileIdentity},inputHash:inputHash(instruction),agentSessionId:status.agentSessionId||null,createdAt:now(),achievement:'unverified'};
       this.data.runs.push(r);await this.save();
-      try{await this.pmux(a,'tab','send','-w',a.workspaceId,a.tabId,`${instruction}\n\n応答の最後に次の識別子をそのまま記載してください（完了の照合用）: ${r.marker}`);r.state='running';}
+      try{await this.pmux(a,'tab','send','-w',a.workspaceId,a.tabId,instruction);r.dispatchConfirmed=true;r.state='running';}
       catch{r.state='send_unknown';r.error='送信結果不明。重複防止のため再送していません。';}
       a.state='busy';await this.save();return r;
     }));
@@ -136,24 +140,30 @@ export class DirectAgents {
     await this.locked(a.id,async()=>{
       try{
         const s=await this.pmux(a,'tab','status','-w',a.workspaceId,a.tabId);
-        const result=await this.pmux(a,'tab','result','-w',a.workspaceId,a.tabId);
+        const snapshot=await this.runtime(a,s);
         a.connectionState='connected';a.error=null;a.lastCheckedAt=now();a.runtime=s;
         a.setupRequired=false;
         if(s.alive&&!s.agentSessionId){
           const capture=await this.pmux(a,'tab','capture','-w',a.workspaceId,a.tabId);
           a.setupRequired=/Do you trust|trust this|trust the contents/i.test(capture.content||'');
         }
-        a.state=!s.alive?'unavailable':ready(s)?'idle':s.cliState==='busy'?'busy':'starting';
-        if(a.setupRequired){a.state='starting';a.error='作業場所の信頼確認が必要です。PurpleMuxのタブを開いて確認してください。';}
+        a.state=!s.alive?'unavailable':s.permissionRequest||['needs-input','waiting-for-input','waiting-for-permission'].includes(s.cliState)?'waiting_input':ready(s)?'idle':s.cliState==='busy'?'busy':'unknown';
+        if(a.setupRequired){a.state='waiting_input';a.error='作業場所の信頼確認が必要です。PurpleMuxで確認してください。';}
+        a.currentAction=s.currentAction?.toolName ? s.currentAction.toolName+': '+(s.currentAction.summary||'') : (s.cliState==='busy'?'ランタイム実行中':null);
+        a.nativeTurns=snapshot.available?snapshot.turns.slice(-20).map(t=>({...t,instruction:snapshot.inputs.filter(i=>i.turnId===t.id).map(i=>i.text).join('\n')})):[];
+        if(snapshot.sessionId)a.observedSessionId=snapshot.sessionId;
+        if(s.alive&&snapshot.turns.at(-1)?.state==='running'&&!a.setupRequired&&a.state!=='waiting_input')a.state='busy';
         const r=this.data.runs.find(r=>r.agentId===a.id&&active(r));
         if(r){
-          const session=result.agentSessionId||s.agentSessionId;
-          if(r.agentSessionId&&session&&r.agentSessionId!==session){r.error='Agentセッションが変わりました。照合できません。';a.state='unknown';}
-          else if(result.status==='completed'&&!result.interrupted&&ready(s)&&fingerprint(result)!==r.baseline&&result.text?.includes(r.marker)){
-            Object.assign(r,{state:'completed',output:result.text.replaceAll(r.marker,'').trim(),completedAt:now(),completionTimestamp:result.completionTimestamp,agentSessionId:session,error:null});
-          }else if(result.interrupted||result.status==='interrupted'){r.error='中断を検出しました。完了扱いにしません。';}
-          else if(ready(s)){r.error='新しい応答の識別子を照合待ちです。再送はしません。';}
+          const observation=correlate(r,snapshot);
+          if(observation.turnId){r.turnId=observation.turnId;r.sessionId=observation.sessionId;r.inputId ||= observation.inputId;}
+          if(observation.state==='completed'){
+            Object.assign(r,{state:'completed',output:observation.output,completedAt:now(),completionEvent:observation.completionEvent,error:null});
+          }else if(observation.state==='failed'){Object.assign(r,{state:'failed',output:observation.output,error:observation.error||'runtime-api-error',completedAt:now(),completionEvent:observation.completionEvent});}
+          else if(observation.state==='interrupted'){r.state='interrupted';r.error='ランタイムの中断イベントを確認しました。';}
+          else {r.state=a.state==='waiting_input'?'waiting_input':observation.state==='running'&&s.alive?'running':'unknown';r.error=observation.reason||null;}
         }
+        if(!snapshot.available||(a.observedSessionId&&!snapshot.sessionId)){a.state='unknown';a.error='実行記録を取得できません';}
         await this.save();
       }catch{a.connectionState='unknown';a.state='unknown';a.error='接続・状態取得ができません。監視を継続します。';await this.save();}
     });

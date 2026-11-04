@@ -1,5 +1,7 @@
 # 工房とAgentの直接操作
 
+最新仕様・検証は [ネイティブ実行イベントと3拠点画面](native-runtime-board.md) を参照。以下の過去検証記録は当時の実装についての記録です。
+
 `/agents` は秘書を呼ばずに工房登録、Agent起動、指示、追加指示、状態・返答確認、終了を行う画面です。トップページにもリンクがあります。既存の秘書画面と旧job APIは互換性のため残しています。旧jobの「全体で1件」の制約は直接操作APIには適用されません。
 
 ## 起動
@@ -37,7 +39,7 @@ E-ryzen（村長PC）のローカルPurpleMuxとE-frontierのSSH接続を同じ�
 | GET `/api/direct` | 工房、Agent、実行履歴、通知状態 |
 | POST `/api/direct/workshops` | `{name, connectionType: "local" または "ssh", sshHost, baseUrl, workplaces: ["/path"]}` |
 | PUT `/api/direct/workshops/:id` | 工房の編集（同じ入力形式） |
-| POST `/api/direct/agents` | `{workshopId, cwd, name, requestId}` |
+| POST `/api/direct/agents` | `{workshopId, cwd, name, requestId, provider: "codex" または "claude", location: "workshop" または "mayor"}` |
 | POST `/api/direct/agents/:id/runs` | `{instruction, requestId}` |
 | POST `/api/direct/agents/:id/stop` | `{}`、対象Agentのみ終了 |
 
@@ -49,7 +51,7 @@ E-ryzen（村長PC）のローカルPurpleMuxとE-frontierのSSH接続を同じ�
 
 - JSONを一時ファイルへ書き、fsync、rename、ディレクトリfsyncで永続化します。書き込みとAgent単位の操作を直列化します。
 - workspace/tab作成と指示送信の前に意図を保存します。作成・送信結果が不明でも自動再試行しません。Agent作成失敗時には保存済みworkspace IDとPurpleMux側の `AI村 direct <Agent UUID>` を確認してください。
-- 送信時の前回結果を保存し、指示にランダムな実行IDの返答用識別子を付加します。結果が前回と異なり、その識別子を含み、同じAgentセッションの `idle` または `ready-for-review` 状態であるときだけ応答完了になります。識別子を返さないAgentや外部からのセッション変更は未確定のままです。画面キャプチャは成果として使いません。
+- 送信前のネイティブ記録位置と送信確認を永続化し、入力イベントをnative turn IDに対応付けます。同じturnのランタイム終了イベントだけで応答完了を判定します。本文への識別子の付加・検査は行いません。
 - Codexの作業場所の信頼確認画面は、PurpleMuxがidleと返しても送信をブロックします。PurpleMuxリンクから確認してください。
 - SSH障害は接続不明として監視を継続します。応答完了、通信不明、終了、送信結果不明を区別します。中断は完了にしません。未確定の実行を解消できない場合は対象Agentを明示終了し、新しいAgentで進められます。
 - 応答完了でも `achievement: unverified` です。返答を読み、人間が依頼の達成を判断します。成功をモデルで推測する処理はありません。

@@ -1,3 +1,4 @@
+import {runtimeScript,inputHash,correlate} from './runtime-events.mjs';
 import { spawn } from 'node:child_process';
 import { mkdir, readFile, writeFile, rename, readdir, appendFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
@@ -130,7 +131,6 @@ export class WorkshopBridge {
     const file = resolve(this.dir, `${this.job.id}-${kind}.txt`);
     await run(process.env.VILLAGE_CODEX_BIN || 'codex', ['exec', '--ephemeral', '--skip-git-repo-check', '-s', 'read-only', '-C', this.dir, '-o', file, '-'], { input: prompt, timeout: 300000, signal: this.executions.get(this.job.id)?.controller.signal });
     const text = (await readFile(file, 'utf8')).trim();
-    if (!text) throw new Error('秘書Codexの出力が空です。');
     return text;
   }
   async execute() {
@@ -168,8 +168,13 @@ export class WorkshopBridge {
     this.assertRunning();
     await this.update({ resourceStep: 'sending', phase: 'working', startedAt: new Date().toISOString(), workerState: 'dispatching' });
     this.assertRunning();
+    const status=await this.pmux('tab','status','-w',workspace.id,tab.tabId);
+    const baseline=JSON.parse(await this.remote(['python3','-c',runtimeScript,'codex',status.agentSessionId||'']));
+    if(!baseline.available)throw new Error('実行記録不明のため送信しません');
+    await this.update({baselineRuntime:{sessionId:baseline.sessionId,cursor:baseline.cursor,fileIdentity:baseline.fileIdentity},inputHash:inputHash(this.job.instruction)});
     await this.pmux('tab', 'send', '-w', workspace.id, tab.tabId, this.job.instruction);
     this.assertRunning();
+    await this.update({dispatchConfirmed:true});
     await this.collect();
   }
   async collect() {
@@ -180,7 +185,8 @@ export class WorkshopBridge {
       let status, result;
       try {
         status = await this.pmux('tab', 'status', '-w', this.job.workspaceId, this.job.tabId);
-        result = await this.pmux('tab', 'result', '-w', this.job.workspaceId, this.job.tabId);
+        result = correlate(this.job,JSON.parse(await this.remote(['python3','-c',runtimeScript,'codex',status.agentSessionId||''])));
+        if(result.turnId)await this.update({turnId:result.turnId,sessionId:result.sessionId,inputId:result.inputId});
         failures = 0;
       } catch (error) {
         if (++failures >= 5) throw error;
@@ -188,11 +194,12 @@ export class WorkshopBridge {
         await sleep(this.pollMs); continue;
       }
       this.assertRunning();
-      await this.update({ workerState: status.cliState, agentSessionId: result.agentSessionId || status.agentSessionId, connectionError: null, permissionRequest: status.permissionRequest || null });
+      await this.update({ workerState: result.state==='unknown'?'unknown':status.cliState, agentSessionId: result.agentSessionId || status.agentSessionId, connectionError: null, permissionRequest: status.permissionRequest || null });
       this.assertRunning();
-      if (result.interrupted || result.status === 'interrupted') throw new Error('工房の作業が中断されました。端末リンクで確認してください。');
-      if (result.status === 'completed' && result.text && status.cliState !== 'busy') {
-        await this.update({ phase: 'reporting', output: result.text, workerFinishedAt: new Date().toISOString() });
+      if (result.state === 'failed') throw new Error('工房のランタイムでエラーが発生しました。端末リンクで確認してください。');
+      if (result.state === 'interrupted') throw new Error('工房の作業が中断されました。端末リンクで確認してください。');
+      if (result.state === 'completed') {
+        await this.update({ phase: 'reporting', output: result.output, workerFinishedAt: new Date().toISOString() });
         await this.report(); return;
       }
       if (!status.alive) throw new Error('工房の端末が終了しました。完了報告は取得できていません。');

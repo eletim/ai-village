@@ -1,3 +1,4 @@
+import {inputHash} from '../server/runtime-events.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
@@ -20,13 +21,13 @@ class FakeWorkshop extends WorkshopBridge {
     return kind === 'instruction' ? '自然文の制作指示' : '制作物と検証結果の人間向け報告';
   }
   async listArtifacts() { return [{ path: 'hello.html', size: 12 }]; }
-  async remote(args) { this.calls.push(args); return ''; }
+  async remote(args) { this.calls.push(args); if(args[0]==='python3'&&args[2].includes('def digest'))return JSON.stringify({available:true,sessionId:'session-id',cursor:this.sent?10:0,inputs:this.sent?[{id:'input',turnId:'turn',hash:inputHash('自然文の制作指示'),offset:10}]:[],turns:this.sent?[{id:'turn',state:this.interrupted?'interrupted':'completed',output:'成果は /work/hello.html。確認済み。'}]:[]});return ''; }
   async pmux(...args) {
     this.calls.push(args);
     const key = args.slice(0, 2).join(' ');
     if (key === 'workspace create') return { id: 'ws-1', initialTab: { tabId: 'tab-0' } };
     if (key === 'tab create') return { tabId: 'tab-1', sessionName: 'session-1' };
-    if (key === 'tab send') return { status: 'sent' };
+    if (key === 'tab send') {this.sent=true;return { status: 'sent' };}
     if (key === 'tab status') return { alive: true, cliState: this.statuses.shift() || 'ready-for-review' };
     if (key === 'tab result') return { status: 'completed', text: '成果は /work/hello.html。確認済み。', agentSessionId: 'session-id', interrupted: false };
     throw new Error(key);
@@ -65,8 +66,8 @@ test('hammer only follows live busy state, stops during report, and never uses d
 
 test('restart resumes result collection without resending a mutation or instruction', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'village-test-'));
-  await writeFile(join(dir, 'state.json'), JSON.stringify({ id: 'recover', phase: 'working', request: '依頼', tabId: 'tab-1', workspaceId: 'ws-1', startedAt: new Date().toISOString(), reportFinishedAt: null }));
-  const bridge = new FakeWorkshop({ dir }); await bridge.init(); await bridge.running;
+  await writeFile(join(dir, 'state.json'), JSON.stringify({ dispatchConfirmed:true,baselineRuntime:{sessionId:'session-id',cursor:0},inputHash:inputHash('自然文の制作指示'),id: 'recover', phase: 'working', request: '依頼', tabId: 'tab-1', workspaceId: 'ws-1', startedAt: new Date().toISOString(), reportFinishedAt: null }));
+  const bridge = new FakeWorkshop({ dir }); bridge.sent=true; await bridge.init(); await bridge.running;
   assert.equal(bridge.job.phase, 'awaiting_review');
   assert.equal(bridge.calls.some(c => Array.isArray(c) && ['create', 'send'].includes(c[1])), false);
 });
@@ -81,6 +82,7 @@ test('uncertain workspace creation is not retried after restart', async () => {
 test('interrupted worker does not generate a successful secretary report', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'village-test-'));
   const bridge = new FakeWorkshop({ dir }); bridge.statuses = ['idle'];
+  bridge.interrupted=true;
   const pmux = bridge.pmux.bind(bridge);
   bridge.pmux = async (...args) => args[1] === 'result' ? { status: 'completed', text: 'previous result', interrupted: true } : pmux(...args);
   await bridge.init(); await bridge.submit('依頼'); await bridge.running;
