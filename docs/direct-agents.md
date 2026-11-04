@@ -24,6 +24,10 @@ journalctl --user -u ai-village-direct.service
 
 サービスの配置は `~/.config/systemd/user/ai-village-direct.service`、作業ディレクトリは `/home/eletim/DevEnv/ai-village` です。同じ状態ディレクトリで別サーバーを同時起動しないでください。Linux abstract socketで二重監視を拒否します。サービスはユーザーセッション内で稼働し、ページを閉じても継続します。PC停止中は監視できません。
 
+## ローカル工房
+
+E-ryzen（村長PC）のローカルPurpleMuxとE-frontierのSSH接続を同じ画面で扱えます。接続方式と実機検証結果は [ローカル工房とSSH工房](local-workshop.md) を参照してください。
+
 ## データ・API
 
 `VILLAGE_STATE_DIR`（既定 `.runtime`）の `direct.json` に工房、Agent、実行を別配列で保存します。工房は名前、SSH接続先、PurpleMuxブラウザURL、複数の作業場所を持ちます。作業場所は工房に存在する絶対パスを登録してください。Agent作成ごとに専用workspaceとcodex-cli tabを作成します。Agentは起動時の接続情報を保持し、工房を編集しても既存Agentを別ホストへ付け替えません。
@@ -31,7 +35,7 @@ journalctl --user -u ai-village-direct.service
 | API | 内容 |
 | --- | --- |
 | GET `/api/direct` | 工房、Agent、実行履歴、通知状態 |
-| POST `/api/direct/workshops` | `{name, sshHost, baseUrl, workplaces: ["/path"]}` |
+| POST `/api/direct/workshops` | `{name, connectionType: "local" または "ssh", sshHost, baseUrl, workplaces: ["/path"]}` |
 | PUT `/api/direct/workshops/:id` | 工房の編集（同じ入力形式） |
 | POST `/api/direct/agents` | `{workshopId, cwd, name, requestId}` |
 | POST `/api/direct/agents/:id/runs` | `{instruction, requestId}` |

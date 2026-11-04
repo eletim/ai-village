@@ -20,7 +20,7 @@ def configure(path, token=None):
     if path.exists() and (path.stat().st_uid != os.getuid() or not stat.S_ISREG(path.stat().st_mode)):
         raise ValueError('Config must be a regular file owned by the current user')
     text = path.read_text() if path.exists() else ''
-    updates = {'NOTIFY_SERVER': 'https://eletim.jp/ntfy', 'NOTIFY_TOPIC': 'agents'}
+    updates = {'NOTIFY_SERVER': 'https://eletim.jp/ntfy', 'NOTIFY_TOPIC': 'topic-eletim'}
     if token is not None:
         if not token or any(c.isspace() or ord(c) < 32 or ord(c) == 127 for c in token):
             raise ValueError('Token must be nonempty and contain no whitespace or control characters')

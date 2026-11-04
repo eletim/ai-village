@@ -2,13 +2,15 @@
 
 対象ブランチ: `feat/direct-workshop-agents`。mainと過去の未マージブランチ、AWM固有の設定は変更していません。
 
+送信先URL: https://eletim.jp/ntfy/topic-eletim （従来の `agents` から変更）。
+
 ## 配置した設定
 
 実行ユーザーは `eletim`。設定ファイルは `/home/eletim/.config/notify/config`、所有者eletim、権限600です。
 
 ```sh
 NOTIFY_SERVER='https://eletim.jp/ntfy'
-NOTIFY_TOPIC='agents'
+NOTIFY_TOPIC='topic-eletim'
 # NOTIFY_TOKEN は既存値があれば保持。新規設定の場合は空で準備。
 ```
 

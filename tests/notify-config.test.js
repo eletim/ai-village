@@ -12,6 +12,7 @@ with tempfile.TemporaryDirectory() as d:
  m.configure(p)
  assert original in p.read_text()
  assert "https://eletim.jp/ntfy" in p.read_text()
+ assert "NOTIFY_TOPIC=topic-eletim" in p.read_text()
  assert p.stat().st_mode & 0o777 == 0o600
  assert 'OTHER=keep' in p.read_text()
  m.configure(p, "synthetic'$(false)")

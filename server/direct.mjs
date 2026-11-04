@@ -1,7 +1,8 @@
+import { run } from './bridge.mjs';
 import { captureProcessesScript, stopProcessesScript } from './processes.mjs';
 import { createServer } from 'node:net';
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, readFile, open, rename, realpath } from 'node:fs/promises';
+import { mkdir, readFile, open, rename, realpath, appendFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
 const fail = (message, status=409) => { throw Object.assign(new Error(message), {status}); };
@@ -13,8 +14,8 @@ const fingerprint = r => JSON.stringify([r.agentSessionId,r.completionTimestamp,
 // Human and future secretary callers share this service. No model-generated
 // instruction, approval, or report is required. One server owns a state directory.
 export class DirectAgents {
-  constructor({dir, remote, notifier, pollMs=2000}) {
-    Object.assign(this,{dir,remote,notifier,pollMs});
+  constructor({dir, remote, notifier, localRun=run, localBin=process.env.VILLAGE_PMUX_BIN || 'purplemux', pollMs=2000}) {
+    Object.assign(this,{dir,remote,notifier,localRun,localBin,pollMs});
     this.data={version:1,workshops:[],agents:[],runs:[]};
     this.queue=Promise.resolve(); this.locks=new Map(); this.monitors=new Map();
   }
@@ -29,7 +30,9 @@ export class DirectAgents {
     }
     try { this.data=JSON.parse(await readFile(resolve(this.dir,'direct.json'),'utf8')); }
     catch(e) { if(e.code!=='ENOENT')throw e; }
+    for(const w of this.data.workshops)w.connectionType ||= 'ssh';
     for(const a of this.data.agents) {
+      a.connection.connectionType ||= 'ssh';
       if(a.state==='creating')a.state='creation_unknown';
       if(a.state==='stopping')a.state='stop_unknown';
     }
@@ -54,12 +57,14 @@ export class DirectAgents {
     try{return await task;}finally{if(this.locks.get(id)===task)this.locks.delete(id);}
   }
   workshop(input,id){
-    const {name,sshHost,baseUrl,workplaces}=input;
-    if(typeof name!=='string'||!name.trim()||name.length>120||typeof sshHost!=='string'||! /^[a-zA-Z0-9_][a-zA-Z0-9_.@-]{0,200}$/.test(sshHost))fail('名前とSSH接続先を確認してください',400);
+    const {name,baseUrl,workplaces,connectionType='ssh'}=input;
+    if(!['ssh','local'].includes(connectionType))fail('接続方式はSSHまたはローカルを選んでください',400);
+    const sshHost=connectionType==='local'?null:input.sshHost;
+    if(typeof name!=='string'||!name.trim()||name.length>120||(connectionType==='ssh'&&(typeof sshHost!=='string'||! /^[a-zA-Z0-9_][a-zA-Z0-9_.@-]{0,200}$/.test(sshHost))))fail('名前とSSH接続先を確認してください',400);
     let url;try{url=new URL(baseUrl);}catch{fail('PurpleMux URLが不正です',400);}
     if(!['http:','https:'].includes(url.protocol)||url.username||url.password)fail('HTTP(S) URLを指定してください',400);
     if(!Array.isArray(workplaces)||!workplaces.length||workplaces.length>30||workplaces.some(p=>typeof p!=='string'||!p.startsWith('/')||p.length>1000||/[\r\n\0]/.test(p)))fail('作業場所を絶対パスで指定してください',400);
-    return {id:id||randomUUID(),name:name.trim(),sshHost,baseUrl:url.href,workplaces:[...new Set(workplaces)],updatedAt:now()};
+    return {id:id||randomUUID(),name:name.trim(),connectionType,sshHost,baseUrl:url.href,workplaces:[...new Set(workplaces)],updatedAt:now()};
   }
   async putWorkshop(input,id){
     const w=this.workshop(input,id);const i=this.data.workshops.findIndex(x=>x.id===id);
@@ -68,7 +73,16 @@ export class DirectAgents {
     await this.save();return w;
   }
   agent(id){return this.data.agents.find(a=>a.id===id)||fail('Agentがありません',404);}
-  async pmux(a,...args){return JSON.parse(await this.remote(['purplemux',...args],a.connection.sshHost,a.id));}
+  async execute(a,args){
+    const type=a.connection.connectionType || 'ssh';
+    if(type==='ssh')return this.remote(args,a.connection.sshHost,a.id);
+    if(type!=='local')fail('保存された接続方式が不正です');
+    // Local commands use argv directly, never SSH or interpolated shell text.
+    // Audit identities/operation only: instructions and credentials stay out.
+    await appendFile(resolve(this.dir,'local-audit.jsonl'),JSON.stringify({at:now(),agentId:a.id,command:args[0],operation:args[0]==='purplemux'?args.slice(1,3):[]})+'\n',{mode:0o600});
+    return this.localRun(args[0]==='purplemux'?this.localBin:args[0],args.slice(1));
+  }
+  async pmux(a,...args){return JSON.parse(await this.execute(a,['purplemux',...args]));}
   async create({workshopId,cwd,name='Agent',requestId}){
     if(typeof requestId!=='string'||! /^[\w-]{8,100}$/.test(requestId))fail('requestIdが必要です',400);
     const old=this.data.agents.find(a=>a.requestId===requestId);if(old){if(old.workshopId!==workshopId||old.cwd!==cwd||old.name!==name)fail('requestIdの再利用です');return old;}
@@ -162,11 +176,11 @@ export class DirectAgents {
     if(target&&target.sessionName!==a.sessionName)fail('tabの識別情報が一致しません');
     a.state='stopping';await this.save();
     try{
-      if(target&&!a.ownedProcesses){a.ownedProcesses=JSON.parse(await this.remote(['python3','-c',captureProcessesScript,a.sessionName],a.connection.sshHost,a.id));await this.save();}
-      if(target)await this.remote(['purplemux','tab','close','-w',a.workspaceId,a.tabId],a.connection.sshHost,a.id);
+      if(target&&!a.ownedProcesses){a.ownedProcesses=JSON.parse(await this.execute(a,['python3','-c',captureProcessesScript,a.sessionName]));await this.save();}
+      if(target)await this.execute(a,['purplemux','tab','close','-w',a.workspaceId,a.tabId]);
       const remaining=await this.pmux(a,'tab','list','-w',a.workspaceId);
       if(remaining.tabs.some(t=>t.tabId===a.tabId))throw Error('tab remains');
-      if(a.ownedProcesses)a.processVerification=JSON.parse(await this.remote(['python3','-c',stopProcessesScript,JSON.stringify(a.ownedProcesses),a.cwd,'[]','--owned-only'],a.connection.sshHost,a.id));
+      if(a.ownedProcesses)a.processVerification=JSON.parse(await this.execute(a,['python3','-c',stopProcessesScript,JSON.stringify(a.ownedProcesses),a.cwd,'[]','--owned-only']));
       a.state='terminated';a.error=null;a.terminatedAt=now();
       for(const r of this.data.runs)if(r.agentId===id&&active(r))r.state='terminated';
     }catch{a.state='stop_unknown';a.error='終了結果不明。再度終了を選ぶと対象tabの存在を照合します。';}

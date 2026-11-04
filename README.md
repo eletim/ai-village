@@ -210,8 +210,8 @@ notify --help
 既定の設定ファイルは `${XDG_CONFIG_HOME:-$HOME/.config}/notify/config`。別の既存設定を使うなら `NOTIFY_CONFIG` を指定します。設定ファイルには次のキーを置き、実際のサーバー・topic・トークンへ置き換えてください。**トークンはこのリポジトリや村の資料へ書きません。**
 
 ```text
-NOTIFY_SERVER=https://your-notify-server.example
-NOTIFY_TOPIC=agents
+NOTIFY_SERVER=https://eletim.jp/ntfy
+NOTIFY_TOPIC=topic-eletim
 NOTIFY_TOKEN=tk_REPLACE_WITH_YOUR_TOKEN
 NOTIFY_CONNECT_TIMEOUT=5
 NOTIFY_TIMEOUT=15
@@ -222,7 +222,7 @@ chmod 600 "$HOME/.config/notify/config"
 export NOTIFY_CONFIG="$HOME/.config/notify/config"
 ```
 
-CLIは設定ファイルを送信のたびに読み、明示的な環境変数 `NOTIFY_SERVER`・`NOTIFY_TOPIC`・`NOTIFY_TOKEN` 等がファイルより優先されます。CLIの通信タイムアウトは秒単位。HTTPSが基本で、loopbackの開発用接続だけHTTPを許します。インストーラーの初期値はサーバー `https://eletim.jp`・topic `agents` ですが、トークンは空です。初期ファイルを作っただけでは送信できず、利用する受信先と認証情報の確認が必要です。
+CLIは設定ファイルを送信のたびに読み、明示的な環境変数 `NOTIFY_SERVER`・`NOTIFY_TOPIC`・`NOTIFY_TOKEN` 等がファイルより優先されます。CLIの通信タイムアウトは秒単位。HTTPSが基本で、loopbackの開発用接続だけHTTPを許します。現在のAI村ではサーバー `https://eletim.jp/ntfy`・topic `topic-eletim` を使用します。安全なトークン入力と通知テストは [Notify連携手順](docs/notify-direct.md) を参照してください。初期ファイルを作っただけでは送信できず、利用する受信先と認証情報の確認が必要です。
 
 ### 村の起動とテスト送信
 

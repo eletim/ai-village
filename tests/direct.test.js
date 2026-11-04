@@ -107,3 +107,37 @@ test('a slow workshop does not block another agents completion notification',asy
  for(let i=0;i<30&&!r.notification;i++)await new Promise(resolve=>setTimeout(resolve,5));
  try{assert.equal(r.state,'completed');assert.equal(f.notifications(),1);}finally{release();await polling;}
 });
+test('local workshop routes every operation including process cleanup locally and freezes connection type',async t=>{
+ const f=await fixture(t);const calls=[];let present=true;
+ f.service.localBin='/local/purplemux';
+ f.service.localRun=async(command,args)=>{
+  calls.push({command,args});
+  if(command==='python3')return JSON.stringify(args[1].includes('root=pane')?[{pid:123,start:'456'}]:{remainingOwned:0});
+  assert.equal(command,'/local/purplemux');
+  if(args[0]==='workspace')return JSON.stringify({id:'local-ws',initialTab:{tabId:'initial'}});
+  if(args[1]==='create')return JSON.stringify({tabId:'local-tab',sessionName:'local-session'});
+  if(args[1]==='status')return JSON.stringify({alive:true,cliState:'idle',agentSessionId:'local-agent-session'});
+  if(args[1]==='result')return JSON.stringify({status:'not-ready'});
+  if(args[1]==='send')return '{"status":"sent"}';
+  if(args[1]==='list')return JSON.stringify({tabs:present?[{tabId:'local-tab',sessionName:'local-session'}]:[]});
+  if(args[1]==='close'){present=false;return 'ok';}
+  throw Error('Unexpected local operation');
+ };
+ const w=await f.service.putWorkshop({name:'Local',connectionType:'local',baseUrl:'http://local:8022',workplaces:['/tmp/work']});
+ assert.equal(w.sshHost,null);
+ const a=await f.service.create({workshopId:w.id,cwd:'/tmp/work',requestId:'local-create'});
+ await f.service.putWorkshop({...w,connectionType:'ssh',sshHost:'Other'},w.id);
+ f.service.remote=async()=>{throw Error('Must not use SSH');};
+ await f.service.poll(a);
+ await f.service.send(a.id,{instruction:'literal $(false) text',requestId:'local-send'});
+ await f.service.stop(a.id);
+ assert.equal(a.state,'terminated');assert.equal(a.processVerification.remainingOwned,0);
+ assert(calls.some(c=>c.args[1]==='send'&&c.args.at(-1).startsWith('literal $(false) text')));
+ assert.equal(calls.filter(c=>c.command==='python3').length,2);
+});
+test('legacy workshops and Agent snapshots migrate to SSH; invalid connection types are rejected',async t=>{
+ const f=await fixture(t);delete f.w.connectionType;delete f.a.connection.connectionType;await f.service.save();
+ const restored=new DirectAgents(f.options);await restored.init({watch:false});
+ assert.equal(restored.data.workshops[0].connectionType,'ssh');assert.equal(restored.agent(f.a.id).connection.connectionType,'ssh');
+ await assert.rejects(restored.putWorkshop({...f.w,connectionType:'unknown'}));
+});
