@@ -115,7 +115,7 @@ export class DirectAgents {
   }
   async notify(r){
     if(r.state!=='completed'||r.notification)return;
-    r.notification=await this.notifier.enqueue({id:`direct:${r.id}`,role:'assistant',kind:'direct',content:`${this.agent(r.agentId).name} の応答が完了しました。達成状況は未判定です。\n${r.output}`});await this.save();
+    r.notification=await this.notifier.enqueue({id:`direct:${r.id}`,role:'assistant',kind:'direct',agentId:r.agentId,content:`${this.agent(r.agentId).name} の応答が完了しました。達成状況は未判定です。\n${r.output}`});await this.save();
   }
   async poll(a){
     if(this.locks.has(a.id)||!a.tabId||['terminated','stopping','stop_unknown'].includes(a.state))return;

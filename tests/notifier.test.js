@@ -77,3 +77,23 @@ test('direct response notification accepts agents page and uses an agent title',
   await notifier.enqueue({id:'direct:run',role:'assistant',kind:'direct',content:'Agent response'});
   assert.equal(calls.length,1);assert.match(calls[0].title,/Agentの応答完了/);assert.equal(notifier.status().destinationConfigured,true);
 });
+
+test('direct notification has a VPN Agent deep link and restart never replays it',async()=>{
+ const {dir,environment}=await setup();const settings={...environment,VILLAGE_OFFICE_URL:'http://100.87.176.23:5173/office'};
+ const notifier=new VillageNotifier({dir,environment:settings});await notifier.init();const calls=[];
+ notifier.send=async(title,content,click)=>{calls.push({title,click});return {status:'sent',delivered:true};};
+ const agentId='bdeab87b-6247-4355-9b5c-3a17c1a3c955';
+ const message={id:'direct:deep',role:'assistant',kind:'direct',agentId,content:'response'};
+ const result=await notifier.enqueue(message);
+ assert.equal(result.clickUrl,`http://100.87.176.23:5173/agents#agent-${agentId}`);assert.equal(calls[0].click,result.clickUrl);
+ const restarted=new VillageNotifier({dir,environment:settings});await restarted.init();restarted.send=async()=>{throw Error('must not replay');};
+ assert.equal((await restarted.enqueue(message)).status,'duplicate_or_internal');
+});
+
+test('configuration errors are recorded without exposing CLI output',async()=>{
+ const {dir,environment}=await setup();const exe=join(dir,'no-token');
+ await writeFile(exe,'#!/bin/sh\necho private-cli-diagnostic >&2\nexit 2\n',{mode:0o700});
+ const notifier=new VillageNotifier({dir,environment:{...environment,VILLAGE_NOTIFY_BIN:exe}});await notifier.init();
+ const result=await notifier.test();assert.equal(result.status,'cli_failed');assert.equal(result.reason,'cli_configuration_error');assert.equal(result.delivered,false);
+ assert.doesNotMatch(await readFile(join(dir,'notifications.jsonl'),'utf8'),/private-cli-diagnostic/);
+});

@@ -54,6 +54,8 @@ journalctl --user -u ai-village-direct.service
 
 ## Notify
 
+2026-11-04追記: 送信先を `/ntfy` に変更し、Agent別のVPN通知リンクを追加しました。トークン入力・通知テストの最新手順は [Notify連携](notify-direct.md) を参照してください。以下の404は変更前の検証記録です。
+
 既存の `notify send --title ... --message ... --click ...` を使用します。`~/.config/notify/config` または既存の `NOTIFY_CONFIG` / `NOTIFY_*` 設定をCLIが解決します。秘密情報をUIへ渡しません。`VILLAGE_OFFICE_URL` は `/office` または `/agents` のHTTP(S) URLを受け付けます。通知端末から開く場合は、その端末から到達可能な認証済み公開URLを指定してください。localhostは村長PCからのアクセス用です。
 
 指示ごとの実行IDで通知を重複排除し、`notifications.jsonl` に送信前のclaimを保存します。送信途中でバックエンドが停止した場合も再送せず、配送結果不明の可能性を残します。厳密なexactly-once配送は保証しません。`sent`はNotifyサーバー受理であり、端末への配送・クリックの確認ではありません。通知失敗でも返答と完了状態は保存します。

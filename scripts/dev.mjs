@@ -53,6 +53,7 @@ const handleRequest = async (req, res) => {
         let body='';for await(const chunk of req){body+=chunk;if(body.length>80000)return json(res,413,{error:'Request too large'});}
         let input;try{input=JSON.parse(body);}catch{return json(res,400,{error:'Invalid JSON'});}
         if(!input || typeof input!=='object')return json(res,400,{error:'Object required'});
+        if(req.method==='POST' && pathname==='/api/direct/notifications/test'){if(input.agentId)direct.agent(input.agentId);return json(res,200,await notifier.test(input.agentId));}
         if(req.method==='POST' && pathname==='/api/direct/workshops')return json(res,201,await direct.putWorkshop(input));
         const workshop=pathname.match(/^\/api\/direct\/workshops\/([0-9a-f-]{36})$/);
         if(req.method==='PUT' && workshop)return json(res,200,await direct.putWorkshop(input,workshop[1]));

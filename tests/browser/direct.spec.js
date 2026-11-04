@@ -29,3 +29,13 @@ test('direct workshop editor, safe output and persistent instruction draft',asyn
  await page.setViewportSize({width:390,height:844});
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
+test('notification deep link focuses the matching Agent after asynchronous loading',async({page})=>{
+ const id='bdeab87b-6247-4355-9b5c-3a17c1a3c955';
+ await page.route('**/api/direct',async route=>{
+  await new Promise(resolve=>setTimeout(resolve,150));
+  await route.fulfill({json:{workshops:[],runs:[],notification:{},agents:[{id,name:'通知対象',connection:{name:'工房'},cwd:'/tmp',state:'idle'}]}});
+ });
+ await page.goto('/agents#agent-'+id);
+ await expect(page.locator('#agent-'+id)).toBeFocused();
+ await expect(page.locator('#agent-'+id)).toContainText('通知対象');
+});
