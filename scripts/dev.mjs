@@ -1,3 +1,4 @@
+import { DirectAgents } from '../server/direct.mjs';
 import { PullRequests } from '../server/pull-requests.mjs';
 import { listenAddresses } from '../server/network.mjs';
 import { TodoStore } from '../server/todos.mjs';
@@ -27,6 +28,8 @@ const todos = new TodoStore(bridge.dir);
 await todos.init();
 const notifier = new VillageNotifier({ dir: bridge.dir });
 await notifier.init();
+const direct = new DirectAgents({dir:bridge.dir,remote:bridge.remote.bind(bridge),notifier});
+await direct.init();
 const development = new Development(bridge, library, {port});
 const images = new ImageStore(bridge.dir);
 await images.init();
@@ -43,6 +46,21 @@ const handleRequest = async (req, res) => {
     if(!allowRequest(req,res))return;
     const pathname = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
     if (pathname.startsWith('/api/')) {
+      if (pathname.startsWith('/api/direct')) {
+        if(req.method==='GET' && pathname==='/api/direct')return json(res,200,direct.snapshot());
+        if(!['POST','PUT'].includes(req.method))return json(res,405,{error:'Method not allowed'});
+        if(!req.headers['content-type']?.startsWith('application/json'))return json(res,415,{error:'JSON required'});
+        let body='';for await(const chunk of req){body+=chunk;if(body.length>80000)return json(res,413,{error:'Request too large'});}
+        let input;try{input=JSON.parse(body);}catch{return json(res,400,{error:'Invalid JSON'});}
+        if(!input || typeof input!=='object')return json(res,400,{error:'Object required'});
+        if(req.method==='POST' && pathname==='/api/direct/workshops')return json(res,201,await direct.putWorkshop(input));
+        const workshop=pathname.match(/^\/api\/direct\/workshops\/([0-9a-f-]{36})$/);
+        if(req.method==='PUT' && workshop)return json(res,200,await direct.putWorkshop(input,workshop[1]));
+        if(req.method==='POST' && pathname==='/api/direct/agents')return json(res,201,await direct.create(input));
+        const agent=pathname.match(/^\/api\/direct\/agents\/([0-9a-f-]{36})\/(runs|stop)$/);
+        if(req.method==='POST' && agent)return json(res,200,await (agent[2]==='runs'?direct.send(agent[1],input):direct.stop(agent[1])));
+        return json(res,404,{error:'Not found'});
+      }
       if (pathname === '/api/todos') {
         if(req.method==='GET')return json(res,200,todos.snapshot());
         if(req.method==='POST'){
@@ -105,8 +123,8 @@ const handleRequest = async (req, res) => {
       return json(res, 404, { error: 'Not found' });
     }
     // Never serve credentials, source of the bridge, or persisted job output.
-    if (req.method !== 'GET' || !(pathname === '/' || pathname === '/index.html' || pathname === '/office' || pathname === '/office/' || /^\/src\/[a-z-]+\.(js|css)$/.test(pathname))) { res.writeHead(404); res.end('Not found'); return; }
-    const file = resolve(root, ['/', '/office', '/office/'].includes(pathname) ? 'index.html' : '.' + pathname);
+    if (req.method !== 'GET' || !(pathname === '/agents' || pathname === '/agents/' || pathname === '/agents.html' || pathname === '/' || pathname === '/index.html' || pathname === '/office' || pathname === '/office/' || /^\/src\/[a-z-]+\.(js|css)$/.test(pathname))) { res.writeHead(404); res.end('Not found'); return; }
+    const file = resolve(root, ['/agents','/agents/'].includes(pathname) ? 'agents.html' : ['/', '/office', '/office/'].includes(pathname) ? 'index.html' : '.' + pathname);
     const content = await readFile(file);
     res.writeHead(200, { 'Content-Type': mime[extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-store' }); res.end(content);
   } catch (error) {

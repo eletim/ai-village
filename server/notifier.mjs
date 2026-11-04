@@ -16,7 +16,7 @@ export class VillageNotifier {
     this.officeUrl = null;
     try {
       const url = new URL(environment.VILLAGE_OFFICE_URL);
-      if (['http:','https:'].includes(url.protocol) && !url.username && !url.password && /^\/office\/?$/.test(url.pathname) && !url.hash) this.officeUrl = url.href;
+      if (['http:','https:'].includes(url.protocol) && !url.username && !url.password && /^\/(office|agents)\/?$/.test(url.pathname) && !url.hash) this.officeUrl = url.href;
     } catch { /* A missing/invalid destination must not break the village. */ }
     this.seen = new Set(); this.queue = Promise.resolve(); this.latest = null; this.journalAvailable = true;
   }
@@ -54,7 +54,7 @@ export class VillageNotifier {
       if(skip){const result={...base,at:new Date().toISOString(),status:skip,delivered:false};await this.record(result);return result;}
       // Claim before the external side effect; neither restart nor UI restoration retries it.
       await this.record({...base,at:new Date().toISOString(),status:'attempting',delivered:false});
-      const title=message.kind==='deployment'?'AI村 · 村への変更反映':message.kind==='report'?'AI村 · 工房からの報告':message.kind==='error'?'AI村 · ミクからのお知らせ':message.kind==='test'?'AI村 · 通知テスト':'AI村 · ミクからの返答';
+      const title=message.kind==='direct'?'AI村 · Agentの応答完了':message.kind==='deployment'?'AI村 · 村への変更反映':message.kind==='report'?'AI村 · 工房からの報告':message.kind==='error'?'AI村 · ミクからのお知らせ':message.kind==='test'?'AI村 · 通知テスト':'AI村 · ミクからの返答';
       const prose=message.content || (message.attachments?.length ? `ミクから画像が${message.attachments.length}枚届きました。執務室で確認できます。` : '');
       const content=Array.from(prose).slice(0,2000).join('')+(Array.from(prose).length>2000?'…':'');
       const outcome=await this.send(title,content);

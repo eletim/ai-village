@@ -68,3 +68,12 @@ test('image-only assistant replies have a readable notification without sending 
   const {secretary,notifier}=await setup();const calls=[];notifier.send=async(title,content)=>{calls.push({title,content});return {delivered:true,status:'delivered'};};
   await secretary.publish('',{attachments:[{id:'saved-image'}]});await notifier.flush();assert.equal(calls.length,1);assert.match(calls[0].content,/画像が1枚/);assert.doesNotMatch(calls[0].content,/saved-image/);
 });
+
+test('direct response notification accepts agents page and uses an agent title',async()=>{
+  const {dir,environment}=await setup();
+  const notifier=new VillageNotifier({dir,environment:{...environment,VILLAGE_OFFICE_URL:'http://127.0.0.1:5173/agents'}});await notifier.init();
+  const calls=[];notifier.send=async(title,content)=>{calls.push({title,content});return {status:'sent',delivered:true};};
+  await notifier.enqueue({id:'direct:run',role:'assistant',kind:'direct',content:'Agent response'});
+  await notifier.enqueue({id:'direct:run',role:'assistant',kind:'direct',content:'Agent response'});
+  assert.equal(calls.length,1);assert.match(calls[0].title,/Agentの応答完了/);assert.equal(notifier.status().destinationConfigured,true);
+});

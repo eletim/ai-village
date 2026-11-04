@@ -1,0 +1,31 @@
+import {test,expect} from '@playwright/test';
+test('direct workshop editor, safe output and persistent instruction draft',async({page})=>{
+ const state={workshops:[],agents:[],runs:[],notification:{destinationConfigured:false}};
+ await page.route('**/api/direct**',async route=>{
+  const request=route.request();const body=request.method()==='GET'?null:request.postDataJSON();
+  if(request.method()==='POST'&&request.url().endsWith('/workshops'))state.workshops.push({...body,id:'workshop'});
+  if(request.method()==='PUT')Object.assign(state.workshops[0],body);
+  await route.fulfill({json:state});
+ });
+ await page.goto('/agents');
+ await page.locator('#workshop-form [name=name]').fill('First');
+ await page.locator('[name=sshHost]').fill('E-frontier');
+ await page.locator('[name=baseUrl]').fill('http://localhost:8022/');
+ await page.locator('[name=workplaces]').fill('/tmp/a\n/tmp/b');
+ await page.locator('#workshop-form button').first().click();
+ await expect(page.locator('#workshops')).toContainText('First');
+ await page.getByRole('button',{name:'編集',exact:true}).click();
+ await page.locator('#workshop-form [name=name]').fill('Edited');
+ await page.locator('#workshop-form button').first().click();
+ await expect(page.locator('#workshops')).toContainText('Edited');
+ state.agents.push({id:'agent',name:'Agent',connection:{name:'Edited'},cwd:'/tmp/a',state:'idle',tabId:'tab',terminalUrl:'http://localhost:8022/?workspace=ws&tab=tab'});
+ state.runs.push({id:'run',agentId:'agent',state:'completed',instruction:'<script>bad()</script>',output:'<img src=x onerror=bad()>',notification:{status:'sent'}});
+ await expect(page.locator('[data-send]')).toBeVisible();
+ await page.locator('[data-send] textarea').fill('draft stays');
+ await expect(page.locator('.runs')).toContainText('<img src=x onerror=bad()>');
+ await expect(page.locator('.runs img')).toHaveCount(0);
+ await page.waitForTimeout(2300);
+ await expect(page.locator('[data-send] textarea')).toHaveValue('draft stays');
+ await page.setViewportSize({width:390,height:844});
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+});
