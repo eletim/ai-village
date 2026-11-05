@@ -198,3 +198,16 @@ test('village management CLI uses the same metadata revision and discovery',asyn
  assert.equal((await ops.execute(['agents','project',f.a.id,'2','-'])).ok,true);
  assert.equal(f.sends(),0);
 });
+test('busy agent accepts queued additions and delivers each once in order',async t=>{
+ const f=await fixture(t);
+ await f.service.send(f.a.id,{instruction:'first',requestId:'queue-first'});
+ const first=f.input('first');await f.service.tick();
+ assert.equal(f.a.canSend,false);assert.equal(f.a.canQueue,true);
+ const second=await f.service.send(f.a.id,{instruction:'second',requestId:'queue-second'});
+ const third=await f.service.send(f.a.id,{instruction:'third',requestId:'queue-third'});
+ assert.equal(second.state,'queued');assert.equal(third.state,'queued');assert.equal(f.sends(),1);
+ Object.assign(first,{state:'completed',output:'done'});await f.service.tick();
+ assert.equal(second.state,'awaiting_input');assert.equal(third.state,'queued');assert.equal(f.sends(),2);
+ Object.assign(f.input('second'),{state:'completed',output:'done'});await f.service.tick();
+ assert.equal(third.state,'awaiting_input');assert.equal(f.sends(),3);
+});

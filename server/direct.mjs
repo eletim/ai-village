@@ -41,7 +41,7 @@ export class DirectAgents {
     for(const w of this.data.workshops)w.connectionType ||= 'ssh';
     for(const a of this.data.agents) {
       a.connection.connectionType ||= 'ssh';
-      a.canSend=false;a.sendReason='再接続して稼働状態を確認しています';
+      a.canSend=false;a.canQueue=false;a.sendReason='再接続して稼働状態を確認しています';
       if(a.state!=='terminated'){a.connectionState='unknown';a.activityState='unknown';}
       if(a.state==='creating')a.state='creation_unknown';
       if(a.state==='stopping')a.state='stop_unknown';
@@ -204,6 +204,7 @@ export class DirectAgents {
   });}
   updateAvailability(a){
     const blocked=this.data.runs.some(r=>r.agentId===a.id&&blocking(r));
+    a.canQueue=a.lifecycle==='alive'&&a.connectionState==='connected'&&['idle','busy','waiting_input'].includes(a.activityState);
     a.canSend=a.lifecycle==='alive'&&a.connectionState==='connected'&&a.activityState==='idle'&&!blocked;
     a.sendReason=a.canSend?null:a.connectionState!=='connected'?'接続・稼働状態を確認できません':a.lifecycle!=='alive'?'Agentが稼働していません':a.activityState==='waiting_input'?'PurpleMuxで入力・許可を確認してください':blocked?'前の指示の受付・実行状態を確認中です':a.activityState==='busy'?'Agentが実行中です':'待機状態を確認できません';
   }
@@ -274,7 +275,7 @@ export class DirectAgents {
     const {tabs}=await this.pmux(a,'tab','list','-w',a.workspaceId);
     const target=tabs.find(t=>t.tabId===a.tabId);
     if(target&&target.sessionName!==a.sessionName)fail('tabの識別情報が一致しません');
-    a.state='stopping';a.lifecycle='stopping';a.canSend=false;await this.save();
+    a.state='stopping';a.lifecycle='stopping';a.canSend=false;a.canQueue=false;await this.save();
     try{
       if(target&&!a.ownedProcesses){a.ownedProcesses=JSON.parse(await this.execute(a,['python3','-c',captureProcessesScript,a.sessionName]));await this.save();}
       if(target)await this.execute(a,['purplemux','tab','close','-w',a.workspaceId,a.tabId]);

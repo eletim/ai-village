@@ -73,3 +73,15 @@ test('office retries lost response after reload with original request ID and sav
  expect(payloads[1]).toEqual(payloads[0]);expect(payloads[1].attachments).toEqual(['image-existing']);
  await expect.poll(()=>page.evaluate(()=>sessionStorage.getItem('ai-village-office-pending'))).toBeNull();
 });
+test('busy agent accepts consecutive additional instructions into queue',async({page})=>{
+ const runs=[],state={workshops:[],agents:[{id:'a',name:'Agent',connection:{},state:'busy',canSend:false,canQueue:true}],runs,notification:{}};
+ await page.route('**/api/direct**',async route=>{
+  if(route.request().method()==='POST'&&route.request().url().endsWith('/runs')){
+   const input=route.request().postDataJSON(),run={...input,id:input.requestId,agentId:'a',state:'queued'};runs.push(run);return route.fulfill({json:run});
+  }
+  await route.fulfill({json:state});
+ });
+ await page.goto('/agents');const input=page.locator('[name=instruction]');
+ for(const text of ['追加1','追加2']){await input.fill(text);await input.press('Control+Enter');await expect(input).toHaveValue('');}
+ expect(runs.map(r=>r.instruction)).toEqual(['追加1','追加2']);await expect(page.getByRole('button',{name:'追加送信',exact:true})).toBeEnabled();
+});

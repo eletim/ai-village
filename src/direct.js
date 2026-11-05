@@ -107,9 +107,10 @@ function renderBoard(){
   const send=card.querySelector('[data-send] button:not([data-reconcile])');
   fileEditors.get(a.id).lock(card.dataset.pending==='true'||pending.has(a.id));
   travelEditors.get(a.id).lock(card.dataset.pending==='true'||pending.has(a.id));
-  send.disabled=!connected||a.canSend!==true||card.dataset.pending==='true'||pending.has(a.id);
+  send.disabled=!connected||(a.canSend!==true&&a.canQueue!==true)||card.dataset.pending==='true'||pending.has(a.id);
   card.querySelector('[data-reconcile]').hidden=!pending.has(a.id);
-  send.title=pending.has(a.id)?'送信結果を確認中です。自動再送しません。':a.sendReason||'';
+  send.textContent=a.canQueue&&!a.canSend?'追加送信':'送信';
+  send.title=pending.has(a.id)?'送信結果を確認中です。自動再送しません。':a.canQueue&&!a.canSend?'追加指示を保存し、現在の応答が終わったら順に渡します。':a.sendReason||'';
 
   card.hidden=!ids.has(a.id);card.style.order=list.findIndex(x=>x.id===a.id);
   if(!card.hidden)scrolls.get(a.id).restore();
