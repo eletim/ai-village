@@ -1,19 +1,21 @@
 # VPN内の別端末から使う
 
-2026-11-04、現在の村長PC E-ryzen の `tailscale0` に Tailscale IPv4 `100.87.176.23` が割り当てられていることを確認した。以前のコアWSLの `100.78.154.38` とは異なる。現在の接続先:
+2026-11-05、このPCの `tailscale0` に Tailscale IPv4 `100.64.0.37` が割り当てられていることを確認した。現在の接続先:
 
 - 村長PC: http://127.0.0.1:5173/agents
-- 同じVPNの端末・直接操作: http://100.87.176.23:5173/agents
-- 同じVPNの端末・村: http://100.87.176.23:5173/
-- 同じVPNの端末・執務室: http://100.87.176.23:5173/office
+- 同じVPNの端末・直接操作: http://100.64.0.37:5173/agents
+- 同じVPNの端末・村: http://100.64.0.37:5173/
+- 同じVPNの端末・執務室: http://100.64.0.37:5173/office
 
 ## 起動
 
 ```bash
-VILLAGE_VPN_ADDRESS=100.87.176.23 npm run dev
+./start.sh
 ```
 
-localhostと指定したVPNアドレスだけで待ち受ける。VPNアドレスは実際にこのPCへ割り当てられたTailscale IPv4でなければ起動しない。アドレスが変わったら実環境を確認して指定を更新する。通常の `npm run dev` はlocalhost限定のまま。
+リポジトリのディレクトリで実行する。起動スクリプトがTailscale IPv4を検出し、localhostとそのアドレスだけで待ち受ける。アドレスが変わっても次の起動で検出し直す。手動指定する場合は `VILLAGE_VPN_ADDRESS=実際のIPv4 ./start.sh`。VPNアドレスは実際にこのPCへ割り当てられていなければ起動しない。`VILLAGE_VPN_ADDRESS='' ./start.sh` はlocalhost限定。
+
+2026-11-05、このPCでは `ai-village.service` をユーザーサービスとして設定した。起動時の待ち受けは `127.0.0.1:5173` と `100.64.0.37:5173` の2つで、VPNアドレスから `/agents` と `/api/health` のHTTP 200をこのPC上で確認した。別端末からの到達は未確認。サービスは `~/.config/systemd/user/ai-village.service` にあり、現在は停止中。`systemctl --user start ai-village.service` で起動できる。
 
 従来の `npm run dev -- --host 0.0.0.0` も互換入口として使える。全インターフェースへ公開するのではなく、割当済みTailscale IPv4が1つの場合だけ、そのアドレスとlocalhostへ個別にbindする。VPNアドレスが不明・複数なら明示設定を求めて停止する。LANやインターネットのインターフェースにはbindしない。
 
