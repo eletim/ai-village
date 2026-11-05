@@ -1,10 +1,10 @@
-import {AttachmentStore,MAX_FILE_BYTES} from '../server/attachments.mjs';
+import {AttachmentStore} from '../server/attachments.mjs';
 import { DirectAgents } from '../server/direct.mjs';
 import { PullRequests } from '../server/pull-requests.mjs';
 import { listenAddresses } from '../server/network.mjs';
 import { TodoStore } from '../server/todos.mjs';
 import { accessPolicy } from '../server/access.mjs';
-import { ImageStore, MAX_IMAGE_BYTES } from '../server/images.mjs';
+import { ImageStore } from '../server/images.mjs';
 import { randomUUID } from 'node:crypto';
 import { run } from '../server/bridge.mjs';
 import { WebReader } from '../server/web-reader.mjs';
@@ -98,7 +98,7 @@ const handleRequest = async (req, res) => {
         res.writeHead(200,{'Content-Type':record.kind==='image'?'image/png':'application/octet-stream','Content-Disposition':(record.kind==='image'?'inline':'attachment')+"; filename*=UTF-8''"+encodeURIComponent(record.name).replaceAll("'",'%27'),'X-Content-Type-Options':'nosniff','Content-Security-Policy':"sandbox; default-src 'none'",'Cache-Control':'private, no-store'});res.end(bytes);return;
       }
       if(req.method==='POST'&&pathname==='/api/attachments'){
-        const chunks=[];let size=0;for await(const chunk of req){size+=chunk.length;if(size>MAX_FILE_BYTES)return json(res,413,{error:'ファイルは1件16 MiB以内です'});chunks.push(chunk);}
+        const chunks=[];for await(const chunk of req)chunks.push(chunk);
         return json(res,201,await attachments.save(Buffer.concat(chunks),new URL(req.url,'http://localhost').searchParams.get('name'),req.headers['content-type']));
       }
       const imageRoute = pathname.match(/^\/api\/images\/([0-9a-f-]{36})$/);
@@ -109,8 +109,8 @@ const handleRequest = async (req, res) => {
       }
       if (req.method === 'POST' && pathname === '/api/images') {
         if (!['image/png','image/jpeg','image/webp'].includes(req.headers['content-type'])) return json(res,415,{error:'PNG・JPEG・WebPを選んでください。'});
-        const chunks=[]; let size=0;
-        for await (const chunk of req) { size+=chunk.length; if(size>MAX_IMAGE_BYTES)return json(res,413,{error:'画像は1枚8 MiB以内にしてください。'}); chunks.push(chunk); }
+        const chunks=[];
+        for await (const chunk of req) chunks.push(chunk);
         const name = new URL(req.url,'http://localhost').searchParams.get('name') || '画像';
         return json(res,201,await images.save(Buffer.concat(chunks),name));
       }
