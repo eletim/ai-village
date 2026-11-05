@@ -69,4 +69,7 @@ POST /api/attachments?name=NAME はraw bodyのアップロード。GET /api/atta
 
 アップロードだけでなく、成果物一覧・成果物画像の取り込みに残っていた10 MiB制限を撤廃。成果物本体を取得する場合だけ転送標準出力の容量制限を外す。通常のコマンド出力制限、接続タイムアウト、登録成果物との照合、実パス境界、破損画像拒否、添付件数制限は維持する。
 
-追加検証では10 MiBを超え、base64転送も旧15 MB出力制限を超える実PNGを一覧から発見・取り込み・再取得し、元データとの一致を確認。ハッシュが一致しない同サイズの転送データの拒否と、全体Projectの先頭表示が保存順・所属を変えないことも確認した。実SSH接続の再検証は行わず、接続先で実行するPythonを隔離ローカル環境で検証した。
+追加検証では10 MiBを超え、base64転送も旧15 MB出力制限を超える実PNGを一覧から発見・取り込み・再取得し、元データとの一致を確認。ハッシュが一致しない同サイズの転送データの拒否と、Projectの並べ替えが保存順・所属を変えないことも確認した。実SSH接続の再検証は行わず、接続先で実行するPythonを隔離ローカル環境で検証した。
+
+
+Projectの表示順は固有名ではなく、実行時登録の `pinned: true` を優先する。未設定は非pin。`projects list` でIDとrevisionを取得し、`projects pin PROJECT_ID REVISION true`（解除はfalse）で更新する。名前変更は従来の `projects rename` を利用でき、pinを維持する。HTTPは `PUT /api/direct/projects/:id` に `{revision,pinned:true}`。実登録の変更・自動移行は含めない。

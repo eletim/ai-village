@@ -9,5 +9,5 @@ export function boardLayout(count,width,height){
  return {cols,rows,rowHeight:Math.max(Math.min(220,height),(height-8*(rows-1))/rows,1)};
 }
 
-// The village-wide project precedes individual projects; retain their order.
-export function orderedProjects(projects){return [...projects].sort((a,b)=>Number(b.name==='全体')-Number(a.name==='全体'));}
+// Explicit pins precede other projects; retain relative order within each group.
+export function orderedProjects(projects){return [...projects].sort((a,b)=>Number(b.pinned===true)-Number(a.pinned===true));}

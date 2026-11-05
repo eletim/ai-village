@@ -35,8 +35,8 @@ test('completion green follows actual latest turn and survives review, never ove
  session.nativeTurns.push({sessionId:'new',state:'completed'});assert.equal(visualState(session,entries),'completed');
 });
 
-test('general project precedes other projects without changing stored order or membership',()=>{
- const projects=[{id:'a',name:'村実装'},{id:'b',name:'全体'},{id:'c',name:'blokus'}];
+test('explicit pins precede other projects without name special cases or changing stored order',()=>{
+ const projects=[{id:'a',name:'任意A'},{id:'b',name:'任意B',pinned:true},{id:'c',name:'全体'}];
  assert.deepEqual(orderedProjects(projects).map(p=>p.id),['b','a','c']);
  assert.deepEqual(projects.map(p=>p.id),['a','b','c']);
  assert.deepEqual(orderedProjects(projects.filter(p=>p.id!=='b')).map(p=>p.id),['a','c']);
