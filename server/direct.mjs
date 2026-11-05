@@ -2,7 +2,7 @@ import {stageAttachment} from './attachment-transfer.mjs';
 import {RequestFlow} from './requests.mjs';
 import {completedEntries} from '../src/completions.js';
 import {agentIdentity,agentPlaceName} from '../src/agent-identity.js';
-import {runtimeScript,inputHash,correlate} from './runtime-events.mjs';
+import {runtimeScript,inputHash,correlate,terminalBoundary} from './runtime-events.mjs';
 import { run } from './bridge.mjs';
 import { captureProcessesScript, stopProcessesScript } from './processes.mjs';
 import { createServer } from 'node:net';
@@ -194,6 +194,7 @@ export class DirectAgents {
       r.attachmentError=null;
     }catch{r.attachmentError='添付を接続先へ転送できません。送信前に再試行します。';r.nextTransferAt=Date.now()+30000;await this.save();return r;}
     const confirmed=r.attachments?.length?await this.observe(a):baseline;if(!a.canSend)return r;
+    if(r.autoRecoveryFrom&&(Date.now()>r.recoveryDeadline||!this.flow.recoveryBoundary(this.flow.run(r.autoRecoveryFrom),confirmed,a.runtime))){r.state='interrupted';r.error='自動再試行前に新しい入力または状態変化を検出しました。requests getで確認し手動で復旧してください。';await this.save();return r;}
     const status=a.runtime;
     const deliveredInstruction=r.instruction+(a.location==='mayor'?this.secretaryContext():'')+this.flow.context(r);
     Object.assign(r,{state:'sending',acceptance:'pending',blocksInput:true,dispatchAttemptedAt:now(),baselineRuntime:{sessionId:confirmed.sessionId,cursor:confirmed.cursor,fileIdentity:confirmed.fileIdentity},inputHash:inputHash(deliveredInstruction),agentSessionId:status.agentSessionId||null});
@@ -219,8 +220,9 @@ export class DirectAgents {
         a.setupRequired=/Do you trust|trust this|trust the contents/i.test(capture.content||'');
       }
       const latest=snapshot.turns.at(-1);
-      a.activityState=s.permissionRequest||a.setupRequired||['needs-input','waiting-for-input','waiting-for-permission'].includes(s.cliState)?'waiting_input':latest?.state==='running'?'busy':ready(s)?'idle':s.cliState==='busy'?'busy':'unknown';
-      if(!snapshot.available||(a.observedSessionId&&!snapshot.sessionId))a.activityState='unknown';
+      a.activityState=s.permissionRequest||a.setupRequired||['needs-input','waiting-for-input','waiting-for-permission'].includes(s.cliState)?'waiting_input':latest?.state==='running'?'busy':(ready(s)||terminalBoundary(snapshot,s))?'idle':s.cliState==='busy'?'busy':'unknown';
+      if(latest&&Number.isFinite(latest.completionOffset)&&snapshot.inputs.some(i=>i.offset>latest.completionOffset))a.activityState='unknown';
+      if(!snapshot.available||snapshot.incompleteTail||(snapshot.sessionId&&s.agentSessionId&&snapshot.sessionId!==s.agentSessionId)||(a.observedSessionId&&!snapshot.sessionId))a.activityState='unknown';
       if(a.setupRequired)a.error='作業場所の信頼確認が必要です。PurpleMuxで確認してください。';
       a.currentAction=a.activityState==='busy'&&s.currentAction?.toolName?s.currentAction.toolName+': '+(s.currentAction.summary||''):null;
       if(snapshot.available){
@@ -234,7 +236,7 @@ export class DirectAgents {
         const observation=correlate(r,snapshot);
         if(observation.turnId){r.acceptance='accepted';r.acceptedAt ||= now();r.turnId=observation.turnId;r.sessionId=observation.sessionId;r.inputId ||= observation.inputId;if(typeof observation.output==='string')r.output=observation.output;if(typeof observation.finalOutput==='string')r.finalOutput=observation.finalOutput;}
         if(['completed','interrupted','failed'].includes(observation.state)){
-          Object.assign(r,{state:observation.state,output:observation.output,completedAt:observation.completedAt||now(),completionEvent:observation.completionEvent,error:observation.error||null,blocksInput:false});
+          Object.assign(r,{state:observation.state,output:observation.output,completedAt:observation.completedAt||now(),completionEvent:observation.completionEvent,error:observation.error||null,errorCode:observation.errorCode||null,runtimeError:observation.runtimeError||null,completionOffset:observation.completionOffset,blocksInput:false});
         }else{
           r.state=a.activityState==='waiting_input'?'waiting_input':observation.state==='running'&&s.alive?'running':observation.reason==='input-not-observed'&&r.dispatchAttemptedAt?'awaiting_input':'unknown';r.error=observation.reason||null;
           // Preserve uncertain attribution, but a later native terminal boundary plus
