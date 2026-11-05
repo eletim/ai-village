@@ -22,7 +22,7 @@ export class VillageOperations {
         {name:'projects rename',usage:'projects rename PROJECT_ID REVISION NAME',mutation:true,run:args=>{if(args.length!==3)throw Error('ID REVISION NAMEを指定してください');return direct.putProject({revision:Number(args[1]),name:args[2]},args[0]);}},
       ]:[]),
       ...(direct?[
-        {name:'requests start',usage:'requests start JSON {agentId,requestId,instruction} (human only; use delegate for child work)',mutation:true,run:args=>{if(args.length!==1)throw Error('JSONを1つ指定');const x=JSON.parse(args[0]);return direct.send(x.agentId,x);}},
+        {name:'requests start',usage:'requests start JSON {agentId,requestId,instruction,attachments?:[UPLOAD_ID],travelContexts?:[{name,sshHost,cwd,notes?}]} (human only; use delegate for child work)',mutation:true,run:args=>{if(args.length!==1)throw Error('JSONを1つ指定');const x=JSON.parse(args[0]);return direct.send(x.agentId,x);}},
         {name:'requests list',usage:'requests list [AGENT_ID]',run:args=>{if(args.length>1)throw Error('Agent IDは1つまで');return direct.flow.list(args[0]);}},
         {name:'requests get',usage:'requests get HUMAN_REQUEST_ID',run:args=>{if(args.length!==1)throw Error('依頼IDを指定');return direct.flow.get(args[0]);}},
         {name:'requests results',usage:'requests results HUMAN_REQUEST_ID WORK_ID',run:args=>{if(args.length!==2)throw Error('依頼IDと作業IDを指定');return direct.flow.results(...args);}},

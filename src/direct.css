@@ -35,3 +35,11 @@
 .agent-panel[data-attention=true]{box-shadow:0 0 0 3px #22c55e}
 .agent-dot[data-attention=true]{outline:2px solid #22c55e;outline-offset:2px}
 #completion-count{color:#a9e9ba}
+
+/* Sidebar markers stay quiet until a request needs attention. */
+.agent-dot[data-state=completed]{--state-color:#779b88}
+.agent-dot[data-state=completed][data-unread=true]{box-shadow:none}
+.agent-dot[data-attention=true]{--state-color:#8bcfa2;outline-color:#8bcfa2}
+.agent-dot[data-state=busy],.agent-dot[data-state=running]{animation:sidebar-working 2.4s ease-in-out infinite}
+@keyframes sidebar-working{0%,100%{opacity:1}50%{opacity:.45}}
+@media(prefers-reduced-motion:reduce){.agent-dot[data-state=busy],.agent-dot[data-state=running]{animation:none}}

@@ -51,8 +51,8 @@ test('selection acknowledges only the Agent, supports keyboard and never turns n
  await expect(page.locator('[data-review],.reviewed-label,.review-completion')).toHaveCount(0);
  await expect(page.locator('#village-favicon')).toHaveAttribute('data-unread','false');await expect(page.locator('#completion-count')).toBeEmpty();
  await page.locator('#agent-a0 h2').click();await expect.poll(()=>state.reviews.a0.unreviewed).toBe(false);await expect(page.locator('#agent-a0')).toHaveAttribute('data-active','true');await expect(page.locator('#agent-a0 .selection-label')).toHaveText('選択中');expect(state.reviews.a1.unreviewed).toBe(true);
- // Tab from the prior card's last input button enters the next card itself.
- await page.locator('#agent-a0 textarea').focus();await page.keyboard.press('Tab');await expect(page.locator('#agent-a1')).toHaveAttribute('data-selected','true');await expect.poll(()=>state.reviews.a1.unreviewed).toBe(false);
+ // Tab from the prior card's last visible attachment control enters the next card.
+ await page.locator('#agent-a0 .travel-add').focus();await page.keyboard.press('Tab');await expect(page.locator('#agent-a1')).toHaveAttribute('data-selected','true');await expect.poll(()=>state.reviews.a1.unreviewed).toBe(false);
  state.reviews.a1={revision:'r2',hasCompleted:true,unreviewed:true};await expect.poll(()=>requests.some(r=>r.revision==='r2')).toBe(true);await expect(page.locator('#agent-a1 .unread-badge')).toHaveText('確認済み');
  await page.locator('[data-place=w]').click();await expect(page.locator('.agent-panel[data-selected=true]')).toHaveCount(0);state.reviews.a1={revision:'r3',hasCompleted:true,unreviewed:true};await page.waitForTimeout(2300);expect(state.reviews.a1.unreviewed).toBe(true);
  await expect(page.locator('#village-favicon')).toHaveAttribute('data-unread','false');await expect(page.locator('#agent-a0')).toHaveAttribute('data-state','idle');
@@ -93,7 +93,7 @@ test('quiet selection preserves blue and green; only unread done has a green was
  for(const id of ['a0','a1','a2','a3'])expect(await page.locator('[data-place=w] [data-agent-dot='+id+']').evaluate(el=>getComputedStyle(el).backgroundColor)).toBe((await style(id)).dot);
  await page.screenshot({path:'/tmp/ai-village-quiet-states.png'});
  await page.locator('#agent-a0 h2').click();await expect.poll(()=>state.reviews.a0.unreviewed).toBe(false);await expect.poll(async()=>(await style('a0')).ring).toBe('none');expect((await style('a0')).border).toBe(unread.border);expect((await style('a0')).header).toBe(read.header);
- await page.locator('#agent-a0 textarea').focus();await page.keyboard.press('Tab');await expect(page.locator('#agent-a1')).toBeFocused();expect((await style('a1')).outline).toBe('dashed');
+ await page.locator('#agent-a0 .travel-add').focus();await page.keyboard.press('Tab');await expect(page.locator('#agent-a1')).toBeFocused();expect((await style('a1')).outline).toBe('dashed');
  await expect(page.locator('#village-favicon')).toHaveAttribute('data-unread','false');
 });
 test('strong green attention and favicon require finalized human request, and Agent selection clears only its viewed revision',async({page})=>{
