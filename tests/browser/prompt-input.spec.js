@@ -14,6 +14,9 @@ for(const view of ['direct','village','office']) {
   if(view==='village')await page.locator('#mayor').click();
   const input=page.locator(view==='direct'?'[name=instruction]':'#request');
   await input.fill('日本語');await input.press('Enter');await input.press('Shift+Enter');await expect(input).toHaveValue('日本語\n\n');expect(sends).toBe(0);
+  await input.dispatchEvent('compositionstart');await input.dispatchEvent('compositionend');
+  await input.press('Enter');await expect(input).toHaveValue('日本語\n\n\n');expect(sends).toBe(0);
+  await input.fill('日本語\n\n');
   // Blink/Gecko order, WebKit order, and missing/false isComposing.
   for(const order of ['normal','end-first','229','flag']){
    await input.evaluate((el,order)=>{

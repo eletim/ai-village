@@ -9,3 +9,9 @@ test('Ctrl+Enter alone sends once; plain/shift Enter, modifiers, composition and
  emit('keydown',{ctrlKey:true});emit('keyup');assert.equal(count,2);
  input.disabled=true;emit('keydown',{ctrlKey:true});emit('keyup');assert.equal(count,2);
 });
+test('plain Enter after composition end is never swallowed, including missing keyup',()=>{
+ const input=new EventTarget();let sends=0;bindPromptInput(input,()=>sends++);
+ input.dispatchEvent(new Event('compositionstart'));input.dispatchEvent(new Event('compositionend'));
+ const enter=new Event('keydown',{cancelable:true});Object.assign(enter,{key:'Enter'});input.dispatchEvent(enter);
+ assert.equal(enter.defaultPrevented,false);assert.equal(sends,0);
+});

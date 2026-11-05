@@ -15,8 +15,8 @@ export function bindPromptInput(input, submit) {
       return;
     }
     if(composing||e.isComposing||e.keyCode===229){enterDown=true;return;}
+    if(!e.ctrlKey||e.shiftKey||e.altKey||e.metaKey){ended=false;return;}
     if(ended){e.preventDefault();ended=false;enterDown=true;return;}
-    if(!e.ctrlKey||e.shiftKey||e.altKey||e.metaKey)return;
     e.preventDefault();
     if(e.repeat||enterDown)return;
     enterDown=true;

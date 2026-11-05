@@ -1,3 +1,4 @@
+import {linkedText} from './linked-text.js';
 import {attachmentComposer,attachmentHTML} from './attachments.js';
 import {chatScroll} from './chat-scroll.js';
 import {travelComposer} from './travel-composer.js';
@@ -46,7 +47,7 @@ function filtered(){return live().filter(a=>inScope(a,selectedPlace));}
 function projectOptions(select){options(select,[{id:'',name:'未所属'},...(state.projects||[])]);}
 function capturePositions(){for(const [id,card] of cards)if(!card.hidden)scrolls.get(id)?.capture();}
 function timeHTML(value){if(!value)return '';const date=new Date(value);return Number.isNaN(date.getTime())?'':`<time datetime="${esc(value)}" title="${esc(date.toLocaleString())}">${esc(date.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}))}</time>`;}
-function bubble(side,text,at,extra=''){return `<div class="message ${side}">${text?`<pre>${esc(text)}</pre>`:''}${extra}${timeHTML(at)}</div>`;}
+function bubble(side,text,at,extra=''){return `<div class="message ${side}">${text?`<pre>${linkedText(text)}</pre>`:''}${extra}${timeHTML(at)}</div>`;}
 function runHTML(a){
  const entries=agentEntries(state,a);
  return entries.map(r=>`<div class="run">${bubble('user',r.instruction,r.createdAt,travelSummary(r.travelContexts)+attachmentHTML(r.attachments))}${r.output?bubble('assistant',r.output,r.completedAt):''}<p class="run-status"><span class="badge">${r.external?'PurpleMuxからの入力 · ':r.origin==='result'?'子作業結果の配送 · ':''}${esc(labels[r.state]||r.state)}</span> · ${r.humanRequestId?esc(({active:'依頼継続中',finalizing:'最終報告の完了待ち',completed:'依頼全体完了',cancelled:'依頼キャンセル'})[state.requests?.find(q=>q.id===r.humanRequestId)?.status]||'依頼照合中'):'達成状況: 未判定'} ${esc(r.attachmentError||r.error||'')} ${r.notification?' · 通知: '+esc(r.notification.status)+(r.notification.reason?' / '+esc(r.notification.reason):''):''}</p></div>`).join('');
