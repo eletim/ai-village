@@ -11,7 +11,7 @@ export function travelComposer(host,initial=[],onChange=()=>{}) {
  function open(){
   if(locked)return;closeMenu();
   const dialog=document.createElement('dialog');dialog.className='travel-dialog';dialog.setAttribute('aria-label','出張先');
-  dialog.innerHTML='<form><h2>出張先</h2><p>依頼に添える情報です。接続の実行や操作の許可にはなりません。</p><label>名前<input name="name" required maxlength="120" autocomplete="off"></label><label>SSH接続先<input name="sshHost" required maxlength="200" placeholder="alias または user@host" autocomplete="off" spellcheck="false"></label><label>作業ディレクトリ<input name="cwd" required maxlength="2000" placeholder="/path/to/work" autocomplete="off" spellcheck="false"></label><label>補足<textarea name="notes" maxlength="4000" rows="3"></textarea></label><p class="travel-error" role="alert"></p><div><button type="button" data-cancel>キャンセル</button><button type="submit">保存</button></div></form>';
+  dialog.innerHTML='<form><h2>出張先</h2><p>この依頼で使う接続先と作業場所を添付します。</p><label>名前<input name="name" required maxlength="120" autocomplete="off"></label><label>SSH接続先<input name="sshHost" required maxlength="200" placeholder="alias または user@host" autocomplete="off" spellcheck="false"></label><label>作業ディレクトリ<input name="cwd" required maxlength="2000" placeholder="/path/to/work" autocomplete="off" spellcheck="false"></label><label>補足<textarea name="notes" maxlength="4000" rows="3"></textarea></label><p class="travel-error" role="alert"></p><div><button type="button" data-cancel>キャンセル</button><button type="submit">保存</button></div></form>';
   document.body.append(dialog);const form=dialog.querySelector('form');
   for(const [key,v] of Object.entries(value[0]||{}))form.elements[key].value=v;
   const close=()=>dialog.close();dialog.querySelector('[data-cancel]').onclick=close;
