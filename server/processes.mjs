@@ -76,6 +76,11 @@ for attempt in range(20):
  time.sleep(0.05)
 if remaining:raise RuntimeError('対象の子プロセスがまだ残っています')
 
+# Direct agents may share a working directory: only captured descendants belong
+# to this agent. Do not infer ownership from a shared cwd.
+if len(sys.argv)>4 and sys.argv[4]=='--owned-only':
+ print(json.dumps({'trackedProcesses':len(known),'remainingOwned':0}));sys.exit(0)
+
 # Other tabs and all their descendants are read-only exclusions, never targets.
 items=inventory();excluded=set()
 for session in others:

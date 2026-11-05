@@ -1,3 +1,4 @@
+import {runtimeScript,inputHash,correlate} from './runtime-events.mjs';
 import { spawn } from 'node:child_process';
 import { mkdir, readFile, writeFile, rename, readdir, appendFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
@@ -78,7 +79,7 @@ export class WorkshopBridge {
     await this.persist();
     if (this.job && activePhases.has(this.job.phase) && !this.job.cancelRequestedAt) {
       if (this.job.phase === 'working' && this.job.tabId) this.launch(() => this.collect());
-      else if (this.job.phase === 'reporting' && this.job.output) this.launch(() => this.report());
+      else if (this.job.phase === 'reporting') this.launch(() => this.report());
       else await this.update({ phase: 'error', error: '接続準備中にサーバーが停止しました。専用workspaceを確認してから新しい依頼を送ってください。自動再送はしていません。' });
     }
   }
@@ -130,7 +131,6 @@ export class WorkshopBridge {
     const file = resolve(this.dir, `${this.job.id}-${kind}.txt`);
     await run(process.env.VILLAGE_CODEX_BIN || 'codex', ['exec', '--ephemeral', '--skip-git-repo-check', '-s', 'read-only', '-C', this.dir, '-o', file, '-'], { input: prompt, timeout: 300000, signal: this.executions.get(this.job.id)?.controller.signal });
     const text = (await readFile(file, 'utf8')).trim();
-    if (!text) throw new Error('秘書Codexの出力が空です。');
     return text;
   }
   async execute() {
@@ -168,8 +168,13 @@ export class WorkshopBridge {
     this.assertRunning();
     await this.update({ resourceStep: 'sending', phase: 'working', startedAt: new Date().toISOString(), workerState: 'dispatching' });
     this.assertRunning();
+    const status=await this.pmux('tab','status','-w',workspace.id,tab.tabId);
+    const baseline=JSON.parse(await this.remote(['python3','-c',runtimeScript,'codex',status.agentSessionId||'']));
+    if(!baseline.available)throw new Error('実行記録不明のため送信しません');
+    await this.update({baselineRuntime:{sessionId:baseline.sessionId,cursor:baseline.cursor,fileIdentity:baseline.fileIdentity},inputHash:inputHash(this.job.instruction)});
     await this.pmux('tab', 'send', '-w', workspace.id, tab.tabId, this.job.instruction);
     this.assertRunning();
+    await this.update({dispatchConfirmed:true});
     await this.collect();
   }
   async collect() {
@@ -180,7 +185,8 @@ export class WorkshopBridge {
       let status, result;
       try {
         status = await this.pmux('tab', 'status', '-w', this.job.workspaceId, this.job.tabId);
-        result = await this.pmux('tab', 'result', '-w', this.job.workspaceId, this.job.tabId);
+        result = correlate(this.job,JSON.parse(await this.remote(['python3','-c',runtimeScript,'codex',status.agentSessionId||''])));
+        if(result.turnId)await this.update({turnId:result.turnId,sessionId:result.sessionId,inputId:result.inputId});
         failures = 0;
       } catch (error) {
         if (++failures >= 5) throw error;
@@ -188,11 +194,12 @@ export class WorkshopBridge {
         await sleep(this.pollMs); continue;
       }
       this.assertRunning();
-      await this.update({ workerState: status.cliState, agentSessionId: result.agentSessionId || status.agentSessionId, connectionError: null, permissionRequest: status.permissionRequest || null });
+      await this.update({ workerState: result.state==='unknown'?'unknown':status.cliState, agentSessionId: result.agentSessionId || status.agentSessionId, connectionError: null, permissionRequest: status.permissionRequest || null });
       this.assertRunning();
-      if (result.interrupted || result.status === 'interrupted') throw new Error('工房の作業が中断されました。端末リンクで確認してください。');
-      if (result.status === 'completed' && result.text && status.cliState !== 'busy') {
-        await this.update({ phase: 'reporting', output: result.text, workerFinishedAt: new Date().toISOString() });
+      if (result.state === 'failed') throw new Error('工房のランタイムでエラーが発生しました。端末リンクで確認してください。');
+      if (result.state === 'interrupted') throw new Error('工房の作業が中断されました。端末リンクで確認してください。');
+      if (result.state === 'completed') {
+        await this.update({ phase: 'reporting', output: result.output, workerFinishedAt: new Date().toISOString() });
         await this.report(); return;
       }
       if (!status.alive) throw new Error('工房の端末が終了しました。完了報告は取得できていません。');
@@ -296,7 +303,7 @@ print(base64.b64encode(data).decode())`;
     if (job.cancelRequestedAt) throw Object.assign(new Error('キャンセルの停止確認を先に完了してください。'), {status:409});
     if (job.releaseState === 'released') return Promise.resolve(this.snapshot());
     if (this.releases.has(id)) return this.releases.get(id);
-    if (job.phase !== 'awaiting_review' || !job.report) throw Object.assign(new Error('報告が届いてからOKを出してください。'), { status: 409 });
+    if (job.phase !== 'awaiting_review') throw Object.assign(new Error('報告が届いてからOKを出してください。'), { status: 409 });
     const operation = (async () => {
       await this.update({ approvedAt: job.approvedAt || new Date().toISOString(), releaseState: 'releasing', releaseError: null }, job);
       try {

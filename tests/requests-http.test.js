@@ -1,0 +1,55 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdtemp,writeFile,appendFile,readFile,rm,mkdir} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {randomUUID} from 'node:crypto';
+import {spawn} from 'node:child_process';
+import {createServer} from 'node:net';
+import {once} from 'node:events';
+
+test('real HTTP + native JSONL + durable inbox + isolated notify CLI: 0 interim, 0 child, 1 final across restart',async()=>{
+ const dir=await mkdtemp(join(tmpdir(),'requests-http-')),capture=join(dir,'sent.jsonl'),notices=join(dir,'notify-calls.jsonl');let child;
+ const probe=createServer();probe.listen(0,'127.0.0.1');await once(probe,'listening');const port=probe.address().port;await new Promise(r=>probe.close(r));const base='http://127.0.0.1:'+port;
+ const agents=[0,1].map(i=>({id:randomUUID(),name:'Fixture '+i,location:i===0?'mayor':'workshop',connection:{connectionType:'local',name:'Fixture'},workspaceId:'ws-'+i,tabId:'tab-'+i,sessionName:'pane-'+i,provider:'codex',state:'idle',nativeSession:randomUUID()}));
+ const nativeDir=join(dir,'sessions');await mkdir(nativeDir);
+ for(const a of agents)await writeFile(join(nativeDir,a.nativeSession+'.jsonl'),JSON.stringify({type:'session_meta',payload:{id:a.nativeSession}})+'\n');
+ await writeFile(join(dir,'direct.json'),JSON.stringify({version:1,workshops:[],agents,runs:[{id:'legacy',agentId:agents[0].id,state:'completed',output:'old without receipt'}]}));
+ await writeFile(join(dir,'agents-fixture.json'),JSON.stringify(agents));
+ const pmux=join(dir,'fake-pmux.cjs'),notify=join(dir,'fake-notify.cjs');
+ await writeFile(pmux,"#!/usr/bin/env node\nconst fs=require('fs');const agents=JSON.parse(fs.readFileSync(process.env.FIXTURE_AGENTS,'utf8'));const args=process.argv.slice(2),a=agents.find(a=>args.includes(a.workspaceId));if(args[1]==='status')console.log(JSON.stringify({alive:true,cliState:'idle',agentSessionId:a.nativeSession}));else if(args[1]==='send'){fs.appendFileSync(process.env.FIXTURE_CAPTURE,JSON.stringify({agentId:a.id,text:args.at(-1)})+'\\n');console.log('{\"status\":\"sent\"}');}else process.exit(3);\n",{mode:0o700});
+ await writeFile(notify,"#!/usr/bin/env node\nrequire('fs').appendFileSync(process.env.FIXTURE_NOTICES,JSON.stringify(process.argv.slice(2))+'\\n');\n",{mode:0o700});
+ const start=async()=>{child=spawn(process.execPath,['scripts/dev.mjs','--port',String(port)],{env:{...process.env,VILLAGE_STATE_DIR:dir,VILLAGE_VPN_ADDRESS:'',VILLAGE_PUBLIC_ORIGIN:'',VILLAGE_AUTH_FILE:'',VILLAGE_PMUX_BIN:pmux,VILLAGE_NOTIFY_BIN:notify,VILLAGE_OFFICE_URL:base+'/agents',VILLAGE_NOTIFICATIONS:'true',CODEX_HOME:dir,FIXTURE_AGENTS:join(dir,'agents-fixture.json'),FIXTURE_CAPTURE:capture,FIXTURE_NOTICES:notices},stdio:['ignore','pipe','pipe']});await new Promise((ok,no)=>{const timer=setTimeout(()=>no(Error('startup timeout')),10000);child.once('exit',()=>{clearTimeout(timer);no(Error('server exit'));});child.stdout.on('data',b=>{if(b.toString().includes('AI村 →')){clearTimeout(timer);ok();}});});};
+ const stop=async()=>{if(child&&child.exitCode===null){const done=once(child,'exit');child.kill();await done;}};
+ const post=async(path,body)=>{const r=await fetch(base+'/api/direct'+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});return {status:r.status,body:await r.json()};};
+ const get=async()=>{const r=await fetch(base+'/api/direct');return r.json();};
+ const lines=async file=>{try{return (await readFile(file,'utf8')).trim().split('\n').filter(Boolean).map(JSON.parse);}catch(e){if(e.code==='ENOENT')return [];throw e;}};
+ const until=async fn=>{for(let i=0;i<160;i++){const result=await fn();if(result)return result;await new Promise(r=>setTimeout(r,100));}throw Error('condition timeout');};
+ const request=async id=>(await post('/requests/get',{humanRequestId:id})).body;
+ const run=async id=>(await get()).runs.find(r=>r.id===id);
+ const native=async(a,rows)=>appendFile(join(nativeDir,a.nativeSession+'.jsonl'),rows.map(row=>JSON.stringify({timestamp:new Date().toISOString(),...row})).join('\n')+'\n');
+ const submit=async r=>{const a=agents.find(a=>a.id===r.agentId),text=(await lines(capture)).findLast(e=>e.agentId===a.id).text,turnId=randomUUID();await native(a,[{type:'event_msg',payload:{type:'task_started',turn_id:turnId}},{type:'event_msg',payload:{type:'user_message',turn_id:turnId,message:text}}]);return until(async()=>{const current=await run(r.id);return current.acceptance==='accepted'&&current;});};
+ const complete=async(r,text)=>{await native(agents.find(a=>a.id===r.agentId),[{type:'event_msg',payload:{type:'task_complete',turn_id:r.turnId,last_agent_message:text}}]);return until(async()=>{const current=await run(r.id);return current.state==='completed'&&current;});};
+ const finish=async(r,op)=>{const q=await request(r.humanRequestId);const body={humanRequestId:q.id,workId:r.workId,runId:r.id,revision:q.revision,operationId:op};const receipt=await post('/requests/finish',body);assert.equal(receipt.status,200);return body;};
+ try{
+  await start();const root=(await post('/agents/'+agents[0].id+'/runs',{instruction:'Human collaboration request',requestId:'http-human-request'})).body;
+  assert.equal(root.state,'awaiting_input');assert.equal(root.acceptance,'pending');assert.equal((await lines(notices)).length,0);
+  assert.equal((await post('/requests/finish',{humanRequestId:root.humanRequestId,workId:root.workId,runId:root.id,revision:0,operationId:'too-early-finish'})).status,409);
+  const r=await submit(root);const delegated=await post('/requests/delegate',{humanRequestId:r.humanRequestId,parentWorkId:r.workId,actorRunId:r.id,agentId:agents[1].id,operationId:'http-delegation',instruction:'Child task'});assert.equal(delegated.status,200);
+  await complete(r,'工房に依頼しました（途中）');assert.equal((await lines(notices)).length,0);
+  const queued=await until(async()=>{const childRun=await run(delegated.body.currentRunId);return childRun?.state==='awaiting_input'&&childRun;});const cr=await submit(queued);await finish(cr,'http-child-finish');await complete(cr,'Child result');assert.equal((await lines(notices)).length,0);
+  const result=await until(async()=>{const q=await request(r.humanRequestId);return q.inbox[0]?.deliveryRunId&&q.inbox[0];});
+  const delivery=await until(async()=>{const d=await run(result.deliveryRunId);return d?.state==='awaiting_input'&&d;});
+  assert.equal((await request(r.humanRequestId)).inbox[0].state,'dispatching');assert.equal((await lines(capture)).length,3);
+  await stop();await start();assert.equal((await lines(notices)).length,0);assert.equal((await request(r.humanRequestId)).ticket.state,'available');
+  const received=await submit(delivery);const ack=await post('/requests/acknowledge',{humanRequestId:r.humanRequestId,workId:r.workId,actorRunId:received.id,resultIds:[result.id]});assert.equal(ack.status,200);assert.equal((await lines(capture)).length,3);
+  const staleRevision=(await get()).reviews[r.agentId].revision;const intent=await finish(received,'http-final-report');assert.equal((await lines(notices)).length,0);
+  await complete(received,'Integrated final report');await until(async()=>(await lines(notices)).length===1);
+  assert.equal((await post('/requests/finish',intent)).status,200);await stop();await start();
+  const state=await get();assert.equal(state.reviews[r.agentId].attention,true);assert.equal(state.requests.length,1);assert.equal(state.requests[0].ticket.state,'consumed');assert.equal((await lines(notices)).length,1);
+  assert.equal((await post('/agents/'+r.agentId+'/view',{revision:staleRevision})).status,409);
+  assert.equal((await post('/agents/'+r.agentId+'/view',{revision:state.reviews[r.agentId].revision})).status,200);
+  assert.equal((await get()).reviews[r.agentId].attention,false);assert.equal((await lines(capture)).length,3);assert.equal((await lines(notices)).length,1);
+  const args=(await lines(notices))[0];assert(args.includes('AI村 · 依頼全体の完了'));assert(args.some(s=>s.includes('Integrated final report')));
+ }finally{await stop();await rm(dir,{recursive:true,force:true});}
+});

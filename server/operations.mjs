@@ -1,3 +1,4 @@
+import {hasReport} from '../src/job-state.js';
 import { appendFile, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -6,10 +7,27 @@ import { isOnDesk, isSettled, jobStatus } from '../src/job-state.js';
 // The same registry serves the secretary, HTTP and the human CLI. Adding a village
 // operation doesn't require adding a new LLM action or teaching a keyword router.
 export class VillageOperations {
-  constructor(bridge, notifier, {web, development, images, todos, prs} = {}) {
+  constructor(bridge, notifier, {web, development, images, todos, prs, direct} = {}) {
     this.bridge = bridge;
     const detail = id => this.describe(bridge.jobById(id));
     this.commands = [
+      ...(direct?[{name:'agents list',usage:'agents list',run:args=>{if(args.length)throw new Error('usage: agents list');return direct.discovery();}}]:[]),
+      ...(direct?[
+        {name:'agents create',usage:'agents create JSON({requestId,workshopId,cwd,name,provider,location,projectId?})',mutation:true,run:args=>{if(args.length!==1)throw Error('JSONを1つ指定してください');return direct.create(JSON.parse(args[0]));}},
+        {name:'agents stop',usage:'agents stop AGENT_ID',mutation:true,run:args=>{if(args.length!==1)throw Error('Agent IDを指定してください');return direct.stop(args[0]);}},
+        {name:'agents rename',usage:'agents rename AGENT_ID REVISION NAME',mutation:true,run:args=>{if(args.length!==3)throw Error('ID REVISION NAMEを指定してください');return direct.updateAgent(args[0],{revision:Number(args[1]),name:args[2]});}},
+        {name:'agents project',usage:'agents project AGENT_ID REVISION PROJECT_ID|-',mutation:true,run:args=>{if(args.length!==3)throw Error('ID REVISION PROJECT_IDを指定してください');return direct.updateAgent(args[0],{revision:Number(args[1]),projectId:args[2]==='-'?null:args[2]});}},
+        {name:'projects list',usage:'projects list',run:args=>{if(args.length)throw Error('引数は不要です');return direct.discovery().projects;}},
+        {name:'projects create',usage:'projects create REQUEST_ID NAME',mutation:true,run:args=>{if(args.length!==2)throw Error('REQUEST_ID NAMEを指定してください');return direct.putProject({requestId:args[0],name:args[1]});}},
+        {name:'projects rename',usage:'projects rename PROJECT_ID REVISION NAME',mutation:true,run:args=>{if(args.length!==3)throw Error('ID REVISION NAMEを指定してください');return direct.putProject({revision:Number(args[1]),name:args[2]},args[0]);}},
+      ]:[]),
+      ...(direct?[
+        {name:'requests start',usage:'requests start JSON {agentId,requestId,instruction} (human only; use delegate for child work)',mutation:true,run:args=>{if(args.length!==1)throw Error('JSONを1つ指定');const x=JSON.parse(args[0]);return direct.send(x.agentId,x);}},
+        {name:'requests list',usage:'requests list [AGENT_ID]',run:args=>{if(args.length>1)throw Error('Agent IDは1つまで');return direct.flow.list(args[0]);}},
+        {name:'requests get',usage:'requests get HUMAN_REQUEST_ID',run:args=>{if(args.length!==1)throw Error('依頼IDを指定');return direct.flow.get(args[0]);}},
+        {name:'requests results',usage:'requests results HUMAN_REQUEST_ID WORK_ID',run:args=>{if(args.length!==2)throw Error('依頼IDと作業IDを指定');return direct.flow.results(...args);}},
+        ...['delegate','acknowledge','finish','retry','resume','cancel'].map(action=>({name:'requests '+action,usage:'requests '+action+' JSON '+({delegate:'{humanRequestId,parentWorkId,actorRunId,agentId,operationId,instruction}',acknowledge:'{humanRequestId,workId,actorRunId,resultIds}',finish:'{humanRequestId,workId,runId,revision,operationId}',retry:'{humanRequestId,workId,revision,operationId,instruction,actorRunId?}',resume:'{humanRequestId,workId,revision,operationId,instruction,actorRunId?}',cancel:'{humanRequestId,revision}'})[action],mutation:true,run:args=>{if(args.length!==1)throw Error('JSONを1つ指定');const input=JSON.parse(args[0]);return action==='retry'||action==='resume'?direct.flow.continue(input,action==='retry'):direct.flow[action](input);}})),
+      ]:[]),
       ...(prs?.commands() || []),
       { name:'todos list', usage:'todos list', run:args=>{if(args.length)throw new Error('usage: todos list');return todos.snapshot();} },
       ...['add','edit','toggle','delete'].map(action=>({name:`todos ${action}`,usage:`todos ${action} REVISION ${action==='add'?'TEXT':action==='edit'?'ID TEXT':action==='toggle'?'ID true|false':'ID'}`,mutation:true,run:args=>{
@@ -55,14 +73,14 @@ export class VillageOperations {
     if(!args[0]||(!extras&&args.length!==1))throw new Error('仕事IDを1つ指定してください。');
     this.bridge.jobById(args[0]);return args[0];
   }
-  summary(job) {return {id:job.id,request:job.request,status:jobStatus(job),onDesk:isOnDesk(job),hasReport:!!job.report,releaseState:job.releaseState,approvedAt:job.approvedAt,cancelledAt:job.cancelledAt,releasedAt:job.releasedAt,releaseError:job.releaseError};}
+  summary(job) {return {id:job.id,request:job.request,status:jobStatus(job),onDesk:isOnDesk(job),hasReport:hasReport(job),releaseState:job.releaseState,approvedAt:job.approvedAt,cancelledAt:job.cancelledAt,releasedAt:job.releasedAt,releaseError:job.releaseError};}
   describe(job) {return {...job,...this.summary(job),artifacts:(job.artifacts||[]).map(file=>({...file,url:`/api/jobs/${job.id}/artifact?path=${encodeURIComponent(file.path)}`}))};}
   list(args) {
     if(args.length && (args.length!==2||args[0]!=='--scope'||!['desk','all'].includes(args[1])))throw new Error('usage: jobs/reports list [--scope desk|all]');
     return this.bridge.jobs.filter(job=>args[1]==='all'||isOnDesk(job)).map(job=>this.summary(job));
   }
   resolve(argv) {
-    if(!Array.isArray(argv)||!argv.length||argv.length>12||argv.some(arg=>typeof arg!=='string'||arg.length>2000))throw new Error('argvは1〜12個の文字列で指定してください。');
+    if(!Array.isArray(argv)||!argv.length||argv.length>12||argv.some(arg=>typeof arg!=='string'||arg.length>(argv[0]==='requests'?20000:2000)))throw new Error('argvは1〜12個の文字列で指定してください。');
     const command=this.commands.find(command=>argv.slice(0,command.name.split(' ').length).join(' ')===command.name);
     if(!command)throw new Error('未対応の操作です。helpでマニュアルと操作一覧を確認してください。');
     return {command,args:argv.slice(command.name.split(' ').length)};

@@ -30,15 +30,12 @@ test('image-only turns, assistant attachments and conversation restore retain im
   const restored=new Secretariat(bridge,library,undefined,undefined,new ImageStore(dir));await restored.init();assert.equal(restored.messages.length,2);assert.ok(restored.messages.every(m=>m.attachments[0].id===image.id));
   await assert.rejects(secretary.send('', ['../private']));assert.equal(secretary.status,'idle');
 });
-test('actual exec adapter passes image files separately from stdin and reads old images on demand',async()=>{
-  const {dir,images}=await setup();const image=await images.save(await fixture(),'neutral.png');
-  const bin=join(dir,'capture.mjs');await writeFile(bin,`#!/usr/bin/env node\nimport {writeFileSync} from 'node:fs';\nconst args=process.argv.slice(2);let input='';for await(const chunk of process.stdin)input+=chunk;writeFileSync(${JSON.stringify(join(dir,'captured.json'))},JSON.stringify({args,input}));console.log(JSON.stringify({type:'thread.started',thread_id:'image-test-session'}));writeFileSync(args[args.indexOf('-o')+1],JSON.stringify({action:'reply',message:'test',document:'',task:'',argv:[],attachments:[]}));\n`,{mode:0o700});
-  const previous=process.env.VILLAGE_CODEX_BIN;process.env.VILLAGE_CODEX_BIN=bin;
-  try{
-    const secretary=new Secretariat({dir,jobs:[]},{root:dir,catalog:async()=>[]},undefined,undefined,images);
-    await secretary.decide({id:'turn',attachments:[image]},[],0);let captured=JSON.parse(await readFile(join(dir,'captured.json')));assert.equal(captured.args[captured.args.indexOf('--image')+1],await images.path(image.id));assert.match(captured.input,/操作許可ではない/);
-    await secretary.decide({id:'followup'},[{action:'read_image',result:image}],1);captured=JSON.parse(await readFile(join(dir,'captured.json')));assert.ok(captured.args.includes(await images.path(image.id)));
-  }finally{if(previous===undefined)delete process.env.VILLAGE_CODEX_BIN;else process.env.VILLAGE_CODEX_BIN=previous;}
+test('native exec forwards attachments as file arguments and requires a runtime completion event',async()=>{
+ const {dir,images}=await setup();const image=await images.save(await fixture(),'neutral.png');
+ const secretary=new Secretariat({dir,jobs:[]},{root:dir},null,null,images);let argsSeen;
+ secretary.runCodex=async(_bin,args)=>{argsSeen=args;await writeFile(args[args.indexOf('-o')+1],'自由な返答');return JSON.stringify({type:'thread.started',thread_id:'native-image'})+'\n'+JSON.stringify({type:'turn.completed'});};
+ const result=await secretary.decide({id:'turn',content:'画像を見て',attachments:[image]},[],0);
+ assert.equal(argsSeen[argsSeen.indexOf('--image')+1],await images.path(image.id));assert.equal(result.message,'自由な返答');assert(!argsSeen.includes('--output-schema'));
 });
 
 test('real artifact reader enforces directory boundaries; imported artifact can be attached by secretary',async()=>{

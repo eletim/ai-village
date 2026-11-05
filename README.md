@@ -1,6 +1,26 @@
 # AI村
 
+現在の開発ブランチの操作画面は `/agents` です。登録工房と村長の家の秘書を、左サイドバーの場所選択と画面サイズに応じた自動配置で直接操作できます。[画面の使い方と検証](docs/agent-workspace-ui.md)、[会話・起動・送信状態の修正](docs/agent-state-and-chat.md)を参照してください。完了判定はランタイムのturnイベントを使用します。[最新仕様と実機検証](docs/native-runtime-board.md)を参照してください。以下の旧秘書の構造化出力による行動選択・自動メモ更新の説明は旧実装の記録であり、現在は廃止しています。
+
+
+人間が複数工房のAgentを直接操作する画面は **[/agents](http://127.0.0.1:5173/agents)** です。工房登録・追加指示・監視復旧・起動方法と実機検証結果は [直接操作ガイド](docs/direct-agents.md) を参照してください。
+
 村長と秘書ミクが会話し、資料を読み、進めると合意した仕事を工房のレンが実際に制作する実動版です。村の外観とライト配色を保ち、コアPCのCodex → SSH → 工房のPurpleMux CLI → 工房Codex → 秘書Codexのレポートをつなぎます。接続対象は第一工房の1人だけで、ほかの工房・村民は未接続です。
+
+## 工房・秘書の識別と入力
+
+所属の正本は村のAgent登録です。PurpleMuxのworkspace名・tab名・cwdは所属判定に使いません。村のUIと同じ接続スナップショットから、役割・工房ID・接続先・workspaceId・tabIdを返す読み取り窓口を用意しています。
+
+```bash
+node scripts/village.mjs agents list
+# 別ポートの場合は VILLAGE_URL=http://127.0.0.1:PORT を指定
+```
+
+HTTPでは `GET /api/direct/agents`、共通操作APIでは `POST /api/village` に `{"argv":["agents","list"]}`。既存の認証・Host制限をそのまま適用します。認証構成ではCLIにも `VILLAGE_PUBLIC_ORIGIN` と `VILLAGE_AUTH_FILE` を設定してください。会話本文や認証値は一覧に含めません。`state: terminated` は履歴であり稼働中ではありません。`lastCheckedAt` と `connectionState` は最後の観測情報です。実在・稼働は該当接続先の `purplemux tab status -w WORKSPACE_ID TAB_ID` で確認します。SSH工房はその `sshHost` 上でCLIを使います。ローカルCLIの一覧は別PCを含みません。
+
+2026-11-04の実データでは、E-ryzenの工房Agent「村実装」は `ws-ofmWJg / tab-jPTCpo`、村長の家の「秘書」は `ws-UDCjmq / tab-pC6Z7A`。両者は同一cwdでした。UUIDだけの旧workspace名も、登録済みIDで照合できます。既存名を変更する移行は不要です。新規workspace名には所属・Agent名・UUIDを表示します。村経由で秘書へ送る入力には、この照会経路と送信時点の未終了Agent一覧を付加します（既存セッションも次回入力から適用）。UIには元の入力を保存し、ランタイム照合には実際の送信本文のハッシュを用います。
+
+`/agents` の直接指示と、村から移動する `/office` の秘書入力は Enterで送信、Shift+Enterで改行です。Ctrl/Command+Enterも維持します。工房設定の作業場所など、プロンプトでない複数行入力は変更しません。composition状態、`isComposing`、IMEのkeyCode 229、compositionendがkeydownより先に届く順序、キーリピートを扱います。keyupを伴わない変換終了では安全側に倒し、次のEnterを一度消費します。通常の確定Enterを離した後のEnterは送信できます。イベント順序の根拠は [MDN keydown](https://developer.mozilla.org/en-US/docs/Web/API/Element/keydown_event) を参照してください。
 
 ## 起動
 
@@ -189,7 +209,7 @@ Nodeテストでは会話の復元、資料更新、ファイル境界、行動�
 notify send --title 'AI村からのお知らせ' --message '通知の内容' --click '端末から到達できる執務室URL'
 ```
 
-通常回答、工房へ依頼した返答、成果から作成した秘書の報告、会話エラーの返答が対象です。新しいユーザー向けメッセージを会話ファイルへ保存した後、コア側で非同期に1回送信します。資料参照や内部ツール結果は対象外。会話と報告書の二重表示・ページ再表示・履歴復元・再起動で過去の通知を再送しません。
+現行の村では人間の依頼全体の最終完了だけが対象です。秘書の委任開始の途中返答・子作業の完了・内部結果配送は通知しません。正式delegateで依頼を関連付け、結果確認後のfinishと対応native turn正常終了で通知権を1回消費します。旧runには遡って通知権を付けず、履歴復元・再起動で過去の通知を再送しません。詳細と正式CLIは文末の依頼単位の通知を参照してください。
 
 ### notify CLIの導入と認証
 
@@ -208,8 +228,8 @@ notify --help
 既定の設定ファイルは `${XDG_CONFIG_HOME:-$HOME/.config}/notify/config`。別の既存設定を使うなら `NOTIFY_CONFIG` を指定します。設定ファイルには次のキーを置き、実際のサーバー・topic・トークンへ置き換えてください。**トークンはこのリポジトリや村の資料へ書きません。**
 
 ```text
-NOTIFY_SERVER=https://your-notify-server.example
-NOTIFY_TOPIC=agents
+NOTIFY_SERVER=https://eletim.jp/ntfy
+NOTIFY_TOPIC=topic-eletim
 NOTIFY_TOKEN=tk_REPLACE_WITH_YOUR_TOKEN
 NOTIFY_CONNECT_TIMEOUT=5
 NOTIFY_TIMEOUT=15
@@ -220,7 +240,7 @@ chmod 600 "$HOME/.config/notify/config"
 export NOTIFY_CONFIG="$HOME/.config/notify/config"
 ```
 
-CLIは設定ファイルを送信のたびに読み、明示的な環境変数 `NOTIFY_SERVER`・`NOTIFY_TOPIC`・`NOTIFY_TOKEN` 等がファイルより優先されます。CLIの通信タイムアウトは秒単位。HTTPSが基本で、loopbackの開発用接続だけHTTPを許します。インストーラーの初期値はサーバー `https://eletim.jp`・topic `agents` ですが、トークンは空です。初期ファイルを作っただけでは送信できず、利用する受信先と認証情報の確認が必要です。
+CLIは設定ファイルを送信のたびに読み、明示的な環境変数 `NOTIFY_SERVER`・`NOTIFY_TOPIC`・`NOTIFY_TOKEN` 等がファイルより優先されます。CLIの通信タイムアウトは秒単位。HTTPSが基本で、loopbackの開発用接続だけHTTPを許します。現在のAI村ではサーバー `https://eletim.jp/ntfy`・topic `topic-eletim` を使用します。安全なトークン入力と通知テストは [Notify連携手順](docs/notify-direct.md) を参照してください。初期ファイルを作っただけでは送信できず、利用する受信先と認証情報の確認が必要です。
 
 ### 村の起動とテスト送信
 
@@ -285,3 +305,7 @@ GitHubはWSLのGitHub REST APIを使用します。既存のgh認証、または
 配色はヘッダーで自動／ライト／ダークを選択し、そのブラウザに保存します。自動はOS設定の変更にも追従。未読faviconは秘書の返信IDをブラウザに保存し、初回履歴を新着扱いにしません。その後の返信・報告は村画面や非表示タブでも未読を保持し、執務室の会話で返信末尾が画面内に表示されると既読になります。長文は末尾までスクロールしてください。既読は同じブラウザのタブ間で共有し、別端末とは共有しません。既存のサーバー通知は継続します。ブラウザの保存データ消去時は初回履歴として扱います。
 
 VPN内の別端末接続は [VPNの起動設定と実環境確認](docs/vpn-access.md) を参照してください。`VILLAGE_VPN_ADDRESS=実際のTailscaleIPv4 npm run dev` でlocalhostと割当済みVPNアドレスだけに待ち受けます。既定はlocalhost限定です。従来の`--host 0.0.0.0`も、全公開せず実測したVPNアドレスへ限定して起動します。
+
+ProjectとAgent管理の正式API/CLI、表示名とPurpleMuxの識別方針は [ワークスペース操作](docs/agent-workspace-ui.md#projectと正式管理apicli第2段階) を参照。`node scripts/village.mjs help` に追加・終了・名前変更・所属変更を掲載。
+
+人間の1依頼の通知、子作業の正式委任と結果受信箱、最終完了CLI、旧run移行と外部通知の制約は [依頼単位の通知](docs/native-runtime-board.md#人間の依頼全体を1回だけ通知する実装2026-11-05) を参照。新しい依頼は `requests start`、内部委任は `requests delegate`、結果確認は `requests results / acknowledge`、最終回答の直前に `requests finish`。途中turn完了では通知しません。

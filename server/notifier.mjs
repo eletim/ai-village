@@ -16,7 +16,7 @@ export class VillageNotifier {
     this.officeUrl = null;
     try {
       const url = new URL(environment.VILLAGE_OFFICE_URL);
-      if (['http:','https:'].includes(url.protocol) && !url.username && !url.password && /^\/office\/?$/.test(url.pathname) && !url.hash) this.officeUrl = url.href;
+      if (['http:','https:'].includes(url.protocol) && !url.username && !url.password && /^\/(office|agents)\/?$/.test(url.pathname) && !url.hash) this.officeUrl = url.href;
     } catch { /* A missing/invalid destination must not break the village. */ }
     this.seen = new Set(); this.queue = Promise.resolve(); this.latest = null; this.journalAvailable = true;
   }
@@ -49,15 +49,20 @@ export class VillageNotifier {
     if(message.role!=='assistant' || this.seen.has(message.id))return Promise.resolve({status:'duplicate_or_internal',delivered:false});
     this.seen.add(message.id);
     const task=this.queue.catch(()=>{}).then(async()=>{
-      const base={messageId:message.id,kind:message.kind || 'reply'};
+      let clickUrl=this.officeUrl;
+      if(message.agentId){
+        if(!/^[0-9a-f-]{36}$/.test(message.agentId))throw new Error('Invalid Agent ID');
+        if(clickUrl){const url=new URL(clickUrl);url.pathname='/agents';url.search='';url.hash=`agent-${message.agentId}`;clickUrl=url.href;}
+      }
+      const base={messageId:message.id,kind:message.kind || 'reply',clickUrl};
       const skip=!this.enabled?'disabled':!this.officeUrl?'office_url_missing_or_invalid':null;
       if(skip){const result={...base,at:new Date().toISOString(),status:skip,delivered:false};await this.record(result);return result;}
       // Claim before the external side effect; neither restart nor UI restoration retries it.
       await this.record({...base,at:new Date().toISOString(),status:'attempting',delivered:false});
-      const title=message.kind==='deployment'?'AI村 · 村への変更反映':message.kind==='report'?'AI村 · 工房からの報告':message.kind==='error'?'AI村 · ミクからのお知らせ':message.kind==='test'?'AI村 · 通知テスト':'AI村 · ミクからの返答';
+      const title=message.kind==='request'?'AI村 · 依頼全体の完了':message.kind==='direct'?'AI村 · Agentの応答完了':message.kind==='deployment'?'AI村 · 村への変更反映':message.kind==='report'?'AI村 · 工房からの報告':message.kind==='error'?'AI村 · ミクからのお知らせ':message.kind==='test'?'AI村 · 通知テスト':'AI村 · ミクからの返答';
       const prose=message.content || (message.attachments?.length ? `ミクから画像が${message.attachments.length}枚届きました。執務室で確認できます。` : '');
       const content=Array.from(prose).slice(0,2000).join('')+(Array.from(prose).length>2000?'…':'');
-      const outcome=await this.send(title,content);
+      const outcome=await this.send(title,content,clickUrl);
       const result={...base,at:new Date().toISOString(),...outcome};
       await this.record(result);return result;
     });
@@ -67,23 +72,23 @@ export class VillageNotifier {
     });
     return this.queue;
   }
-  send(title, message) {
+  send(title, message, clickUrl = this.officeUrl) {
     return new Promise(resolve=>{
       let child, timer, done=false;
       const finish=result=>{if(done)return;done=true;clearTimeout(timer);resolve(result);};
       try {
-        child=spawn(this.executable,['send','--title',title,'--message',message,'--click',this.officeUrl],{env:this.environment,stdio:'ignore',detached:true});
+        child=spawn(this.executable,['send','--title',title,'--message',message,'--click',clickUrl],{env:this.environment,stdio:'ignore',detached:true});
       } catch {finish({status:'cli_unavailable',delivered:false});return;}
       timer=setTimeout(()=>{
         try{process.kill(-child.pid,'SIGKILL');}catch{}
         finish({status:'timed_out',delivered:false});
       },this.timeout);
       child.on('error',error=>finish({status:error.code==='ENOENT'?'cli_unavailable':'cli_start_failed',delivered:false}));
-      child.on('close',code=>finish({status:code===0?'sent':'cli_failed',delivered:code===0,exitCode:code}));
+      child.on('close',code=>finish({status:code===0?'sent':'cli_failed',delivered:code===0,exitCode:code,...(code===2?{reason:'cli_configuration_error'}:code===22?{reason:'http_error'}:{})}));
     });
   }
-  async test() {
-    return this.enqueue({id:`test:${randomUUID()}`,role:'assistant',kind:'test',content:'AI村の通知テストです。クリックすると設定した執務室を開きます。'});
+  async test(agentId) {
+    return this.enqueue({id:`test:${randomUUID()}`,role:'assistant',kind:'test',agentId,content:'AI村の通知テストです。クリックすると対象のAgentまたは設定したページを開きます。'});
   }
   async flush() { await this.queue; }
 }

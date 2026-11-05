@@ -1,3 +1,4 @@
+import {hasReport} from '../src/job-state.js';
 import { readFile,writeFile,mkdir,copyFile,readdir,open,rename } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { spawn } from 'node:child_process';
@@ -79,7 +80,7 @@ export class Development {
     if(previous&&(!retry||!terminal.has(previous.phase)||previous.phase==='succeeded'))return previous;
     if(records.some(record=>!terminal.has(record.phase)))throw new Error('別の反映が実行中です。');
     if(this.bridge.jobs.some(j=>activePhases.has(j.phase)))throw new Error('実行中の仕事があるため、反映は保留します。完了後に実行してください。');
-    const job=this.bridge.jobById(jobId);if(!job.report||job.cancelRequestedAt)throw new Error('完成報告のある村開発の仕事だけを反映できます。');
+    const job=this.bridge.jobById(jobId);if(!hasReport(job)||job.cancelRequestedAt)throw new Error('完成報告のある村開発の仕事だけを反映できます。');
     const cfg=await this.profile(),d=await this.inspect(jobId);if(cfg.repository!==d.repository||cfg.branch!==d.branch)throw new Error('仕事と現在の開発対象が異なります。');
     const id=randomUUID(),record={id,jobId,createdAt:new Date().toISOString(),phase:'queued',targetCommit:d.result.commit,workshopVerification:d.result,changeBranch:d.changeBranch,branch:cfg.branch,repository:cfg.repository,root:cfg.sourceDir,stateDir:this.bridge.dir,healthUrl:this.healthUrl};
     const folder=resolve(this.dir,id);await mkdir(folder,{recursive:true});await copyFile(resolve('scripts/apply.mjs'),resolve(folder,'runner.mjs'));
