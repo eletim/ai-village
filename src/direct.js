@@ -1,3 +1,5 @@
+import {travelComposer} from './travel-composer.js';
+import {travelSummary,sameTravelContexts} from './travel-context.js';
 import {PAGE_SIZE,placeOf,orderedAgents,boardLayout} from './board-state.js';
 import {agentEntries,unreadByAgent,visualState,faviconHref} from './completions.js';
 import {agentPlaceName} from './agent-identity.js';
@@ -25,7 +27,8 @@ const pageKey=id=>sidebarMode+':'+id;
 const storageKey='ai-village-direct-drafts-v2';
 let saved={};try{saved=JSON.parse(sessionStorage.getItem(storageKey)||'{}');}catch{}
 const positions=new Map(Object.entries(saved.positions||{})),cards=new Map(),drafts=new Map(Object.entries(saved.drafts||{})),pending=new Map(Object.entries(saved.pending||{}));
-function storeDrafts(){try{sessionStorage.setItem(storageKey,JSON.stringify({positions:Object.fromEntries(positions),drafts:Object.fromEntries(drafts),pending:Object.fromEntries(pending)}));}catch{}}
+const travelDrafts=new Map(Object.entries(saved.travelDrafts||{})),travelEditors=new Map();
+function storeDrafts(){try{sessionStorage.setItem(storageKey,JSON.stringify({travelDrafts:Object.fromEntries(travelDrafts),positions:Object.fromEntries(positions),drafts:Object.fromEntries(drafts),pending:Object.fromEntries(pending)}));}catch{}}
 window.addEventListener('pagehide',()=>{capturePositions();storeDrafts();});
 
 const live=()=>orderedAgents(state.agents);
@@ -43,7 +46,7 @@ function timeHTML(value){if(!value)return '';const date=new Date(value);return N
 function bubble(side,text,at){return `<div class="message ${side}"><pre>${esc(text)}</pre>${timeHTML(at)}</div>`;}
 function runHTML(a){
  const entries=agentEntries(state,a);
- return entries.map(r=>`<div class="run">${bubble('user',r.instruction,r.createdAt)}${r.output?bubble('assistant',r.output,r.completedAt):''}<p class="run-status"><span class="badge">${r.external?'PurpleMuxからの入力 · ':r.origin==='result'?'子作業結果の配送 · ':''}${esc(labels[r.state]||r.state)}</span> · ${r.humanRequestId?esc(({active:'依頼継続中',finalizing:'最終報告の完了待ち',completed:'依頼全体完了',cancelled:'依頼キャンセル'})[state.requests?.find(q=>q.id===r.humanRequestId)?.status]||'依頼照合中'):'達成状況: 未判定'} ${esc(r.error||'')} ${r.notification?' · 通知: '+esc(r.notification.status)+(r.notification.reason?' / '+esc(r.notification.reason):''):''}</p></div>`).join('');
+ return entries.map(r=>`<div class="run">${bubble('user',r.instruction,r.createdAt)}${travelSummary(r.travelContexts)}${r.output?bubble('assistant',r.output,r.completedAt):''}<p class="run-status"><span class="badge">${r.external?'PurpleMuxからの入力 · ':r.origin==='result'?'子作業結果の配送 · ':''}${esc(labels[r.state]||r.state)}</span> · ${r.humanRequestId?esc(({active:'依頼継続中',finalizing:'最終報告の完了待ち',completed:'依頼全体完了',cancelled:'依頼キャンセル'})[state.requests?.find(q=>q.id===r.humanRequestId)?.status]||'依頼照合中'):'達成状況: 未判定'} ${esc(r.error||'')} ${r.notification?' · 通知: '+esc(r.notification.status)+(r.notification.reason?' / '+esc(r.notification.reason):''):''}</p></div>`).join('');
 }
 function renderHistory(){
  options($('#history-agent'),state.agents.filter(a=>a.state==='terminated').map(a=>({id:a.id,name:placeName(a)+' / '+a.name+(state.reviews?.[a.id]?.attention?' · 依頼完了・要確認':unread.get(a.id)?' · 更新あり':'')})));
@@ -68,12 +71,13 @@ function renderBoard(){
  $('#pages').hidden=selectedPlace!=='all'||!!zoomId||pageCount===1;
  $('#page-number').textContent=`${selectedPage+1} / ${pageCount}`;
  $('#previous-page').disabled=selectedPage===0;$('#next-page').disabled=selectedPage===pageCount-1;
- for(const [id,card] of cards)if(!live().some(a=>a.id===id)){card.remove();cards.delete(id);positions.delete(id);drafts.delete(id);pending.delete(id);storeDrafts();}
+ for(const [id,card] of cards)if(!live().some(a=>a.id===id)){card.remove();cards.delete(id);travelDrafts.delete(id);travelEditors.delete(id);positions.delete(id);drafts.delete(id);pending.delete(id);storeDrafts();}
  for(const a of live()){
   let card=cards.get(a.id);
   if(!card){card=document.createElement('article');card.className='agent-panel';card.id='agent-'+a.id;card.setAttribute('aria-labelledby','heading-'+a.id);card.tabIndex=0;card.hidden=true;
-   card.innerHTML=`<div class="panel-heading"><span class="dot"></span><h2></h2><span class="request-attention"></span><span class="selection-label"></span><span class="unread-badge"></span><button data-zoom="${esc(a.id)}" title="このAgentを拡大" aria-label="このAgentを拡大">⤢</button><button data-manage-agent="${esc(a.id)}" title="Agentの操作" aria-label="Agentの操作">…</button></div><div class="panel-info"></div><p class="current-action"></p><div class="runs" tabindex="0" aria-label="会話履歴"></div><form data-send="${esc(a.id)}"><textarea name="instruction" aria-label="このAgentに直接指示" placeholder="指示を入力…（Enterで送信、Shift+Enterで改行）" required maxlength="16000" rows="2"></textarea><button>送信</button><button type="button" data-reconcile="${esc(a.id)}" hidden>送信結果を確認</button></form>`;
+   card.innerHTML=`<div class="panel-heading"><span class="dot"></span><h2></h2><span class="request-attention"></span><span class="selection-label"></span><span class="unread-badge"></span><button data-zoom="${esc(a.id)}" title="このAgentを拡大" aria-label="このAgentを拡大">⤢</button><button data-manage-agent="${esc(a.id)}" title="Agentの操作" aria-label="Agentの操作">…</button></div><div class="panel-info"></div><p class="current-action"></p><div class="runs" tabindex="0" aria-label="会話履歴"></div><form data-send="${esc(a.id)}"><textarea name="instruction" aria-label="このAgentに直接指示" placeholder="指示を入力…（Ctrl+Enterで送信、Enter / Shift+Enterで改行）" required maxlength="16000" rows="2"></textarea><button type="submit">送信</button><button type="button" data-reconcile="${esc(a.id)}" hidden>送信結果を確認</button><div class="travel-slot"></div></form>`;
    const input=card.querySelector('textarea');input.value=drafts.get(a.id)||'';
+   travelEditors.set(a.id,travelComposer(card.querySelector('.travel-slot'),travelDrafts.get(a.id)||[],value=>{travelDrafts.set(a.id,value);storeDrafts();}));
    bindPromptInput(input,()=>{const button=input.form.querySelector('button');if(!button.disabled)input.form.requestSubmit(button);});
    input.oninput=()=>{drafts.set(a.id,input.value);storeDrafts();};
    card.querySelector('.runs').onscroll=()=>{if(!card.hidden){positions.set(a.id,card.querySelector('.runs').scrollTop);storeDrafts();}};
@@ -93,8 +97,9 @@ function renderBoard(){
   card.querySelector('.current-action').textContent=[['busy','waiting_input'].includes(a.state)?a.currentAction:null,a.error,a.canSend?null:a.sendReason,pending.has(a.id)?'送信結果を照合中（自動再送なし）':null].filter(Boolean).join(' · ');
   const area=card.querySelector('.runs'),html=runHTML(a);if(area.innerHTML!==html)area.innerHTML=html;
   const receipt=pending.get(a.id),known=receipt&&state.runs.find(r=>r.requestId===receipt.requestId);
-  if(known){pending.delete(a.id);if(!['unknown','send_unknown'].includes(known.state)&&card.querySelector('textarea').value===receipt.instruction){card.querySelector('textarea').value='';drafts.delete(a.id);}storeDrafts();}
+  if(known){pending.delete(a.id);if(!['unknown','send_unknown'].includes(known.state)&&sameTravelContexts(travelDrafts.get(a.id),receipt.travelContexts))travelEditors.get(a.id).set([]);if(!['unknown','send_unknown'].includes(known.state)&&card.querySelector('textarea').value===receipt.instruction){card.querySelector('textarea').value='';drafts.delete(a.id);}storeDrafts();}
   const send=card.querySelector('[data-send] button:not([data-reconcile])');
+  travelEditors.get(a.id).lock(card.dataset.pending==='true'||pending.has(a.id));
   send.disabled=!connected||a.canSend!==true||card.dataset.pending==='true'||pending.has(a.id);
   card.querySelector('[data-reconcile]').hidden=!pending.has(a.id);
   send.title=pending.has(a.id)?'送信結果を確認中です。自動再送しません。':a.sendReason||'';
@@ -248,6 +253,7 @@ for(const b of document.querySelectorAll('[data-open]'))b.onclick=()=>{if(b.clos
 for(const b of document.querySelectorAll('[data-close]'))b.onclick=()=>b.closest('dialog').close();
 $('#history-agent').onchange=()=>{renderHistory();selectAgent($('#history-agent').value);};
 async function api(path,body,method='POST'){
+ if(path.endsWith('/runs')&&body?.travelContexts?.length&&!state?.capabilities?.travelContexts)throw Error('出張先の送信にはサーバー更新の反映が必要です。下書きは保持しています。');
  const response=await fetch('/api/direct'+path,{method,signal:AbortSignal.timeout(method==='GET'?10000:30000),headers:{'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});
  const value=await response.json();if(!response.ok)throw Object.assign(Error(value.error||'操作に失敗しました'),{status:response.status});return value;
 }
@@ -274,9 +280,11 @@ $('#workshops').onclick=e=>{const id=e.target.dataset.edit;if(!id)return;const w
 $('#agent-form').onsubmit=e=>{e.preventDefault();const f=e.currentTarget;f.dataset.requestId ||= newRequestId();action(f,async()=>{let a;try{a=await api('/agents',{...Object.fromEntries(new FormData(f)),requestId:f.dataset.requestId});}catch(error){if(error.status&&error.status<500)delete f.dataset.requestId;throw error;}delete f.dataset.requestId;$('#agent-dialog').close();await refresh(true);if(a.id){const scope=a.projectId?'project:'+a.projectId:placeId(a);choosePlace(scope,Math.floor(live().filter(x=>inScope(x,scope)).findIndex(x=>x.id===a.id)/PAGE_SIZE));cards.get(a.id)?.scrollIntoView({block:'nearest'});}});};
 $('#agents').onsubmit=e=>{
  e.preventDefault();const f=e.target,id=f.dataset.send;if(!id||pending.has(id)||f.querySelector('button').disabled||!f.elements.instruction.value.trim())return;
- const receipt={instruction:f.elements.instruction.value,requestId:newRequestId()};pending.set(id,receipt);storeDrafts();
+ if(travelEditors.get(id).value.length&&!state.capabilities?.travelContexts){$('#error').textContent='出張先の送信にはサーバー更新の反映が必要です。下書きは保持しています。';return;}
+ const receipt={instruction:f.elements.instruction.value,travelContexts:travelEditors.get(id).value,requestId:newRequestId()};pending.set(id,receipt);storeDrafts();
  action(f,async()=>{try{
    const r=await api('/agents/'+id+'/runs',receipt);pending.delete(id);
+   if(!['unknown','send_unknown'].includes(r.state)&&sameTravelContexts(travelDrafts.get(id),receipt.travelContexts))travelEditors.get(id).set([]);
    if(!['unknown','send_unknown'].includes(r.state)&&f.elements.instruction.value===receipt.instruction){f.elements.instruction.value='';drafts.delete(id);}
    storeDrafts();
  }catch(error){if(error.status&&error.status<500){pending.delete(id);storeDrafts();}throw error;}});

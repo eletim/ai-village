@@ -160,7 +160,7 @@ test('each place menu launches and sends to its exact Agent without switching an
   await page.locator('#agent-form button').click();
   const id='agent'+launches.length;
   await expect(page.locator(`[data-place=${place}]`)).toHaveAttribute('aria-current','page');
-  await page.locator(`#agent-${id} textarea`).fill('target '+id);await page.locator(`#agent-${id} textarea`).press('Enter');
+  await page.locator(`#agent-${id} textarea`).fill('target '+id);await page.locator(`#agent-${id} textarea`).press('Control+Enter');
   await expect.poll(()=>sends.length).toBe(launches.length);
   expect(sends.at(-1).url).toContain('/agents/'+id+'/runs');
  }

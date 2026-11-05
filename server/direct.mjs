@@ -51,7 +51,7 @@ export class DirectAgents {
     if(watch){this.timer=setInterval(()=>this.tick().catch(()=>{}),this.pollMs);this.timer.unref();void this.tick();}
   }
   close(){clearInterval(this.timer);this.owner?.close();}
-  snapshot(){return structuredClone({...this.data,reviews:this.reviewStates(),notification:this.notifier.status()});}
+  snapshot(){return structuredClone({...this.data,capabilities:{travelContexts:true},reviews:this.reviewStates(),notification:this.notifier.status()});}
   reviewStates(){
     const keys=new Map(this.data.agents.map(a=>[a.id,[]]));
     for(const entry of completedEntries(this.data))keys.get(entry.agentId).push(entry.key);

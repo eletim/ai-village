@@ -1,3 +1,4 @@
+import {travelSummary} from './travel-context.js';
 import { isOnDesk } from './job-state.js';
 import { escape } from './office.js';
 // Secretary prose stays plain text; only local artifact downloads become links.
@@ -22,7 +23,7 @@ export function renderConversation(secretary, openDocument, jobs = []) {
   log.innerHTML = messages.filter(message=>message.role==='user'||message.role==='assistant').map(message=>{
     const reads = messages.filter(item=>item.role==='tool'&&item.turnId===message.turnId&&item.action==='read_document');
     const tools = messages.filter(item=>item.role==='tool'&&item.turnId===message.turnId);
-    return `<article class="chat-message chat-${message.role}" data-message="${escape(message.id)}"><div class="chat-meta"><b>${message.role==='user'?'村長':'ミク'}</b><time>${new Date(message.at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}</time></div><p>${prose(message.content)}</p>
+    return `<article class="chat-message chat-${message.role}" data-message="${escape(message.id)}"><div class="chat-meta"><b>${message.role==='user'?'村長':'ミク'}</b><time>${new Date(message.at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}</time></div><p>${prose(message.content)}</p>${travelSummary(message.travelContexts)}
     <div class="chat-images">${(message.attachments||[]).filter(image=>/^[0-9a-f-]{36}$/.test(image.id)).map(image=>`<a href="/api/images/${image.id}" target="_blank" rel="noopener"><img src="/api/images/${image.id}" alt="${escape(image.name)}" width="${Number(image.width)||200}" height="${Number(image.height)||200}"><span>${escape(image.name)} · 拡大して見る</span></a>`).join('')}</div>
     ${message.role==='assistant'&&reads.length ? `<div class="chat-sources">参照した資料：${[...new Set(reads.map(item=>item.document))].map(path=>`<button data-read-document="${escape(path)}">${escape(path)}</button>`).join('')}</div>` : ''}
     ${message.role==='assistant'&&tools.some(item=>item.action==='check_workshop')?'<small class="chat-inspection">工房の状況照会を行いました（Agent起動とは別の処理）</small>':''}
