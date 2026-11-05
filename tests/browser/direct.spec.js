@@ -167,13 +167,33 @@ test('each place menu launches and sends to its exact Agent without switching an
  expect(launches.map(a=>[a.workshopId,a.cwd,a.location])).toEqual([['remote','/remote/work','workshop'],['local','/local/work','workshop'],['local','/local/work','mayor']]);
 });
 
-test('empty secretary cannot launch without local runtime, and zoom survives polling until explicit place change',async({page})=>{
+test('secretary setup opens local runtime registration, and zoom survives polling until explicit place change',async({page})=>{
  const state={workshops:[{id:'remote',name:'E-frontier',connectionType:'ssh',workplaces:['/tmp']}],agents:[],runs:[],notification:{}};
  await page.route('**/api/direct',r=>r.fulfill({json:state}));await page.goto('/agents');
  await expect(page.locator('[data-add=mayor]')).toBeEnabled();
- await page.locator('[data-place=mayor]').click();await expect(page.locator('#start-secretary')).toBeDisabled();
+ await page.locator('[data-place=mayor]').click();await expect(page.locator('#start-secretary')).toBeEnabled();
+ await page.locator('#start-secretary').click();await expect(page.locator('#settings-dialog')).toBeVisible();
+ await expect(page.locator('#secretary-setup-help')).toBeVisible();await expect(page.locator('#workshop-form [name=connectionType]')).toHaveValue('local');
+ await page.locator('#settings-dialog [data-close]').click();
  state.agents.push({id:'a',workshopId:'remote',name:'Agent',connection:state.workshops[0],state:'idle',canSend:true});
  await page.locator('[data-place=all]').click();await expect(page.locator('#agent-a')).toBeVisible();
  await page.locator('#agent-a [data-zoom]').click();await page.waitForTimeout(2200);await expect(page.locator('#agent-a [data-zoom]')).toHaveAttribute('aria-expanded','true');
  await page.locator('[data-place=remote]').click();await expect(page.locator('#agent-a [data-zoom]')).toHaveAttribute('aria-expanded','false');
+});
+
+test('registering a local runtime from secretary entry continues to secretary launch',async({page})=>{
+ const state={workshops:[],agents:[],runs:[],notification:{}};
+ await page.route('**/api/direct**',route=>{
+  if(route.request().method()==='POST'&&new URL(route.request().url()).pathname==='/api/direct/workshops')state.workshops.push({...route.request().postDataJSON(),id:'local'});
+  return route.fulfill({json:state});
+ });
+ await page.goto('/agents');await page.locator('#start-secretary').click();
+ await expect(page.locator('#workshop-title')).toHaveText('秘書の実行環境を登録');
+ await page.locator('#workshop-form [name=baseUrl]').fill('http://localhost:8022/');
+ await page.locator('#workshop-form [name=workplaces]').fill('/tmp');
+ await page.locator('#workshop-form button').first().click();
+ await expect(page.locator('#agent-dialog')).toBeVisible();
+ await expect(page.locator('#agent-form [name=location]')).toHaveValue('mayor');
+ await expect(page.locator('#agent-form [name=workshopId]')).toHaveValue('local');
+ await expect(page.locator('#agent-form [name=name]')).toHaveValue('秘書');
 });

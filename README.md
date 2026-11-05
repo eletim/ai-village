@@ -27,12 +27,12 @@ HTTPでは `GET /api/direct/agents`、共通操作APIでは `POST /api/village` 
 コアPC（WSL2 Ubuntu）でNode.js 22以上、認証済みのCodex CLI、工房資料に記載した接続先へパスワード入力なしで接続できるSSHが必要です。通常の会話と資料閲覧には工房接続は不要です。工房ではPurpleMuxが起動しており、ログインシェルで`purplemux`と認証済みCodexが利用できる必要があります。
 
 ```bash
-cd /home/koji/DevEnv/ai-village
-npm ci
-npm run dev
+./start.sh
 ```
 
-Windowsのブラウザで **http://localhost:5173** を開いてください。既定はコアPCの`127.0.0.1:5173`で待ち受けます。実行時の追加npm依存はありません（インストールする依存はブラウザテスト用）。サーバーは通常のWSLターミナルで起動し、Codexが自身の認証・セッション保存先へアクセスできるようにしてください。
+リポジトリのディレクトリで実行してください。このPCでは `ai-village` でも起動できます。初回と依存定義の変更時にはパッケージを自動導入します。`npm` がない環境では `pnpm` を使用します。Tailscaleが稼働していれば割当済みのIPv4を自動検出し、localhostとそのVPNアドレスで待ち受けます。手動起動でVPN接続を無効にする場合は `VILLAGE_VPN_ADDRESS='' ./start.sh` とします。停止は Ctrl+C です。ブラウザで **http://localhost:5173** または `http://TailscaleのIPv4:5173` を開いてください。
+
+このPCにはユーザーサービス `ai-village.service` も設定されています。サービス稼働中の `ai-village` は起動済みと表示します。サービスの停止・再起動は `systemctl --user stop ai-village.service` / `systemctl --user restart ai-village.service` を使います。
 
 村の「村長の家」または「執務室へ」をクリックすると、**http://localhost:5173/office** の執務室へ入ります。秘書ミクへ相談や質問、実行指示を送ります。挨拶や相談だけで工房を起動しません。部屋の出口から村へ戻れます。執務室URLへの直接アクセス・再読み込みにも対応します。第一工房を開いてレンを選ぶか、地図のレンをクリックすると、その依頼用のPurpleMux端末リンクが表示されます。PurpleMuxに未ログインの場合は、先にログインしてから村のリンクをもう一度開いてください。PurpleMux側のログイン画面はリンク先パラメーターを保持しません。
 

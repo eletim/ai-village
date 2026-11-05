@@ -106,8 +106,7 @@ function renderBoard(){
  $('#empty-help').hidden=false;
  const secretaries=(isProject(selectedPlace)?filtered():live()).filter(a=>a.location==='mayor');
  $('#start-secretary').hidden=secretaries.length>0;
- $('#start-secretary').disabled=!state.workshops.some(w=>w.connectionType==='local');
- $('#start-secretary').title=$('#start-secretary').disabled?'…の工房設定でローカル工房を登録してください':'';
+ $('#start-secretary').title=state.workshops.some(w=>w.connectionType==='local')?'秘書を追加':'ローカル実行環境を登録して秘書を追加';
  layoutBoard();if(restoreScroll!==null)$('#agents').scrollTop=restoreScroll;renderHistory();syncSelection();
 }
 function placeTitle(id){if(isProject(id))return (state.projects||[]).find(p=>p.id===id.slice(8))?.name||'Project';return id==='all'?'全部表示':id==='mayor'?'秘書':id==='unassigned'?'所属未登録':'工房（'+(state.workshops.find(w=>w.id===id)?.name||'未登録')+'）';}
@@ -211,13 +210,23 @@ $('#places').onclick=e=>{const add=e.target.closest('[data-add]'),place=e.target
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&zoomId&&!document.querySelector('dialog[open]'))toggleZoom(zoomId);});
 function openLauncher(place=selectedPlace){
  const f=$('#agent-form'),w=place==='mayor'?state.workshops.find(w=>w.connectionType==='local'):state.workshops.find(w=>w.id===place)||state.workshops[0];
- if(!w){$('#settings-dialog').showModal();return;}
+ if(!w){if(place==='mayor')openSecretarySetup();else $('#settings-dialog').showModal();return;}
  f.elements.location.value=place==='mayor'?'mayor':'workshop';f.elements.workshopId.value=w.id;places();
  f.elements.name.value=place==='mayor'?'秘書':'Agent';
  projectOptions(f.elements.projectId);f.elements.projectId.value=isProject(manageScope)?manageScope.slice(8):isProject(place)?place.slice(8):'';
  $('#agent-dialog').showModal();f.elements.provider.focus();
 }
 let manageScope='all',metadataId='',metadataRevision=0,projectRevision=0;
+let secretarySetup=false;
+function prepareSecretaryForm(){
+ const f=$('#workshop-form');f.reset();f.elements.connectionType.value='local';f.elements.name.value='村長PC';
+ $('#workshop-title').textContent='秘書の実行環境を登録';$('#secretary-setup-help').hidden=false;connectionFields();
+}
+function openSecretarySetup(){
+ secretarySetup=true;prepareSecretaryForm();
+ $('#settings-dialog').showModal();$('#workshop-form').elements.baseUrl.focus();
+}
+$('#settings-dialog').addEventListener('close',()=>{if(secretarySetup){$('#workshop-form').reset();$('#workshop-title').textContent='工房を登録';connectionFields();}secretarySetup=false;$('#secretary-setup-help').hidden=true;});
 function openManagement(scope=selectedPlace){manageScope=scope;$('#manage-dialog').showModal();}
 $('#manage').onclick=()=>openManagement();
 $('#manual-add').onclick=()=>{$('#manage-dialog').close();openLauncher(manageScope);};
@@ -259,8 +268,8 @@ $('#agent-form [name=workshopId]').onchange=places;
 $('#agent-form [name=location]').onchange=()=>{if($('#agent-form [name=location]').value==='mayor'){const w=state.workshops.find(w=>w.connectionType==='local');if(w)$('#agent-form [name=workshopId]').value=w.id;$('#agent-form [name=name]').value='秘書';places();}};
 function connectionFields(){const local=$('#workshop-form [name=connectionType]').value==='local';$('#ssh-host-field').hidden=local;$('#workshop-form [name=sshHost]').required=!local;}
 $('#workshop-form [name=connectionType]').onchange=connectionFields;
-$('#workshop-form').onsubmit=e=>{e.preventDefault();const f=e.currentTarget;action(f,async()=>{const x=Object.fromEntries(new FormData(f));await api('/workshops'+(x.id?'/'+x.id:''),{...x,workplaces:x.workplaces.split('\n').map(s=>s.trim()).filter(Boolean)},x.id?'PUT':'POST');f.reset();connectionFields();$('#workshop-title').textContent='工房を登録';});};
-$('#reset-workshop').onclick=()=>{$('#workshop-form').reset();connectionFields();$('#workshop-title').textContent='工房を登録';};
+$('#workshop-form').onsubmit=e=>{e.preventDefault();const f=e.currentTarget;action(f,async()=>{const x=Object.fromEntries(new FormData(f));if(secretarySetup&&x.connectionType!=='local')throw Error('秘書にはローカル（村長PC）を選んでください。');await api('/workshops'+(x.id?'/'+x.id:''),{...x,workplaces:x.workplaces.split('\n').map(s=>s.trim()).filter(Boolean)},x.id?'PUT':'POST');f.reset();connectionFields();$('#workshop-title').textContent='工房を登録';if(secretarySetup){await refresh(true);$('#settings-dialog').close();openLauncher('mayor');}});};
+$('#reset-workshop').onclick=()=>{if(secretarySetup)prepareSecretaryForm();else{$('#workshop-form').reset();connectionFields();$('#workshop-title').textContent='工房を登録';}};
 $('#workshops').onclick=e=>{const id=e.target.dataset.edit;if(!id)return;const w=state.workshops.find(w=>w.id===id);for(const key of ['id','name','connectionType','sshHost','baseUrl','workplaces'])$('#workshop-form').elements[key].value=key==='workplaces'?w[key].join('\n'):(w[key]??(key==='connectionType'?'ssh':''));connectionFields();$('#workshop-title').textContent='工房を編集';};
 $('#agent-form').onsubmit=e=>{e.preventDefault();const f=e.currentTarget;f.dataset.requestId ||= newRequestId();action(f,async()=>{let a;try{a=await api('/agents',{...Object.fromEntries(new FormData(f)),requestId:f.dataset.requestId});}catch(error){if(error.status&&error.status<500)delete f.dataset.requestId;throw error;}delete f.dataset.requestId;$('#agent-dialog').close();await refresh(true);if(a.id){const scope=a.projectId?'project:'+a.projectId:placeId(a);choosePlace(scope,Math.floor(live().filter(x=>inScope(x,scope)).findIndex(x=>x.id===a.id)/PAGE_SIZE));cards.get(a.id)?.scrollIntoView({block:'nearest'});}});};
 $('#agents').onsubmit=e=>{
