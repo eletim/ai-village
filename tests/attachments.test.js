@@ -8,5 +8,6 @@ test('attachment storage validates IDs/limits, downloads inert data and transfer
    assert.equal(cmd,'ssh');assert.equal(args.at(-2),'registered-alias');assert(!args.at(-1).includes('hello;'));return runInput('sh',['-c',args.at(-1)],input);
   });t.after(()=>rm(dirname(receipt.path),{recursive:true,force:true}));assert.deepEqual(await readFile(receipt.path),bytes);assert(!receipt.path.startsWith(dir));
  }
+ await assert.rejects(stageAttachment({connection:{connectionType:'local'}},record,Buffer.alloc(bytes.length)),/添付を接続先へ転送できませんでした/);
  await unlink(join(dir,'attachments',record.id+'.blob'));await symlink('/etc/passwd',join(dir,'attachments',record.id+'.blob'));await assert.rejects(store.content(record.id));
 });

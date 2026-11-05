@@ -47,3 +47,19 @@ test('real artifact reader enforces directory boundaries; imported artifact can 
   const secretary=new Secretariat(bridge,{root:dir},operations,undefined,images);await secretary.init();secretary.decide=async()=>({action:'reply',message:'仕事の画像です。',attachments:[id]});await secretary.send('成果物を提示して');await secretary.running;assert.equal(secretary.messages.at(-1).attachments[0].source.jobId,job.id);
   await unlink(join(work,'result.png'));assert.ok((await images.content(id)).length);
 });
+
+
+test('artifact discovery and import accept images beyond former file and transport caps',async t=>{
+ const {WorkshopBridge,run}=await import('../server/bridge.mjs');
+ const {randomBytes}=await import('node:crypto');const {rm}=await import('node:fs/promises');
+ const {dir,images}=await setup();t.after(()=>rm(dir,{recursive:true,force:true}));
+ const bytes=await sharp(randomBytes(2100*2100*3),{raw:{width:2100,height:2100,channels:3}}).png().toBuffer();
+ assert(bytes.length>10*1024*1024);assert(bytes.toString('base64').length>15e6);
+ await writeFile(join(dir,'large.png'),bytes);
+ const bridge=new WorkshopBridge({dir});
+ bridge.remote=async(args,_host,_id,options)=>run(args[0],args.slice(1),options);
+ const job={id:'large-artifact',cwd:dir,sshHost:'isolated-local-test'};bridge.jobs=[job];
+ job.artifacts=await bridge.listArtifacts(job);assert(job.artifacts.some(f=>f.path==='large.png'));
+ const saved=await images.importArtifact(bridge,job.id,'large.png');
+ assert.deepEqual(await images.content(saved.id),bytes);
+});

@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {boardLayout,orderedAgents,PAGE_SIZE} from '../src/board-state.js';
+import {boardLayout,orderedAgents,orderedProjects,PAGE_SIZE} from '../src/board-state.js';
 import {completedEntries,unreadByAgent,agentEntries,completionKey,visualState,faviconHref} from '../src/completions.js';
 
 test('desktop grids fit four as 2x2 and nine as 3x3, narrow layouts keep readable cards',()=>{
@@ -33,4 +33,11 @@ test('completion green follows actual latest turn and survives review, never ove
  const session={...a,observedSessionId:'new',nativeTurns:[{sessionId:'old',state:'completed'}]};assert.equal(visualState(session,entries),'idle');
  session.nativeTurns.push({sessionId:'new',state:'failed'});assert.equal(visualState(session,entries),'idle');
  session.nativeTurns.push({sessionId:'new',state:'completed'});assert.equal(visualState(session,entries),'completed');
+});
+
+test('general project precedes other projects without changing stored order or membership',()=>{
+ const projects=[{id:'a',name:'村実装'},{id:'b',name:'全体'},{id:'c',name:'blokus'}];
+ assert.deepEqual(orderedProjects(projects).map(p=>p.id),['b','a','c']);
+ assert.deepEqual(projects.map(p=>p.id),['a','b','c']);
+ assert.deepEqual(orderedProjects(projects.filter(p=>p.id!=='b')).map(p=>p.id),['a','c']);
 });
