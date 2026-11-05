@@ -3,7 +3,7 @@ set -euo pipefail
 
 cd "$(dirname "$(realpath "$0")")"
 
-if [[ $# -eq 0 && ! -v INVOCATION_ID ]] && command -v systemctl >/dev/null 2>&1 && systemctl --user is-active --quiet ai-village.service 2>/dev/null; then
+if [[ $# -eq 0 && ! -v INVOCATION_ID ]] && command -v systemctl >/dev/null 2>&1 && { systemctl --user is-active --quiet ai-village.service 2>/dev/null || systemctl --user is-active --quiet ai-village-direct.service 2>/dev/null; }; then
   echo 'AI村は既に起動しています: http://127.0.0.1:5173'
   exit 0
 fi
