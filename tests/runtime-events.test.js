@@ -11,7 +11,7 @@ test('native Codex JSONL input/message/turn identities are independent of arbitr
  const rows=[{type:'event_msg',payload:{type:'task_started',turn_id:'turn-1'}},{type:'response_item',payload:{role:'user',id:'msg-1',content:[{type:'input_text',text:'hello'}],internal_chat_message_metadata_passthrough:{turn_id:'turn-1',content_item_kinds:['user.text']}}},{type:'event_msg',payload:{type:'task_complete',turn_id:'turn-1',last_agent_message:'not JSON; no declaration'}}];
  await writeFile(join(dir,'sessions',sid+'.jsonl'),rows.map(JSON.stringify).join('\n')+'\n');
  const s=JSON.parse(execFileSync('python3',['-c',runtimeScript,'codex',sid],{env:{...process.env,CODEX_HOME:dir}}));
- const r=correlate({dispatchConfirmed:true,baselineRuntime:{cursor:0,sessionId:sid},inputHash:inputHash('hello')},s);assert.equal(r.state,'completed');assert.equal(r.turnId,'turn-1');assert.equal(r.output,'not JSON; no declaration');
+ const r=correlate({dispatchConfirmed:true,baselineRuntime:{cursor:0,sessionId:sid},inputHash:inputHash('hello')},s);assert.equal(r.state,'completed');assert.equal(r.turnId,'turn-1');assert.equal(r.output,'not JSON; no declaration');assert.equal(r.finalOutput,'not JSON; no declaration');
  rows.push({type:'event_msg',payload:{type:'task_started',turn_id:'turn-2'}},{type:'event_msg',payload:{type:'turn_aborted',turn_id:'turn-2'}});
  await writeFile(join(dir,'sessions',sid+'.jsonl'),rows.map(JSON.stringify).join('\n')+'\n');
  const later=JSON.parse(execFileSync('python3',['-c',runtimeScript,'codex',sid],{env:{...process.env,CODEX_HOME:dir}}));assert.equal(later.turns.at(-1).state,'interrupted');assert.equal(correlate({...r},later).output,r.output);
@@ -36,9 +36,12 @@ test('Claude native UUID ancestry and stop reasons distinguish replies from API 
  await writeFile(join(root,sid+'.jsonl'),rows.map(JSON.stringify).join('\n')+'\n');
  const s=JSON.parse(execFileSync('python3',['-c',runtimeScript,'claude',sid],{env:{...process.env,HOME:home}}));
  assert.equal(s.inputs.length,2);assert.equal(s.turns[0].state,'completed');assert.equal(s.turns[0].output,'arbitrary prose');assert.equal(s.turns[1].state,'failed');assert.equal(s.turns[1].error,'authentication_failed');
+ rows.push({type:'user',uuid:'input-3',message:{content:'more'}},{type:'assistant',uuid:'limit',parentUuid:'input-3',message:{stop_reason:'max_tokens',content:[{type:'text',text:'truncated'}]}});
+ await writeFile(join(root,sid+'.jsonl'),rows.map(JSON.stringify).join('\n')+'\n');
+ const limited=JSON.parse(execFileSync('python3',['-c',runtimeScript,'claude',sid],{env:{...process.env,HOME:home}}));assert.equal(limited.turns[2].state,'interrupted');
 });
 test('all visible Codex assistant messages are retained without using their contents for completion',async t=>{
  const dir=await mkdtemp(join(tmpdir(),'native-prose-'));t.after(()=>rm(dir,{recursive:true,force:true}));await mkdir(join(dir,'sessions'));const sid='11111111-2222-3333-4444-555555555555';
  const rows=[{type:'event_msg',payload:{type:'task_started',turn_id:'t'}},...['commentary','final_answer'].map(phase=>({type:'response_item',payload:{role:'assistant',phase,content:[{type:'output_text',text:phase+' free prose'}]}})),{type:'event_msg',payload:{type:'task_complete',turn_id:'t',last_agent_message:'final_answer free prose'}}];
- await writeFile(join(dir,'sessions',sid+'.jsonl'),rows.map(JSON.stringify).join('\n')+'\n');const s=JSON.parse(execFileSync('python3',['-c',runtimeScript,'codex',sid],{env:{...process.env,CODEX_HOME:dir}}));assert.equal(s.turns[0].state,'completed');assert.equal(s.turns[0].output,'commentary free prose\n\nfinal_answer free prose');
+ await writeFile(join(dir,'sessions',sid+'.jsonl'),rows.map(JSON.stringify).join('\n')+'\n');const s=JSON.parse(execFileSync('python3',['-c',runtimeScript,'codex',sid],{env:{...process.env,CODEX_HOME:dir}}));assert.equal(s.turns[0].state,'completed');assert.equal(s.turns[0].output,'commentary free prose\n\nfinal_answer free prose');assert.equal(s.turns[0].finalOutput,'final_answer free prose');
 });

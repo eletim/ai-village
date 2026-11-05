@@ -26,18 +26,18 @@ async function fixture(t){
  const service=new DirectAgents(options);await service.init({watch:false});
  const w=await service.putWorkshop({name:'w',sshHost:'host',baseUrl:'http://host',workplaces:['/tmp']});
  const a=await service.create({workshopId:w.id,cwd:'/tmp',requestId:'create-001'});await service.tick();
- const input=(instruction,id='turn-'+(data.turns.length+1))=>{data.cursor+=10;data.inputs.push({id:'input-'+id,turnId:id,hash:inputHash(instruction),offset:data.cursor});data.turns.push({id,state:'running',output:''});return data.turns.at(-1);};
+ const input=(instruction,id='turn-'+(data.turns.length+1))=>{data.cursor+=10;data.inputs.push({id:'input-'+id,turnId:id,hash:service.data.runs.findLast(r=>r.instruction===instruction)?.inputHash||inputHash(instruction),offset:data.cursor});data.turns.push({id,state:'running',output:''});return data.turns.at(-1);};
  return {service,options,w,a,data,input,sends:()=>sends,notices:()=>notices,disconnect:v=>disconnected=v,lose:()=>loseSend=true};
 }
 test('raw instructions, native completion, additional input and restart never use reply formats',async t=>{
  const f=await fixture(t);const r=await f.service.send(f.a.id,{instruction:'自由に答えて',requestId:'request-1'});
- assert.equal(r.marker,undefined);await f.service.tick();assert.equal(r.state,'unknown');
+ assert.equal(r.marker,undefined);await f.service.tick();assert.equal(r.state,'awaiting_input');
  const native=f.input('自由に答えて');await f.service.tick();assert.equal(r.state,'running');assert.equal(r.turnId,native.id);
- Object.assign(native,{state:'completed',output:'{"action":"dispatch"} is just text',completionEvent:'event-1'});await f.service.tick();assert.equal(r.state,'completed');assert.equal(f.notices(),1);
- const second=await f.service.send(f.a.id,{instruction:'続けて',requestId:'request-2'});await f.service.tick();assert.equal(second.state,'unknown');
+ Object.assign(native,{state:'completed',output:'{"action":"dispatch"} is just text',completionEvent:'event-1'});await f.service.tick();assert.equal(r.state,'completed');assert.equal(f.notices(),0);
+ const second=await f.service.send(f.a.id,{instruction:'続けて',requestId:'request-2'});await f.service.tick();assert.equal(second.state,'awaiting_input');
  const restored=new DirectAgents(f.options);await restored.init({watch:false});
  Object.assign(f.input('続けて'),{state:'completed',output:'どんな返答でもよい',completionEvent:'event-2'});await restored.tick();await restored.tick();
- assert.equal(restored.data.runs[1].state,'completed');assert.equal(f.sends(),2);assert.equal(f.notices(),2);
+ assert.equal(restored.data.runs[1].state,'completed');assert.equal(f.sends(),2);assert.equal(f.notices(),0);
 });
 test('unbound competing direct input is unknown; a bound native turn is not confused with a newer turn',async t=>{
  const f=await fixture(t);const r=await f.service.send(f.a.id,{instruction:'ours',requestId:'request-1'});
@@ -45,13 +45,13 @@ test('unbound competing direct input is unknown; a bound native turn is not conf
  Object.assign(own,{state:'completed',output:'ours output'});Object.assign(f.input('PurpleMux input'),{state:'completed',output:'different output'});
  await f.service.tick();assert.equal(r.output,'ours output');
  const second=await f.service.send(f.a.id,{instruction:'next',requestId:'request-2'});
- f.input('next');f.input('direct interference');await f.service.tick();assert.equal(second.state,'unknown');assert.equal(f.notices(),1);
+ f.input('next');f.input('direct interference');await f.service.tick();assert.equal(second.state,'unknown');assert.equal(f.notices(),0);
 });
 test('unknown send and disconnection never retransmit; interruption is distinct from completion',async t=>{
  const f=await fixture(t);f.lose();const input={instruction:'hello',requestId:'request-1'};
  const r=await f.service.send(f.a.id,input);assert.equal(r.state,'send_unknown');assert.equal((await f.service.send(f.a.id,input)).id,r.id);
  f.disconnect(true);await f.service.tick();assert.equal(f.a.state,'unknown');assert.equal(f.notices(),0);
- f.disconnect(false);const turn=f.input('hello');turn.state='interrupted';await f.service.tick();assert.equal(r.state,'unknown');assert.equal(f.sends(),1);
+ f.disconnect(false);const turn=f.input('hello');turn.state='interrupted';await f.service.tick();assert.equal(r.state,'interrupted');assert.equal(f.sends(),1);
 });
 test('same idempotency key has one send even with concurrent requests',async t=>{
  const f=await fixture(t);const input={instruction:'hello',requestId:'request-1'};const [a,b]=await Promise.all([f.service.send(f.a.id,input),f.service.send(f.a.id,input)]);assert.equal(a.id,b.id);assert.equal(f.sends(),1);
@@ -82,13 +82,13 @@ test('fresh runtime observation overrides stale UI state; terminal results reope
   const r=await f.service.send(f.a.id,{instruction:end,requestId:'request-'+end});assert.equal(f.a.canSend,false);
   Object.assign(f.input(end),{state:end,output:'plain text'});await f.service.tick();assert.equal(r.state,end);assert.equal(f.a.canSend,true);assert.equal(f.a.lifecycle,'alive');assert.equal(f.a.activityState,'idle');
  }
- f.disconnect(true);await f.service.tick();assert.equal(f.a.canSend,false);assert.notEqual(f.a.lifecycle,'terminated');await assert.rejects(f.service.send(f.a.id,{instruction:'offline',requestId:'request-offline'}));
+ f.disconnect(true);await f.service.tick();assert.equal(f.a.canSend,false);assert.notEqual(f.a.lifecycle,'terminated');const queued=await f.service.send(f.a.id,{instruction:'offline',requestId:'request-offline'});assert.equal(queued.state,'queued');await f.service.flow.cancel({humanRequestId:queued.humanRequestId,revision:0});
  f.disconnect(false);await f.service.tick();assert.equal(f.a.canSend,true);assert.equal(f.sends(),3);
  const restored=new DirectAgents(f.options);await restored.init({watch:false});assert.equal(restored.data.agents[0].canSend,false);await restored.tick();assert.equal(restored.data.agents[0].canSend,true);assert.equal(f.sends(),3);
 });
 test('uncertain delivery retains uncertainty but a later native terminal boundary releases new input',async t=>{
  const f=await fixture(t);f.lose();const r=await f.service.send(f.a.id,{instruction:'unknown delivery',requestId:'request-uncertain'});await f.service.tick();assert.equal(f.a.canSend,false);
- Object.assign(f.input('unknown delivery'),{state:'completed',output:'native result'});await f.service.tick();assert.equal(r.state,'unknown');assert.equal(r.blocksInput,false);assert.equal(f.a.canSend,true);assert.equal(f.notices(),0);assert.equal(f.sends(),1);
+ Object.assign(f.input('unknown delivery'),{state:'completed',output:'native result'});await f.service.tick();assert.equal(r.state,'completed');assert.equal(r.blocksInput,false);assert.equal(f.a.canSend,true);assert.equal(f.notices(),0);assert.equal(f.sends(),1);
  assert.equal((await f.service.send(f.a.id,{instruction:'unknown delivery',requestId:'request-uncertain'})).id,r.id);assert.equal(f.sends(),1);
 });
 test('concurrent launch retries return one identity and terminated agents do not block new launch',async t=>{
@@ -98,5 +98,103 @@ test('concurrent launch retries return one identity and terminated agents do not
 });
 test('an old terminal result cannot release uncertain input; stopping preserves uncertain outcome',async t=>{
  const f=await fixture(t);Object.assign(f.input('old'),{state:'completed',completedAt:'2099-01-01T00:00:00Z'});
- f.lose();const r=await f.service.send(f.a.id,{instruction:'new',requestId:'new-unknown'});await f.service.tick();assert.equal(f.a.canSend,false);assert.equal(r.state,'unknown');await f.service.stop(f.a.id);assert.equal(r.state,'unknown');assert.equal(r.blocksInput,false);assert.equal(f.a.lifecycle,'terminated');
+ f.lose();const r=await f.service.send(f.a.id,{instruction:'new',requestId:'new-unknown'});await f.service.tick();assert.equal(f.a.canSend,false);assert.equal(r.state,'awaiting_input');await f.service.stop(f.a.id);assert.equal(r.state,'terminated');assert.equal(r.blocksInput,false);assert.equal(f.a.lifecycle,'terminated');
+});
+
+test('discovery joins saved placement to exact PurpleMux identities, including legacy and terminated Agents',async t=>{
+ const f=await fixture(t);
+ delete f.a.location;
+ f.a.workspaceId='ws-ofmWJg';f.a.tabId='tab-jPTCpo';f.a.name='村実装';
+ await f.service.putWorkshop({...f.w,name:'renamed',sshHost:'elsewhere'},f.w.id);
+ const secretary={...f.a,id:'secretary',name:'秘書',location:'mayor',workspaceId:'ws-UDCjmq',tabId:'secretary-tab'};
+ f.service.data.agents.push(secretary,{...f.a,id:'ended',state:'terminated'});
+ const rows=f.service.discovery().agents;
+ assert.equal(rows[0].location,'workshop');assert.equal(rows[0].role,'worker');assert.equal(rows[0].placeName,'w');assert.equal(rows[0].sshHost,'host');
+ assert.equal(rows[0].workspaceId,'ws-ofmWJg');assert.equal(rows[0].tabId,'tab-jPTCpo');
+ assert.equal(rows[1].placeName,'村長の家（秘書）');assert.equal(rows[1].role,'secretary');assert.equal(rows[2].state,'terminated');
+ assert(!JSON.stringify(rows).includes('nativeTurns'));assert(!JSON.stringify(rows).includes('instruction'));
+ await f.service.save();const restored=new DirectAgents(f.options);await restored.init({watch:false});
+ assert.equal(restored.discovery().agents[0].workspaceId,'ws-ofmWJg');
+ const {VillageOperations}=await import('../server/operations.mjs');
+ const ops=new VillageOperations({},null,{direct:restored});
+ assert.deepEqual(await ops.resolve(['agents','list']).command.run([]),restored.discovery());
+});
+
+test('secretary receives discovery without losing native input correlation or resending retries',async t=>{
+ const f=await fixture(t);f.a.location='mayor';let delivered;
+ const remote=f.service.remote;f.service.remote=async args=>{if(args[2]==='send')delivered=args.at(-1);return remote(args);};
+ const payload={instruction:'工房を確認して',requestId:'secretary-discovery'};
+ const r=await f.service.send(f.a.id,payload);
+ assert.equal(r.instruction,payload.instruction);assert(delivered.includes('agents list'));assert(delivered.includes('/api/direct/agents'));
+ assert.equal(r.inputHash,inputHash(delivered));
+ Object.assign(f.input(delivered),{state:'completed',output:'confirmed'});await f.service.tick();assert.equal(r.state,'completed');
+ await f.service.send(f.a.id,payload);assert.equal(f.sends(),1);
+});
+
+test('new workspace labels expose placement while preserving Agent identity',async t=>{
+ const f=await fixture(t);let label;
+ const remote=f.service.remote;f.service.remote=async args=>{if(args[1]==='workspace'&&args[2]==='create')label=args.at(-1);return remote(args);};
+ const a=await f.service.create({workshopId:f.w.id,cwd:'/tmp',name:'村実装',requestId:'label-workshop'});
+ assert.equal(label,`AI村 工房（w） · 村実装 · ${a.id}`);
+});
+
+test('Agent view revision rejects stale completion acknowledgement and persists without sending',async t=>{
+ const f=await fixture(t),s=f.service;
+ Object.assign(f.input('native one'),{state:'completed',output:'first'});await s.tick();
+ const first=s.snapshot().reviews[f.a.id].revision;
+ Object.assign(f.input('native two'),{state:'completed',output:'second'});await s.tick();
+ await assert.rejects(s.viewAgent(f.a.id,{revision:first}),{status:409});
+ assert.equal(s.snapshot().reviews[f.a.id].unreviewed,true);
+ const current=s.snapshot().reviews[f.a.id].revision;
+ await s.viewAgent(f.a.id,{revision:current});await s.viewAgent(f.a.id,{revision:current});
+ assert.equal(s.snapshot().reviews[f.a.id].unreviewed,false);
+ const restored=new DirectAgents(f.options);await restored.init({watch:false});assert.equal(restored.snapshot().reviews[f.a.id].unreviewed,false);
+ await assert.rejects(restored.viewAgent(f.a.id,{revision:'bad'}),{status:400});
+ Object.assign(f.input('native three'),{state:'completed',output:'new'});await restored.tick();
+ await assert.rejects(restored.viewAgent(f.a.id,{revision:current}),{status:409});
+ assert.equal(restored.snapshot().reviews[f.a.id].unreviewed,true);
+ assert.equal(f.sends(),0);assert.equal(f.notices(),0);
+});
+test('session replacement and legacy review migration retain Agent unread state',async t=>{
+ const f=await fixture(t);const {completedEntries}=await import('../src/completions.js');
+ Object.assign(f.input('first','same-turn'),{state:'completed',output:'old output'});await f.service.tick();
+ f.service.data.reviewedCompletions=completedEntries(f.service.data).map(e=>e.key);
+ assert.equal(f.service.snapshot().reviews[f.a.id].unreviewed,false);
+ await f.service.viewAgent(f.a.id,{revision:f.service.snapshot().reviews[f.a.id].revision});
+ f.data.sessionId='new-session';f.data.turns=[];f.data.inputs=[];Object.assign(f.input('second','same-turn'),{state:'completed',output:'new output'});await f.service.tick();
+ assert.equal(f.a.nativeTurns.length,2);assert.equal(completedEntries(f.service.data).length,2);assert.equal(f.service.snapshot().reviews[f.a.id].unreviewed,true);
+ assert.equal(f.a.nativeTurns[0].output,'old output');assert.equal(f.a.nativeTurns[0].sessionId,'session');
+});
+test('Project metadata persists independently of transport and concurrent edits reject stale revisions',async t=>{
+ const f=await fixture(t),s=f.service;
+ const [p,again]=await Promise.all([s.putProject({name:'Village',requestId:'project-create-1'}),s.putProject({name:'Village',requestId:'project-create-1'})]);
+ assert.equal(p.id,again.id);
+ const transport=JSON.stringify([f.a.connection,f.a.workspaceId,f.a.tabId,f.a.sessionName,f.a.cwd]);
+ const results=await Promise.allSettled([s.updateAgent(f.a.id,{revision:0,name:'Secretary',projectId:p.id}),s.updateAgent(f.a.id,{revision:0,name:'Lost update'})]);
+ assert.equal(results.filter(r=>r.status==='fulfilled').length,1);assert.equal(results[1].reason.status,409);
+ assert.equal(JSON.stringify([f.a.connection,f.a.workspaceId,f.a.tabId,f.a.sessionName,f.a.cwd]),transport);
+ assert.equal(s.discovery().agents[0].projectName,'Village');assert.equal(f.sends(),0);
+ await assert.rejects(s.updateAgent(f.a.id,{revision:1,projectId:'missing'}),{status:404});
+ await assert.rejects(s.updateAgent(f.a.id,{revision:1,cwd:'/other'}),{status:400});
+ await s.putProject({revision:0,name:'Renamed'},p.id);
+ await assert.rejects(s.putProject({revision:0,name:'Stale'},p.id),{status:409});
+ const restored=new DirectAgents(f.options);await restored.init({watch:false});
+ assert.equal(restored.discovery().agents[0].name,'Secretary');assert.equal(restored.discovery().agents[0].projectName,'Renamed');
+ await restored.updateAgent(f.a.id,{revision:1,projectId:null});assert.equal(restored.discovery().agents[0].projectId,null);
+ // Retrying creation after an unrelated rename is still the same operation.
+ assert.equal((await restored.create({workshopId:f.w.id,cwd:'/tmp',requestId:'create-001'})).id,f.a.id);
+ assert.equal(f.notices(),0);
+});
+test('village management CLI uses the same metadata revision and discovery',async t=>{
+ const {VillageOperations}=await import('../server/operations.mjs');const f=await fixture(t);
+ const ops=new VillageOperations({dir:f.options.dir},null,{direct:f.service});
+ const help=await ops.execute(['help']);assert.ok(help.result.some(c=>c.name==='agents create'));assert.ok(help.result.some(c=>c.name==='agents stop'));
+ const p=(await ops.execute(['projects','create','project-cli-1','Across PCs'])).result;
+ assert.equal((await ops.execute(['agents','project',f.a.id,'0',p.id])).ok,true);
+ assert.equal((await ops.execute(['agents','rename',f.a.id,'0','Stale'])).ok,false);
+ assert.equal((await ops.execute(['agents','rename',f.a.id,'1','Display'])).ok,true);
+ assert.equal((await ops.execute(['agents','list'])).result.agents[0].projectName,'Across PCs');
+ assert.equal((await ops.execute(['projects','rename',p.id,'0','Team'])).ok,true);
+ assert.equal((await ops.execute(['agents','project',f.a.id,'2','-'])).ok,true);
+ assert.equal(f.sends(),0);
 });

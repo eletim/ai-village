@@ -13,7 +13,7 @@ export function correlate(run,snapshot){
   const turn=snapshot.turns.find(t=>t.id===run.turnId);
   return turn?{...turn,turnId:turn.id,sessionId:snapshot.sessionId}:{state:'unknown',reason:'turn-missing'};
  }
- if(run.dispatchConfirmed!==true)return {state:'unknown',reason:'dispatch-not-confirmed'};
+ if(run.dispatchConfirmed!==true&&!run.dispatchAttemptedAt)return {state:'unknown',reason:'dispatch-not-confirmed'};
  const baseline=run.baselineRuntime;
  if(!baseline)return {state:'unknown',reason:'legacy-run-without-runtime-checkpoint'};
  if(baseline.sessionId&&baseline.sessionId!==snapshot.sessionId)return {state:'unknown',reason:'session-changed'};

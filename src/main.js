@@ -1,3 +1,4 @@
+import {bindPromptInput} from './prompt-input.js';
 import { refreshMemo } from './memo.js';
 import { initTheme } from './theme.js';
 import { initTodos } from './todos.js';
@@ -113,19 +114,25 @@ async function poll() {
   setTimeout(poll,1500);
 }
 const attachments = attachmentComposer();
+let officePending;try{officePending=JSON.parse(sessionStorage.getItem('ai-village-office-pending')||'null');}catch{}
+if(officePending?.message&&!$('#request').value){$('#request').value=officePending.message;$('#char-count').textContent=officePending.message.length+' / 2000';}
+function saveOfficePending(){try{if(officePending)sessionStorage.setItem('ai-village-office-pending',JSON.stringify(officePending));else sessionStorage.removeItem('ai-village-office-pending');}catch{}}
 $('#request-form').addEventListener('submit',async e=>{
-  e.preventDefault();const request=$('#request').value.trim();if(!request && !attachments.count){$('#request').focus();return}
+  e.preventDefault();const request=$('#request').value.trim();if(!request && !attachments.count && !officePending?.attachments?.length){$('#request').focus();return}
   if(submitting || live.secretary?.status==='thinking')return; submitting=true; $('#send').disabled=true; attachments.lock(true); $('#request').disabled=true;
   try {
-    const ids=await attachments.upload();
-    const response=await fetch('/api/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:request,attachments:ids})});
-    const body=await response.json(); if(!response.ok)throw new Error(body.error);
+    const ids=officePending&&!attachments.count?officePending.attachments:await attachments.upload();
+    if(officePending&&(officePending.message!==request||JSON.stringify(officePending.attachments)!==JSON.stringify(ids)))throw Error('前の依頼の受付が不明です。同じ内容で受付を確認してください。');
+    officePending ||= {message:request,attachments:ids,requestId:'office-'+Array.from(crypto.getRandomValues(new Uint8Array(16)),b=>b.toString(16).padStart(2,'0')).join('')};saveOfficePending();
+    const response=await fetch('/api/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(officePending)});
+    const body=await response.json(); if(!response.ok){if(response.status<500){officePending=null;saveOfficePending();}throw new Error(body.error);}
+    officePending=null;saveOfficePending();
     live=body; online=true; attachments.clear(); $('#office-notice').textContent=''; $('#request').value=''; $('#char-count').textContent='0 / 2000';
   } catch(error) { addEvent(error.message); $('#office-notice').textContent=error.message; }
   submitting=false; attachments.lock(false); $('#request').disabled=false; renderStage();
 });
 $('#request').addEventListener('input',()=>$('#char-count').textContent=`${$('#request').value.length} / 2000`);
-$('#request').addEventListener('keydown',e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey))$('#request-form').requestSubmit()});
+bindPromptInput($('#request'),()=>{if(!$('#send').disabled)$('#request-form').requestSubmit($('#send'));});
 $('#home').addEventListener('click',closeDetail);
 $('#mayor').addEventListener('click',()=>navigate('/office'));
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeDetail()});

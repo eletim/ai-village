@@ -28,12 +28,12 @@ const todos = new TodoStore(bridge.dir);
 await todos.init();
 const notifier = new VillageNotifier({ dir: bridge.dir });
 await notifier.init();
-const direct = new DirectAgents({dir:bridge.dir,remote:bridge.remote.bind(bridge),notifier});
+const direct = new DirectAgents({dir:bridge.dir,remote:bridge.remote.bind(bridge),notifier,villageUrl:`http://127.0.0.1:${port}`});
 await direct.init();
 const development = new Development(bridge, library, {port});
 const images = new ImageStore(bridge.dir);
 await images.init();
-const operations = new VillageOperations(bridge, notifier, {web:new WebReader(),development,images,todos,prs:new PullRequests(bridge.dir,library)});
+const operations = new VillageOperations(bridge, notifier, {web:new WebReader(),development,images,todos,direct,prs:new PullRequests(bridge.dir,library)});
 const secretariat = new Secretariat(bridge, library, operations, notifier, images);
 await secretariat.init();
 secretariat.direct=direct;
@@ -48,19 +48,32 @@ const handleRequest = async (req, res) => {
     const pathname = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
     if (pathname.startsWith('/api/')) {
       if (pathname.startsWith('/api/direct')) {
+        if(req.method==='GET' && pathname==='/api/direct/requests')return json(res,200,{requests:direct.flow.list()});
+        if(req.method==='GET' && pathname==='/api/direct/agents')return json(res,200,direct.discovery());
         if(req.method==='GET' && pathname==='/api/direct')return json(res,200,direct.snapshot());
         if(!['POST','PUT'].includes(req.method))return json(res,405,{error:'Method not allowed'});
         if(!req.headers['content-type']?.startsWith('application/json'))return json(res,415,{error:'JSON required'});
         let body='';for await(const chunk of req){body+=chunk;if(body.length>80000)return json(res,413,{error:'Request too large'});}
         let input;try{input=JSON.parse(body);}catch{return json(res,400,{error:'Invalid JSON'});}
         if(!input || typeof input!=='object')return json(res,400,{error:'Object required'});
+        const requestAction=pathname.match(/^\/api\/direct\/requests\/(get|results|delegate|acknowledge|finish|retry|resume|cancel)$/);
+        if(req.method==='POST'&&requestAction){
+          const action=requestAction[1],flow=direct.flow;
+          const result=action==='get'?flow.get(input.humanRequestId):action==='results'?flow.results(input.humanRequestId,input.workId):action==='retry'||action==='resume'?await flow.continue(input,action==='retry'):await flow[action](input);
+          return json(res,200,result);
+        }
         if(req.method==='POST' && pathname==='/api/direct/notifications/test'){if(input.agentId)direct.agent(input.agentId);return json(res,200,await notifier.test(input.agentId));}
         if(req.method==='POST' && pathname==='/api/direct/workshops')return json(res,201,await direct.putWorkshop(input));
         const workshop=pathname.match(/^\/api\/direct\/workshops\/([0-9a-f-]{36})$/);
         if(req.method==='PUT' && workshop)return json(res,200,await direct.putWorkshop(input,workshop[1]));
+        if(req.method==='POST' && pathname==='/api/direct/projects')return json(res,201,await direct.putProject(input));
+        const project=pathname.match(/^\/api\/direct\/projects\/([0-9a-f-]{36})$/);
+        if(req.method==='PUT' && project)return json(res,200,await direct.putProject(input,project[1]));
+        const metadata=pathname.match(/^\/api\/direct\/agents\/([0-9a-f-]{36})$/);
+        if(req.method==='PUT' && metadata)return json(res,200,await direct.updateAgent(metadata[1],input));
         if(req.method==='POST' && pathname==='/api/direct/agents')return json(res,201,await direct.create(input));
-        const agent=pathname.match(/^\/api\/direct\/agents\/([0-9a-f-]{36})\/(runs|stop)$/);
-        if(req.method==='POST' && agent)return json(res,200,await (agent[2]==='runs'?direct.send(agent[1],input):direct.stop(agent[1])));
+        const agent=pathname.match(/^\/api\/direct\/agents\/([0-9a-f-]{36})\/(runs|stop|view)$/);
+        if(req.method==='POST' && agent)return json(res,200,await (agent[2]==='runs'?direct.send(agent[1],input):agent[2]==='view'?direct.viewAgent(agent[1],input):direct.stop(agent[1])));
         return json(res,404,{error:'Not found'});
       }
       if (pathname === '/api/todos') {
@@ -119,7 +132,7 @@ const handleRequest = async (req, res) => {
         try { parsed = JSON.parse(body); } catch { return json(res, 400, { error: 'Invalid JSON' }); }
         const request = parsed?.message ?? parsed?.request;
         if (typeof request !== 'string' || (!request.trim() && !parsed.attachments?.length) || request.length > 2000) return json(res, 400, { error: '文章（2000文字以内）または画像を添付してください。' });
-        await secretariat.send(request.trim(), parsed.attachments);
+        await secretariat.send(request.trim(), parsed.attachments, {agentId:parsed.agentId,requestId:parsed.requestId});
         return json(res, 202, await snapshot());
       }
       return json(res, 404, { error: 'Not found' });

@@ -49,7 +49,8 @@ def read(provider,sid):
      tid=v.get('turn_id')
      if tid and tid in turns:
       turns[tid].update(state='completed' if kind=='task_complete' else 'interrupted',completedAt=at,completionEvent='offset:'+str(offset))
-      if kind=='task_complete' and not turns[tid]['messages'] and isinstance(v.get('last_agent_message'),str):turns[tid]['output']=v['last_agent_message']
+      if kind=='task_complete' and isinstance(v.get('last_agent_message'),str):turns[tid]['finalOutput']=v['last_agent_message']
+     if kind=='task_complete' and not turns[tid]['messages'] and isinstance(v.get('last_agent_message'),str):turns[tid]['output']=v['last_agent_message']
    elif provider=='claude':
     if x.get('isSidechain'):continue
     uid=x.get('uuid');parent=x.get('parentUuid');m=x.get('message',{});content=m.get('content',[])
@@ -64,7 +65,7 @@ def read(provider,sid):
       if body:turns[tid]['messages'].append({'id':uid,'text':body,'at':at})
       if x.get('isApiErrorMessage') is True:
        turns[tid].update(state='failed',output='\n\n'.join(m['text'] for m in turns[tid]['messages']),error=x.get('error') or 'runtime-api-error',completedAt=at,completionEvent=uid)
-      elif m.get('stop_reason') in ('end_turn','stop_sequence','max_tokens'):turns[tid].update(state='completed',output='\n\n'.join(m['text'] for m in turns[tid]['messages']),completedAt=at,completionEvent=uid)
+      elif m.get('stop_reason') in ('end_turn','stop_sequence','max_tokens'):turns[tid].update(state='interrupted' if m.get('stop_reason')=='max_tokens' else 'completed',finalOutput=body,output='\n\n'.join(m['text'] for m in turns[tid]['messages']),completedAt=at,completionEvent=uid)
       elif m.get('stop_reason')=='tool_use':turns[tid]['state']='running'
     # Claude synthetic interruption prose is not used for control.
  result['inputs']=[i for i in result['inputs'] if i.get('source')!='event' or not any(j.get('source')=='response' and j['turnId']==i['turnId'] and j['hash']==i['hash'] for j in result['inputs'])]
