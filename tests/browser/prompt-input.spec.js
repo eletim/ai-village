@@ -3,7 +3,7 @@ import {test,expect} from '@playwright/test';
 for(const view of ['direct','village','office']) {
  test(`${view}: Ctrl+Enter sends, Enter and Shift+Enter add newline, IME never sends`,async({page})=>{
   const state={workshops:[],agents:[{id:'a',name:'Agent',connection:{name:'工房'},state:'idle',canSend:true}],runs:[],notification:{}};
-  const village={workshops:[],jobs:[],secretary:{status:'idle',messages:[]}};
+  const village={workshops:[],jobs:[],secretary:{status:'idle',capabilities:{attachments:true},messages:[]}};
   let sends=0;
   await page.route('**/api/**',async route=>{
    const url=new URL(route.request().url());
@@ -53,7 +53,7 @@ test('direct input respects disabled sending, empty text and pending request',as
 });
 
 test('office retries lost response after reload with original request ID and saved attachments',async({page})=>{
- const village={workshops:[],jobs:[],secretary:{status:'idle',messages:[]}},payloads=[];
+ const village={workshops:[],jobs:[],secretary:{status:'idle',capabilities:{attachments:true},messages:[]}},payloads=[];
  await page.route('**/api/**',async route=>{
   if(new URL(route.request().url()).pathname==='/api/messages'&&route.request().method()==='POST'){
    payloads.push(route.request().postDataJSON());

@@ -1,3 +1,4 @@
+import {stageAttachment} from './attachment-transfer.mjs';
 import {RequestFlow} from './requests.mjs';
 import {completedEntries} from '../src/completions.js';
 import {agentIdentity,agentPlaceName} from '../src/agent-identity.js';
@@ -19,8 +20,8 @@ const blocking = r => active(r)&&r.blocksInput!==false;
 // Human and future secretary callers share this service. No model-generated
 // instruction, approval, or report is required. One server owns a state directory.
 export class DirectAgents {
-  constructor({dir, remote, notifier, localRun=run, localBin=process.env.VILLAGE_PMUX_BIN || 'purplemux', pollMs=2000, villageUrl='http://127.0.0.1:5173'}) {
-    Object.assign(this,{dir,remote,notifier,localRun,localBin,pollMs,villageUrl});
+  constructor({dir, remote, notifier, attachments, transferAttachment=stageAttachment, localRun=run, localBin=process.env.VILLAGE_PMUX_BIN || 'purplemux', pollMs=2000, villageUrl='http://127.0.0.1:5173'}) {
+    Object.assign(this,{dir,remote,notifier,attachments,transferAttachment,localRun,localBin,pollMs,villageUrl});
     this.data={version:1,workshops:[],projects:[],agents:[],runs:[]};
     this.flow=new RequestFlow(this);
     this.queue=Promise.resolve(); this.locks=new Map(); this.monitors=new Map();
@@ -51,7 +52,7 @@ export class DirectAgents {
     if(watch){this.timer=setInterval(()=>this.tick().catch(()=>{}),this.pollMs);this.timer.unref();void this.tick();}
   }
   close(){clearInterval(this.timer);this.owner?.close();}
-  snapshot(){return structuredClone({...this.data,capabilities:{travelContexts:true},reviews:this.reviewStates(),notification:this.notifier.status()});}
+  snapshot(){return structuredClone({...this.data,capabilities:{travelContexts:true,attachments:!!this.attachments},reviews:this.reviewStates(),notification:this.notifier.status()});}
   reviewStates(){
     const keys=new Map(this.data.agents.map(a=>[a.id,[]]));
     for(const entry of completedEntries(this.data))keys.get(entry.agentId).push(entry.key);
@@ -182,14 +183,20 @@ export class DirectAgents {
   }
   async send(id,input){return this.flow.start(id,input);}
   async attemptRun(r){return this.locked(r.agentId,async()=>{
-    if(r.state!=='queued')return r;
+    if(r.state!=='queued'||r.nextTransferAt>Date.now())return r;
     const a=this.agent(r.agentId);
     if(['terminated','stopping','stop_unknown'].includes(a.state)||!a.tabId){r.state='terminated';r.error='target-unavailable-before-dispatch';await this.save();return r;}
     const baseline=await this.observe(a);
     if(!a.canSend){r.queuedReason=a.sendReason;return r;}
+    try{
+      r.attachmentFiles=[];
+      for(const record of r.attachments||[])r.attachmentFiles.push(await this.transferAttachment(a,record,await this.attachments.content(record.id)));
+      r.attachmentError=null;
+    }catch{r.attachmentError='添付を接続先へ転送できません。送信前に再試行します。';r.nextTransferAt=Date.now()+30000;await this.save();return r;}
+    const confirmed=r.attachments?.length?await this.observe(a):baseline;if(!a.canSend)return r;
     const status=a.runtime;
     const deliveredInstruction=r.instruction+(a.location==='mayor'?this.secretaryContext():'')+this.flow.context(r);
-    Object.assign(r,{state:'sending',acceptance:'pending',blocksInput:true,dispatchAttemptedAt:now(),baselineRuntime:{sessionId:baseline.sessionId,cursor:baseline.cursor,fileIdentity:baseline.fileIdentity},inputHash:inputHash(deliveredInstruction),agentSessionId:status.agentSessionId||null});
+    Object.assign(r,{state:'sending',acceptance:'pending',blocksInput:true,dispatchAttemptedAt:now(),baselineRuntime:{sessionId:confirmed.sessionId,cursor:confirmed.cursor,fileIdentity:confirmed.fileIdentity},inputHash:inputHash(deliveredInstruction),agentSessionId:status.agentSessionId||null});
     await this.save();
     try{await this.pmux(a,'tab','send','-w',a.workspaceId,a.tabId,deliveredInstruction);r.dispatchConfirmed=true;r.state='awaiting_input';}
     catch{r.state='send_unknown';r.error='送信結果不明。native入力を照合します。自動再送しません。';}

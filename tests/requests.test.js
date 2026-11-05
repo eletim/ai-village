@@ -130,3 +130,12 @@ test('same Agent queues distinct human requests; resume keeps its original ticke
  assert.equal(f.notifications.length,2);assert.equal(q1.ticket.id,ticket);assert.equal(s.data.requests.length,2);
  assert.equal(new Set(f.notifications.map(m=>m.id)).size,2);
 });
+test('attachment transfer failure never dispatches a prompt; retry retains one request and its exact attachments',async t=>{
+ const {AttachmentStore}=await import('../server/attachments.mjs');const f=await fixture(t),s=f.service;s.attachments=new AttachmentStore(f.options.dir);await s.attachments.init();const record=await s.attachments.save(Buffer.from('data'),'data.txt','text/plain');
+ s.transferAttachment=async()=>{throw Error('SSH unavailable');};const r=await s.send(f.agents[3].id,{instruction:'',attachments:[record.id],requestId:'attachment-only-request'});
+ assert.equal(r.state,'queued');assert.equal(f.sent.length,0);assert(r.attachmentError);assert.equal(s.data.requests.length,1);
+ await assert.rejects(s.send(f.agents[3].id,{instruction:'',attachments:[],requestId:'attachment-only-request'}));
+ await assert.rejects(s.send(f.agents[3].id,{instruction:'',attachments:[record.id,record.id],requestId:'attachment-duplicate'}));
+ const again=await s.send(f.agents[3].id,{instruction:'',attachments:[record.id],requestId:'attachment-only-request'});assert.equal(again.id,r.id);
+ s.transferAttachment=async(a,item,bytes)=>{assert.equal(a.connection.connectionType,'ssh');assert.equal(bytes.toString(),'data');return {...item,path:'/tmp/ai-village-attachment-fixture/data.txt'};};r.nextTransferAt=0;await s.tick();assert.equal(f.sent.length,1);assert(f.sent[0].text.includes('/tmp/ai-village-attachment-fixture/data.txt'));assert.equal(s.data.requests.length,1);await f.submit(r);await f.finish(r);await f.complete(r);assert.equal(f.notifications.length,1);
+});

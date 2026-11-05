@@ -1,3 +1,4 @@
+import {conversationLatest} from './conversation.js';
 import {travelComposer} from './travel-composer.js';
 import {sameTravelContexts} from './travel-context.js';
 import {bindPromptInput} from './prompt-input.js';
@@ -115,14 +116,16 @@ async function poll() {
   renderStage();
   setTimeout(poll,1500);
 }
-const attachments = attachmentComposer();
+
 let officeDraft;try{officeDraft=JSON.parse(sessionStorage.getItem('ai-village-office-draft')||'null');}catch{}
 const officeTravel=travelComposer($('#office-travel'),officeDraft?.travelContexts||[],()=>saveOfficeDraft());
+const attachments=attachmentComposer({host:$('#office-travel'),key:'office',supported:()=>!!live.secretary?.capabilities?.attachments});
 function saveOfficeDraft(){try{sessionStorage.setItem('ai-village-office-draft',JSON.stringify({message:$('#request').value,travelContexts:officeTravel.value}));}catch{}}
 if(officeDraft?.message){$('#request').value=officeDraft.message;$('#char-count').textContent=officeDraft.message.length+' / 2000';}
 let officePending;try{officePending=JSON.parse(sessionStorage.getItem('ai-village-office-pending')||'null');}catch{}
 if(officePending?.message&&!$('#request').value){$('#request').value=officePending.message;$('#char-count').textContent=officePending.message.length+' / 2000';}
 if(officePending&&!officeDraft)officeTravel.set(officePending.travelContexts||[]);
+attachments.lock(!!officePending);officeTravel.lock(!!officePending);
 function saveOfficePending(){try{if(officePending)sessionStorage.setItem('ai-village-office-pending',JSON.stringify(officePending));else sessionStorage.removeItem('ai-village-office-pending');}catch{}}
 $('#request-form').addEventListener('submit',async e=>{
   e.preventDefault();const request=$('#request').value.trim();if(!request && !attachments.count && !officePending?.attachments?.length){$('#request').focus();return}
@@ -130,6 +133,8 @@ $('#request-form').addEventListener('submit',async e=>{
   try {
     if(officeTravel.value.length&&!live.secretary?.capabilities?.travelContexts)throw Error('出張先の送信にはサーバー更新の反映が必要です。下書きは保持しています。');
     const ids=officePending&&!attachments.count?officePending.attachments:await attachments.upload();
+    if(ids?.length&&!live.secretary?.capabilities?.attachments)throw Error('添付にはサーバー更新の反映が必要です。');
+    conversationLatest();
     if(officePending&&(officePending.message!==request||!sameTravelContexts(officePending.travelContexts,officeTravel.value)||JSON.stringify(officePending.attachments)!==JSON.stringify(ids)))throw Error('前の依頼の受付が不明です。同じ内容で受付を確認してください。');
     officePending ||= {message:request,attachments:ids,travelContexts:officeTravel.value,requestId:'office-'+Array.from(crypto.getRandomValues(new Uint8Array(16)),b=>b.toString(16).padStart(2,'0')).join('')};saveOfficePending();
     const response=await fetch('/api/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(officePending)});
@@ -137,7 +142,7 @@ $('#request-form').addEventListener('submit',async e=>{
     officePending=null;saveOfficePending();
     live=body; online=true; attachments.clear(); $('#office-notice').textContent=''; $('#request').value='';officeTravel.set([]);saveOfficeDraft(); $('#char-count').textContent='0 / 2000';
   } catch(error) { addEvent(error.message); $('#office-notice').textContent=error.message; }
-  submitting=false; attachments.lock(false);officeTravel.lock(false); $('#request').disabled=false; renderStage();
+  submitting=false; attachments.lock(!!officePending);officeTravel.lock(!!officePending); $('#request').disabled=false; renderStage();
 });
 $('#request').addEventListener('input',()=>{saveOfficeDraft();$('#char-count').textContent=`${$('#request').value.length} / 2000`;});
 bindPromptInput($('#request'),()=>{if(!$('#send').disabled)$('#request-form').requestSubmit($('#send'));});

@@ -1,3 +1,4 @@
+import {AttachmentStore,MAX_FILE_BYTES} from '../server/attachments.mjs';
 import { DirectAgents } from '../server/direct.mjs';
 import { PullRequests } from '../server/pull-requests.mjs';
 import { listenAddresses } from '../server/network.mjs';
@@ -28,7 +29,8 @@ const todos = new TodoStore(bridge.dir);
 await todos.init();
 const notifier = new VillageNotifier({ dir: bridge.dir });
 await notifier.init();
-const direct = new DirectAgents({dir:bridge.dir,remote:bridge.remote.bind(bridge),notifier,villageUrl:`http://127.0.0.1:${port}`});
+const attachments=new AttachmentStore(bridge.dir);await attachments.init();
+const direct = new DirectAgents({dir:bridge.dir,remote:bridge.remote.bind(bridge),notifier,attachments,villageUrl:`http://127.0.0.1:${port}`});
 await direct.init();
 const development = new Development(bridge, library, {port});
 const images = new ImageStore(bridge.dir);
@@ -90,6 +92,15 @@ const handleRequest = async (req, res) => {
       if (req.method === 'GET' && pathname === '/api/state') return json(res, 200, await snapshot());
       if (req.method === 'GET' && pathname === '/api/documents') return json(res, 200, { root: library.root, documents: await library.catalog() });
       if (req.method === 'GET' && pathname === '/api/documents/content') return json(res, 200, await library.read(new URL(req.url, 'http://localhost').searchParams.get('path')));
+      const attachmentRoute=pathname.match(/^\/api\/attachments\/([0-9a-f-]{36})$/);
+      if(req.method==='GET'&&attachmentRoute){
+        const record=await attachments.get(attachmentRoute[1]),bytes=await attachments.content(record.id);
+        res.writeHead(200,{'Content-Type':record.kind==='image'?'image/png':'application/octet-stream','Content-Disposition':(record.kind==='image'?'inline':'attachment')+"; filename*=UTF-8''"+encodeURIComponent(record.name).replaceAll("'",'%27'),'X-Content-Type-Options':'nosniff','Content-Security-Policy':"sandbox; default-src 'none'",'Cache-Control':'private, no-store'});res.end(bytes);return;
+      }
+      if(req.method==='POST'&&pathname==='/api/attachments'){
+        const chunks=[];let size=0;for await(const chunk of req){size+=chunk.length;if(size>MAX_FILE_BYTES)return json(res,413,{error:'ファイルは1件16 MiB以内です'});chunks.push(chunk);}
+        return json(res,201,await attachments.save(Buffer.concat(chunks),new URL(req.url,'http://localhost').searchParams.get('name'),req.headers['content-type']));
+      }
       const imageRoute = pathname.match(/^\/api\/images\/([0-9a-f-]{36})$/);
       if (req.method === 'GET' && imageRoute) {
         const content = await images.content(imageRoute[1]);

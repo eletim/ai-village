@@ -32,14 +32,15 @@ test('real HTTP + native JSONL + durable inbox + isolated notify CLI: 0 interim,
  const complete=async(r,text)=>{await native(agents.find(a=>a.id===r.agentId),[{type:'event_msg',payload:{type:'task_complete',turn_id:r.turnId,last_agent_message:text}}]);return until(async()=>{const current=await run(r.id);return current.state==='completed'&&current;});};
  const finish=async(r,op)=>{const q=await request(r.humanRequestId);const body={humanRequestId:q.id,workId:r.workId,runId:r.id,revision:q.revision,operationId:op};const receipt=await post('/requests/finish',body);assert.equal(receipt.status,200);return body;};
  try{
-  await start();const travelContexts=[{name:'出張先',sshHost:'dev@travel-pc',cwd:'/tmp/work with spaces; $(noop)',notes:'参照情報のみ'}];const root=(await post('/agents/'+agents[0].id+'/runs',{instruction:'Human collaboration request',requestId:'http-human-request',travelContexts})).body;
-  assert.deepEqual(root.travelContexts,travelContexts);assert((await lines(capture))[0].text.includes('出張先添付'));
+  await start();const fileResponse=await fetch(base+'/api/attachments?name=sample.json',{method:'POST',headers:{'Content-Type':'application/json'},body:'{"hello":"world"}'});assert.equal(fileResponse.status,201);const file=await fileResponse.json();const attachments=[file.id];
+  const travelContexts=[{name:'出張先',sshHost:'dev@travel-pc',cwd:'/tmp/work with spaces; $(noop)',notes:'参照情報のみ'}];const root=(await post('/agents/'+agents[0].id+'/runs',{instruction:'Human collaboration request',requestId:'http-human-request',travelContexts,attachments})).body;
+  assert.deepEqual(root.travelContexts,travelContexts);assert.equal(root.attachments[0].id,file.id);assert.equal(await readFile(root.attachmentFiles[0].path,'utf8'),'{"hello":"world"}');assert((await lines(capture))[0].text.includes('出張先添付'));
   assert.equal((await post('/agents/'+agents[0].id+'/runs',{instruction:'Human collaboration request',requestId:'http-human-request',travelContexts:[{...travelContexts[0],cwd:'/different'}]})).status,409);
   assert.equal(root.state,'awaiting_input');assert.equal(root.acceptance,'pending');assert.equal((await lines(notices)).length,0);
   assert.equal((await post('/requests/finish',{humanRequestId:root.humanRequestId,workId:root.workId,runId:root.id,revision:0,operationId:'too-early-finish'})).status,409);
   const r=await submit(root);const delegated=await post('/requests/delegate',{humanRequestId:r.humanRequestId,parentWorkId:r.workId,actorRunId:r.id,agentId:agents[1].id,operationId:'http-delegation',instruction:'Child task'});assert.equal(delegated.status,200);
   await complete(r,'工房に依頼しました（途中）');assert.equal((await lines(notices)).length,0);
-  const queued=await until(async()=>{const childRun=await run(delegated.body.currentRunId);return childRun?.state==='awaiting_input'&&childRun;});assert.deepEqual(queued.travelContexts,travelContexts);const cr=await submit(queued);await finish(cr,'http-child-finish');await complete(cr,'Child result');assert.equal((await lines(notices)).length,0);
+  const queued=await until(async()=>{const childRun=await run(delegated.body.currentRunId);return childRun?.state==='awaiting_input'&&childRun;});assert.deepEqual(queued.travelContexts,travelContexts);assert.equal(queued.attachments[0].id,file.id);assert.notEqual(queued.attachmentFiles[0].path,root.attachmentFiles[0].path);assert.equal(await readFile(queued.attachmentFiles[0].path,'utf8'),'{"hello":"world"}');const cr=await submit(queued);await finish(cr,'http-child-finish');await complete(cr,'Child result');assert.equal((await lines(notices)).length,0);
   const result=await until(async()=>{const q=await request(r.humanRequestId);return q.inbox[0]?.deliveryRunId&&q.inbox[0];});
   const delivery=await until(async()=>{const d=await run(result.deliveryRunId);return d?.state==='awaiting_input'&&d;});
   assert.equal((await request(r.humanRequestId)).inbox[0].state,'dispatching');assert.equal((await lines(capture)).length,3);
@@ -54,8 +55,8 @@ test('real HTTP + native JSONL + durable inbox + isolated notify CLI: 0 interim,
   assert.deepEqual((await request(r.humanRequestId)).travelContexts,travelContexts);assert.deepEqual(received.travelContexts,travelContexts);
   assert.equal((await get()).reviews[r.agentId].attention,false);assert.equal((await lines(capture)).length,3);assert.equal((await lines(notices)).length,1);
   const args=(await lines(notices))[0];assert(args.includes('AI村 · 依頼全体の完了'));assert(args.some(s=>s.includes('Integrated final report')));
-  const office=await fetch(base+'/api/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:'Office travel request',requestId:'office-travel-001',agentId:agents[0].id,travelContexts})});assert.equal(office.status,202);
-  const officeState=await office.json();assert.deepEqual(officeState.secretary.messages.find(m=>m.content==='Office travel request').travelContexts,travelContexts);
+  const office=await fetch(base+'/api/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:'',requestId:'office-travel-001',agentId:agents[0].id,travelContexts,attachments})});assert.equal(office.status,202);
+  const officeState=await office.json();assert.deepEqual(officeState.secretary.messages.find(m=>m.content==='').travelContexts,travelContexts);
   assert.deepEqual((await get()).requests.find(q=>q.clientRequestId==='office-travel-001').travelContexts,travelContexts);
  }finally{await stop();await rm(dir,{recursive:true,force:true});}
 });
