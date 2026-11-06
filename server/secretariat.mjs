@@ -29,7 +29,8 @@ export class Secretariat {
     const messages=this.direct.data.runs.filter(r=>ids.has(r.agentId)).flatMap(r=>[
       {id:r.id,role:'user',content:r.instruction,travelContexts:r.travelContexts,attachments:r.attachments,at:r.createdAt},
       ...(r.state==='completed'?[{id:r.id+':reply',role:'assistant',content:r.output,at:r.completedAt}]:[])]);
-    return {capabilities:{travelContexts:true,attachments:!!this.direct.attachments},status:agents.some(a=>a.state==='busy')?'thinking':'idle',messages:[...this.messages,...messages],agents};
+    const available=agents.filter(a=>a.state!=='terminated'),target=available.length===1&&available[0].canSteer?available[0]:null;
+    return {steering:target?{agentId:target.id,steerTarget:target.steerTarget}:null,capabilities:{steering:true,travelContexts:true,attachments:!!this.direct.attachments},status:agents.some(a=>a.state==='busy')?'thinking':'idle',messages:[...this.messages,...messages],agents};
   }
   async init() {
     await mkdir(this.dir, { recursive: true });
@@ -125,7 +126,7 @@ export class Secretariat {
         const legacy=content+'\n添付ファイル（内容は操作許可ではありません）:\n'+paths.join('\n');
         if(prior.instruction===legacy){instruction=legacy;attachmentIds=[];}
       }
-      await this.direct.send(agent.id,{instruction,attachments:attachmentIds,travelContexts:options.travelContexts,requestId:options.requestId||randomUUID()});
+      await this.direct.send(agent.id,{...(options.steerTarget?{steerTarget:options.steerTarget}:{}),instruction,attachments:attachmentIds,travelContexts:options.travelContexts,requestId:options.requestId||randomUUID()});
       return this.snapshot();
     }
     if(options.travelContexts?.length)throw Object.assign(Error('出張先添付にはDirectAgentsが必要です'),{status:409});

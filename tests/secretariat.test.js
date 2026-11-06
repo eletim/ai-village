@@ -28,3 +28,6 @@ test('old office image receipt reconciles its exact saved input without creating
  await s.send('old question',['old-image'],{requestId:'old-office-key'});assert.equal(calls[0].input.instruction,instruction);assert.deepEqual(calls[0].input.attachments,[]);assert.equal(calls[0].input.requestId,'old-office-key');
  await s.send('different question',['old-image'],{requestId:'old-office-key'});assert.equal(calls[1].input.instruction,'different question');assert.deepEqual(calls[1].input.attachments,['old-image']);
 });
+test('office exposes unique steering target and forwards it without minting another request',async t=>{
+ const s=await fixture(t),calls=[],target={runId:'r',sessionId:'s',turnId:'t'},a={id:'secretary',location:'mayor',state:'busy',canSteer:true,steerTarget:target};s.direct={data:{agents:[a],runs:[]},send:async(id,input)=>calls.push({id,input})};assert.deepEqual(s.snapshot().steering,{agentId:a.id,steerTarget:target});await s.send('supplement',[],{agentId:a.id,requestId:'same-receipt',steerTarget:target});assert.deepEqual(calls[0].input.steerTarget,target);assert.equal(calls[0].input.requestId,'same-receipt');s.direct.data.agents.push({...a,id:'other'});assert.equal(s.snapshot().steering,null);await assert.rejects(s.send('supplement'),/秘書が複数/);
+});

@@ -39,7 +39,7 @@ def read(provider,sid):
      if kinds and 'user.text' not in kinds:continue
      content=text(v.get('content'));uid=v.get('id') or 'offset:'+str(offset)
      if not content.startswith(('<environment_context>','<permissions instructions>')):
-      result['inputs'].append({'source':'response','id':uid,'turnId':tid,'hash':digest(content),'offset':offset,'text':content})
+      result['inputs'].append({'explicitTurn':bool(v.get('turn_id') or meta.get('turn_id')),'source':'response','id':uid,'turnId':tid,'hash':digest(content),'offset':offset,'text':content})
     if x.get('type')=='event_msg' and kind=='user_message' and tid:
      content=v.get('message','');result['inputs'].append({'source':'event','id':'offset:'+str(offset),'turnId':tid,'hash':digest(content),'offset':offset,'text':content})
     if x.get('type')=='response_item' and v.get('role')=='assistant' and tid in turns:

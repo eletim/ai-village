@@ -27,7 +27,8 @@ export class RequestFlow {
  get(id){const q=this.root(id);return structuredClone({...q,runs:this.d.data.runs.filter(r=>r.humanRequestId===id)});}
  results(id,workId){const q=this.root(id);this.work(q,workId);return structuredClone(q.inbox.filter(e=>e.parentWorkId===workId).map(e=>({...e,output:this.run(e.resultRunId)?.output||'',error:this.run(e.resultRunId)?.error||null})));}
  enqueue(q,w,text,op,origin,extra={}){
-  const r={id:randomUUID(),requestId:runKey(q.id,op),agentId:w.agentId,humanRequestId:q.id,workId:w.id,origin,instruction:text,travelContexts:structuredClone(q.travelContexts||[]),attachments:structuredClone(q.attachments||[]),state:'queued',acceptance:'queued',blocksInput:false,dispatchConfirmed:false,createdAt:now(),achievement:'unverified',recoveryPolicy:1,...extra};
+  const previous=this.run(w.currentRunId)||(w.parentWorkId?this.run(this.work(q,w.parentWorkId).currentRunId):null);
+  const r={id:randomUUID(),requestId:runKey(q.id,op),agentId:w.agentId,humanRequestId:q.id,workId:w.id,origin,instruction:text,travelContexts:structuredClone(previous?.contextTravelContexts||previous?.travelContexts||q.travelContexts||[]),attachments:structuredClone(previous?.contextAttachments||previous?.attachments||q.attachments||[]),state:'queued',acceptance:'queued',blocksInput:false,dispatchConfirmed:false,createdAt:now(),achievement:'unverified',recoveryPolicy:1,...extra};
   this.d.data.runs.push(r);w.runIds.push(r.id);w.currentRunId=r.id;w.state='active';return r;
  }
  context(r){
@@ -46,11 +47,32 @@ export class RequestFlow {
    '完了ではない途中返答ではfinishしないでください。失敗/中断は成功完了にせず、requests retry/resume/cancelのhelpを参照してください。返答本文の文字列で完了を判断しません。\n</ai-village-request>';
  }
  async start(agentId,input){
+  if(input.steerTarget!==undefined){
+   const t=input.steerTarget;
+   if(!t||typeof t!=='object'||Array.isArray(t)||['runId','sessionId','turnId'].some(k=>typeof t[k]!=='string'||!t[k]||t[k].length>200)||Object.keys(t).length!==3)fail('steerTargetにはrunId/sessionId/turnIdを指定してください',400);
+   input={...input,steerTarget:{runId:t.runId,sessionId:t.sessionId,turnId:t.turnId}};
+  }
+
   if(input.attachments!==undefined&&(!Array.isArray(input.attachments)||input.attachments.length>4))fail('添付は4件までです',400);
   if(input.attachments?.length&&!this.d.attachments)fail('添付の保存機能が利用できません',409);
   const attachments=input.attachments?.length?await this.d.attachments.select(input.attachments):[];
   if(typeof input.instruction!=='string'||input.instruction.length>16000||(!input.instruction.trim()&&!attachments.length))fail('指示または添付が必要です',400);operation(input.requestId);const travelContexts=normalizeTravelContexts(input.travelContexts);
   return this.d.locked('request-graph',async()=>{
+   const prior=this.d.data.runs.find(r=>r.requestId===input.requestId&&r.steerTarget);
+   if(prior){if(prior.agentId!==agentId||prior.instruction!==input.instruction||JSON.stringify(prior.steerTarget)!==JSON.stringify(input.steerTarget)||!sameTravelContexts(prior.travelContexts,travelContexts)||JSON.stringify(prior.attachments.map(a=>a.id))!==JSON.stringify(attachments.map(a=>a.id)))fail('requestIdの再利用です');return prior;}
+   if(input.steerTarget){
+    const a=this.d.writableAgent(this.d.agent(agentId));
+    const snapshot=await this.d.locked(a.id,()=>this.d.observe(a));
+    if(!a.canSteer||JSON.stringify(input.steerTarget)!==JSON.stringify(a.steerTarget))fail('補足対象が変わったか、native受付・実行状態を確認できません。再確認してください');
+    const previous=this.run(a.steerTarget.runId),q=this.root(previous.humanRequestId),w=this.work(q,previous.workId);
+    if(this.d.data.runs.some(r=>r.requestId===input.requestId)||this.requests.some(q=>q.clientRequestId===input.requestId))fail('requestIdの再利用です');
+    // A successor keeps the one human request/ticket and invalidates any old finish.
+    q.status='active';delete w.finish;q.revision++;
+    previous.state='superseded';previous.blocksInput=false;
+    const r=this.enqueue(q,w,input.instruction,'steer:'+input.requestId,'steering',{requestId:input.requestId,steerTarget:structuredClone(a.steerTarget),priorInputs:snapshot.inputs.filter(i=>i.turnId===previous.turnId).map(({id,hash,offset})=>({id,hash,offset})),travelContexts,attachments,contextAttachments:[...new Map([...(previous.contextAttachments||previous.attachments||[]),...attachments].map(a=>[a.id,a])).values()],contextTravelContexts:structuredClone(travelContexts.length?travelContexts:previous.contextTravelContexts||previous.travelContexts||[])});
+    previous.supersededBy=r.id;
+    await this.d.save();await this.d.attemptRun(r);return r;
+   }
    const legacy=this.d.data.runs.find(r=>r.requestId===input.requestId&&!r.humanRequestId);
    if(legacy){if(legacy.agentId!==agentId||legacy.instruction!==input.instruction||!sameTravelContexts(legacy.travelContexts,travelContexts)||JSON.stringify((legacy.attachments||[]).map(a=>a.id))!==JSON.stringify(attachments.map(a=>a.id)))fail('requestIdの再利用です');return legacy;}
    let q=this.requests.find(q=>q.clientRequestId===input.requestId);
@@ -173,7 +195,7 @@ export class RequestFlow {
   // the existing parent actor checks and is deliberately a manual operation.
   for(const q of this.requests.filter(q=>q.status==='active'))for(const w of q.works){
    const r=this.run(w.currentRunId);if(r?.state!=='failed'||r.recovery?.status==='enqueued')continue;
-   let reason=r.recoveryPolicy!==1?'このrunは自動復旧導入前です':r.errorCode!=='server_overloaded'?'自動再試行対象外のエラーです':
+   let reason=r.steerTarget?'補足を含む作業は内容・副作用を確認して手動で復旧してください':r.recoveryPolicy!==1?'このrunは自動復旧導入前です':r.errorCode!=='server_overloaded'?'自動再試行対象外のエラーです':
     r.acceptance!=='accepted'||!r.inputId||!r.sessionId||!r.turnId?'受付照合が不完全です':
     w.parentWorkId||q.works.some(c=>c.parentWorkId===w.id)?'子作業または委任元との確認が必要です':null;
    const budget=w.autoRetry;
@@ -206,7 +228,7 @@ export class RequestFlow {
    }
   }
   for(const r of this.d.data.runs.filter(r=>r.state==='queued'&&r.humanRequestId)){
-   const q=this.root(r.humanRequestId),a=this.d.agent(r.agentId);if(q.status==='active'&&(this.d.agentDeleting(a)||a.canSend||['terminated','stopping','stop_unknown'].includes(a.state)))await this.d.attemptRun(r);
+   const q=this.root(r.humanRequestId),a=this.d.agent(r.agentId);if(q.status==='active'&&(this.d.agentDeleting(a)||r.steerTarget||a.canSend||['terminated','stopping','stop_unknown'].includes(a.state)))await this.d.attemptRun(r);
   }
  });}
  async notifications(){
