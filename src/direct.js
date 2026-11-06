@@ -1,5 +1,6 @@
 import {reportHTML} from './report-content.js';
 import {updateReportHTML} from './report-visuals.js';
+import {autogrowInput} from './autogrow-input.js';
 import {linkedText} from './linked-text.js';
 import {attachmentComposer,attachmentHTML} from './attachments.js';
 import {chatScroll} from './chat-scroll.js';
@@ -83,12 +84,12 @@ function renderBoard(){
  $('#pages').hidden=selectedPlace!=='all'||!!zoomId||pageCount===1;
  $('#page-number').textContent=`${selectedPage+1} / ${pageCount}`;
  $('#previous-page').disabled=selectedPage===0;$('#next-page').disabled=selectedPage===pageCount-1;
- for(const [id,card] of cards)if(!live().some(a=>a.id===id)){scrolls.get(id)?.destroy();scrolls.delete(id);fileEditors.get(id)?.destroy();fileEditors.delete(id);card.remove();cards.delete(id);travelDrafts.delete(id);travelEditors.delete(id);positions.delete(id);drafts.delete(id);pending.delete(id);storeDrafts();}
+ for(const [id,card] of cards)if(!live().some(a=>a.id===id)){card.autogrow?.destroy();scrolls.get(id)?.destroy();scrolls.delete(id);fileEditors.get(id)?.destroy();fileEditors.delete(id);card.remove();cards.delete(id);travelDrafts.delete(id);travelEditors.delete(id);positions.delete(id);drafts.delete(id);pending.delete(id);storeDrafts();}
  for(const a of live()){
   let card=cards.get(a.id);
   if(!card){card=document.createElement('article');card.className='agent-panel';card.id='agent-'+a.id;card.setAttribute('aria-labelledby','heading-'+a.id);card.tabIndex=0;card.hidden=true;
    card.innerHTML=`<div class="panel-heading"><span class="dot"></span><h2></h2><span class="request-attention"></span><span class="selection-label"></span><span class="unread-badge"></span><button data-zoom="${esc(a.id)}" title="このAgentを拡大" aria-label="このAgentを拡大">⤢</button><button data-manage-agent="${esc(a.id)}" title="Agentの操作" aria-label="Agentの操作">…</button></div><div class="panel-info"></div><p class="current-action"></p><div class="runs" tabindex="0" aria-label="会話履歴"></div><form data-send="${esc(a.id)}"><textarea name="instruction" aria-label="このAgentに直接指示" placeholder="指示を入力…（Ctrl+Enterで送信、Enter / Shift+Enterで改行）" maxlength="16000" rows="2"></textarea><button type="submit">送信</button><button type="button" data-reconcile="${esc(a.id)}" hidden>送信結果を確認</button><div class="travel-slot"></div></form>`;
-   const input=card.querySelector('textarea');input.value=drafts.get(a.id)||'';
+   const input=card.querySelector('textarea');input.value=drafts.get(a.id)||'';card.autogrow=autogrowInput(input,{panel:card});
    travelEditors.set(a.id,travelComposer(card.querySelector('.travel-slot'),travelDrafts.get(a.id)||[],value=>{travelDrafts.set(a.id,value);storeDrafts();}));
    fileEditors.set(a.id,attachmentComposer({host:card.querySelector('.travel-slot'),key:'agent:'+a.id,supported:()=>!!state?.capabilities?.attachments}));
    scrolls.set(a.id,chatScroll(card.querySelector('.runs'),{saved:positions.get(a.id),onSave:value=>{positions.set(a.id,value);storeDrafts();}}));
@@ -121,7 +122,7 @@ function renderBoard(){
   send.title=pending.has(a.id)?'送信結果を確認中です。自動再送しません。':a.canQueue&&!a.canSend?'追加指示を保存し、現在の応答が終わったら順に渡します。':a.sendReason||'';
 
   card.hidden=!ids.has(a.id);card.style.order=list.findIndex(x=>x.id===a.id);
-  if(!card.hidden)scrolls.get(a.id).restore();
+  if(!card.hidden){card.autogrow.update();scrolls.get(a.id).restore();}
  }
  $('#agents').hidden=!shown.length;$('#empty').hidden=!!shown.length;
  $('#empty-help').hidden=false;
