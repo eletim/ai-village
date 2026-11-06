@@ -3,4 +3,5 @@ const root='src/vendor';await rm(root,{recursive:true,force:true});await mkdir(r
 await cp('node_modules/mermaid/dist/mermaid.esm.min.mjs',root+'/mermaid/mermaid.mjs');
 await cp('node_modules/mermaid/dist/chunks/mermaid.esm.min',root+'/mermaid/chunks/mermaid.esm.min',{recursive:true,filter:path=>!path.endsWith('.map')});
 await cp('node_modules/dompurify/dist/purify.es.mjs',root+'/purify.mjs');
-for(const name of ['mermaid','dompurify'])await cp('node_modules/'+name+'/LICENSE',root+'/'+name+'-LICENSE');
+await cp('node_modules/marked/lib/marked.esm.js',root+'/marked.mjs');
+for(const name of ['mermaid','dompurify','marked'])await cp('node_modules/'+name+'/LICENSE',root+'/'+name+'-LICENSE');
