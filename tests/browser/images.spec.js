@@ -17,11 +17,19 @@ test('file and paste previews, cancel, image-only send, assistant display, reloa
   await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   await page.locator('[data-image]').setInputFiles({name:'broken.png',mimeType:'image/png',buffer:Buffer.from('not PNG')});await page.locator('#send').click();await expect(page.locator('#office-notice')).toContainText('画像を読み込めません');await expect(page.locator('.file-composer img')).toHaveCount(1);await expect(page.locator('#send')).toBeEnabled();
 });
-test('image HTTP boundary rejects invalid payloads, oversized uploads and forged image paths',async({request})=>{
+test('image HTTP boundary rejects invalid payloads and forged image paths',async({request})=>{
   expect((await request.post('/api/images',{headers:{'Content-Type':'image/svg+xml'},data:'<svg/>'})).status()).toBe(415);
   expect((await request.post('/api/images',{headers:{'Content-Type':'image/png'},data:'not PNG'})).status()).toBe(400);
   expect((await request.post('/api/images',{headers:{'Content-Type':'image/png',Origin:'http://other.test'},data:png})).status()).toBe(403);
-  expect((await request.post('/api/images',{headers:{'Content-Type':'image/png'},data:Buffer.alloc(8*1024*1024+1)})).status()).toBe(413);
+  expect((await request.post('/api/images',{headers:{'Content-Type':'image/png'},data:Buffer.alloc(8*1024*1024+1)})).status()).toBe(400);
   expect((await request.post('/api/messages',{data:{message:'',attachments:['../../private']}})).status()).toBe(400);
   expect((await request.get('/api/images/00000000-0000-4000-8000-000000000000')).status()).toBe(404);
+});
+
+test('pasting an image over 8 MiB is accepted by the composer',async({page})=>{
+ await page.route('**/api/state',r=>r.fulfill({json:{jobs:[],secretary:{status:'idle',capabilities:{attachments:true},messages:[]}}}));
+ await page.goto('/office');
+ await page.locator('#request').evaluate(el=>{const data=new DataTransfer();data.items.add(new File([new Uint8Array(9*1024*1024)],'large.png',{type:'image/png'}));el.dispatchEvent(new ClipboardEvent('paste',{clipboardData:data,bubbles:true,cancelable:true}));});
+ await expect(page.locator('.file-composer figcaption')).toContainText('large.png');
+ await expect(page.locator('.file-error')).toBeEmpty();
 });

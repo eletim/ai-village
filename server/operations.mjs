@@ -23,6 +23,7 @@ export class VillageOperations {
         {name:'agents project',usage:'agents project AGENT_ID REVISION PROJECT_ID|-',mutation:true,run:args=>{if(args.length!==3)throw Error('ID REVISION PROJECT_IDを指定してください');return direct.updateAgent(args[0],{revision:Number(args[1]),projectId:args[2]==='-'?null:args[2]});}},
         {name:'projects list',usage:'projects list',run:args=>{if(args.length)throw Error('引数は不要です');return direct.discovery().projects;}},
         {name:'projects create',usage:'projects create REQUEST_ID NAME',mutation:true,run:args=>{if(args.length!==2)throw Error('REQUEST_ID NAMEを指定してください');return direct.putProject({requestId:args[0],name:args[1]});}},
+        {name:'projects pin',usage:'projects pin PROJECT_ID REVISION true|false',mutation:true,run:args=>{if(args.length!==3||!['true','false'].includes(args[2]))throw Error('ID REVISION true|falseを指定してください');return direct.putProject({revision:Number(args[1]),pinned:args[2]==='true'},args[0]);}},
         {name:'projects rename',usage:'projects rename PROJECT_ID REVISION NAME',mutation:true,run:args=>{if(args.length!==3)throw Error('ID REVISION NAMEを指定してください');return direct.putProject({revision:Number(args[1]),name:args[2]},args[0]);}},
       ]:[]),
       ...(direct?[
@@ -40,6 +41,7 @@ export class VillageOperations {
         if(action==='toggle'&&!['true','false'].includes(args[2]))throw new Error('完了状態はtrue/falseです');
         return todos.update({action,revision:Number(args[0]),id:action==='add'?undefined:args[1],text:action==='add'?args[1]:args[2],done:args[2]==='true'});
       }})),
+      { name:'images upload',usage:'node scripts/village.mjs images upload LOCAL_FILE (PNG/JPEG/WebP; uploads caller-local bytes)',run:()=>{throw Error('images uploadは呼び出し元のscripts/village.mjsで実行してください。HTTPはPOST /api/imagesへ画像本体を送信します。サーバーパスは受け付けません。');} },
       { name:'images list', usage:'images list', run:args=>{if(args.length)throw new Error('usage: images list');return images.list();} },
       { name:'images import', usage:'images import JOB_ID RELATIVE_PATH', run:args=>{if(args.length!==2)throw new Error('usage: images import JOB_ID RELATIVE_PATH');return images.importArtifact(bridge,...args);} },
       { name:'jobs artifacts', usage:'jobs artifacts JOB_ID', run:async args=>{const job=bridge.jobById(this.id(args));await bridge.update({artifacts:await bridge.listArtifacts(job)},job);return this.describe(job);} },

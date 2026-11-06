@@ -8,3 +8,6 @@ export function boardLayout(count,width,height){
  const rows=Math.max(1,Math.ceil(count/cols));
  return {cols,rows,rowHeight:Math.max(Math.min(220,height),(height-8*(rows-1))/rows,1)};
 }
+
+// Explicit pins precede other projects; retain relative order within each group.
+export function orderedProjects(projects){return [...projects].sort((a,b)=>Number(b.pinned===true)-Number(a.pinned===true));}
