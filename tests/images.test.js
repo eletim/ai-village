@@ -4,15 +4,15 @@ import { mkdtemp, symlink, unlink, readFile, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import sharp from 'sharp';
-import { ImageStore, MAX_IMAGE_BYTES } from '../server/images.mjs';
+import { ImageStore } from '../server/images.mjs';
 import { Secretariat } from '../server/secretariat.mjs';
 const fixture=()=>sharp({create:{width:32,height:20,channels:3,background:'#195ac1'}}).png().toBuffer();
 async function setup(){const dir=await mkdtemp(join(tmpdir(),'village-images-'));const images=new ImageStore(dir);await images.init();return {dir,images};}
-test('decoded images persist with safe IDs; invalid, oversized and excessive inputs fail',async()=>{
+test('decoded images persist with safe IDs; invalid images and excessive attachment counts fail',async()=>{
   const {dir,images}=await setup();const image=await images.save(await fixture(),'<img>.png');
   const restored=new ImageStore(dir);assert.equal((await restored.get(image.id)).name,'<img>.png');assert.equal((await sharp(await restored.content(image.id)).metadata()).width,32);
-  for(const bytes of [Buffer.from('<svg></svg>'),Buffer.from('not an image'),Buffer.alloc(MAX_IMAGE_BYTES+1),(await fixture()).subarray(0,40)])await assert.rejects(images.save(bytes));
-  const excessive=await sharp({create:{width:5000,height:5000,channels:3,background:'red'}}).png().toBuffer();await assert.rejects(images.save(excessive),/画像を読み込めません/);
+  for(const bytes of [Buffer.from('<svg></svg>'),Buffer.from('not an image'),(await fixture()).subarray(0,40)])await assert.rejects(images.save(bytes));
+  const excessive=await sharp({create:{width:5000,height:5000,channels:3,background:'red'}}).png().toBuffer();assert.equal((await images.save(excessive)).width,5000);
   await assert.rejects(images.get('../conversation'));await assert.rejects(images.select([image.id,image.id]));await assert.rejects(images.select(Array(5).fill(image.id)));
   const file=await images.path(image.id);await unlink(file);await symlink(resolve(dir,'conversation.json'),file);await writeFile(resolve(dir,'conversation.json'),'private');await assert.rejects(images.content(image.id));
 });
@@ -46,4 +46,20 @@ test('real artifact reader enforces directory boundaries; imported artifact can 
   const operations=new VillageOperations(bridge,undefined,{images});const imported=await operations.execute(['images','import',job.id,'result.png']);assert.equal(imported.ok,true);const id=imported.result.id;
   const secretary=new Secretariat(bridge,{root:dir},operations,undefined,images);await secretary.init();secretary.decide=async()=>({action:'reply',message:'仕事の画像です。',attachments:[id]});await secretary.send('成果物を提示して');await secretary.running;assert.equal(secretary.messages.at(-1).attachments[0].source.jobId,job.id);
   await unlink(join(work,'result.png'));assert.ok((await images.content(id)).length);
+});
+
+
+test('artifact discovery and import accept images beyond former file and transport caps',async t=>{
+ const {WorkshopBridge,run}=await import('../server/bridge.mjs');
+ const {randomBytes}=await import('node:crypto');const {rm}=await import('node:fs/promises');
+ const {dir,images}=await setup();t.after(()=>rm(dir,{recursive:true,force:true}));
+ const bytes=await sharp(randomBytes(2100*2100*3),{raw:{width:2100,height:2100,channels:3}}).png().toBuffer();
+ assert(bytes.length>10*1024*1024);assert(bytes.toString('base64').length>15e6);
+ await writeFile(join(dir,'large.png'),bytes);
+ const bridge=new WorkshopBridge({dir});
+ bridge.remote=async(args,_host,_id,options)=>run(args[0],args.slice(1),options);
+ const job={id:'large-artifact',cwd:dir,sshHost:'isolated-local-test'};bridge.jobs=[job];
+ job.artifacts=await bridge.listArtifacts(job);assert(job.artifacts.some(f=>f.path==='large.png'));
+ const saved=await images.importArtifact(bridge,job.id,'large.png');
+ assert.deepEqual(await images.content(saved.id),bytes);
 });
