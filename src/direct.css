@@ -32,7 +32,7 @@
 @media(max-width:700px){#sidebar-mode button{font-size:10px;padding:5px 1px}#sidebar-mode button:first-child{flex:2.5}}
 
 .request-attention{background:#245b3a;color:#d8ffe4;border:1px solid #22c55e;border-radius:3px;padding:2px 4px;font-size:10px;white-space:nowrap}.request-attention:empty{display:none}
-.agent-panel[data-attention=true]{box-shadow:0 0 0 3px #22c55e}
+.agent-panel[data-state][data-attention=true]{box-shadow:0 0 0 3px #22c55e}
 .agent-dot[data-attention=true]{outline:2px solid #22c55e;outline-offset:2px}
 #completion-count{color:#a9e9ba}
 
@@ -50,5 +50,5 @@
 .agent-panel[data-state=completed][data-unread=true]{box-shadow:none}
 .agent-panel[data-state=completed][data-unread=true] .panel-heading{background:#1d2d47}
 .agent-panel[data-state=completed][data-attention=true]{--state-color:#22c55e}
-.agent-panel[data-attention=true]{box-shadow:0 0 0 3px #22c55e}
+.agent-panel[data-state][data-attention=true]{box-shadow:0 0 0 3px #22c55e}
 .agent-panel[data-state=completed][data-attention=true] .panel-heading{background:color-mix(in srgb,#22c55e 20%,#1d2d47)}
