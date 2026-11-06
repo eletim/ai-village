@@ -49,7 +49,7 @@ export class VillageOperations {
       { name:'jobs artifacts', usage:'jobs artifacts JOB_ID', run:async args=>{const job=bridge.jobById(this.id(args));await bridge.update({artifacts:await bridge.listArtifacts(job)},job);return this.describe(job);} },
       { name:'help', usage:'help', run:args=>{if(args.length)throw new Error('usage: help');return this.commands.map(({name,usage,mutation})=>({name,usage,mutation:!!mutation}));} },
       { name:'notifications status', usage:'notifications status', run:args=>{if(args.length)throw new Error('usage: notifications status');return notifier?.status() || {enabled:false,unavailable:true};} },
-      { name:'notifications configure',usage:'notifications configure true|false',mutation:true,run:args=>{if(args.length!==1||!['true','false'].includes(args[0]))throw Error('usage: notifications configure true|false');if(!notifier)throw Error('通知処理がありません。');return notifier.configure(args[0]==='true');} },
+      { name:'notifications configure',usage:'notifications configure true|false|JSON {enabled?,server?,topic?,resetDestination?}',mutation:true,run:args=>{if(args.length!==1)throw Error('usage: notifications configure true|false|JSON');if(!notifier)throw Error('通知処理がありません。');let input;try{input=JSON.parse(args[0]);}catch{throw Error('通知設定はtrue/falseまたはJSONで指定してください');}return notifier.configure(input);} },
       { name:'notifications test', usage:'notifications test', mutation:true, run:async args=>{if(args.length)throw new Error('usage: notifications test');if(!notifier)throw new Error('通知処理がありません。');const result=await notifier.test();return {...result,ok:result.delivered};} },
       { name:'web read', usage:'web read URL', run:async args=>{if(args.length!==1)throw new Error('usage: web read URL');return web.read(args[0]);} },
       { name:'development status', usage:'development status', run:()=>development.profile() },
@@ -89,7 +89,7 @@ export class VillageOperations {
     return this.bridge.jobs.filter(job=>args[1]==='all'||isOnDesk(job)).map(job=>this.summary(job));
   }
   resolve(argv) {
-    if(!Array.isArray(argv)||!argv.length||argv.length>12||argv.some(arg=>typeof arg!=='string'||arg.length>(argv[0]==='requests'?20000:2000)))throw new Error('argvは1〜12個の文字列で指定してください。');
+    if(!Array.isArray(argv)||!argv.length||argv.length>12||argv.some(arg=>typeof arg!=='string'||arg.length>(argv[0]==='requests'?20000:argv[0]==='notifications'?4000:2000)))throw new Error('argvは1〜12個の文字列で指定してください。');
     const command=this.commands.find(command=>argv.slice(0,command.name.split(' ').length).join(' ')===command.name);
     if(!command)throw new Error('未対応の操作です。helpでマニュアルと操作一覧を確認してください。');
     return {command,args:argv.slice(command.name.split(' ').length)};
@@ -105,7 +105,9 @@ export class VillageOperations {
     let result;
     try {const value=await command.run(args);result={ok:value?.ok!==false,operation:command.name,result:value};}
     catch(error){result={ok:false,operation:command.name,error:error.message};}
-    if(command.mutation)await appendFile(resolve(this.bridge.dir,'operations.jsonl'),JSON.stringify({at:new Date().toISOString(),operationId,issuer,argv,result})+'\n',{mode:0o600});
+    // Rejected URLs/JSON may contain a mistakenly pasted credential. Never audit raw notification settings.
+    const auditArgv=command.name==='notifications configure'?['notifications','configure','[redacted]']:argv;
+    if(command.mutation)await appendFile(resolve(this.bridge.dir,'operations.jsonl'),JSON.stringify({at:new Date().toISOString(),operationId,issuer,argv:auditArgv,result})+'\n',{mode:0o600});
     return {...result,operationId};
   }
 }
