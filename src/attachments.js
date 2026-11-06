@@ -9,7 +9,7 @@ export function attachmentComposer({host,key,supported=()=>true,onChange=()=>{}}
  let tabKey;try{tabKey=sessionStorage.getItem('attachment-tab');if(!tabKey){tabKey=Date.now()+'-'+Math.random();sessionStorage.setItem('attachment-tab',tabKey);}}catch{tabKey='memory';}
  key=tabKey+':'+key;const maskKey='attachment-mask:'+key;
  const menu=host.querySelector('.travel-menu'),box=document.createElement('div');box.className='file-composer';
- box.innerHTML='<input type="file" data-image accept="image/png,image/jpeg,image/webp" multiple hidden><input type="file" data-file accept=".pdf,.txt,.csv,.json,.md,.log,.yaml,.yml,.tsv,.xml" multiple hidden><div class="file-previews"></div><p class="file-error" role="alert"></p>';host.append(box);
+ box.innerHTML='<input type="file" data-image accept="image/png,image/jpeg,image/webp" multiple hidden><input type="file" data-file accept=".pdf,.docx,.txt,.csv,.json,.md,.log,.yaml,.yml,.tsv,.xml" multiple hidden><div class="file-previews"></div><p class="file-error" role="alert"></p>';host.append(box);
  const preview=box.querySelector('.file-previews'),error=box.querySelector('.file-error');
  const persist=()=>{try{sessionStorage.setItem(maskKey,JSON.stringify(pending.map(p=>p.key)));}catch{}const copy=pending.map(p=>({...p}));writing=writing.catch(()=>{}).then(()=>storage(key,copy)).catch(()=>{error.textContent='下書きを保存できません。この画面を閉じずに再試行してください。';});onChange();return writing;};
  const render=()=>{
