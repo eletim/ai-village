@@ -1,0 +1,15 @@
+# Ctrl+EnterとIME確定
+
+Direct／執務室／村は共通の `src/prompt-input.js` を使用します。Enter・Shift+Enterは改行、Ctrl+Enterだけが送信です。
+
+以前は `compositionend` 後の `ended` がEnter keyup・通常キー・blurまで残り、Control keydownでも解除されませんでした。候補クリック等でEnter keyupが発生しない場合、確定後にControlを新しく押しても最初のCtrl+Enterを確定キー扱いして捨てていました。旧ブラウザテストにも、確定後2200msを待った最初の送信を捨てる期待値がありました。
+
+今回、変換外で新しくControlを押した操作（非repeat、Enter押下中ではない）を次の送信gestureの境界とします。待ち時間による解除は使わないため、確定直後でもpoll後でも同じ動作です。変換中に押したControlや確定前から押したままのControlは、この境界にはなりません。
+
+compositionendが確定Enter keydownより先に届く順序では、次の独立操作の証拠がない限り引き続き保護します。変換中、isComposing、keyCode229、repeat、同じEnterの押下継続も送信しません。通常Enterも押下状態を記録し、押したままControlを追加して送信されることを防ぎます。
+
+境界: 実際に観測したEnterが押下中のままkeyupが欠落する場合や、ブラウザ／IMEが新しいControlイベントを通知しない場合は、同一確定操作との区別ができないため保守的に抑止します（Enter keyupまたはblurでリセット）。任意のタイマーでこの不確実性を成功送信へ変えません。
+
+テストはDOMイベントで順序・修飾キー・229を模擬し、Chromiumで実際のCtrl+Enter操作と組み合わせています。OSの候補ウィンドウを使った実IME手操作は未検証です。ユーザー実例のイベント記録もないため、確認できた再現経路と実例の原因は区別します。
+
+送信先状態・空入力・pending受付照合・送信中の抑止は従来のままです。送信失敗時の下書き保持・同requestIdの再照合・実行中補足・自動伸縮の回帰も確認します。

@@ -30,11 +30,10 @@ for(const view of ['direct','village','office']) {
    },order);
    expect(sends).toBe(0);
   }
-  // A composition commit with no keyup is conservatively consumed once, even
-  // across a render/poll. There is no timing window that can accidentally send.
+  // Candidate/mouse commit has no Enter keyup. A fresh Control press is a new
+  // shortcut, even after a render/poll; its first Enter must send.
   await input.dispatchEvent('compositionstart');await input.dispatchEvent('compositionend');
-  await page.waitForTimeout(2200);await input.press('Control+Enter');expect(sends).toBe(0);
-  await expect(input).toHaveValue('日本語\n\n');
+  await page.waitForTimeout(2200);await expect(input).toHaveValue('日本語\n\n');
   await input.press('Control+Enter');await expect.poll(()=>sends).toBe(1);
  });
 }
@@ -83,5 +82,5 @@ test('busy agent accepts consecutive additional instructions into queue',async({
  });
  await page.goto('/agents');const input=page.locator('[name=instruction]');
  for(const text of ['追加1','追加2']){await input.fill(text);await input.press('Control+Enter');await expect(input).toHaveValue('');}
- expect(runs.map(r=>r.instruction)).toEqual(['追加1','追加2']);await expect(page.getByRole('button',{name:'追加送信',exact:true})).toBeEnabled();
+ expect(runs.map(r=>r.instruction)).toEqual(['追加1','追加2']);await expect(page.getByRole('button',{name:'待機キューへ',exact:true})).toBeEnabled();
 });
