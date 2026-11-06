@@ -261,10 +261,30 @@ function openMetadata(id){
 $('#metadata-form').onsubmit=e=>{e.preventDefault();const f=e.currentTarget;action(f,async()=>{await api('/agents/'+metadataId,{revision:metadataRevision,name:f.elements.name.value,projectId:f.elements.projectId.value||null},'PUT');$('#metadata-dialog').close();});};
 $('#stop-form').onsubmit=e=>{e.preventDefault();action(e.currentTarget,async()=>{await api('/agents/'+metadataId+'/stop',{});$('#metadata-dialog').close();});};
 function openProjects(){
- const f=$('#project-form');options(f.elements.id,[{id:'',name:'新規作成'},...orderedProjects(state.projects||[])]);f.elements.id.value='';f.elements.name.value='';delete f.dataset.requestId;$('#projects-dialog').showModal();
+ const f=$('#project-form');options(f.elements.id,[{id:'',name:'新規作成'},...orderedProjects(state.projects||[])]);f.elements.id.value='';f.elements.name.value='';$('#delete-project').disabled=true;delete f.dataset.requestId;$('#projects-dialog').showModal();
 }
-$('#project-form [name=id]').onchange=()=>{const f=$('#project-form'),p=(state.projects||[]).find(p=>p.id===f.elements.id.value);f.elements.name.value=p?.name||'';projectRevision=p?.revision||0;delete f.dataset.requestId;};
+$('#project-form [name=id]').onchange=()=>{const f=$('#project-form'),p=(state.projects||[]).find(p=>p.id===f.elements.id.value);f.elements.name.value=p?.name||'';projectRevision=p?.revision||0;$('#delete-project').disabled=!p;delete f.dataset.requestId;};
 $('#project-form').onsubmit=e=>{e.preventDefault();const f=e.currentTarget;f.dataset.requestId ||= newRequestId();action(f,async()=>{const id=f.elements.id.value;await api('/projects'+(id?'/'+id:''),{name:f.elements.name.value,revision:projectRevision,requestId:f.dataset.requestId},id?'PUT':'POST');$('#projects-dialog').close();});};
+let projectDeletePlan=null,projectDeleteInput=null;
+function renderProjectDeletion(result){
+ const remaining=result?.remaining||[];
+ $('#project-delete-status').textContent=result?(result.status==='deleted'?'Projectと所属Agentを削除しました。':`削除は未完了です。残り ${remaining.length} 人。終了確認済みのAgentは再度終了しません。`):'';
+ $('#project-delete-members').replaceChildren(...projectDeletePlan.members.map(m=>{const li=document.createElement('li'),pending=remaining.find(r=>r.id===m.id);li.textContent=m.name+' · '+m.id+' — '+(result?(pending?pending.error:'終了確認済み'):(labels[m.state]||m.state));return li;}));
+ $('#confirm-project-delete').textContent=result?'残りを再試行':'削除';
+ $('#project-delete-dialog [data-close]').textContent=result?'閉じる':'キャンセル';
+}
+$('#delete-project').onclick=()=>action($('#projects-dialog'),async()=>{
+ const id=$('#project-form').elements.id.value;if(!id)return;
+ projectDeletePlan=await api('/projects/'+id+'/delete-plan',null,'GET');
+ projectDeleteInput={operationId:projectDeletePlan.deletion?.operationId||newRequestId(),revision:projectDeletePlan.revision,members:projectDeletePlan.members.map(m=>({id:m.id,revision:m.revision}))};
+ $('#project-delete-name').textContent='プロジェクト：'+projectDeletePlan.name;
+ renderProjectDeletion(projectDeletePlan.deletion);$('#projects-dialog').close();$('#project-delete-dialog').showModal();
+});
+$('#confirm-project-delete').onclick=()=>action($('#project-delete-dialog'),async()=>{
+ $('#project-delete-status').textContent='所属Agentの終了を確認しています。画面を閉じても開始した削除は取り消されません。';$('#project-delete-dialog [data-close]').textContent='閉じる';
+ const result=await api('/projects/'+projectDeletePlan.projectId+'/delete',projectDeleteInput);renderProjectDeletion(result);
+ if(result.status==='deleted')$('#project-delete-dialog').close();
+});
 for(const b of document.querySelectorAll('[data-open]'))b.onclick=()=>{if(b.closest('#manage-dialog'))$('#manage-dialog').close();if(b.dataset.open==='projects-dialog')openProjects();else $('#'+b.dataset.open).showModal();};
 for(const b of document.querySelectorAll('[data-close]'))b.onclick=()=>b.closest('dialog').close();
 $('#history-agent').onchange=()=>{renderHistory();selectAgent($('#history-agent').value);};
