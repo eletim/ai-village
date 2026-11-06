@@ -1,5 +1,7 @@
 // Keep this state on the textarea across polling/renders. Some browsers end
 // composition before the confirming Enter keydown and report isComposing=false.
+// A fresh Control press after commit starts a new shortcut gesture. Do not keep
+// swallowing that shortcut when a mouse/candidate commit produced no Enter keyup.
 export function bindPromptInput(input, submit) {
   let composing=false, ended=false, enterDown=false;
   input.addEventListener('compositionstart',()=>{composing=true;ended=false;});
@@ -10,16 +12,17 @@ export function bindPromptInput(input, submit) {
   input.addEventListener('blur',()=>{composing=false;ended=false;enterDown=false;});
   input.addEventListener('keydown',e=>{
     if(e.key!=='Enter'){
-      // A new ordinary keystroke establishes that the composition gesture ended.
-      if(!['Control','Shift','Alt','Meta'].includes(e.key)&&!composing&&!e.isComposing&&e.keyCode!==229)ended=false;
+      const freshControl=e.key==='Control'&&!e.repeat&&!enterDown;
+      const ordinary=!['Control','Shift','Alt','Meta'].includes(e.key);
+      if((freshControl||ordinary)&&!composing&&!e.isComposing&&e.keyCode!==229)ended=false;
       return;
     }
-    if(composing||e.isComposing||e.keyCode===229){enterDown=true;return;}
+    const held=enterDown;enterDown=true;
+    if(composing||e.isComposing||e.keyCode===229)return;
     if(!e.ctrlKey||e.shiftKey||e.altKey||e.metaKey){ended=false;return;}
     if(ended){e.preventDefault();ended=false;enterDown=true;return;}
     e.preventDefault();
-    if(e.repeat||enterDown)return;
-    enterDown=true;
+    if(e.repeat||held)return;
     if(!input.disabled)submit();
   });
 }
