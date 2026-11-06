@@ -194,3 +194,65 @@ test('historically completed requests and runs are not reinterpreted when an old
  const native=f.runtimes.get(r.agentId);Object.assign(native.turns[0],{state:'failed',errorCode:'server_overloaded',error:'old error'});
  await s.tick();await s.tick();assert.equal(JSON.stringify(q),before);assert.equal(JSON.stringify(r),runBefore);assert.equal(f.sent.length,1);assert.equal(f.notifications.length,1);
 });
+async function steer(f,r,text='Supplement',requestId=randomUUID()){
+ const a=f.service.agent(r.agentId);assert.equal(a.canSteer,true);
+ return f.service.send(a.id,{requestId,instruction:text,steerTarget:structuredClone(a.steerTarget)});
+}
+async function acceptSteer(f,r,{otherTurn=false,explicitTurn=true}={}){
+ const n=f.runtimes.get(r.agentId),text=f.sent.at(-1).text;n.cursor+=10;
+ const turnId=otherTurn?randomUUID():r.steerTarget.turnId;
+ n.inputs.push({id:randomUUID(),turnId,hash:inputHash(text),offset:n.cursor,text,explicitTurn});
+ if(otherTurn)n.turns.push({id:turnId,state:'running',output:''});
+ await f.service.tick();
+}
+test('multiple busy supplements replace the current run on one work/ticket, invalidate old finish, notify once',async t=>{
+ const f=await fixture(t),s=f.service,root=await s.send(f.agents[0].id,{requestId:randomUUID(),instruction:'Original'});await f.submit(root);
+ await f.finish(root);const q=s.flow.root(root.humanRequestId);assert.equal(q.status,'finalizing');
+ const second=await steer(f,root);assert.equal(f.sent.length,2);assert.equal(second.state,'awaiting_input');assert.equal(second.humanRequestId,root.humanRequestId);assert.equal(second.workId,root.workId);assert.equal(q.works.length,1);assert.equal(s.data.requests.length,1);assert.equal(q.ticket.state,'available');assert.equal(root.state,'superseded');assert.equal(q.status,'active');
+ await assert.rejects(f.finish(root),/現在の作業run/);await assert.rejects(f.finish(second),/受付をまだ/);
+ await acceptSteer(f,second);assert.equal(second.acceptance,'accepted');assert.equal(second.turnId,root.turnId);
+ const third=await steer(f,second,'Second supplement');await acceptSteer(f,third);assert.equal(third.state,'running');await assert.rejects(f.finish(second),/現在の作業run/);
+ await f.finish(third);await f.complete(third);assert.equal(f.notifications.length,1);assert.equal(q.finalRunId,third.id);await s.tick();await s.tick();assert.equal(f.notifications.length,1);assert.equal(s.data.requests.length,1);
+});
+test('steering receipt is idempotent across restart, uncertain delivery never resends, wrong turn never completes',async t=>{
+ const f=await fixture(t),root=await f.service.send(f.agents[0].id,{requestId:randomUUID(),instruction:'Original'});await f.submit(root);
+ const input={requestId:randomUUID(),instruction:'More',steerTarget:structuredClone(f.service.agent(root.agentId).steerTarget)};f.lose(true);
+ const r=await f.service.send(root.agentId,input);assert.equal(r.state,'send_unknown');const count=f.sent.length;await f.service.tick();assert.equal(f.service.agent(root.agentId).canSteer,false);
+ await f.restart();await f.service.tick();assert.equal((await f.service.send(root.agentId,input)).id,r.id);assert.equal(f.sent.length,count);
+ await assert.rejects(f.service.send(root.agentId,{...input,instruction:'changed'}),/requestId/);
+ const restarted=f.service.flow.run(r.id);await acceptSteer(f,restarted,{otherTurn:true});assert.equal(restarted.acceptance,'pending');await assert.rejects(f.finish(restarted),/受付をまだ/);assert.equal(f.notifications.length,0);assert.equal(f.sent.length,count);
+});
+test('unsafe steering targets reject without dispatch; cancellation never turns steering into queue',async t=>{
+ const f=await fixture(t),s=f.service,root=await s.send(f.agents[0].id,{requestId:randomUUID(),instruction:'Original'});await f.submit(root);
+ const target=structuredClone(s.agent(root.agentId).steerTarget),input={requestId:randomUUID(),instruction:'More',steerTarget:target};
+ await assert.rejects(s.send(root.agentId,{...input,steerTarget:{...target,turnId:'wrong'}}),/補足対象/);f.offline(true);await assert.rejects(s.send(root.agentId,input),/補足対象/);f.offline(false);await s.tick();
+ s.agent(root.agentId).provider='claude';await assert.rejects(s.send(root.agentId,input),/補足対象/);s.agent(root.agentId).provider='codex';await s.tick();
+ const q=s.flow.root(root.humanRequestId);await s.flow.cancel({humanRequestId:q.id,revision:q.revision});await assert.rejects(s.send(root.agentId,input),/補足対象/);assert.equal(f.sent.length,1);assert.equal(f.notifications.length,0);
+});
+test('unattributed supplement or external same-turn input prevents finish and further steering',async t=>{
+ const f=await fixture(t),root=await f.service.send(f.agents[0].id,{requestId:randomUUID(),instruction:'Original'});await f.submit(root);const r=await steer(f,root);await acceptSteer(f,r,{explicitTurn:false});assert.equal(r.acceptance,'pending');assert.equal(f.service.agent(r.agentId).canSteer,false);assert.equal(f.notifications.length,0);
+});
+test('steering preserves original replay, attachments and child graph; later native stranger blocks finish',async t=>{
+ const f=await fixture(t),s=f.service;
+ s.attachments={select:async ids=>ids.map(id=>({id,name:id})),content:async()=>Buffer.from('test')};s.transferAttachment=async(a,record)=>({id:record.id,path:'/test/'+record.id});
+ const initial={requestId:randomUUID(),instruction:'Original',attachments:['first']};const root=await s.send(f.agents[0].id,initial);await f.submit(root);const child=await f.delegate(root,f.agents[2]);
+ const target=structuredClone(s.agent(root.agentId).steerTarget),r=await s.send(root.agentId,{requestId:randomUUID(),instruction:'Supplement',steerTarget:target,attachments:['second']});await acceptSteer(f,r);assert.equal((await s.send(root.agentId,initial)).id,root.id);assert.equal(s.flow.root(root.humanRequestId).works.length,2);assert.equal(s.flow.work(s.flow.root(root.humanRequestId),child.id).currentRunId,child.currentRunId);
+ const next=await f.delegate(r,f.agents[3]);const nextRun=s.flow.run(next.currentRunId);assert.deepEqual(nextRun.attachments.map(a=>a.id),['first','second']);
+ const n=f.runtimes.get(r.agentId);n.cursor+=10;n.inputs.push({id:'stranger',turnId:r.turnId,offset:n.cursor,hash:inputHash('foreign'),explicitTurn:true});await s.tick();assert.equal(r.state,'unknown');assert.equal(s.agent(r.agentId).canSteer,false);await assert.rejects(f.finish(r));assert.equal(f.notifications.length,0);
+});
+test('target ending during attachment transfer does not send or fall back to a new idle turn',async t=>{
+ const f=await fixture(t),s=f.service,root=await s.send(f.agents[0].id,{requestId:randomUUID(),instruction:'Original'});await f.submit(root);
+ s.attachments={select:async ids=>ids.map(id=>({id})),content:async()=>Buffer.from('test')};s.transferAttachment=async()=>{f.runtimes.get(root.agentId).turns.at(-1).state='completed';return {path:'/test/file'};};
+ const r=await s.send(root.agentId,{requestId:randomUUID(),instruction:'More',steerTarget:s.agent(root.agentId).steerTarget,attachments:['a']});assert.equal(r.state,'interrupted');assert.equal(f.sent.length,1);await s.tick();assert.equal(f.sent.length,1);assert.equal(f.notifications.length,0);
+});
+test('permission, setup/unknown transport, incomplete native tail and pending input disable steering',async t=>{
+ const f=await fixture(t),s=f.service,root=await s.send(f.agents[0].id,{requestId:randomUUID(),instruction:'Original'});assert.equal(s.agent(root.agentId).canSteer,false);await f.submit(root);const target=structuredClone(s.agent(root.agentId).steerTarget),original=s.localRun;
+ for(const status of [{alive:true,cliState:'busy',agentSessionId:'session-'+root.agentId,permissionRequest:{id:'permission'}},{alive:true,cliState:'unknown',agentSessionId:'session-'+root.agentId},{alive:true,cliState:'busy',agentSessionId:null},{alive:false,cliState:'busy',agentSessionId:'session-'+root.agentId}]){
+  s.localRun=(cmd,args)=>args[1]==='status'?Promise.resolve(JSON.stringify(status)):original(cmd,args);
+  await assert.rejects(s.send(root.agentId,{requestId:randomUUID(),instruction:'More',steerTarget:target}),/補足対象/);assert.equal(f.sent.length,1);
+ }
+ s.localRun=original;f.runtimes.get(root.agentId).incompleteTail=true;await assert.rejects(s.send(root.agentId,{requestId:randomUUID(),instruction:'More',steerTarget:target}),/補足対象/);assert.equal(f.sent.length,1);
+});
+test('accepted steering survives restart and only its final run consumes the original ticket',async t=>{
+ const f=await fixture(t),root=await f.service.send(f.agents[0].id,{requestId:randomUUID(),instruction:'Original'});await f.submit(root);await assert.rejects(f.service.send(root.agentId,{requestId:randomUUID(),instruction:'More',steerTarget:{runId:root.id}}),{status:400});const r=await steer(f,root);await acceptSteer(f,r);const count=f.sent.length;await f.restart();await f.service.tick();const restored=f.service.flow.run(r.id);assert.equal(restored.acceptance,'accepted');assert.equal(restored.state,'running');await f.finish(restored);await f.complete(restored);await f.service.tick();assert.equal(f.sent.length,count);assert.equal(f.notifications.length,1);assert.equal(f.service.flow.root(root.humanRequestId).finalRunId,r.id);
+});

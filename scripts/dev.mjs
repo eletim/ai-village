@@ -156,7 +156,7 @@ const handleRequest = async (req, res) => {
         try { parsed = JSON.parse(body); } catch { return json(res, 400, { error: 'Invalid JSON' }); }
         const request = parsed?.message ?? parsed?.request;
         if (typeof request !== 'string' || (!request.trim() && !parsed.attachments?.length) || request.length > 2000) return json(res, 400, { error: '文章（2000文字以内）または画像を添付してください。' });
-        await secretariat.send(request.trim(), parsed.attachments, {agentId:parsed.agentId,requestId:parsed.requestId,travelContexts:parsed.travelContexts});
+        await secretariat.send(request.trim(), parsed.attachments, {agentId:parsed.agentId,requestId:parsed.requestId,travelContexts:parsed.travelContexts,steerTarget:parsed.steerTarget});
         return json(res, 202, await snapshot());
       }
       return json(res, 404, { error: 'Not found' });

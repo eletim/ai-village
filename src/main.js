@@ -95,8 +95,8 @@ function renderStage() {
   $('#chapter-text').textContent = online ? phaseLabel : '接続を確認してください';
   $('#speech').hidden = !!live.secretary?.messages?.some(message=>message.role==='user'||message.role==='assistant');
   $('#speech').textContent = !online ? 'コアPCとの接続を確認してください。会話と資料は保存されています。' : '村長、おかえりなさい。相談や質問から始めましょう。仕事を進めると決まったら、工房へ伝えます。';
-  $('#send').disabled = submitting || !online || live.secretary?.status==='thinking';
-  $('#send').textContent = live.secretary?.status==='thinking' ? 'ミクが考えています…' : 'ミクに話す ↗';
+  $('#send').disabled = submitting || !online || (live.secretary?.status==='thinking'&&!live.secretary?.steering);
+  $('#send').textContent = live.secretary?.steering ? '実行中に補足' : live.secretary?.status==='thinking' ? 'ミクが考えています…' : 'ミクに話す ↗';
   renderConversation(live.secretary || {messages:[]}, openDocument, live.jobs || []);
   if(online)updateUnread(live.secretary?.messages || []);
   $('#room-secretary small').textContent=`ミク ／ ${!online?'接続未確認':live.secretary?.status==='thinking'?'応答中':'待機中'}`;
@@ -132,14 +132,15 @@ function saveOfficePending(){try{if(officePending)sessionStorage.setItem('ai-vil
 const officeAutogrow=autogrowInput($('#request'));
 $('#request-form').addEventListener('submit',async e=>{
   e.preventDefault();const request=$('#request').value.trim();if(!request && !attachments.count && !officePending?.attachments?.length){$('#request').focus();return}
-  if(submitting || live.secretary?.status==='thinking')return; submitting=true; $('#send').disabled=true; attachments.lock(true);officeTravel.lock(true); $('#request').disabled=true;
+  if(submitting || (live.secretary?.status==='thinking'&&!live.secretary?.steering))return; submitting=true; $('#send').disabled=true; attachments.lock(true);officeTravel.lock(true); $('#request').disabled=true;
+  const steering=live.secretary?.capabilities?.steering&&live.secretary?.steering?structuredClone(live.secretary.steering):null;
   try {
     if(officeTravel.value.length&&!live.secretary?.capabilities?.travelContexts)throw Error('出張先の送信にはサーバー更新の反映が必要です。下書きは保持しています。');
     const ids=officePending&&!attachments.count?officePending.attachments:await attachments.upload();
     if(ids?.length&&!live.secretary?.capabilities?.attachments)throw Error('添付にはサーバー更新の反映が必要です。');
     conversationLatest();
     if(officePending&&(officePending.message!==request||!sameTravelContexts(officePending.travelContexts,officeTravel.value)||JSON.stringify(officePending.attachments)!==JSON.stringify(ids)))throw Error('前の依頼の受付が不明です。同じ内容で受付を確認してください。');
-    officePending ||= {message:request,attachments:ids,travelContexts:officeTravel.value,requestId:'office-'+Array.from(crypto.getRandomValues(new Uint8Array(16)),b=>b.toString(16).padStart(2,'0')).join('')};saveOfficePending();
+    officePending ||= {...(steering||{}),message:request,attachments:ids,travelContexts:officeTravel.value,requestId:'office-'+Array.from(crypto.getRandomValues(new Uint8Array(16)),b=>b.toString(16).padStart(2,'0')).join('')};saveOfficePending();
     const response=await fetch('/api/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(officePending)});
     const body=await response.json(); if(!response.ok){if(response.status<500){officePending=null;saveOfficePending();}throw new Error(body.error);}
     officePending=null;saveOfficePending();
