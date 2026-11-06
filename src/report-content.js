@@ -1,3 +1,4 @@
+import {displayPreferences} from './display-preferences.js';
 import {Marked} from './vendor/marked.mjs';
 export const escapeReport=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export function reportImageURL(ref){const m=/^village-image:([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/.exec(ref);return m?'/api/images/'+m[1]:null;}
@@ -35,6 +36,7 @@ const markdown=new Marked({gfm:true,breaks:true,async:false,renderer:{
 }});
 export function reportHTML(value){
  const text=String(value??'');
+ if(displayPreferences().viewer==='plain')return '<div class="plain-report"><pre>'+escapeReport(text)+'</pre></div>';
  try{return '<div class="markdown-report">'+markdown.parse(text)+'</div>';}
  catch{return '<div class="markdown-report"><pre>'+escapeReport(text)+'</pre></div>';}
 }

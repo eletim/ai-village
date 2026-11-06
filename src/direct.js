@@ -1,3 +1,4 @@
+import {initDisplaySettings} from './display-settings.js';
 import {reportHTML} from './report-content.js';
 import {updateReportHTML} from './report-visuals.js';
 import {autogrowInput} from './autogrow-input.js';
@@ -249,8 +250,10 @@ function openSecretarySetup(){
  $('#settings-dialog').showModal();$('#workshop-form').elements.baseUrl.focus();
 }
 $('#settings-dialog').addEventListener('close',()=>{if(secretarySetup){$('#workshop-form').reset();$('#workshop-title').textContent='工房を登録';connectionFields();}secretarySetup=false;$('#secretary-setup-help').hidden=true;});
-function openManagement(scope=selectedPlace){manageScope=scope;$('#manage-dialog').showModal();}
-$('#manage').onclick=()=>openManagement();
+function openManagement(scope=selectedPlace){manageScope=scope;openSettings();}
+const openSettings=initDisplaySettings($('#manage'),$('#manage-dialog'));
+$('#manage').addEventListener('click',()=>{manageScope=selectedPlace;});
+window.addEventListener('display-change',()=>{if(state)render();});
 $('#manual-add').onclick=()=>{$('#manage-dialog').close();openLauncher(manageScope);};
 $('#start-secretary').onclick=()=>{manageScope=selectedPlace;openLauncher('mayor');};
 function openMetadata(id){
@@ -300,7 +303,7 @@ function places(){const w=state?.workshops.find(w=>w.id===$('#agent-form [name=w
 function render(){
  $('#workshops').innerHTML=state.workshops.map(w=>`<div class="workshop"><strong>${esc(w.name)}</strong><div class="meta">${w.connectionType==='local'?'ローカル（村長PC）':'SSH · '+esc(w.sshHost)}</div><button class="secondary" data-edit="${esc(w.id)}">編集</button></div>`).join('')||'<p>工房を登録してください。</p>';
  options($('#agent-form [name=workshopId]'),state.workshops);if(!$('#agent-dialog').open)projectOptions($('#agent-form [name=projectId]'));places();
- $('#notifications').textContent=`Notify: ${state.notification.latest?.status||(state.notification.destinationConfigured?'設定済み':'未設定')}`;
+ $('#notifications').textContent=`Notify: ${state.notification.enabled===false?'OFF':state.notification.latest?.status||(state.notification.destinationConfigured?'設定済み':'未設定')}`;
  $('#notifications').title='sentは通知サーバーの受理。端末への到着は未確認。';renderBoard();
 }
 async function refresh(force=false){

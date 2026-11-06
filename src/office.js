@@ -1,3 +1,4 @@
+import {displayPreferences} from './display-preferences.js';
 import {reportHTML} from './report-content.js';
 import {updateReportHTML} from './report-visuals.js';
 import { isOnDesk, hasReport } from './job-state.js';
@@ -11,7 +12,7 @@ export function renderOffice(state, { approve, discover, cancel }) {
   document.querySelector('#desk-reports').hidden = !pending;
   document.querySelector('#inbox-count').textContent = pending ? `確認が必要 ${pending}件` : '確認が必要な書類はありません';
   document.querySelector('#desk-report-count').textContent = pending ? `${pending}件の書類を扱っています` : '机の上に確認が必要な書類はありません';
-  const signature = JSON.stringify(reports);
+  const signature = JSON.stringify([reports,displayPreferences().viewer]);
   if (signature === rendered) return;
   rendered = signature;
   const inbox = document.querySelector('#report-inbox');

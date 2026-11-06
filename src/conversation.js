@@ -1,3 +1,4 @@
+import {displayPreferences} from './display-preferences.js';
 import {reportHTML} from './report-content.js';
 import {updateReportHTML} from './report-visuals.js';
 import {chatScroll} from './chat-scroll.js';
@@ -10,7 +11,7 @@ let rendered,scroll;
 export function conversationLatest(){scroll?.latest();}
 export function renderConversation(secretary, openDocument, jobs = []) {
   const deskIds = jobs.filter(isOnDesk).map(job=>job.id);
-  const messages = secretary.messages || [], signature = JSON.stringify([messages,deskIds]);
+  const messages = secretary.messages || [], signature = JSON.stringify([messages,deskIds,displayPreferences().viewer]);
   if (signature === rendered) return;
   rendered = signature;
   const log = document.querySelector('#conversation-log');
