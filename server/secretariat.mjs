@@ -1,3 +1,4 @@
+import {visualReportContext} from './visual-report-context.mjs';
 import {hasReport} from '../src/job-state.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { MEMO_LIMIT, RESULT_LIMIT, validMemo, recoveryReason, rotationReason, observeContext, pendingBatch } from './secretary-continuity.mjs';
@@ -174,7 +175,7 @@ export class Secretariat {
     if(this.session)args.push('resume',this.session.id);
     for(const image of turn.attachments||[])args.push('--image',await this.images.path(image.id));
     args.push('-o',file,'-');
-    const output=await this.runCodex(process.env.VILLAGE_CODEX_BIN||'codex',args,{input:turn.content,timeout:300000});
+    const output=await this.runCodex(process.env.VILLAGE_CODEX_BIN||'codex',args,{input:turn.content+visualReportContext('node '+JSON.stringify(resolve('scripts/village.mjs')),this.direct?.villageUrl||'http://127.0.0.1:5173'),timeout:300000});
     const events=output.split('\n').flatMap(line=>{try{return [JSON.parse(line)];}catch{return [];}});
     if(!events.some(e=>e.type==='turn.completed')||events.some(e=>e.type==='turn.failed'))throw new Error('Runtime completion not observed');
     const id=events.find(e=>e.type==='thread.started')?.thread_id;
