@@ -1,3 +1,4 @@
+import {TravelRegistry} from '../server/travel-registry.mjs';
 import {AttachmentStore,MAX_FILE_BYTES} from '../server/attachments.mjs';
 import { DirectAgents } from '../server/direct.mjs';
 import { PullRequests } from '../server/pull-requests.mjs';
@@ -27,6 +28,7 @@ const bridge = new WorkshopBridge({ library });
 await bridge.init();
 const todos = new TodoStore(bridge.dir);
 await todos.init();
+const travelRegistry=new TravelRegistry(bridge.dir);await travelRegistry.init();
 const notifier = new VillageNotifier({ dir: bridge.dir });
 await notifier.init();
 const attachments=new AttachmentStore(bridge.dir);await attachments.init();
@@ -35,7 +37,7 @@ await direct.init();
 const development = new Development(bridge, library, {port});
 const images = new ImageStore(bridge.dir);
 await images.init();
-const operations = new VillageOperations(bridge, notifier, {web:new WebReader(),development,images,todos,direct,prs:new PullRequests(bridge.dir,library)});
+const operations = new VillageOperations(bridge, notifier, {web:new WebReader(),development,images,todos,direct,travelRegistry,prs:new PullRequests(bridge.dir,library)});
 const secretariat = new Secretariat(bridge, library, operations, notifier, images);
 await secretariat.init();
 secretariat.direct=direct;
@@ -77,6 +79,14 @@ const handleRequest = async (req, res) => {
         const agent=pathname.match(/^\/api\/direct\/agents\/([0-9a-f-]{36})\/(runs|stop|view)$/);
         if(req.method==='POST' && agent)return json(res,200,await (agent[2]==='runs'?direct.send(agent[1],input):agent[2]==='view'?direct.viewAgent(agent[1],input):direct.stop(agent[1])));
         return json(res,404,{error:'Not found'});
+      }
+      if(pathname==='/api/travel-registry'){
+        if(req.method==='GET')return json(res,200,travelRegistry.snapshot());
+        if(req.method!=='POST')return json(res,405,{error:'Method not allowed'});
+        if(!req.headers['content-type']?.startsWith('application/json'))return json(res,415,{error:'JSON required'});
+        let body='';for await(const chunk of req){body+=chunk;if(body.length>16000)return json(res,413,{error:'Request too large'});}
+        let input;try{input=JSON.parse(body);}catch{return json(res,400,{error:'Invalid JSON'});}
+        return json(res,200,await travelRegistry.update(input));
       }
       if (pathname === '/api/todos') {
         if(req.method==='GET')return json(res,200,todos.snapshot());
