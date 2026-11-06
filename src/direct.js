@@ -1,3 +1,5 @@
+import {reportHTML} from './report-content.js';
+import {updateReportHTML} from './report-visuals.js';
 import {linkedText} from './linked-text.js';
 import {attachmentComposer,attachmentHTML} from './attachments.js';
 import {chatScroll} from './chat-scroll.js';
@@ -47,7 +49,7 @@ function filtered(){return live().filter(a=>inScope(a,selectedPlace));}
 function projectOptions(select){options(select,[{id:'',name:'未所属'},...orderedProjects(state.projects||[])]);}
 function capturePositions(){for(const [id,card] of cards)if(!card.hidden)scrolls.get(id)?.capture();}
 function timeHTML(value){if(!value)return '';const date=new Date(value);return Number.isNaN(date.getTime())?'':`<time datetime="${esc(value)}" title="${esc(date.toLocaleString())}">${esc(date.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}))}</time>`;}
-function bubble(side,text,at,extra=''){return `<div class="message ${side}">${text?`<pre>${linkedText(text)}</pre>`:''}${extra}${timeHTML(at)}</div>`;}
+function bubble(side,text,at,extra=''){return `<div class="message ${side}">${text?(side==='assistant'?reportHTML(text):`<pre>${linkedText(text)}</pre>`):''}${extra}${timeHTML(at)}</div>`;}
 function recoveryHTML(r){
  const q=state.requests?.find(q=>q.id===r.humanRequestId),w=q?.works.find(w=>w.currentRunId===r.id);
  if(!q||q.status!=='active'||!w||!['failed','interrupted'].includes(r.state))return '';
@@ -62,7 +64,7 @@ function renderHistory(){
  options($('#history-agent'),state.agents.filter(a=>a.state==='terminated').map(a=>({id:a.id,name:placeName(a)+' / '+a.name+(state.reviews?.[a.id]?.attention?' · 依頼完了・要確認':unread.get(a.id)?' · 更新あり':'')})));
  const a=state.agents.find(a=>a.id===$('#history-agent').value);
  const html=a?runHTML(a)||'<p>会話履歴はありません。</p>':'<p>終了したAgentはありません。</p>';
- if($('#history-content').innerHTML!==html)$('#history-content').innerHTML=html;
+ updateReportHTML($('#history-content'),html);
 }
 function renderBoard(){
  capturePositions();
@@ -107,7 +109,7 @@ function renderBoard(){
   card.querySelector('h2').title=`${a.name} · ${a.cwd||''}`;
   card.querySelector('.panel-info').innerHTML=`<span class="badge">${esc(labels[visualState(a,agentEntries(state,a))]||a.state)}</span><span class="location-name">${esc(placeName(a))}</span>${a.terminalUrl?`<a href="${esc(a.terminalUrl)}" target="_blank" rel="noopener" title="PurpleMuxでタブを開く">PurpleMux ↗</a>`:''}`;
   card.querySelector('.current-action').textContent=[['busy','waiting_input'].includes(a.state)?a.currentAction:null,a.error,a.canSend?null:a.sendReason,pending.has(a.id)?'送信結果を照合中（自動再送なし）':null].filter(Boolean).join(' · ');
-  const area=card.querySelector('.runs'),html=runHTML(a);if(area.innerHTML!==html)area.innerHTML=html;
+  const area=card.querySelector('.runs'),html=runHTML(a);updateReportHTML(area,html);
   const receipt=pending.get(a.id),known=receipt&&state.runs.find(r=>r.requestId===receipt.requestId);
   if(known){pending.delete(a.id);fileEditors.get(a.id).clear();scrolls.get(a.id).latest();if(!['unknown','send_unknown'].includes(known.state)&&sameTravelContexts(travelDrafts.get(a.id),receipt.travelContexts))travelEditors.get(a.id).set([]);if(!['unknown','send_unknown'].includes(known.state)&&card.querySelector('textarea').value===receipt.instruction){card.querySelector('textarea').value='';drafts.delete(a.id);}storeDrafts();}
   const send=card.querySelector('[data-send] button:not([data-reconcile])');

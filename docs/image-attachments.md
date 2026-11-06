@@ -73,3 +73,7 @@ POST /api/attachments?name=NAME はraw bodyのアップロード。GET /api/atta
 
 
 Projectの表示順は固有名ではなく、実行時登録の `pinned: true` を優先する。未設定は非pin。`projects list` でIDとrevisionを取得し、`projects pin PROJECT_ID REVISION true`（解除はfalse）で更新する。名前変更は従来の `projects rename` を利用でき、pinを維持する。HTTPは `PUT /api/direct/projects/:id` に `{revision,pinned:true}`。実登録の変更・自動移行は含めない。
+
+## 2026-11-06 返信本文の図・画像
+
+assistant本文のMermaidと保存画像参照、アップロードCLIを追加した。画像報告の `/api/images` とImageStoreにはバイト・画素上限を設けない。詳細・配信ビルド・安全な描画範囲・既存PRとの統合範囲は[visual-reports.md](visual-reports.md)を参照。

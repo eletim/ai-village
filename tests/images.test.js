@@ -8,7 +8,7 @@ import { ImageStore } from '../server/images.mjs';
 import { Secretariat } from '../server/secretariat.mjs';
 const fixture=()=>sharp({create:{width:32,height:20,channels:3,background:'#195ac1'}}).png().toBuffer();
 async function setup(){const dir=await mkdtemp(join(tmpdir(),'village-images-'));const images=new ImageStore(dir);await images.init();return {dir,images};}
-test('decoded images persist with safe IDs; invalid images and excessive attachment counts fail',async()=>{
+test('decoded images persist with safe IDs; invalid images and excessive counts fail without byte or pixel caps',async()=>{
   const {dir,images}=await setup();const image=await images.save(await fixture(),'<img>.png');
   const restored=new ImageStore(dir);assert.equal((await restored.get(image.id)).name,'<img>.png');assert.equal((await sharp(await restored.content(image.id)).metadata()).width,32);
   for(const bytes of [Buffer.from('<svg></svg>'),Buffer.from('not an image'),(await fixture()).subarray(0,40)])await assert.rejects(images.save(bytes));
