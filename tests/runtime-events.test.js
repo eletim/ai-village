@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {correlate,inputHash,runtimeScript} from '../server/runtime-events.mjs';
-import {mkdtemp,mkdir,writeFile,rm} from 'node:fs/promises';
+import {correlate,inputHash,runtimeScript,terminalBoundary} from '../server/runtime-events.mjs';
+import {mkdtemp,mkdir,writeFile,appendFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {execFileSync} from 'node:child_process';
@@ -44,4 +44,16 @@ test('all visible Codex assistant messages are retained without using their cont
  const dir=await mkdtemp(join(tmpdir(),'native-prose-'));t.after(()=>rm(dir,{recursive:true,force:true}));await mkdir(join(dir,'sessions'));const sid='11111111-2222-3333-4444-555555555555';
  const rows=[{type:'event_msg',payload:{type:'task_started',turn_id:'t'}},...['commentary','final_answer'].map(phase=>({type:'response_item',payload:{role:'assistant',phase,content:[{type:'output_text',text:phase+' free prose'}]}})),{type:'event_msg',payload:{type:'task_complete',turn_id:'t',last_agent_message:'final_answer free prose'}}];
  await writeFile(join(dir,'sessions',sid+'.jsonl'),rows.map(JSON.stringify).join('\n')+'\n');const s=JSON.parse(execFileSync('python3',['-c',runtimeScript,'codex',sid],{env:{...process.env,CODEX_HOME:dir}}));assert.equal(s.turns[0].state,'completed');assert.equal(s.turns[0].output,'commentary free prose\n\nfinal_answer free prose');assert.equal(s.turns[0].finalOutput,'final_answer free prose');
+});
+
+test('Codex error-bearing completion retains structured reason and cannot become success on duplicate terminal events',async t=>{
+ const dir=await mkdtemp(join(tmpdir(),'native-error-'));t.after(()=>rm(dir,{recursive:true,force:true}));await mkdir(join(dir,'sessions'));
+ const sid='11111111-2222-3333-4444-555555555555',error={message:'Selected model is at capacity. Please try a different model.',codex_error_info:'server_overloaded'};
+ const rows=[{type:'event_msg',payload:{type:'task_complete',turn_id:'missing',last_agent_message:'unbound'}},{type:'event_msg',payload:{type:'task_started',turn_id:'t'}},{type:'event_msg',payload:{type:'user_message',turn_id:'t',message:'hello'}},{type:'event_msg',payload:{type:'task_complete',turn_id:'t',error,last_agent_message:null}},{type:'event_msg',payload:{type:'task_complete',turn_id:'t',last_agent_message:null}}];
+ await writeFile(join(dir,'sessions',sid+'.jsonl'),rows.map(JSON.stringify).join('\n')+'\n');
+ const snapshot=JSON.parse(execFileSync('python3',['-c',runtimeScript,'codex',sid],{env:{...process.env,CODEX_HOME:dir}}));
+ assert.equal(snapshot.available,true);const r=correlate({dispatchConfirmed:true,baselineRuntime:{cursor:0,sessionId:sid},inputHash:inputHash('hello')},snapshot);
+ assert.equal(r.state,'failed');assert.equal(r.errorCode,'server_overloaded');assert.equal(r.error,error.message);assert.deepEqual(r.runtimeError,error);assert(r.completionOffset>snapshot.inputs[0].offset);
+ await appendFile(join(dir,'sessions',sid+'.jsonl'),'{"type":');
+ const partial=JSON.parse(execFileSync('python3',['-c',runtimeScript,'codex',sid],{env:{...process.env,CODEX_HOME:dir}}));assert.equal(partial.incompleteTail,true);assert.equal(terminalBoundary(partial,{alive:true,agentSessionId:sid}),false);
 });

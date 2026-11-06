@@ -233,3 +233,16 @@ test('Project pin uses revision updates, persists across rename and keeps create
  assert.equal(edits[0].status,'fulfilled');assert.equal(edits[1].reason.status,409);
  assert.equal(restored.project(p.id).pinned,false);assert.equal(f.sends(),0);
 });
+
+test('stale busy releases only matching native terminal without later input or new running turn',async t=>{
+ const f=await fixture(t),remote=f.service.remote;
+ f.service.remote=async args=>args[2]==='status'?JSON.stringify({alive:true,cliState:'busy',agentSessionId:'session'}):remote(args);
+ // No terminal evidence: busy remains busy.
+ await f.service.tick();assert.equal(f.a.canSend,false);
+ f.data.cursor=10;f.data.inputs=[{id:'input',turnId:'old',offset:1}];f.data.turns=[{id:'old',state:'failed',completionOffset:10,error:'capacity'}];
+ await f.service.tick();assert.equal(f.a.canSend,true);assert.equal(f.a.state,'idle');
+ f.data.inputs.push({id:'new-input',turnId:'old',offset:11});await f.service.tick();assert.equal(f.a.canSend,false);assert.equal(f.a.state,'unknown');
+ f.data.turns.push({id:'new',state:'running',offset:12});await f.service.tick();assert.equal(f.a.canSend,false);assert.equal(f.a.state,'busy');
+ f.data.turns[0].state='completed';await f.service.tick();assert.equal(f.a.state,'busy');
+ f.data.sessionId='other-session';f.data.turns=[{id:'other',state:'failed',completionOffset:20}];await f.service.tick();assert.equal(f.a.canSend,false);
+});
