@@ -11,6 +11,7 @@ export function chatScroll(area,{saved,onSave=()=>{}}={}){
  area.addEventListener('scroll',()=>{if(!visible())return;if(width!==area.clientWidth||height!==area.clientHeight){schedule();return;}const position=area.scrollTop;if(expected!==null&&Math.abs(position-expected)<2){expected=null;return;}expected=null;follow=area.scrollHeight-position-area.clientHeight<64;top=position;if(follow)newContent=false;button.hidden=follow;persist();});
  const content=new MutationObserver(()=>{newContent=true;schedule();});content.observe(area,{childList:true,subtree:true,characterData:true});
  const resize=new ResizeObserver(schedule);resize.observe(area);area.addEventListener('load',schedule,true);
+ window.addEventListener('display-change',update);
  button.onclick=()=>{follow=true;newContent=false;schedule();};
- schedule();return {changed(){newContent=true;schedule();},restore:schedule,latest(){follow=true;newContent=false;schedule();},capture(){if(visible()){top=area.scrollTop;persist();}},destroy(){content.disconnect();resize.disconnect();cancelAnimationFrame(frame);button.remove();}};
+ schedule();return {changed(){newContent=true;schedule();},restore:schedule,latest(){follow=true;newContent=false;schedule();},capture(){if(visible()){top=area.scrollTop;persist();}},destroy(){window.removeEventListener('display-change',update);content.disconnect();resize.disconnect();cancelAnimationFrame(frame);button.remove();}};
 }

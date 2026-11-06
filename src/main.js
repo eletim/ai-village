@@ -1,3 +1,4 @@
+import {initDisplaySettings} from './display-settings.js';
 import {autogrowInput} from './autogrow-input.js';
 import {conversationLatest} from './conversation.js';
 import {travelComposer} from './travel-composer.js';
@@ -191,3 +192,6 @@ function cancelJob(id){return officeAction(`/api/jobs/${encodeURIComponent(id)}/
 function approveJob(id){return officeAction(`/api/jobs/${encodeURIComponent(id)}/approve`);}
 function discoverArtifacts(id){return officeAction(`/api/jobs/${encodeURIComponent(id)}/artifacts`,'GET');}
 initTheme();initTodos();navigate(location.pathname,false);renderStage(); poll(); requestAnimationFrame(frame);
+
+initDisplaySettings(document.querySelector('#display-settings'));
+window.addEventListener('display-change',()=>renderStage());

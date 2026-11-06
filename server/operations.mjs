@@ -49,6 +49,7 @@ export class VillageOperations {
       { name:'jobs artifacts', usage:'jobs artifacts JOB_ID', run:async args=>{const job=bridge.jobById(this.id(args));await bridge.update({artifacts:await bridge.listArtifacts(job)},job);return this.describe(job);} },
       { name:'help', usage:'help', run:args=>{if(args.length)throw new Error('usage: help');return this.commands.map(({name,usage,mutation})=>({name,usage,mutation:!!mutation}));} },
       { name:'notifications status', usage:'notifications status', run:args=>{if(args.length)throw new Error('usage: notifications status');return notifier?.status() || {enabled:false,unavailable:true};} },
+      { name:'notifications configure',usage:'notifications configure true|false',mutation:true,run:args=>{if(args.length!==1||!['true','false'].includes(args[0]))throw Error('usage: notifications configure true|false');if(!notifier)throw Error('通知処理がありません。');return notifier.configure(args[0]==='true');} },
       { name:'notifications test', usage:'notifications test', mutation:true, run:async args=>{if(args.length)throw new Error('usage: notifications test');if(!notifier)throw new Error('通知処理がありません。');const result=await notifier.test();return {...result,ok:result.delivered};} },
       { name:'web read', usage:'web read URL', run:async args=>{if(args.length!==1)throw new Error('usage: web read URL');return web.read(args[0]);} },
       { name:'development status', usage:'development status', run:()=>development.profile() },

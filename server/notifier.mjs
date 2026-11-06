@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { appendFile, mkdir, readFile } from 'node:fs/promises';
+import { appendFile, mkdir, readFile, writeFile, rename } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
@@ -21,6 +21,7 @@ export class VillageNotifier {
     this.seen = new Set(); this.queue = Promise.resolve(); this.latest = null; this.journalAvailable = true;
   }
   async init() {
+    try {const settings=JSON.parse(await readFile(resolve(this.dir,'notification-settings.json'),'utf8'));if(typeof settings.enabled!=='boolean')throw Error('Invalid notification settings');this.enabled=settings.enabled;}catch(error){if(error.code!=='ENOENT')this.enabled=false;}
     try {
       await mkdir(this.dir,{recursive:true});
       for (const line of (await readFile(resolve(this.dir,'notifications.jsonl'),'utf8')).split('\n').filter(Boolean)) {
@@ -35,10 +36,19 @@ export class VillageNotifier {
       }
     }
   }
+  async configure(enabled) {
+    if(typeof enabled!=='boolean')throw Error('enabled must be boolean');
+    const task=this.queue.catch(()=>{}).then(async()=>{
+      const file=resolve(this.dir,'notification-settings.json');
+      await mkdir(this.dir,{recursive:true});
+      await writeFile(file+'.tmp',JSON.stringify({enabled})+'\n',{mode:0o600});
+      await rename(file+'.tmp',file);this.enabled=enabled;return this.status();
+    });
+    this.queue=task.catch(()=>{});return task;
+  }
   status() {
-    return { enabled:this.enabled, officeUrl:this.officeUrl, destinationConfigured:!!this.officeUrl, journalAvailable:this.journalAvailable,
-      executable:this.executable, timeoutMs:this.timeout, configPath:this.environment.NOTIFY_CONFIG || null,
-      latest:this.latest, deliveryMeaning:'notify CLI exit 0 means server accepted; device receipt/click is not confirmed' };
+    return { enabled:this.enabled, destinationConfigured:!!this.officeUrl, journalAvailable:this.journalAvailable,
+      latest:this.latest?{status:this.latest.status,delivered:this.latest.delivered,reason:this.latest.reason}:null, deliveryMeaning:'notify CLI exit 0 means server accepted; device receipt/click is not confirmed' };
   }
   async record(entry) {
     await appendFile(resolve(this.dir,'notifications.jsonl'),JSON.stringify(entry)+'\n',{mode:0o600});

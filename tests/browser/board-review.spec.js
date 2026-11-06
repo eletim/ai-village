@@ -82,15 +82,15 @@ test('off-page and archived Agents are not reviewed merely by display',async({pa
  await page.locator('#manage').click();await page.getByRole('button',{name:'終了Agentの履歴',exact:true}).click();await expect(page.locator('#history-content')).toContainText('archived completion');await page.waitForTimeout(2200);expect(state.reviews.a10.unreviewed).toBe(true);
  await page.locator('#history-content').focus();await expect.poll(()=>state.reviews.a10.unreviewed).toBe(false);await expect(page.locator('#history-content [data-review]')).toHaveCount(0);
 });
-test('quiet selection preserves blue and green; only unread done has a green wash and static ring',async({page})=>{
+test('quiet selection preserves blue and muted green; unread turns alone have no wash or ring',async({page})=>{
  const state=fixture(4);state.agents[2].state='idle';state.agents[3].state='idle';
  for(const i of [0,2])state.agents[i].nativeTurns=[{id:'done'+i,sessionId:'s'+i,state:'completed'}];
  state.reviews={a0:{revision:'done0',hasCompleted:true,unreviewed:true},a2:{revision:'done2',hasCompleted:true,unreviewed:false}};
  await mock(page,state);
  const style=id=>page.locator('#agent-'+id).evaluate(el=>({border:getComputedStyle(el).borderTopColor,ring:getComputedStyle(el).boxShadow,outline:getComputedStyle(el).outlineStyle,header:getComputedStyle(el.querySelector('.panel-heading')).backgroundColor,dot:getComputedStyle(el.querySelector('.dot')).backgroundColor}));
- const unread=await style('a0'),read=await style('a2'),busy=await style('a1');expect(unread.border).toBe('rgb(34, 197, 94)');expect(read.border).toBe(unread.border);expect(unread.ring).not.toBe('none');expect(read.ring).toBe('none');expect(unread.header).not.toBe(read.header);expect(busy.border).toBe('rgb(102, 158, 255)');
+ const unread=await style('a0'),read=await style('a2'),busy=await style('a1');expect(unread.border).toBe('rgb(139, 167, 152)');expect(read.border).toBe(unread.border);expect(unread.ring).toBe('none');expect(read.ring).toBe('none');expect(unread.header).toBe(read.header);expect(busy.border).toBe('rgb(102, 158, 255)');
  await page.locator('#agent-a1 h2').click();expect(await style('a1')).toEqual(busy);await expect(page.locator('#agent-a1 .selection-label')).toHaveText('選択中');
- for(const id of ['a0','a1','a2','a3'])expect(await page.locator('[data-place=w] [data-agent-dot='+id+']').evaluate(el=>getComputedStyle(el).backgroundColor)).toBe((await style(id)).dot);
+ for(const id of ['a0','a1','a2','a3'])expect(await page.locator('[data-place=w] [data-agent-dot='+id+']').evaluate(el=>getComputedStyle(el).backgroundColor)).toBe(['a0','a2'].includes(id)?'rgb(119, 155, 136)':(await style(id)).dot);
  await page.screenshot({path:'/tmp/ai-village-quiet-states.png'});
  await page.locator('#agent-a0 h2').click();await expect.poll(()=>state.reviews.a0.unreviewed).toBe(false);await expect.poll(async()=>(await style('a0')).ring).toBe('none');expect((await style('a0')).border).toBe(unread.border);expect((await style('a0')).header).toBe(read.header);
  await page.locator('#agent-a0 .travel-add').focus();await page.keyboard.press('Tab');await expect(page.locator('#agent-a1')).toBeFocused();expect((await style('a1')).outline).toBe('dashed');
