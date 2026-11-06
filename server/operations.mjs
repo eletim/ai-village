@@ -30,6 +30,8 @@ export class VillageOperations {
         {name:'projects rename',usage:'projects rename PROJECT_ID REVISION NAME',mutation:true,run:args=>{if(args.length!==3)throw Error('ID REVISION NAMEを指定してください');return direct.putProject({revision:Number(args[1]),name:args[2]},args[0]);}},
       ]:[]),
       ...(direct?[
+        {name:'reports status',usage:'reports status (village-wide; applies to new requests only)',run:args=>{if(args.length)throw Error('引数は不要です');return direct.flow.reportStatus();}},
+        {name:'reports configure',usage:'reports configure true|false (default ON; no replay of existing requests)',mutation:true,run:args=>{if(args.length!==1)throw Error('true/falseを指定してください');return direct.flow.configureReport(JSON.parse(args[0]));}},
         {name:'requests start',usage:'requests start JSON {agentId,requestId,instruction,steerTarget?:{runId,sessionId,turnId},attachments?:[UPLOAD_ID],travelContexts?:[{name,sshHost,cwd,notes?}]} (human only; steerTarget from GET /api/direct agent.canSteer keeps same work/ticket; omit for independent queued request; use delegate for child work)',mutation:true,run:args=>{if(args.length!==1)throw Error('JSONを1つ指定');const x=JSON.parse(args[0]);return direct.send(x.agentId,x);}},
         {name:'requests list',usage:'requests list [AGENT_ID]',run:args=>{if(args.length>1)throw Error('Agent IDは1つまで');return direct.flow.list(args[0]);}},
         {name:'requests get',usage:'requests get HUMAN_REQUEST_ID',run:args=>{if(args.length!==1)throw Error('依頼IDを指定');return direct.flow.get(args[0]);}},

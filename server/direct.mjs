@@ -1,3 +1,4 @@
+import {humanProjection} from './report-view.mjs';
 import {validWorkshopPattern} from '../src/workshop-pattern.js';
 import {deletionPlan,deleteProject} from './project-deletion.mjs';
 import {stageAttachment} from './attachment-transfer.mjs';
@@ -55,10 +56,10 @@ export class DirectAgents {
     if(watch){this.timer=setInterval(()=>this.tick().catch(()=>{}),this.pollMs);this.timer.unref();void this.tick();}
   }
   close(){clearInterval(this.timer);this.owner?.close();}
-  snapshot(){return structuredClone({...this.data,projects:this.data.projects.filter(p=>!p.deletedAt),capabilities:{steering:true,travelContexts:true,attachments:!!this.attachments},reviews:this.reviewStates(),notification:this.notifier.status()});}
+  snapshot(){return structuredClone({...humanProjection(this.data),projects:this.data.projects.filter(p=>!p.deletedAt),capabilities:{steering:true,travelContexts:true,attachments:!!this.attachments},reviews:this.reviewStates(),notification:this.notifier.status()});}
   reviewStates(){
     const keys=new Map(this.data.agents.map(a=>[a.id,[]]));
-    for(const entry of completedEntries(this.data))keys.get(entry.agentId).push(entry.key);
+    for(const entry of completedEntries(humanProjection(this.data)))keys.get(entry.agentId).push(entry.key);
     const finalRequests=(this.data.requests||[]).filter(q=>q.status==='completed');
     for(const q of finalRequests)keys.get(q.finalAgentId)?.push('request:'+q.id+':'+q.finalRunId);
     const legacy=new Set(this.data.reviewedCompletions||[]);
@@ -213,7 +214,7 @@ export class DirectAgents {
     const confirmed=r.attachments?.length?await this.observe(a):baseline;if(!allowed(confirmed)||this.agentDeleting(a)){if(r.steerTarget){r.state='interrupted';r.error='添付転送中に補足対象が変わりました。自動送信しません。';await this.save();}return r;}
     if(r.autoRecoveryFrom&&(Date.now()>r.recoveryDeadline||!this.flow.recoveryBoundary(this.flow.run(r.autoRecoveryFrom),confirmed,a.runtime))){r.state='interrupted';r.error='自動再試行前に新しい入力または状態変化を検出しました。requests getで確認し手動で復旧してください。';await this.save();return r;}
     const status=a.runtime;
-    const deliveredInstruction=(r.steerTarget?'実行中の同じ作業への補足です。新しい依頼ではありません。以前のfinishは無効です。既存変更・子作業を保ち、再委任せず補足を反映し、以下の新runで最終finishしてください。\n':'')+r.instruction+(a.location==='mayor'?this.secretaryContext():'')+this.flow.context(r);
+    const deliveredInstruction=(r.steerTarget?'実行中の同じ作業への補足です。新しい依頼ではありません。以前のfinishは無効です。既存変更・子作業を保ち、再委任せず補足を反映し、以下の新runで最終finishしてください。\n':'')+r.instruction+(a.location==='mayor'&&r.phase!=='report'?this.secretaryContext():'')+this.flow.context(r);
     Object.assign(r,{state:'sending',acceptance:'pending',blocksInput:true,dispatchAttemptedAt:now(),baselineRuntime:{sessionId:confirmed.sessionId,cursor:confirmed.cursor,fileIdentity:confirmed.fileIdentity},inputHash:inputHash(deliveredInstruction),agentSessionId:status.agentSessionId||null});
     await this.save();
     if(this.agentDeleting(a)){r.state='terminated';r.blocksInput=false;r.error='project-deletion-before-dispatch';await this.save();return r;}
@@ -237,7 +238,7 @@ export class DirectAgents {
     a.canQueue=a.lifecycle==='alive'&&a.connectionState==='connected'&&['idle','busy','waiting_input'].includes(a.activityState);
     const owned=this.data.runs.filter(r=>r.agentId===a.id&&blocking(r));
     const owner=owned.length===1?owned[0]:null,q=owner&&this.data.requests.find(q=>q.id===owner.humanRequestId),w=q?.works.find(w=>w.id===owner.workId);
-    if(a.provider==='codex'&&a.lifecycle==='alive'&&a.connectionState==='connected'&&a.activityState==='busy'&&a.runtime?.cliState==='busy'&&!a.runtime?.permissionRequest&&!a.setupRequired&&owner?.state==='running'&&owner.acceptance==='accepted'&&owner.inputId&&owner.turnId&&owner.sessionId===a.runtime.agentSessionId&&w?.currentRunId===owner.id&&w.state==='active'&&['active','finalizing'].includes(q.status)){a.canSteer=true;a.steerTarget={runId:owner.id,sessionId:owner.sessionId,turnId:owner.turnId};}
+    if(a.provider==='codex'&&a.lifecycle==='alive'&&a.connectionState==='connected'&&a.activityState==='busy'&&a.runtime?.cliState==='busy'&&!a.runtime?.permissionRequest&&!a.setupRequired&&!q?.report&&owner?.state==='running'&&owner.acceptance==='accepted'&&owner.inputId&&owner.turnId&&owner.sessionId===a.runtime.agentSessionId&&w?.currentRunId===owner.id&&w.state==='active'&&['active','finalizing'].includes(q.status)){a.canSteer=true;a.steerTarget={runId:owner.id,sessionId:owner.sessionId,turnId:owner.turnId};}
     a.canSend=a.lifecycle==='alive'&&a.connectionState==='connected'&&a.activityState==='idle'&&!blocked;
     a.sendReason=a.canSend||a.canSteer?null:a.connectionState!=='connected'?'接続・稼働状態を確認できません':a.lifecycle!=='alive'?'Agentが稼働していません':a.activityState==='waiting_input'?'PurpleMuxで入力・許可を確認してください':blocked?'前の指示の受付・実行状態を確認中です':a.activityState==='busy'?'Agentが実行中です':'待機状態を確認できません';
   }

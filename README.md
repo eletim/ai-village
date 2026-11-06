@@ -309,3 +309,24 @@ VPN内の別端末接続は [VPNの起動設定と実環境確認](docs/vpn-acce
 ProjectとAgent管理の正式API/CLI、表示名とPurpleMuxの識別方針は [ワークスペース操作](docs/agent-workspace-ui.md#projectと正式管理apicli第2段階) を参照。`node scripts/village.mjs help` に追加・終了・名前変更・所属変更を掲載。
 
 人間の1依頼の通知、子作業の正式委任と結果受信箱、最終完了CLI、旧run移行と外部通知の制約は [依頼単位の通知](docs/native-runtime-board.md#人間の依頼全体を1回だけ通知する実装2026-11-05) を参照。新しい依頼は `requests start`、内部委任は `requests delegate`、結果確認は `requests results / acknowledge`、最終回答の直前に `requests finish`。途中turn完了では通知しません。
+
+### 人間向け報告モード
+
+設定歯車の「人間向け報告モード」は村全体の設定です。初期ON。
+正式CLIでも変更できます（同じ操作を `/api/village` の `argv` で利用可能）。
+
+```sh
+node scripts/village.mjs reports status
+node scripts/village.mjs reports configure true
+node scripts/village.mjs reports configure false
+```
+
+設定は状態ディレクトリの `direct.json` に保存され、Git管理外です。新しい人間の依頼を作るときにON/OFFを記録します。設定変更は進行中・過去の依頼に遡及せず、再報告・再通知しません。外部通知がOFFでも、報告モードONなら報告工程は実施します。
+
+ONでは元作業の `finish` とnative正常終了後、同じ担当Agentに独立した報告runを保存します。同じ依頼・root work・通知権を維持し、子作業には報告runを増やしません。報告runの `finish` とnative正常終了で初めて依頼全体を完了・通知します。作業中と報告生成中は途中回答・元成果を従来どおり表示し、最終報告の確定時に非表示に切り替えます。生成途中の報告・内部プロンプトは表示しません。元質問と人間の補足は残し、最終確定した報告だけを表示します。
+
+元成果と子結果は `requests get HUMAN_REQUEST_ID` / `requests results HUMAN_REQUEST_ID WORK_ID` に全文保持します。長い資料をプロンプトに収めきれない場合も、報告Agentはこの正式な参照操作で全文を確認できます。報告は表現の書き直しのみであり、実装・PR操作・委任の再実行は指示しません。正式delegateと子作業再開も報告工程中は拒否します。表現の正確さ自体は同じモデルに依存します。
+
+作業中の補足（steering）は従来どおり同じ依頼に含めます。**報告工程に入った後は補足できません**。Directの「次の依頼を待機キューへ」は別の人間依頼として保存します。執務室は実行中の報告が終わるまで送信を待ちます。古いsteerTargetは拒否します。
+
+報告生成の失敗・中断では元回答を表示したまま、Directに復旧操作を表示します。`requests retry` は報告のみを再試行し、正常終了したがfinish未登録なら `requests resume` も報告のみを再開します（既存のJSON形式）。受付不明は再送せず接続先/native受付を確認してください。取消後は新しいreportをdispatchせず、実行中のAgentそのものは停止しません。対応づけできないnative出力も安全側で非表示にします。これらの監査は `requests get` で可能です。通知は既存の永続配送処理を使用し、配送結果不明時の自動再送は行いません。
