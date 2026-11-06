@@ -1,0 +1,50 @@
+/* Shared surface tokens. Runtime state colours remain independent. */
+:root{--surface:#152035;--canvas:#0d1220;--panel:#152035;--text:#dce4f5;--ink:#dce4f5;--muted:#a9b8ce;--line:#50658c;--field:#172237;--heading:#1d2d47;--reply:#1d2a40;--user:#294d74;--link:#aac6ff;--code:#172237;color-scheme:dark}
+:root[data-theme=light]{--surface:#fff;--canvas:#edf2f7;--panel:#fff;--text:#243348;--ink:#243348;--muted:#536479;--line:#a3b0bf;--field:#f8fafc;--heading:#e8eef5;--reply:#f1f5f9;--user:#dceafb;--link:#235a9c;--code:#e7edf4;color-scheme:light}
+:root[data-theme=sepia]{--surface:#fff8e9;--canvas:#eee3cd;--panel:#fff8e9;--text:#493a29;--ink:#493a29;--muted:#71604b;--line:#b3a084;--field:#fffaf0;--heading:#e9ddc5;--reply:#f3e9d5;--user:#e6dfc8;--link:#75501b;--code:#e8dcc4;color-scheme:light}
+/* Settings and dynamic dialogs are shared by both views. */
+html[data-theme] :is(dialog,.display-settings-dialog,.travel-dialog){background:var(--surface);color:var(--ink);border-color:var(--line)}
+.display-settings input:not([type=checkbox]){display:block;width:100%;margin-top:5px;padding:8px;border:1px solid var(--line);border-radius:5px;background:var(--field);color:var(--ink);font:inherit}
+.notification-destination div{display:flex;gap:6px;flex-wrap:wrap}
+html dialog :is(input,textarea,select,button){color:var(--ink);background:var(--field);border-color:var(--line)}
+html dialog option{background:var(--field);color:var(--ink)}
+/* Keep the established dark Agent palette; light themes replace surfaces only. */
+html:not([data-theme=dark]):has(.workspace) body{background:var(--canvas);color:var(--ink)}
+html:not([data-theme=dark]) .workspace,html:not([data-theme=dark]) .sidebar{background:var(--canvas);border-color:var(--line)}
+html:not([data-theme=dark]):has(.workspace) :is(header,footer){background:var(--surface);border-color:var(--line);color:var(--muted)}
+html:not([data-theme=dark]) .agent-panel{background:var(--surface)}
+html:not([data-theme=dark]) .agent-panel .panel-heading{background:var(--heading)}
+html:not([data-theme=dark]) .agent-panel:is([data-state=busy],[data-state=running]) .panel-heading{background:color-mix(in srgb,#669eff 22%,var(--surface))}
+html:not([data-theme=dark]) .agent-panel[data-state=waiting_input] .panel-heading{background:color-mix(in srgb,#f5bf64 20%,var(--surface))}
+html:not([data-theme=dark]) .agent-panel[data-state=completed][data-attention=true] .panel-heading{background:color-mix(in srgb,#22c55e 20%,var(--surface))}
+html:not([data-theme=dark]) .agent-panel :is(input,textarea,select,button){background:var(--field);color:var(--ink);border-color:var(--line)}
+html:not([data-theme=dark]) .agent-panel form{border-color:var(--line)}
+html:not([data-theme=dark]) .message.assistant{background:var(--reply)}
+html:not([data-theme=dark]) .message.user{background:var(--user)}
+html:not([data-theme=dark]) :is(.panel-info,.meta,.message time,.run-status,.unread-badge,.selection-label,.board-heading span,.sidebar h3,header h1 small,#metadata-id){color:var(--muted)}
+html:not([data-theme=dark]) .runs{scrollbar-color:var(--line) var(--surface)}
+html:not([data-theme=dark]) .place-row [aria-current],html:not([data-theme=dark]) #sidebar-mode button[aria-pressed=true]{background:var(--user);color:var(--ink)}
+html:not([data-theme=dark]) :is(.place-row [data-place]:hover,button:hover){background:var(--heading)}
+html:not([data-theme=dark]) #sidebar-mode button{color:var(--muted)}
+html:not([data-theme=dark]):has(.workspace) :is(button,select){background:var(--field);color:var(--ink);border-color:var(--line)}
+html:not([data-theme=dark]) .place-row [data-place]{background:transparent}html:not([data-theme=dark]) .place-row [aria-current]{background:var(--user)}
+html:not([data-theme=dark]) .badge{color:color-mix(in srgb,var(--state-color,var(--muted)) 60%,var(--ink))}
+html:not([data-theme=dark]) .request-attention{background:#d5f1dd;color:#14582d;border-color:#168b42}
+html:not([data-theme=dark]) :is(.danger,.dialog-error,.file-error,.travel-error,#error){color:#a42e3f}
+html:not([data-theme=dark]) #completion-count{color:#19653b}
+html:not([data-theme=dark]) #connection{color:#37634c}
+html:not([data-theme=dark]) a{color:var(--link)}
+/* Office/village surfaces: scenery and state indicators retain their meaning. */
+html[data-theme=sepia] body:not(:has(.workspace)){background:var(--canvas);color:var(--ink)}
+html[data-theme=sepia] :is(header,.side,.office-conversation,.office-inbox,.report-card,.village-library,.document-paper,.memo-panel,.todo-panel,.detail,.bubble,.pill){background:var(--surface);color:var(--ink);border-color:var(--line)}
+html[data-theme=sepia] :is(.chat-message,.chat-user,.chat-assistant,.artifact-section,.empty-inbox,.document-toolbar){background:var(--reply);color:var(--ink);border-color:var(--line)}
+html[data-theme=sepia] :is(input,textarea,select,button){background:var(--field);color:var(--ink);border-color:var(--line)}
+html[data-theme=sepia] :is(.report-prose,.report-request,.report-meta,.chat-meta,.office-nav,.office-title p,.office-date,.office-section-heading span,.report-agent,.report-heading small,.saved-location,.report-review>small,.approval-control,.top,.hint,.compose-meta){color:var(--muted)}
+html[data-theme=sepia] :is(.office-title h1,.office-section-heading h2,.document-toolbar b,#document-content){color:var(--ink)}
+html:not([data-theme=dark]) :is(input,textarea)::placeholder{color:var(--muted)}
+html .markdown-report pre,html .markdown-report code{color:inherit;background:var(--code);border-color:var(--line)}
+html .markdown-report pre code{background:transparent}
+html .markdown-report :is(th,td){border-color:var(--line)}html .markdown-report th{background:var(--code)}
+html .report-lightbox{background:var(--surface);color:var(--ink)}
+
+html[data-theme=sepia] :is(.secretary,.report-card pre,#todo-text){background:var(--field);color:var(--ink);border-color:var(--line)}

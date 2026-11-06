@@ -1,3 +1,4 @@
+import {destinationPatch} from './notification-destination.mjs';
 import { spawn } from 'node:child_process';
 import { appendFile, mkdir, readFile, writeFile, rename } from 'node:fs/promises';
 import { resolve } from 'node:path';
@@ -9,6 +10,7 @@ export class VillageNotifier {
   constructor({ dir, environment = process.env } = {}) {
     this.dir = resolve(dir || environment.VILLAGE_STATE_DIR || '.runtime');
     this.environment = { ...environment };
+    this.destination = {};
     this.enabled = !['0','false','off'].includes((environment.VILLAGE_NOTIFICATIONS || 'true').toLowerCase());
     this.executable = environment.VILLAGE_NOTIFY_BIN || 'notify';
     const timeout = Number(environment.VILLAGE_NOTIFY_TIMEOUT_MS || 10000);
@@ -21,7 +23,7 @@ export class VillageNotifier {
     this.seen = new Set(); this.queue = Promise.resolve(); this.latest = null; this.journalAvailable = true;
   }
   async init() {
-    try {const settings=JSON.parse(await readFile(resolve(this.dir,'notification-settings.json'),'utf8'));if(typeof settings.enabled!=='boolean')throw Error('Invalid notification settings');this.enabled=settings.enabled;}catch(error){if(error.code!=='ENOENT')this.enabled=false;}
+    try {const settings=JSON.parse(await readFile(resolve(this.dir,'notification-settings.json'),'utf8'));if(typeof settings.enabled!=='boolean')throw Error('Invalid notification settings');const parsed=destinationPatch(settings);this.enabled=parsed.enabled;this.destination={...(parsed.server?{server:parsed.server}:{}),...(parsed.topic?{topic:parsed.topic}:{})};}catch(error){if(error.code!=='ENOENT')this.enabled=false;}
     try {
       await mkdir(this.dir,{recursive:true});
       for (const line of (await readFile(resolve(this.dir,'notifications.jsonl'),'utf8')).split('\n').filter(Boolean)) {
@@ -36,18 +38,20 @@ export class VillageNotifier {
       }
     }
   }
-  async configure(enabled) {
-    if(typeof enabled!=='boolean')throw Error('enabled must be boolean');
+  async configure(input) {
+    const patch=destinationPatch(typeof input==='boolean'?{enabled:input}:input);
     const task=this.queue.catch(()=>{}).then(async()=>{
       const file=resolve(this.dir,'notification-settings.json');
+      const enabled=patch.enabled??this.enabled;
+      const destination={...(patch.resetDestination?{}:this.destination),...(patch.server?{server:patch.server}:{}),...(patch.topic?{topic:patch.topic}:{})};
       await mkdir(this.dir,{recursive:true});
-      await writeFile(file+'.tmp',JSON.stringify({enabled})+'\n',{mode:0o600});
-      await rename(file+'.tmp',file);this.enabled=enabled;return this.status();
+      await writeFile(file+'.tmp',JSON.stringify({enabled,...destination})+'\n',{mode:0o600});
+      await rename(file+'.tmp',file);this.enabled=enabled;this.destination=destination;return this.status();
     });
     this.queue=task.catch(()=>{});return task;
   }
   status() {
-    return { enabled:this.enabled, destinationConfigured:!!this.officeUrl, journalAvailable:this.journalAvailable,
+    return { enabled:this.enabled, destination:{...this.destination}, destinationSource:Object.keys(this.destination).length?'village-override':'notify-cli', destinationConfigured:!!this.officeUrl, journalAvailable:this.journalAvailable,
       latest:this.latest?{status:this.latest.status,delivered:this.latest.delivered,reason:this.latest.reason}:null, deliveryMeaning:'notify CLI exit 0 means server accepted; device receipt/click is not confirmed' };
   }
   async record(entry) {
@@ -87,7 +91,8 @@ export class VillageNotifier {
       let child, timer, done=false;
       const finish=result=>{if(done)return;done=true;clearTimeout(timer);resolve(result);};
       try {
-        child=spawn(this.executable,['send','--title',title,'--message',message,'--click',clickUrl],{env:this.environment,stdio:'ignore',detached:true});
+        const overrides=Object.entries(this.destination).flatMap(([key,value])=>['--'+key,value]);
+        child=spawn(this.executable,['send','--title',title,'--message',message,'--click',clickUrl,...overrides],{env:this.environment,stdio:'ignore',detached:true});
       } catch {finish({status:'cli_unavailable',delivered:false});return;}
       timer=setTimeout(()=>{
         try{process.kill(-child.pid,'SIGKILL');}catch{}
