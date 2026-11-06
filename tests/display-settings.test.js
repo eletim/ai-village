@@ -7,7 +7,7 @@ import {VillageNotifier} from '../server/notifier.mjs';
 import {normalizeDisplay} from '../src/display-preferences.js';
 import {reportHTML} from '../src/report-content.js';
 test('display validation and plain safe literal rendering',()=>{
- assert.deepEqual(normalizeDisplay({font:'url(evil)',viewer:'html'}),{iconMode:'dots',theme:'dark',font:'standard',viewer:'markdown'});
+ assert.deepEqual(normalizeDisplay({font:'url(evil)',viewer:'html'}),{textSize:'medium',iconMode:'dots',theme:'dark',font:'standard',viewer:'markdown'});
  globalThis.localStorage={getItem:()=>JSON.stringify({font:'serif',viewer:'plain'})};
  try{const html=reportHTML('# heading\n<script>bad()</script>\n![x](https://evil.test/x)');assert.match(html,/plain-report/);assert.match(html,/# heading/);assert.match(html,/&lt;script&gt;/);assert(!html.includes('<img'));}finally{delete globalThis.localStorage;}
 });
@@ -22,4 +22,13 @@ test('notification toggle persists, validates, serializes and never replays disa
  const restarted=new VillageNotifier({dir,environment});await restarted.init();assert.equal(restarted.status().enabled,false);await restarted.configure(true);assert.equal((await restarted.enqueue({id:'two',role:'assistant'})).status,'duplicate_or_internal');
  assert.deepEqual(JSON.parse(await readFile(join(dir,'notification-settings.json'),'utf8')),{enabled:true});
  await writeFile(join(dir,'notification-settings.json'),'broken');const broken=new VillageNotifier({dir,environment});await broken.init();assert.equal(broken.status().enabled,false);
+});
+test('Meiryo and text sizes validate; partial saves retain other browser preferences',async()=>{
+ const {fonts,saveDisplay,displayPreferences}=await import('../src/display-preferences.js');
+ assert.equal(fonts.meiryo,'Meiryo, sans-serif');
+ for(const textSize of ['small','medium','large'])assert.equal(normalizeDisplay({textSize,font:'meiryo'}).textSize,textSize);
+ assert.equal(normalizeDisplay({textSize:'huge'}).textSize,'medium');assert.equal(normalizeDisplay(null).textSize,'medium');
+ let saved=JSON.stringify({theme:'sepia',iconMode:'roles',font:'mono',viewer:'plain'});
+ globalThis.localStorage={getItem:()=>saved,setItem:(_,v)=>saved=v};globalThis.window={dispatchEvent:()=>{}};
+ try{saveDisplay({textSize:'large'});assert.deepEqual(displayPreferences(),{textSize:'large',theme:'sepia',iconMode:'roles',font:'mono',viewer:'plain'});saveDisplay({font:'meiryo'});assert.equal(displayPreferences().textSize,'large');}finally{delete globalThis.localStorage;delete globalThis.window;}
 });

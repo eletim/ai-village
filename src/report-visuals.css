@@ -7,3 +7,15 @@
 
 #manage-dialog{width:min(580px,94vw)}
 .display-settings-dialog{width:min(460px,94vw);max-height:90dvh;overflow:auto;border:1px solid #9ba88f;border-radius:12px;padding:24px;background:#fffdf5;color:#303e35}.display-settings-dialog::backdrop{background:#03071270}.display-settings-dialog .dialog-heading{display:flex;align-items:center;justify-content:space-between}.display-settings-dialog button{border:1px solid #9ba88f;border-radius:6px;padding:6px 10px;color:inherit;background:transparent}html[data-theme=dark] .display-settings-dialog{background:#1c2925;color:#e4e9dd}
+/* Preserve each surface's medium baseline; scale only reading/composing content. */
+.markdown-report,.plain-report{font-size:calc(var(--body-base,14px) * var(--text-scale,1))}
+.markdown-report pre{font-size:calc(13px * var(--text-scale,1))}
+.message.user>pre,.chat-message>pre{font-family:var(--reply-font,system-ui,sans-serif);font-size:calc(var(--body-base,13px) * var(--text-scale,1))}
+.chat-message{--body-base:15px}.report-prose{--body-base:13px}.report-agent{--body-base:11px}
+#request{font-family:var(--reply-font,system-ui,sans-serif);font-size:calc(12px * var(--text-scale,1))}
+.office-conversation #request{font-size:calc(16px * var(--text-scale,1))}
+.agent-panel textarea{font-family:var(--reply-font,system-ui,sans-serif);font-size:calc(12px * var(--text-scale,1))}
+@media(max-width:700px){.agent-panel textarea{font-size:calc(11px * var(--text-scale,1))}}
+@media(max-width:680px){.chat-message{--body-base:14px}}
+.chat-message>p{font-family:var(--reply-font,system-ui,sans-serif);font-size:calc(var(--body-base,15px) * var(--text-scale,1))}
+.report-agent>pre{font-family:var(--reply-font,system-ui,sans-serif);font-size:calc(11px * var(--text-scale,1))}
