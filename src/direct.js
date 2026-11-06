@@ -3,7 +3,7 @@ import {attachmentComposer,attachmentHTML} from './attachments.js';
 import {chatScroll} from './chat-scroll.js';
 import {travelComposer} from './travel-composer.js';
 import {travelSummary,sameTravelContexts} from './travel-context.js';
-import {PAGE_SIZE,placeOf,orderedAgents,boardLayout} from './board-state.js';
+import {PAGE_SIZE,placeOf,orderedAgents,orderedProjects,boardLayout} from './board-state.js';
 import {agentEntries,unreadByAgent,visualState,faviconHref} from './completions.js';
 import {agentPlaceName} from './agent-identity.js';
 import {bindPromptInput} from './prompt-input.js';
@@ -44,7 +44,7 @@ function options(select,items){const previous=select.value,html=items.map(i=>`<o
 const isProject=id=>id.startsWith('project:');
 const inScope=(a,id)=>id==='all'||(isProject(id)?a.projectId===id.slice(8):placeId(a)===id);
 function filtered(){return live().filter(a=>inScope(a,selectedPlace));}
-function projectOptions(select){options(select,[{id:'',name:'未所属'},...(state.projects||[])]);}
+function projectOptions(select){options(select,[{id:'',name:'未所属'},...orderedProjects(state.projects||[])]);}
 function capturePositions(){for(const [id,card] of cards)if(!card.hidden)scrolls.get(id)?.capture();}
 function timeHTML(value){if(!value)return '';const date=new Date(value);return Number.isNaN(date.getTime())?'':`<time datetime="${esc(value)}" title="${esc(date.toLocaleString())}">${esc(date.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}))}</time>`;}
 function bubble(side,text,at,extra=''){return `<div class="message ${side}">${text?`<pre>${linkedText(text)}</pre>`:''}${extra}${timeHTML(at)}</div>`;}
@@ -135,7 +135,7 @@ function agentDot(a){
  return `<span class="agent-dot dot" data-agent-dot="${esc(a.id)}" data-state="${esc(visualState(a,agentEntries(state,a)))}" data-unread="${!!count}" data-attention="${!!state.reviews?.[a.id]?.attention}" role="img" title="${esc(text)}" aria-label="${esc(text)}"></span>`;
 }
 function renderPlaces(){
- const all=live(),places=sidebarMode==='projects'?(state.projects||[]).map(p=>({id:'project:'+p.id})):[{id:'mayor'},...state.workshops];
+ const all=live(),places=sidebarMode==='projects'?orderedProjects(state.projects||[]).map(p=>({id:'project:'+p.id})):[{id:'mayor'},...state.workshops];
  for(const button of document.querySelectorAll('[data-mode]'))button.setAttribute('aria-pressed',String(button.dataset.mode===sidebarMode));
  $('#places').setAttribute('aria-label',sidebarMode==='projects'?'プロジェクト':'場所');
  if(sidebarMode==='places'&&all.some(a=>placeId(a)==='unassigned'))places.push({id:'unassigned'});
@@ -259,7 +259,7 @@ function openMetadata(id){
 $('#metadata-form').onsubmit=e=>{e.preventDefault();const f=e.currentTarget;action(f,async()=>{await api('/agents/'+metadataId,{revision:metadataRevision,name:f.elements.name.value,projectId:f.elements.projectId.value||null},'PUT');$('#metadata-dialog').close();});};
 $('#stop-form').onsubmit=e=>{e.preventDefault();action(e.currentTarget,async()=>{await api('/agents/'+metadataId+'/stop',{});$('#metadata-dialog').close();});};
 function openProjects(){
- const f=$('#project-form');options(f.elements.id,[{id:'',name:'新規作成'},...(state.projects||[])]);f.elements.id.value='';f.elements.name.value='';delete f.dataset.requestId;$('#projects-dialog').showModal();
+ const f=$('#project-form');options(f.elements.id,[{id:'',name:'新規作成'},...orderedProjects(state.projects||[])]);f.elements.id.value='';f.elements.name.value='';delete f.dataset.requestId;$('#projects-dialog').showModal();
 }
 $('#project-form [name=id]').onchange=()=>{const f=$('#project-form'),p=(state.projects||[]).find(p=>p.id===f.elements.id.value);f.elements.name.value=p?.name||'';projectRevision=p?.revision||0;delete f.dataset.requestId;};
 $('#project-form').onsubmit=e=>{e.preventDefault();const f=e.currentTarget;f.dataset.requestId ||= newRequestId();action(f,async()=>{const id=f.elements.id.value;await api('/projects'+(id?'/'+id:''),{name:f.elements.name.value,revision:projectRevision,requestId:f.dataset.requestId},id?'PUT':'POST');$('#projects-dialog').close();});};
