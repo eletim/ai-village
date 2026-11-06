@@ -7,7 +7,7 @@ import {VillageNotifier} from '../server/notifier.mjs';
 import {normalizeDisplay} from '../src/display-preferences.js';
 import {reportHTML} from '../src/report-content.js';
 test('display validation and plain safe literal rendering',()=>{
- assert.deepEqual(normalizeDisplay({font:'url(evil)',viewer:'html'}),{theme:'dark',font:'standard',viewer:'markdown'});
+ assert.deepEqual(normalizeDisplay({font:'url(evil)',viewer:'html'}),{iconMode:'dots',theme:'dark',font:'standard',viewer:'markdown'});
  globalThis.localStorage={getItem:()=>JSON.stringify({font:'serif',viewer:'plain'})};
  try{const html=reportHTML('# heading\n<script>bad()</script>\n![x](https://evil.test/x)');assert.match(html,/plain-report/);assert.match(html,/# heading/);assert.match(html,/&lt;script&gt;/);assert(!html.includes('<img'));}finally{delete globalThis.localStorage;}
 });

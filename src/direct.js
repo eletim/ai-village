@@ -1,3 +1,5 @@
+import {statusIcon} from './status-icon.js';
+import {displayPreferences} from './display-preferences.js';
 import {initDisplaySettings} from './display-settings.js';
 import {reportHTML} from './report-content.js';
 import {updateReportHTML} from './report-visuals.js';
@@ -99,6 +101,8 @@ function renderBoard(){
 
    cards.set(a.id,card);$('#agents').append(card);
   }
+  const marker=agentMarker(a,false),currentMarker=card.querySelector('.panel-heading .dot');
+  if(card.markerHTML!==marker){currentMarker.outerHTML=marker;card.markerHTML=marker;}
   card.dataset.state=visualState(a,agentEntries(state,a));
   card.dataset.unread=String(!!unread.get(a.id));
   card.dataset.attention=String(!!state.reviews?.[a.id]?.attention);
@@ -134,10 +138,11 @@ function renderBoard(){
 }
 function placeTitle(id){if(isProject(id))return (state.projects||[]).find(p=>p.id===id.slice(8))?.name||'Project';return id==='all'?'全部表示':id==='mayor'?'秘書':id==='unassigned'?'所属未登録':'工房（'+(state.workshops.find(w=>w.id===id)?.name||'未登録')+'）';}
 function groupTitle(id,page){return placeTitle(id)+(id!=='all'&&page>0?` (${page+1})`:'');}
-function agentDot(a){
- const count=unread.get(a.id)||0,text=a.name+' · '+(labels[visualState(a,agentEntries(state,a))]||a.state)+(state.reviews?.[a.id]?.attention?' · 依頼完了・要確認':count?' · 更新あり':'');
- return `<span class="agent-dot dot" data-agent-dot="${esc(a.id)}" data-state="${esc(visualState(a,agentEntries(state,a)))}" data-unread="${!!count}" data-attention="${!!state.reviews?.[a.id]?.attention}" role="img" title="${esc(text)}" aria-label="${esc(text)}"></span>`;
+function agentMarker(a,sidebar=true){
+ const stateName=visualState(a,agentEntries(state,a));
+ return statusIcon(a,{mode:displayPreferences().iconMode,workshops:state.workshops,state:stateName,stateLabel:labels[stateName]||stateName,attention:!!state.reviews?.[a.id]?.attention,unread:!!unread.get(a.id),sidebar});
 }
+function agentDot(a){return agentMarker(a);}
 function renderPlaces(){
  const all=live(),places=sidebarMode==='projects'?orderedProjects(state.projects||[]).map(p=>({id:'project:'+p.id})):[{id:'mayor'},...state.workshops];
  for(const button of document.querySelectorAll('[data-mode]'))button.setAttribute('aria-pressed',String(button.dataset.mode===sidebarMode));
