@@ -1,7 +1,7 @@
 import {displayPreferences,saveDisplay} from './display-preferences.js';
 export function initDisplaySettings(button,host){
  const own=!host;host ||= document.createElement('dialog');if(own){host.innerHTML='<div class="dialog-heading"><h2>設定</h2><button type="button">閉じる</button></div>';host.querySelector('button').onclick=()=>host.close();document.body.append(host);host.className='display-settings-dialog';}host.setAttribute('aria-label','設定');
- const section=document.createElement('section');section.className='display-settings';section.innerHTML=`<h3>表示</h3><label>Agent表示 <select aria-label="Agent表示"><option value="dots">状態の丸</option><option value="roles">役割アイコン</option></select></label><p>色は状態、人型は秘書、工房型は工房Agent。工房内の小模様で工房を区別します。詳細はアイコンの説明で確認できます。</p>
+ const section=document.createElement('section');section.className='display-settings';section.innerHTML=`<h3>表示</h3><label>Agent表示 <select aria-label="Agent表示"><option value="dots">状態の丸</option><option value="roles">役割アイコン</option></select></label><p>色は状態、人型は秘書、工房型は工房Agent。工房内の模様は工房設定で選べます。詳細はアイコンの説明で確認できます。</p>
  <label>配色テーマ <select aria-label="配色テーマ"><option value="dark">ダーク</option><option value="light">ライト</option><option value="sepia">セピア</option></select></label>
  <label>書体 <select aria-label="書体"><option value="standard">標準</option><option value="gothic">ゴシック</option><option value="serif">明朝</option><option value="mono">等幅</option></select></label>
  <label>ビューワー <select aria-label="ビューワー"><option value="markdown">Markdown</option><option value="plain">プレーンテキスト</option></select></label><p>表示設定はこのブラウザに保存します。</p>

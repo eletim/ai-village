@@ -59,7 +59,32 @@ URLはHTTPS（loopbackだけHTTP可）、userinfo/query/fragment/control文字�
 
 - 色＝従来の状態色（作業中の青、通常完了の淡い緑、正式依頼attentionの強調など）。busyの動きとreduced-motionも従来どおりです。
 - 人＋名札＝秘書、工房＝worker。登録済み `role` または `location` だけで判定し、Agent名・cwdからは推測しません。不明・矛盾した役割は「?」の菱形にします。
-- 工房内部の16セルの模様は `workshopId` から決定します。同じ工房は同じ模様で、Agent／工房の改名で変わりません。工房IDがない場合は模様部分を「×」にします。
+- 工房内部の8セルの模様は工房設定を優先し、未設定時は `workshopId` から決定します。同じ工房は同じ模様で、Agent／工房の改名で変わりません。工房IDがない場合は模様部分を「×」にします。
 - 模様には衝突の可能性があるため、それだけで所属を断定しません。title／aria-labelにAgent名・役割・登録工房名（登録がなければ保存された名前または未登録）・状態・要確認を表示します。
 
 SVGは自前の固定図形のみで、外部画像や名前由来のSVGを使用しません。20pxのアイコンを折り返して配置し、狭いsidebarでも重ならないようにしています。丸モードのサイズ・状態色・選択操作は維持します。
+
+## 工房ごとに8セルの模様を保存
+
+設定 → 工房設定 → 対象工房の「編集」で、縦2段×横4マスを「なし／横線／ダイヤ」から選びます。実寸20pxと拡大100pxのプレビューを表示し、保存に成功した内容をsidebarとカード見出しに適用します。左側の固定二本線と1.4px点は廃止しました。配列の順番は上段左→右、下段左→右です。
+
+保存先は既存のruntime `direct.json` のworkshops内 `iconPattern`（Git管理外）。設定値を優先し、未設定／nullでは工房IDから安定した8セルの仮模様を生成します。改名しても変わりません。新規登録フォームで保存する模様はプレビューの選択値です。既存工房をAPI更新する際、iconPatternや他の工房項目を省略すると現在値を保持します。
+
+登録工房IDの確認:
+
+```sh
+node scripts/village.mjs agents list
+```
+
+区別しやすい初期案（実登録には適用していません）:
+
+```sh
+# 工房A: 上段は横線4本、下段は空白
+node scripts/village.mjs workshops pattern WORKSHOP_A_ID '["line","line","line","line","none","none","none","none"]'
+# 工房B: 上段は空白、下段はダイヤ4個
+node scripts/village.mjs workshops pattern WORKSHOP_B_ID '["none","none","none","none","diamond","diamond","diamond","diamond"]'
+# 自動の仮模様に戻す
+node scripts/village.mjs workshops pattern WORKSHOP_ID null
+```
+
+正式HTTP操作は `PUT /api/direct/workshops/:id` に `{"iconPattern":["line","line","line","line","none","none","none","none"]}` を送ります。CLIは同じ保存処理を使用します。8要素以外、none/line/diamond以外を拒否します。工房ID・接続設定・登録作業場所や既存Agentの接続スナップショットは変えません。登録実データを編集せず、統合・反映後に必要な工房IDへ設定してください。
