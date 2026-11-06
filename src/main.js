@@ -1,3 +1,4 @@
+import {autogrowInput} from './autogrow-input.js';
 import {conversationLatest} from './conversation.js';
 import {travelComposer} from './travel-composer.js';
 import {sameTravelContexts} from './travel-context.js';
@@ -127,6 +128,7 @@ if(officePending?.message&&!$('#request').value){$('#request').value=officePendi
 if(officePending&&!officeDraft)officeTravel.set(officePending.travelContexts||[]);
 attachments.lock(!!officePending);officeTravel.lock(!!officePending);
 function saveOfficePending(){try{if(officePending)sessionStorage.setItem('ai-village-office-pending',JSON.stringify(officePending));else sessionStorage.removeItem('ai-village-office-pending');}catch{}}
+const officeAutogrow=autogrowInput($('#request'));
 $('#request-form').addEventListener('submit',async e=>{
   e.preventDefault();const request=$('#request').value.trim();if(!request && !attachments.count && !officePending?.attachments?.length){$('#request').focus();return}
   if(submitting || live.secretary?.status==='thinking')return; submitting=true; $('#send').disabled=true; attachments.lock(true);officeTravel.lock(true); $('#request').disabled=true;
@@ -140,7 +142,7 @@ $('#request-form').addEventListener('submit',async e=>{
     const response=await fetch('/api/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(officePending)});
     const body=await response.json(); if(!response.ok){if(response.status<500){officePending=null;saveOfficePending();}throw new Error(body.error);}
     officePending=null;saveOfficePending();
-    live=body; online=true; attachments.clear(); $('#office-notice').textContent=''; $('#request').value='';officeTravel.set([]);saveOfficeDraft(); $('#char-count').textContent='0 / 2000';
+    live=body; online=true; attachments.clear(); $('#office-notice').textContent=''; $('#request').value='';officeAutogrow.update();officeTravel.set([]);saveOfficeDraft(); $('#char-count').textContent='0 / 2000';
   } catch(error) { addEvent(error.message); $('#office-notice').textContent=error.message; }
   submitting=false; attachments.lock(!!officePending);officeTravel.lock(!!officePending); $('#request').disabled=false; renderStage();
 });

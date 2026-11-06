@@ -43,3 +43,4 @@
 .agent-dot[data-state=busy],.agent-dot[data-state=running]{animation:sidebar-working 2.4s ease-in-out infinite}
 @keyframes sidebar-working{0%,100%{opacity:1}50%{opacity:.45}}
 @media(prefers-reduced-motion:reduce){.agent-dot[data-state=busy],.agent-dot[data-state=running]{animation:none}}
+.agent-panel form[data-send]{align-items:flex-end}
