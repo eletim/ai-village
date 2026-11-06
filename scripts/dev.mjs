@@ -4,7 +4,7 @@ import { PullRequests } from '../server/pull-requests.mjs';
 import { listenAddresses } from '../server/network.mjs';
 import { TodoStore } from '../server/todos.mjs';
 import { accessPolicy } from '../server/access.mjs';
-import { ImageStore, MAX_IMAGE_BYTES } from '../server/images.mjs';
+import { ImageStore } from '../server/images.mjs';
 import { randomUUID } from 'node:crypto';
 import { run } from '../server/bridge.mjs';
 import { WebReader } from '../server/web-reader.mjs';
@@ -42,7 +42,7 @@ secretariat.direct=direct;
 development.watch(secretariat);
 const instanceId=randomUUID(), runningCommit=(await run('git',['rev-parse','HEAD'])).trim();
 const snapshot = async () => ({ ...bridge.snapshot(), workshops: await library.workshops(), secretary: secretariat.snapshot() });
-const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };
+const mime = { '.html': 'text/html; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };
 const json = (res, status, body) => { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(body)); };
 const handleRequest = async (req, res) => {
   try {
@@ -109,8 +109,8 @@ const handleRequest = async (req, res) => {
       }
       if (req.method === 'POST' && pathname === '/api/images') {
         if (!['image/png','image/jpeg','image/webp'].includes(req.headers['content-type'])) return json(res,415,{error:'PNG・JPEG・WebPを選んでください。'});
-        const chunks=[]; let size=0;
-        for await (const chunk of req) { size+=chunk.length; if(size>MAX_IMAGE_BYTES)return json(res,413,{error:'画像は1枚8 MiB以内にしてください。'}); chunks.push(chunk); }
+        const chunks=[];
+        for await (const chunk of req) chunks.push(chunk);
         const name = new URL(req.url,'http://localhost').searchParams.get('name') || '画像';
         return json(res,201,await images.save(Buffer.concat(chunks),name));
       }
@@ -149,7 +149,7 @@ const handleRequest = async (req, res) => {
       return json(res, 404, { error: 'Not found' });
     }
     // Never serve credentials, source of the bridge, or persisted job output.
-    if (req.method !== 'GET' || !(pathname === '/agents' || pathname === '/agents/' || pathname === '/agents.html' || pathname === '/' || pathname === '/index.html' || pathname === '/office' || pathname === '/office/' || /^\/src\/[a-z-]+\.(js|css)$/.test(pathname))) { res.writeHead(404); res.end('Not found'); return; }
+    if (req.method !== 'GET' || !(pathname === '/agents' || pathname === '/agents/' || pathname === '/agents.html' || pathname === '/' || pathname === '/index.html' || pathname === '/office' || pathname === '/office/' || /^\/src\/[a-z-]+\.(js|css)$/.test(pathname) || /^\/src\/vendor\/(?:[a-zA-Z0-9_.-]+\/)*[a-zA-Z0-9_-]+\.mjs$/.test(pathname)&&!pathname.split('/').some(p=>p==='..'||p==='.'))) { res.writeHead(404); res.end('Not found'); return; }
     const file = resolve(root, ['/agents','/agents/'].includes(pathname) ? 'agents.html' : ['/', '/office', '/office/'].includes(pathname) ? 'index.html' : '.' + pathname);
     const content = await readFile(file);
     res.writeHead(200, { 'Content-Type': mime[extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-store' }); res.end(content);

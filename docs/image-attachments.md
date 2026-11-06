@@ -64,3 +64,8 @@ POST /api/attachments?name=NAME はraw bodyのアップロード。GET /api/atta
 検証結果: Node単体／HTTP 117件成功。ブラウザ57ケース成功、既存の専用Codex境界を要求する1ケースは条件未設定でskip（全体56件＋追加1件、添付／スクロール7件を最終調整後に再検証）。check/build/diff --check成功。画面は1440pxと390pxで確認。画像: /tmp/ai-village-files-direct.png、/tmp/ai-village-files-office.png、/tmp/ai-village-file-menu-mobile.png。本番バックエンドはレビュー後の再起動待ち。今回の作業では再起動・push・PR作成、既存Agentの送信／停止・登録データ変更は行っていない。
 
 秘書レビュー：旧版の数値だけのスクロール保存値は初回に最新追従へ移行し、新着がなくても読み返し中は「最新へ」を表示する。E-frontierへの検証用テキストの実SSH転送・SHA-256一致も確認し、検証コピーは削除済み。
+
+
+## 2026-11-06 返信本文の図・画像
+
+assistant本文のMermaidと保存画像参照、アップロードCLIを追加した。画像報告の `/api/images` とImageStoreにはバイト・画素上限を設けない。詳細・配信ビルド・安全な描画範囲・既存PRとの統合範囲は[visual-reports.md](visual-reports.md)を参照。
