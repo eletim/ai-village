@@ -1,3 +1,4 @@
+import {validWorkshopPattern} from '../src/workshop-pattern.js';
 import {deletionPlan,deleteProject} from './project-deletion.mjs';
 import {stageAttachment} from './attachment-transfer.mjs';
 import {RequestFlow} from './requests.mjs';
@@ -81,7 +82,7 @@ export class DirectAgents {
     try{await this.save();}catch(e){for(const q of requests)delete q.reviewedAt;if(previous===undefined)delete this.data.agentReviews[id];else this.data.agentReviews[id]=previous;throw e;}
     return {...current,unreviewed:false,attention:false,attentionRequestIds:[]};
   });}
-  discovery(){return {agents:this.data.agents.filter(a=>!a.deletedAt).map(a=>({...agentIdentity(a),projectId:a.projectId||null,projectName:this.data.projects.find(p=>p.id===a.projectId)?.name||null,metadataRevision:a.metadataRevision||0})),projects:structuredClone(this.data.projects.filter(p=>!p.deletedAt)),workshops:structuredClone(this.data.workshops),management:{help:'node scripts/village.mjs help',agentUpdate:'PUT /api/direct/agents/:id {revision,name?,projectId?}',projects:'POST /api/direct/projects {requestId,name}; PUT /api/direct/projects/:id {revision,name?,pinned?:boolean}',projectDelete:'GET /api/direct/projects/:id/delete-plan; POST /api/direct/projects/:id/delete {operationId,revision,members}; deletes all member Agents, retry same operation on partial result',namePolicy:'村の表示名のみ変更。PurpleMuxのラベル、ID、セッション、接続先は維持。',requests:{help:'node scripts/village.mjs help',list:'GET /api/direct/requests',get:'POST /api/direct/requests/get {humanRequestId}',operations:'delegate / results / acknowledge / finish / retry / resume / cancel: POST /api/direct/requests/:operation',policy:'人間の依頼ごとに通知権1枚。正式delegateで親子を登録し、子結果を確認後、finishと対応native turn正常終了で全体完了。生PurpleMux送信・旧runを自動関連付けしない。'}}};}
+  discovery(){return {agents:this.data.agents.filter(a=>!a.deletedAt).map(a=>({...agentIdentity(a),projectId:a.projectId||null,projectName:this.data.projects.find(p=>p.id===a.projectId)?.name||null,metadataRevision:a.metadataRevision||0})),projects:structuredClone(this.data.projects.filter(p=>!p.deletedAt)),workshops:structuredClone(this.data.workshops),management:{workshopPattern:'PUT /api/direct/workshops/:id {iconPattern:[none|line|diamond x8]}; null resets to stable default; omitted fields preserved',help:'node scripts/village.mjs help',agentUpdate:'PUT /api/direct/agents/:id {revision,name?,projectId?}',projects:'POST /api/direct/projects {requestId,name}; PUT /api/direct/projects/:id {revision,name?,pinned?:boolean}',projectDelete:'GET /api/direct/projects/:id/delete-plan; POST /api/direct/projects/:id/delete {operationId,revision,members}; deletes all member Agents, retry same operation on partial result',namePolicy:'村の表示名のみ変更。PurpleMuxのラベル、ID、セッション、接続先は維持。',requests:{help:'node scripts/village.mjs help',list:'GET /api/direct/requests',get:'POST /api/direct/requests/get {humanRequestId}',operations:'delegate / results / acknowledge / finish / retry / resume / cancel: POST /api/direct/requests/:operation',policy:'人間の依頼ごとに通知権1枚。正式delegateで親子を登録し、子結果を確認後、finishと対応native turn正常終了で全体完了。生PurpleMux送信・旧runを自動関連付けしない。'}}};}
   project(id){return this.data.projects.find(p=>p.id===id)||fail('Projectがありません',404);}
   projectDeletePlan(id){return deletionPlan(this,id);}
   deleteProject(id,input){return deleteProject(this,id,input);}
@@ -139,19 +140,23 @@ export class DirectAgents {
   }
   workshop(input,id){
     const {name,baseUrl,workplaces,connectionType='ssh'}=input;
+    if(input.iconPattern!==undefined&&input.iconPattern!==null&&!validWorkshopPattern(input.iconPattern))fail('工房模様はnone/line/diamondの8セルで指定してください',400);
     if(!['ssh','local'].includes(connectionType))fail('接続方式はSSHまたはローカルを選んでください',400);
     const sshHost=connectionType==='local'?null:input.sshHost;
     if(typeof name!=='string'||!name.trim()||name.length>120||(connectionType==='ssh'&&(typeof sshHost!=='string'||! /^[a-zA-Z0-9_][a-zA-Z0-9_.@-]{0,200}$/.test(sshHost))))fail('名前とSSH接続先を確認してください',400);
     let url;try{url=new URL(baseUrl);}catch{fail('PurpleMux URLが不正です',400);}
     if(!['http:','https:'].includes(url.protocol)||url.username||url.password)fail('HTTP(S) URLを指定してください',400);
     if(!Array.isArray(workplaces)||!workplaces.length||workplaces.length>30||workplaces.some(p=>typeof p!=='string'||!p.startsWith('/')||p.length>1000||/[\r\n\0]/.test(p)))fail('作業場所を絶対パスで指定してください',400);
-    return {id:id||randomUUID(),name:name.trim(),connectionType,sshHost,baseUrl:url.href,workplaces:[...new Set(workplaces)],updatedAt:now()};
+    return {id:id||randomUUID(),name:name.trim(),connectionType,sshHost,baseUrl:url.href,workplaces:[...new Set(workplaces)],...(input.iconPattern!==undefined?{iconPattern:input.iconPattern===null?null:[...input.iconPattern]}:{}),updatedAt:now()};
   }
   async putWorkshop(input,id){
-    const w=this.workshop(input,id);const i=this.data.workshops.findIndex(x=>x.id===id);
-    if(id&&i<0)fail('工房がありません',404);
-    if(i<0)this.data.workshops.push(w);else this.data.workshops[i]=w;
-    await this.save();return w;
+    return this.locked('workshop:'+(id||'new'),async()=>{
+      const i=this.data.workshops.findIndex(x=>x.id===id),previous=this.data.workshops[i];
+      if(id&&i<0)fail('工房がありません',404);
+      const w={...previous,...this.workshop({...previous,...input},id)};
+      if(i<0)this.data.workshops.push(w);else this.data.workshops[i]=w;
+      try{await this.save();}catch(error){if(i<0)this.data.workshops=this.data.workshops.filter(x=>x!==w);else this.data.workshops[i]=previous;throw error;}return w;
+    });
   }
   agent(id){return this.data.agents.find(a=>a.id===id)||fail('Agentがありません',404);}
   async execute(a,args){

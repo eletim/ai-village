@@ -8,7 +8,7 @@ test('roles use only registered role/location, including explicit unknown and co
  assert.notEqual(roleSVG({location:'mayor'}),roleSVG({location:'workshop'}));assert.notEqual(roleSVG({}),roleSVG({location:'workshop'}));
 });
 test('workshop identicon is stable across Agent and workshop renames; absent ID has explicit fallback',()=>{
- const a={name:'A',location:'workshop',workshopId:'w1',connection:{name:'Old'}};const svg=roleSVG(a);assert.equal(svg,roleSVG({...a,name:'Renamed',connection:{name:'New'}}));assert.notDeepEqual(workshopPattern('w1'),workshopPattern('w2'));assert.equal(workshopPattern(null),null);assert.equal(workshopPattern(''),null);assert.match(roleSVG({location:'workshop'}),/m11 11 5 5/);
+ const a={name:'A',location:'workshop',workshopId:'w1',connection:{name:'Old'}};const svg=roleSVG(a);assert.equal(svg,roleSVG({...a,name:'Renamed',connection:{name:'New'}}));assert.notDeepEqual(workshopPattern('w1'),workshopPattern('w2'));assert.equal(workshopPattern(null),null);assert.equal(workshopPattern(''),null);assert.match(roleSVG({location:'workshop'}),/m7 11 6 5/);
  assert.match(iconLabel(a,[{id:'w1',name:'New'}],'作業中',true),/A · 工房Agent · New · 作業中 · 依頼完了・要確認/);assert.match(iconLabel({name:'秘書'},[],'不明'),/役割不明 · 工房未登録/);
 });
 test('labels and attributes are escaped; SVG never contains names, IDs, URLs or scripts',()=>{
