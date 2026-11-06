@@ -49,8 +49,8 @@ test('real HTTP + native JSONL + durable inbox + isolated notify CLI: 0 interim,
   const staleRevision=(await get()).reviews[r.agentId].revision;const intent=await finish(received,'http-final-report');assert.equal((await lines(notices)).length,0);
   await complete(received,'SECRET original final report');assert.equal((await lines(notices)).length,0);
   const report=await until(async()=>{const q=await request(r.humanRequestId);return q.runs.find(r=>r.phase==='report'&&r.state==='awaiting_input');});
-  assert(!JSON.stringify(await get()).includes('SECRET original final report'));
-  const officeBefore=await (await fetch(base+'/api/state')).json();assert(!JSON.stringify(officeBefore).includes('SECRET original final report'));
+  assert(JSON.stringify(await get()).includes('SECRET original final report'));
+  const officeBefore=await (await fetch(base+'/api/state')).json();assert(JSON.stringify(officeBefore).includes('SECRET original final report'));
   await stop();await start();assert.equal((await lines(capture)).length,4);
   const reportAccepted=await submit(report);await finish(reportAccepted,'http-rewrite-finish');
   await complete(reportAccepted,'Integrated final report');await until(async()=>(await lines(notices)).length===1);

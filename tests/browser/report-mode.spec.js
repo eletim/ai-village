@@ -4,7 +4,7 @@ function fixture(){
  const q={id:'q',reportMode:true,status:'active',instruction:'元質問',works:[{id:'w',currentRunId:'r'}],report:{sourceRunId:'source'}};
  return {requests:[q],agents:[{id:'a',name:'秘書',location:'mayor',state:'busy',connection:{},canQueue:true,canSend:false,nativeTurns:[{id:'turn',sessionId:'s',state:'running',output:'SECRET draft',instruction:'INTERNAL report prompt'}]}],runs:[{id:'source',agentId:'a',humanRequestId:'q',workId:'w',origin:'human',instruction:'元質問',state:'completed',output:'SECRET original'}, {id:'r',agentId:'a',humanRequestId:'q',workId:'w',phase:'report',origin:'report',instruction:'INTERNAL report prompt',output:'SECRET draft',state:'running',turnId:'turn',sessionId:'s'}],workshops:[],reviews:{},notification:{enabled:false}};
 }
-test('Direct only shows committed report; poll preserves draft input, unknown/failure stays hidden, retry is report-only',async({page})=>{
+test('Direct preserves original work until report commits; failure keeps original, internal report stays hidden',async({page})=>{
  const raw=fixture();let enabled=true,failSave=false;
  await page.route('**/api/**',r=>{
   if(r.request().url().endsWith('/api/village')){
@@ -16,7 +16,7 @@ test('Direct only shows committed report; poll preserves draft input, unknown/fa
  });
  await page.goto('/agents');const log=page.locator('#agent-a .runs');
  await expect(log).toContainText('人間向けの報告を作成中');
- await expect(log).not.toContainText('SECRET');await expect(log).not.toContainText('INTERNAL');
+ await expect(log).toContainText('SECRET original');await expect(log).not.toContainText('SECRET draft');await expect(log).not.toContainText('INTERNAL');
  await expect(page.getByRole('button',{name:'次の依頼を待機キューへ'})).toBeEnabled();
  await page.locator('textarea[name=instruction]').fill('次の質問');
  await page.getByRole('button',{name:'設定',exact:true}).click();
@@ -24,8 +24,8 @@ test('Direct only shows committed report; poll preserves draft input, unknown/fa
  await expect.poll(()=>enabled).toBe(false);await page.keyboard.press('Escape');await page.reload();
  await page.getByRole('button',{name:'設定',exact:true}).click();await expect(page.getByLabel('人間向け報告モード')).not.toBeChecked();
  failSave=true;await page.getByLabel('人間向け報告モード').check();await expect(page.getByLabel('人間向け報告モード')).not.toBeChecked();await page.keyboard.press('Escape');
- raw.runs[1].state='failed';await expect(log).toContainText('報告生成に失敗');await expect(log.getByRole('button',{name:'確認して再試行'})).toBeVisible();await expect(log).not.toContainText('SECRET');
- raw.runs[1].state='unknown';await expect(log).toContainText('再送せず');await expect(log).not.toContainText('SECRET');
+ raw.runs[1].state='failed';await expect(log).toContainText('報告生成に失敗');await expect(log.getByRole('button',{name:'確認して再試行'})).toBeVisible();await expect(log).toContainText('SECRET original');
+ raw.runs[1].state='unknown';await expect(log).toContainText('再送せず');await expect(log).toContainText('SECRET original');
  raw.runs[1].state='completed';raw.runs[1].output='完成した報告';raw.requests[0].status='completed';raw.requests[0].finalRunId='r';
  await expect(log).toContainText('完成した報告');await expect(log).not.toContainText('SECRET');await expect(log.locator('.message.user')).toHaveCount(1);
  await expect(page.locator('textarea[name=instruction]')).toHaveValue('次の質問');

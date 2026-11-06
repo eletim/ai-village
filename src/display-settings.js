@@ -6,7 +6,7 @@ export function initDisplaySettings(button,host){
  <label>書体 <select aria-label="書体"><option value="standard">標準</option><option value="meiryo">メイリオ</option><option value="gothic">ゴシック</option><option value="serif">明朝</option><option value="mono">等幅</option></select></label>
  <label>文字サイズ <select aria-label="文字サイズ"><option value="small">小</option><option value="medium">中</option><option value="large">大</option></select></label><p>書体・文字サイズは会話本文・返信・履歴と入力欄に適用します。コードは等幅表示を保ちます。</p>
  <label>ビューワー <select aria-label="ビューワー"><option value="markdown">Markdown</option><option value="plain">プレーンテキスト</option></select></label><p>表示設定はこのブラウザに保存します。</p>
- <h3>報告</h3><label><input type="checkbox" data-report-mode aria-label="人間向け報告モード"> 人間向け報告モード</label><p>村全体の新しい依頼に適用します。ONでは元回答を表示せず、作業後に報告を作成します。通知OFFでも報告を作成します。</p><p data-report-status role="status"></p>
+ <h3>報告</h3><label><input type="checkbox" data-report-mode aria-label="人間向け報告モード"> 人間向け報告モード</label><p>村全体の新しい依頼に適用します。ONでも作業中は通常どおり表示し、最終報告が完成した時点で元回答を報告に置き換えます。通知OFFでも報告を作成します。</p><p data-report-status role="status"></p>
  <h3>通知</h3><p>通知設定は村全体に適用します。</p><label><input type="checkbox" aria-label="完了通知を有効にする"> 完了通知を有効にする</label>
  <form class="notification-destination"><label>通知サーバーURL <input name="server" type="url" aria-label="通知サーバーURL" placeholder="既存のCLI設定を使用" maxlength="2048"></label><label>トピック <input name="topic" aria-label="トピック" placeholder="既存のCLI設定を使用" maxlength="256" pattern="[A-Za-z0-9_-]+"></label><p>空欄は現在の設定を維持します。保存だけでは通知しません。</p><div><button type="submit">通知先を保存</button> <button type="button" data-reset-destination>既存CLI設定に戻す</button></div></form><p role="status"></p>`;
  host.querySelector('.dialog-heading').after(section);

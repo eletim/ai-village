@@ -270,18 +270,18 @@ test('report mode default, persistence, validation, snapshot and OFF/legacy isol
  const legacy=f.service.flow.root(old.humanRequestId);delete legacy.reportMode;await f.service.tick();
  assert.equal(legacy.report,undefined);assert.equal(f.notifications.length,1);
 });
-test('two-stage report hides native/draft output, waits for acceptance, notifies once and survives duplicate polls/restart',async t=>{
+test('two-stage report replaces visible work after completion, waits for acceptance, notifies once and survives duplicate polls/restart',async t=>{
  const f=await fixture(t,{reportMode:true});let s=f.service;
  const source=await s.send(f.agents[0].id,{requestId:'report-on-request',instruction:'元の質問'});
  await f.submit(source);const q=s.flow.root(source.humanRequestId);
  f.runtimes.get(source.agentId).turns.at(-1).output='SECRET DRAFT';await s.tick();
- assert(!JSON.stringify(s.snapshot()).includes('SECRET DRAFT'));
+ assert(JSON.stringify(s.snapshot()).includes('SECRET DRAFT'));
  assert(s.flow.get(q.id).runs[0].output.includes('SECRET DRAFT'));
  await f.finish(source);await f.complete(source);
  assert.equal(q.ticket.state,'available');assert.equal(q.status,'active');assert.equal(f.notifications.length,0);
  let report=s.flow.run(q.works[0].currentRunId);assert.equal(report.phase,'report');assert.equal(report.workId,source.workId);
  assert.match(report.instruction,/元の質問/);assert.match(report.instruction,/追加作業/);
- assert(!JSON.stringify(s.snapshot()).includes('Final '+source.id));
+ assert(JSON.stringify(s.snapshot()).includes('Output '+source.id));
  assert(!JSON.stringify(s.snapshot()).includes('人間向けの報告だけを作成'));
  assert.equal(s.snapshot().reviews[source.agentId].attention,false);
  const count=f.sent.length;await s.tick();await s.tick();assert.equal(f.sent.length,count);
@@ -302,7 +302,7 @@ test('report failure retries only report; cancelled or unknown reports never red
  const q=s.flow.root(source.humanRequestId),report=s.flow.run(q.works[0].currentRunId);
  await f.submit(report);await f.finish(report);await f.complete(report,'failed');
  assert.equal(q.status,'active');assert.equal(q.ticket.state,'available');assert.equal(f.notifications.length,0);
- assert(!JSON.stringify(s.snapshot()).includes('Output '+source.id));
+ assert(JSON.stringify(s.snapshot()).includes('Output '+source.id));
  const x={humanRequestId:q.id,workId:report.workId,revision:q.revision,operationId:'report-retry-operation',instruction:'Do work again'};
  const retry=await s.flow.continue(x,true);assert.equal(retry.phase,'report');assert.match(retry.instruction,/再実行は禁止/);assert.equal(await s.flow.continue(x,true),retry);
  f.lose(true);await s.tick();assert.equal(retry.state,'send_unknown');const count=f.sent.length;
