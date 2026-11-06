@@ -22,7 +22,7 @@ for(const mode of ['direct','office','village'])test(`${mode}: grow/shrink, wrap
 });
 test('Direct input growth preserves reader position, follow mode, poll identity and selection',async({page})=>{
  const {input,log}=await setup(page,'direct');const bottom=()=>log.evaluate(el=>el.scrollHeight-el.scrollTop-el.clientHeight<3);await expect.poll(bottom).toBe(true);
- await input.fill('入力中\n'.repeat(10));await expect.poll(bottom).toBe(true);await log.evaluate(el=>el.scrollTop=100);await expect(page.locator('.latest-message')).toBeVisible();
+ const initialHeight=await height(input);await input.fill('入力中\n'.repeat(10));await expect.poll(()=>height(input)).toBeGreaterThan(initialHeight);await expect.poll(bottom).toBe(true);await log.evaluate(el=>el.scrollTop=100);await expect(page.locator('.latest-message')).toBeVisible();
  await input.fill('長い入力\n'.repeat(50));await page.waitForTimeout(100);expect(await log.evaluate(el=>el.scrollTop)).toBe(100);await input.evaluate(el=>{el.focus();el.setSelectionRange(12,17);window.keptInput=el;});
  await page.waitForTimeout(2200);expect(await input.evaluate(el=>el===window.keptInput&&document.activeElement===el&&el.selectionStart===12&&el.selectionEnd===17)).toBe(true);expect(await log.evaluate(el=>el.scrollTop)).toBe(100);
  await input.fill('短い');await page.waitForTimeout(100);expect(await log.evaluate(el=>el.scrollTop)).toBe(100);await page.locator('.latest-message').click();await expect.poll(bottom).toBe(true);
