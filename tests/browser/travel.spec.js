@@ -1,6 +1,7 @@
 import {test,expect} from '@playwright/test';
 async function attach(page,name='出張先PC'){
  await page.getByRole('button',{name:'添付を追加',exact:true}).click();await page.getByRole('button',{name:'出張先を追加',exact:true}).click();
+ await page.getByRole('button',{name:'今回だけ入力',exact:true}).click();
  const dialog=page.getByRole('dialog',{name:'出張先',exact:true});
  await dialog.getByLabel('名前',{exact:true}).fill(name);await dialog.getByLabel('SSH接続先').fill('dev@remote');await dialog.getByLabel('作業ディレクトリ').fill('/srv/work with spaces');await dialog.getByLabel('補足').fill('接続前に指示を確認\n追加情報');await dialog.getByRole('button',{name:'保存',exact:true}).click();
 }
@@ -17,7 +18,7 @@ for(const mode of ['direct','office'])test(`${mode}: travel editing, draft resto
  });
  await page.goto(mode==='direct'?'/agents':'/office');await attach(page);
  await expect(page.getByRole('button',{name:'出張先：出張先PC',exact:true})).toBeVisible();
- await page.getByRole('button',{name:'出張先：出張先PC',exact:true}).click();await page.getByRole('dialog',{name:'出張先',exact:true}).getByLabel('名前',{exact:true}).fill('編集済み');await page.getByRole('dialog',{name:'出張先',exact:true}).getByRole('button',{name:'保存',exact:true}).click();
+ await page.getByRole('button',{name:'出張先：出張先PC',exact:true}).click();await page.getByRole('button',{name:'今回だけ入力',exact:true}).click();await page.getByRole('dialog',{name:'出張先',exact:true}).getByLabel('名前',{exact:true}).fill('編集済み');await page.getByRole('dialog',{name:'出張先',exact:true}).getByRole('button',{name:'保存',exact:true}).click();
  const input=page.locator(mode==='direct'?'[name=instruction]':'#request');await input.fill('出張先で調査してください');await page.reload();await expect(input).toHaveValue('出張先で調査してください');await expect(page.getByRole('button',{name:'出張先：編集済み',exact:true})).toBeVisible();await page.screenshot({path:`/tmp/ai-village-travel-${mode}-chip.png`});
  await input.press('Enter');await expect(input).toHaveValue('出張先で調査してください\n');expect(payloads.length).toBe(0);
  await input.press('Control+Enter');await expect.poll(()=>payloads.length).toBe(1);await page.reload();

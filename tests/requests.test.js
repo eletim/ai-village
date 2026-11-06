@@ -139,3 +139,58 @@ test('attachment transfer failure never dispatches a prompt; retry retains one r
  const again=await s.send(f.agents[3].id,{instruction:'',attachments:[record.id],requestId:'attachment-only-request'});assert.equal(again.id,r.id);
  s.transferAttachment=async(a,item,bytes)=>{assert.equal(a.connection.connectionType,'ssh');assert.equal(bytes.toString(),'data');return {...item,path:'/tmp/ai-village-attachment-fixture/data.txt'};};r.nextTransferAt=0;await s.tick();assert.equal(f.sent.length,1);assert(f.sent[0].text.includes('/tmp/ai-village-attachment-fixture/data.txt'));assert.equal(s.data.requests.length,1);await f.submit(r);await f.finish(r);await f.complete(r);assert.equal(f.notifications.length,1);
 });
+
+async function overload(f,r){
+ const native=f.runtimes.get(r.agentId);native.cursor++;
+ Object.assign(native.turns.find(t=>t.id===r.turnId),{error:'Selected model is at capacity',errorCode:'server_overloaded',runtimeError:{message:'Selected model is at capacity',codex_error_info:'server_overloaded'},completionOffset:native.cursor});
+ await f.complete(r,'failed');
+}
+test('finish then overloaded failure never notifies; bounded durable retry sends once and needs a fresh finish',async t=>{
+ const f=await fixture(t);let s=f.service;
+ let r=await s.send(f.agents[0].id,{instruction:'Implement once',requestId:'auto-retry-root'});await f.submit(r);await f.finish(r);await overload(f,r);
+ let q=s.flow.root(r.humanRequestId),w=q.works[0];assert.equal(q.status,'active');assert.equal(w.finish.status,'failed');assert.equal(q.ticket.state,'available');assert.equal(f.notifications.length,0);
+ assert.equal(r.recovery.status,'scheduled');assert(r.recovery.nextAt>Date.now());assert.equal(f.sent.length,1);
+ r.recovery.nextAt=0;await s.save();s=await f.restart();await Promise.all([s.tick(),s.tick()]);
+ q=s.flow.root(r.humanRequestId);w=q.works[0];let retry=s.flow.run(w.currentRunId);
+ assert.notEqual(retry.id,r.id);assert.equal(retry.workId,r.workId);assert.equal(retry.origin,'retry');assert.equal(w.autoRetry.attempts,1);assert.equal(w.finish,undefined);assert.equal(f.sent.length,2);
+ assert.match(retry.instruction,/既存変更/);assert.match(retry.instruction,/再委任せず/);
+ await s.tick();await s.tick();assert.equal(f.sent.length,2);assert.equal(retry.state,'awaiting_input');
+ s=await f.restart();await s.tick();retry=s.flow.run(retry.id);assert.equal(retry.state,'awaiting_input');assert.equal(f.sent.length,2);
+ // A late old terminal is not the retry's native acknowledgement.
+ await f.complete(r,'completed');assert.equal(retry.acceptance,'pending');assert.equal(f.notifications.length,0);
+ await f.submit(retry);await f.finish(retry);await f.complete(retry);await s.tick();assert.equal(f.notifications.length,1);
+ const completed=JSON.stringify(s.flow.root(q.id));s=await f.restart();await s.tick();assert.equal(JSON.stringify(s.flow.root(q.id)),completed);assert.equal(f.notifications.length,1);assert.equal(f.sent.length,2);
+});
+test('automatic retries stop after two attempts or ten minutes and never retry ambiguous acceptance',async t=>{
+ const f=await fixture(t),s=f.service;let r=await s.send(f.agents[0].id,{instruction:'Work',requestId:'retry-budget-root'});
+ for(let attempt=0;attempt<3;attempt++){
+  await f.submit(r);await overload(f,r);
+  if(attempt===2){assert.equal(r.recovery.status,'manual');assert.match(r.recovery.reason,/上限/);break;}
+  assert.equal(r.recovery.status,'scheduled');assert(r.recovery.nextAt-Date.now()>=(attempt===0?29000:119000));r.recovery.nextAt=0;await s.tick();r=s.flow.run(s.flow.root(r.humanRequestId).works[0].currentRunId);
+ }
+ assert.equal(f.sent.length,3);await s.tick();assert.equal(f.sent.length,3);assert.equal(f.notifications.length,0);
+ const other=await s.send(f.agents[1].id,{instruction:'Other',requestId:'retry-time-root'});await f.submit(other);await overload(f,other);
+ s.flow.root(other.humanRequestId).works[0].autoRetry.firstFailureAt=Date.now()-600001;await s.tick();assert.equal(other.recovery.status,'manual');
+ const pending=await s.send(f.agents[2].id,{instruction:'Unaccepted',requestId:'retry-unknown-root'});await s.tick();await s.tick();assert.equal(pending.state,'awaiting_input');assert.equal(s.flow.root(pending.humanRequestId).works[0].runIds.length,1);
+});
+test('cancel, authentication failure, legacy runs, child work and newer input exclude automatic replay',async t=>{
+ for(const scenario of ['cancel','authentication','legacy','child','new-input']){
+  const f=await fixture(t),s=f.service;const r=await s.send(f.agents[0].id,{instruction:'Work',requestId:'exclude-'+scenario});await f.submit(r);
+  if(scenario==='child')await f.delegate(r,f.agents[2]);
+  if(scenario==='legacy')delete r.recoveryPolicy;
+  await overload(f,r);
+  if(scenario==='authentication'){r.errorCode='authentication_failed';await s.tick();}
+  if(scenario==='cancel')await s.flow.cancel({humanRequestId:r.humanRequestId,revision:s.flow.root(r.humanRequestId).revision});
+  if(scenario==='new-input'){const n=f.runtimes.get(r.agentId);n.inputs.push({id:'later',turnId:r.turnId,offset:++n.cursor,hash:'other'});}
+  if(r.recovery)r.recovery.nextAt=0;
+  await s.tick();await s.tick();
+  assert.equal(f.sent.filter(x=>x.agentId===r.agentId).length,1,scenario);assert.equal(f.notifications.length,0,scenario);
+  if(['authentication','legacy','child','new-input'].includes(scenario))assert.equal(r.recovery.status,'manual',scenario);
+ }
+});
+test('historically completed requests and runs are not reinterpreted when an old native error appears',async t=>{
+ const f=await fixture(t),s=f.service,r=await s.send(f.agents[0].id,{instruction:'Old',requestId:'historic-root'});
+ await f.submit(r);await f.finish(r);await f.complete(r);const q=s.flow.root(r.humanRequestId),before=JSON.stringify(q),runBefore=JSON.stringify(r);
+ const native=f.runtimes.get(r.agentId);Object.assign(native.turns[0],{state:'failed',errorCode:'server_overloaded',error:'old error'});
+ await s.tick();await s.tick();assert.equal(JSON.stringify(q),before);assert.equal(JSON.stringify(r),runBefore);assert.equal(f.sent.length,1);assert.equal(f.notifications.length,1);
+});

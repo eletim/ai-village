@@ -1,4 +1,5 @@
-import {AttachmentStore,MAX_FILE_BYTES} from '../server/attachments.mjs';
+import {TravelRegistry} from '../server/travel-registry.mjs';
+import {AttachmentStore} from '../server/attachments.mjs';
 import { DirectAgents } from '../server/direct.mjs';
 import { PullRequests } from '../server/pull-requests.mjs';
 import { listenAddresses } from '../server/network.mjs';
@@ -27,6 +28,7 @@ const bridge = new WorkshopBridge({ library });
 await bridge.init();
 const todos = new TodoStore(bridge.dir);
 await todos.init();
+const travelRegistry=new TravelRegistry(bridge.dir);await travelRegistry.init();
 const notifier = new VillageNotifier({ dir: bridge.dir });
 await notifier.init();
 const attachments=new AttachmentStore(bridge.dir);await attachments.init();
@@ -35,7 +37,7 @@ await direct.init();
 const development = new Development(bridge, library, {port});
 const images = new ImageStore(bridge.dir);
 await images.init();
-const operations = new VillageOperations(bridge, notifier, {web:new WebReader(),development,images,todos,direct,prs:new PullRequests(bridge.dir,library)});
+const operations = new VillageOperations(bridge, notifier, {web:new WebReader(),development,images,todos,direct,travelRegistry,prs:new PullRequests(bridge.dir,library)});
 const secretariat = new Secretariat(bridge, library, operations, notifier, images);
 await secretariat.init();
 secretariat.direct=direct;
@@ -53,6 +55,8 @@ const handleRequest = async (req, res) => {
         if(req.method==='GET' && pathname==='/api/direct/requests')return json(res,200,{requests:direct.flow.list()});
         if(req.method==='GET' && pathname==='/api/direct/agents')return json(res,200,direct.discovery());
         if(req.method==='GET' && pathname==='/api/direct')return json(res,200,direct.snapshot());
+        const deletion=pathname.match(/^\/api\/direct\/projects\/([0-9a-f-]{36})\/(delete-plan|delete)$/);
+        if(deletion&&req.method==='GET'&&deletion[2]==='delete-plan')return json(res,200,direct.projectDeletePlan(deletion[1]));
         if(!['POST','PUT'].includes(req.method))return json(res,405,{error:'Method not allowed'});
         if(!req.headers['content-type']?.startsWith('application/json'))return json(res,415,{error:'JSON required'});
         let body='';for await(const chunk of req){body+=chunk;if(body.length>80000)return json(res,413,{error:'Request too large'});}
@@ -69,6 +73,7 @@ const handleRequest = async (req, res) => {
         const workshop=pathname.match(/^\/api\/direct\/workshops\/([0-9a-f-]{36})$/);
         if(req.method==='PUT' && workshop)return json(res,200,await direct.putWorkshop(input,workshop[1]));
         if(req.method==='POST' && pathname==='/api/direct/projects')return json(res,201,await direct.putProject(input));
+        if(deletion&&req.method==='POST'&&deletion[2]==='delete')return json(res,200,await direct.deleteProject(deletion[1],input));
         const project=pathname.match(/^\/api\/direct\/projects\/([0-9a-f-]{36})$/);
         if(req.method==='PUT' && project)return json(res,200,await direct.putProject(input,project[1]));
         const metadata=pathname.match(/^\/api\/direct\/agents\/([0-9a-f-]{36})$/);
@@ -77,6 +82,14 @@ const handleRequest = async (req, res) => {
         const agent=pathname.match(/^\/api\/direct\/agents\/([0-9a-f-]{36})\/(runs|stop|view)$/);
         if(req.method==='POST' && agent)return json(res,200,await (agent[2]==='runs'?direct.send(agent[1],input):agent[2]==='view'?direct.viewAgent(agent[1],input):direct.stop(agent[1])));
         return json(res,404,{error:'Not found'});
+      }
+      if(pathname==='/api/travel-registry'){
+        if(req.method==='GET')return json(res,200,travelRegistry.snapshot());
+        if(req.method!=='POST')return json(res,405,{error:'Method not allowed'});
+        if(!req.headers['content-type']?.startsWith('application/json'))return json(res,415,{error:'JSON required'});
+        let body='';for await(const chunk of req){body+=chunk;if(body.length>16000)return json(res,413,{error:'Request too large'});}
+        let input;try{input=JSON.parse(body);}catch{return json(res,400,{error:'Invalid JSON'});}
+        return json(res,200,await travelRegistry.update(input));
       }
       if (pathname === '/api/todos') {
         if(req.method==='GET')return json(res,200,todos.snapshot());
@@ -98,7 +111,7 @@ const handleRequest = async (req, res) => {
         res.writeHead(200,{'Content-Type':record.kind==='image'?'image/png':'application/octet-stream','Content-Disposition':(record.kind==='image'?'inline':'attachment')+"; filename*=UTF-8''"+encodeURIComponent(record.name).replaceAll("'",'%27'),'X-Content-Type-Options':'nosniff','Content-Security-Policy':"sandbox; default-src 'none'",'Cache-Control':'private, no-store'});res.end(bytes);return;
       }
       if(req.method==='POST'&&pathname==='/api/attachments'){
-        const chunks=[];let size=0;for await(const chunk of req){size+=chunk.length;if(size>MAX_FILE_BYTES)return json(res,413,{error:'ファイルは1件16 MiB以内です'});chunks.push(chunk);}
+        const chunks=[];for await(const chunk of req)chunks.push(chunk);
         return json(res,201,await attachments.save(Buffer.concat(chunks),new URL(req.url,'http://localhost').searchParams.get('name'),req.headers['content-type']));
       }
       const imageRoute = pathname.match(/^\/api\/images\/([0-9a-f-]{36})$/);

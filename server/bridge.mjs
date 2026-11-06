@@ -10,7 +10,7 @@ import { randomUUID } from 'node:crypto';
 export const activePhases = new Set(['planning', 'connecting', 'working', 'reporting', 'cancelling']);
 const quote = value => "'" + String(value).replaceAll("'", "'\\''") + "'";
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-export function run(command, args, { input, timeout = 60000, signal } = {}) {
+export function run(command, args, { input, timeout = 60000, signal, maxOutput = 15e6 } = {}) {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) { reject(new Error('処理はキャンセルされました。')); return; }
     const child = spawn(command, args, { stdio: ['pipe', 'pipe', 'pipe'], detached: !!signal });
@@ -27,7 +27,7 @@ export function run(command, args, { input, timeout = 60000, signal } = {}) {
     };
     const abort = () => stop(new Error('処理はキャンセルされました。'));
     const timer = setTimeout(() => stop(new Error(`${command}: timeout`)), timeout);
-    child.stdout.on('data', chunk => { stdout += chunk; if (stdout.length > 15e6) stop(new Error(`${command}: output too large`)); });
+    child.stdout.on('data', chunk => { stdout += chunk; if (stdout.length > maxOutput) stop(new Error(`${command}: output too large`)); });
     child.stderr.on('data', chunk => { stderr = (stderr + chunk).slice(-12000); });
     child.on('error', error => finish(error));
     child.on('close', code => finish(stopped || (code === 0 ? null : new Error(`${command} exited ${code}: ${stderr || stdout}`)), stdout));
@@ -120,11 +120,11 @@ export class WorkshopBridge {
     this.launch(() => this.execute());
     return this.snapshot();
   }
-  async remote(args, host = this.job?.sshHost, jobId = this.job?.id || null) {
+  async remote(args, host = this.job?.sshHost, jobId = this.job?.id || null, options = {}) {
     if (!host) throw new Error('保存された接続先がありません。');
     await appendFile(resolve(this.dir, 'ssh-audit.jsonl'), JSON.stringify({ at: new Date().toISOString(), host, command: args[0], operation: args[0] === 'purplemux' ? args.slice(1,3) : [], jobId }) + '\n', { mode: 0o600 });
     const command = args.map(quote).join(' ');
-    return run('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', host, 'bash -lic ' + quote(command)]);
+    return run('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', host, 'bash -lic ' + quote(command)], options);
   }
   async pmux(...args) { return JSON.parse(await this.remote(['purplemux', ...args])); }
   async secretary(kind, prompt) {
@@ -234,7 +234,7 @@ for directory, dirs, names in os.walk(root, followlinks=False):
  dirs[:]=[d for d in dirs if d not in ('.git','node_modules','.venv') and not os.path.islink(os.path.join(directory,d))]
  for name in sorted(names):
   path=os.path.join(directory,name)
-  if not os.path.islink(path) and os.path.isfile(path) and os.path.getsize(path)<=10*1024*1024:
+  if not os.path.islink(path) and os.path.isfile(path):
    files.append({'path':os.path.relpath(path,root),'size':os.path.getsize(path)})
   if len(files)>=100: break
  if len(files)>=100: break
@@ -251,10 +251,9 @@ print(json.dumps(files))`;
     const script = `import os,sys,base64
 root=os.path.realpath(sys.argv[1]); path=os.path.realpath(os.path.join(root,sys.argv[2]))
 if os.path.commonpath([root,path])!=root or not os.path.isfile(path): raise ValueError('outside job directory')
-with open(path,'rb') as f: data=f.read(10*1024*1024+1)
-if len(data)>10*1024*1024: raise ValueError('file too large')
+with open(path,'rb') as f: data=f.read()
 print(base64.b64encode(data).decode())`;
-    return Buffer.from(await this.remote(['python3', '-c', script, job.cwd, path], job.sshHost, job.id), 'base64');
+    return Buffer.from(await this.remote(['python3', '-c', script, job.cwd, path], job.sshHost, job.id, {maxOutput:Infinity}), 'base64');
   }
   async cleanupResources(job) {
     // A new job still in its local stage has never contacted the workshop.

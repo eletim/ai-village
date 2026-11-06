@@ -17,7 +17,7 @@ test('real HTTP + native JSONL + durable inbox + isolated notify CLI: 0 interim,
  await writeFile(join(dir,'direct.json'),JSON.stringify({version:1,workshops:[],agents,runs:[{id:'legacy',agentId:agents[0].id,state:'completed',output:'old without receipt'}]}));
  await writeFile(join(dir,'agents-fixture.json'),JSON.stringify(agents));
  const pmux=join(dir,'fake-pmux.cjs'),notify=join(dir,'fake-notify.cjs');
- await writeFile(pmux,"#!/usr/bin/env node\nconst fs=require('fs');const agents=JSON.parse(fs.readFileSync(process.env.FIXTURE_AGENTS,'utf8'));const args=process.argv.slice(2),a=agents.find(a=>args.includes(a.workspaceId));if(args[1]==='status')console.log(JSON.stringify({alive:true,cliState:'idle',agentSessionId:a.nativeSession}));else if(args[1]==='send'){fs.appendFileSync(process.env.FIXTURE_CAPTURE,JSON.stringify({agentId:a.id,text:args.at(-1)})+'\\n');console.log('{\"status\":\"sent\"}');}else process.exit(3);\n",{mode:0o700});
+ await writeFile(pmux,"#!/usr/bin/env node\nconst fs=require('fs');const agents=JSON.parse(fs.readFileSync(process.env.FIXTURE_AGENTS,'utf8'));const args=process.argv.slice(2),a=agents.find(a=>args.includes(a.workspaceId));if(args[1]==='status')console.log(JSON.stringify({alive:true,cliState:fs.existsSync(process.env.FIXTURE_CAPTURE+'.busy')?'busy':'idle',agentSessionId:a.nativeSession}));else if(args[1]==='send'){fs.appendFileSync(process.env.FIXTURE_CAPTURE,JSON.stringify({agentId:a.id,text:args.at(-1)})+'\\n');console.log('{\"status\":\"sent\"}');}else process.exit(3);\n",{mode:0o700});
  await writeFile(notify,"#!/usr/bin/env node\nrequire('fs').appendFileSync(process.env.FIXTURE_NOTICES,JSON.stringify(process.argv.slice(2))+'\\n');\n",{mode:0o700});
  const start=async()=>{child=spawn(process.execPath,['scripts/dev.mjs','--port',String(port)],{env:{...process.env,VILLAGE_STATE_DIR:dir,VILLAGE_VPN_ADDRESS:'',VILLAGE_PUBLIC_ORIGIN:'',VILLAGE_AUTH_FILE:'',VILLAGE_PMUX_BIN:pmux,VILLAGE_NOTIFY_BIN:notify,VILLAGE_OFFICE_URL:base+'/agents',VILLAGE_NOTIFICATIONS:'true',CODEX_HOME:dir,FIXTURE_AGENTS:join(dir,'agents-fixture.json'),FIXTURE_CAPTURE:capture,FIXTURE_NOTICES:notices},stdio:['ignore','pipe','pipe']});await new Promise((ok,no)=>{const timer=setTimeout(()=>no(Error('startup timeout')),10000);child.once('exit',()=>{clearTimeout(timer);no(Error('server exit'));});child.stdout.on('data',b=>{if(b.toString().includes('AI村 →')){clearTimeout(timer);ok();}});});};
  const stop=async()=>{if(child&&child.exitCode===null){const done=once(child,'exit');child.kill();await done;}};
@@ -58,5 +58,23 @@ test('real HTTP + native JSONL + durable inbox + isolated notify CLI: 0 interim,
   const office=await fetch(base+'/api/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:'',requestId:'office-travel-001',agentId:agents[0].id,travelContexts,attachments})});assert.equal(office.status,202);
   const officeState=await office.json();assert.deepEqual(officeState.secretary.messages.find(m=>m.content==='').travelContexts,travelContexts);
   assert.deepEqual((await get()).requests.find(q=>q.clientRequestId==='office-travel-001').travelContexts,travelContexts);
+  // Exact structured Codex overload after finish, with PurpleMux stuck at busy.
+  const failedInput=(await post('/agents/'+agents[1].id+'/runs',{instruction:'Recover this task',requestId:'http-overload'})).body;
+  const failed=await submit(failedInput);await finish(failed,'http-overload-finish');
+  await writeFile(capture+'.busy','busy');
+  await native(agents[1],[{type:'event_msg',payload:{type:'task_complete',turn_id:failed.turnId,last_agent_message:null,error:{message:'Selected model is at capacity. Please try a different model.',codex_error_info:'server_overloaded'}}}]);
+  await until(async()=>{const current=await run(failed.id);return current.state==='failed'&&current.recovery?.status==='scheduled';});
+  const failedState=await get(),failedRequest=await request(failed.humanRequestId);
+  assert.equal(failedRequest.works[0].finish.status,'failed');assert.equal(failedRequest.ticket.state,'available');assert.equal((await run(failed.id)).errorCode,'server_overloaded');
+  assert.equal(failedState.agents.find(a=>a.id===agents[1].id).canSend,true);assert.equal(failedState.reviews[agents[1].id].attention,false);assert.equal((await lines(notices)).length,1);
+  await stop();await start();assert.equal((await run(failed.id)).recovery.status,'scheduled');
+  const retryPayload={humanRequestId:failed.humanRequestId,workId:failed.workId,revision:(await request(failed.humanRequestId)).revision,operationId:'http-manual-retry',instruction:'Check existing effects and resume only unfinished work'};
+  const retried=await post('/requests/retry',retryPayload);assert.equal(retried.status,200);assert.equal((await post('/requests/retry',retryPayload)).body.id,retried.body.id);
+  await until(async()=>(await run(retried.body.id)).state==='awaiting_input');
+  assert.equal((await post('/requests/retry',{...retryPayload,revision:(await request(failed.humanRequestId)).revision,operationId:'http-uncertain-retry'})).status,409);
+  const count=(await lines(capture)).length;const fq=await request(failed.humanRequestId);
+  assert.equal((await post('/requests/cancel',{humanRequestId:fq.id,revision:fq.revision})).status,200);
+  await stop();await start();assert.equal((await lines(capture)).length,count);assert.equal((await lines(notices)).length,1);
+
  }finally{await stop();await rm(dir,{recursive:true,force:true});}
 });
