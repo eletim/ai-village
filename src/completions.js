@@ -1,7 +1,7 @@
 // One identity per native turn (including the managed/native views of that turn).
 // A legacy managed run without native identity is still identified by its run ID.
 export function completionKey(agent,entry){
- if(entry.state!=='completed')return null;
+ if(entry.hiddenCompletion||entry.state!=='completed')return null;
  const session=entry.sessionId||entry.agentSessionId;
  const turn=entry.turnId||(entry.external?entry.id:null);
  if(session&&turn)return JSON.stringify([agent.id,agent.provider||'codex',session,turn]);
@@ -10,7 +10,7 @@ export function completionKey(agent,entry){
 export function agentEntries(state,agent){
  const runs=state.runs.filter(r=>r.agentId===agent.id);
  const external=(agent.nativeTurns||[]).map(t=>({...t,sessionId:t.sessionId||agent.observedSessionId,instruction:t.instruction,createdAt:t.startedAt,external:true})).filter(t=>!runs.some(r=>r.turnId===t.id&&(r.sessionId||r.agentSessionId)===t.sessionId));
- return [...runs,...external].sort((a,b)=>(a.createdAt||'').localeCompare(b.createdAt||''));
+ return [...runs,...external].filter(r=>!r.hideEntry).sort((a,b)=>(a.createdAt||'').localeCompare(b.createdAt||''));
 }
 export function completedEntries(state){
  const found=new Map();

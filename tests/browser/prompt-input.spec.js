@@ -81,6 +81,7 @@ test('busy agent accepts consecutive additional instructions into queue',async({
   await route.fulfill({json:state});
  });
  await page.goto('/agents');const input=page.locator('[name=instruction]');
- for(const text of ['追加1','追加2']){await input.fill(text);await input.press('Control+Enter');await expect(input).toHaveValue('');}
+ // Clearing precedes the response refresh; wait for the submit action to unlock.
+ for(const text of ['追加1','追加2']){await expect(page.getByRole('button',{name:'待機キューへ',exact:true})).toBeEnabled();await input.fill(text);await input.press('Control+Enter');await expect(input).toHaveValue('');}
  expect(runs.map(r=>r.instruction)).toEqual(['追加1','追加2']);await expect(page.getByRole('button',{name:'待機キューへ',exact:true})).toBeEnabled();
 });

@@ -7,7 +7,7 @@ import {randomUUID} from 'node:crypto';
 import {DirectAgents} from '../server/direct.mjs';
 import {inputHash} from '../server/runtime-events.mjs';
 import {VillageOperations} from '../server/operations.mjs';
-async function fixture(t){
+async function fixture(t,{reportMode=false}={}){
  const dir=await mkdtemp(join(tmpdir(),'request-flow-'));t.after(()=>rm(dir,{recursive:true,force:true}));
  const runtimes=new Map(),sent=[],notifications=[];let offline=false,lose=false;
  const execute=async(args,host,id)=>{
@@ -20,7 +20,7 @@ async function fixture(t){
   throw Error('unexpected '+args.slice(0,4));
  };
  const options={dir,remote:execute,localRun:(cmd,args)=>execute([cmd,...args]),notifier:{status:()=>({}),enqueue:async message=>{notifications.push(message);return {status:'sent'};}}};
- let service=new DirectAgents(options);await service.init({watch:false});
+ let service=new DirectAgents(options);await service.init({watch:false});await service.flow.configureReport(reportMode);
  const agents=Array.from({length:4},(_,i)=>({id:randomUUID(),name:i<2?'Secretary '+i:'Worker '+i,location:i<2?'mayor':'workshop',workshopId:'w'+i,connection:{connectionType:i===3?'ssh':'local',sshHost:i===3?'remote':null,name:'PC'+i},workspaceId:'',tabId:'tab'+i,sessionName:'pane'+i,provider:'codex',state:'idle'}));
  for(const a of agents){a.workspaceId='ws-'+a.id;service.data.agents.push(a);runtimes.set(a.id,{available:true,sessionId:'session-'+a.id,fileIdentity:'file-'+a.id,cursor:0,inputs:[],turns:[]});}
  await service.save();await service.tick();
@@ -255,4 +255,109 @@ test('permission, setup/unknown transport, incomplete native tail and pending in
 });
 test('accepted steering survives restart and only its final run consumes the original ticket',async t=>{
  const f=await fixture(t),root=await f.service.send(f.agents[0].id,{requestId:randomUUID(),instruction:'Original'});await f.submit(root);await assert.rejects(f.service.send(root.agentId,{requestId:randomUUID(),instruction:'More',steerTarget:{runId:root.id}}),{status:400});const r=await steer(f,root);await acceptSteer(f,r);const count=f.sent.length;await f.restart();await f.service.tick();const restored=f.service.flow.run(r.id);assert.equal(restored.acceptance,'accepted');assert.equal(restored.state,'running');await f.finish(restored);await f.complete(restored);await f.service.tick();assert.equal(f.sent.length,count);assert.equal(f.notifications.length,1);assert.equal(f.service.flow.root(root.humanRequestId).finalRunId,r.id);
+});
+
+
+test('report mode default, persistence, validation, snapshot and OFF/legacy isolation',async t=>{
+ const f=await fixture(t),s=f.service;
+ delete s.data.reportSettings;assert.equal(s.flow.reportStatus().enabled,true);
+ await assert.rejects(s.flow.configureReport('true'),/true\/false/);
+ await s.flow.configureReport(false);
+ const old=await s.send(f.agents[0].id,{requestId:'report-off-request',instruction:'OFF'});
+ await s.flow.configureReport(true);await f.submit(old);await f.finish(old);await f.complete(old);
+ assert.equal(s.flow.root(old.humanRequestId).report,undefined);assert.equal(f.notifications.length,1);
+ assert.equal((await f.restart()).flow.reportStatus().enabled,true);
+ const legacy=f.service.flow.root(old.humanRequestId);delete legacy.reportMode;await f.service.tick();
+ assert.equal(legacy.report,undefined);assert.equal(f.notifications.length,1);
+});
+test('two-stage report hides native/draft output, waits for acceptance, notifies once and survives duplicate polls/restart',async t=>{
+ const f=await fixture(t,{reportMode:true});let s=f.service;
+ const source=await s.send(f.agents[0].id,{requestId:'report-on-request',instruction:'元の質問'});
+ await f.submit(source);const q=s.flow.root(source.humanRequestId);
+ f.runtimes.get(source.agentId).turns.at(-1).output='SECRET DRAFT';await s.tick();
+ assert(!JSON.stringify(s.snapshot()).includes('SECRET DRAFT'));
+ assert(s.flow.get(q.id).runs[0].output.includes('SECRET DRAFT'));
+ await f.finish(source);await f.complete(source);
+ assert.equal(q.ticket.state,'available');assert.equal(q.status,'active');assert.equal(f.notifications.length,0);
+ let report=s.flow.run(q.works[0].currentRunId);assert.equal(report.phase,'report');assert.equal(report.workId,source.workId);
+ assert.match(report.instruction,/元の質問/);assert.match(report.instruction,/追加作業/);
+ assert(!JSON.stringify(s.snapshot()).includes('Final '+source.id));
+ assert(!JSON.stringify(s.snapshot()).includes('人間向けの報告だけを作成'));
+ assert.equal(s.snapshot().reviews[source.agentId].attention,false);
+ const count=f.sent.length;await s.tick();await s.tick();assert.equal(f.sent.length,count);
+ s=await f.restart();await s.tick();assert.equal(f.sent.length,count);
+ report=s.flow.run(report.id);await assert.rejects(f.finish(report),/受付をまだ/);
+ await f.submit(report);assert.equal(s.agent(report.agentId).canSteer,false);
+ await assert.rejects(f.delegate(report,f.agents[2]),/報告工程/);
+ await f.finish(report);assert.equal(f.notifications.length,0);await f.complete(report);
+ assert.equal(f.notifications.length,1);assert.match(f.notifications[0].content,new RegExp('Final '+report.id));
+ assert.equal(s.flow.root(q.id).ticket.state,'consumed');assert.equal(s.snapshot().reviews[source.agentId].attention,true);
+ assert(!JSON.stringify(s.snapshot()).includes('Final '+source.id));assert(JSON.stringify(s.snapshot()).includes('Final '+report.id));
+ await s.tick();await s.tick();await f.restart();await f.service.tick();assert.equal(f.notifications.length,1);
+ assert.equal(f.service.data.runs.filter(r=>r.phase==='report').length,1);
+});
+test('report failure retries only report; cancelled or unknown reports never redispatch/notify',async t=>{
+ const f=await fixture(t,{reportMode:true}),s=f.service;
+ const source=await s.send(f.agents[0].id,{requestId:'report-failed-request',instruction:'work'});await f.submit(source);await f.finish(source);await f.complete(source);
+ const q=s.flow.root(source.humanRequestId),report=s.flow.run(q.works[0].currentRunId);
+ await f.submit(report);await f.finish(report);await f.complete(report,'failed');
+ assert.equal(q.status,'active');assert.equal(q.ticket.state,'available');assert.equal(f.notifications.length,0);
+ assert(!JSON.stringify(s.snapshot()).includes('Output '+source.id));
+ const x={humanRequestId:q.id,workId:report.workId,revision:q.revision,operationId:'report-retry-operation',instruction:'Do work again'};
+ const retry=await s.flow.continue(x,true);assert.equal(retry.phase,'report');assert.match(retry.instruction,/再実行は禁止/);assert.equal(await s.flow.continue(x,true),retry);
+ f.lose(true);await s.tick();assert.equal(retry.state,'send_unknown');const count=f.sent.length;
+ await s.tick();await f.restart();await f.service.tick();assert.equal(f.sent.length,count);
+ const restored=f.service.flow.root(q.id);await f.service.flow.cancel({humanRequestId:q.id,revision:restored.revision});await f.service.tick();
+ assert.equal(f.sent.length,count);assert.equal(f.notifications.length,0);
+});
+test('child results remain intact and do not get report runs; source failure does not create report',async t=>{
+ const f=await fixture(t,{reportMode:true}),s=f.service;
+ const r=await s.send(f.agents[0].id,{requestId:'report-children',instruction:'work'});await f.submit(r);
+ const child=await f.delegate(r,f.agents[2]);await s.tick();const c=s.flow.run(child.currentRunId);
+ await f.submit(c);await f.finish(c);await f.complete(c);assert.equal(s.flow.work(s.flow.root(r.humanRequestId),child.id).state,'completed');assert.equal(child.runIds.length,1);
+ const q=s.flow.root(r.humanRequestId);
+ await s.flow.acknowledge({humanRequestId:q.id,workId:r.workId,actorRunId:r.id,resultIds:[c.id]});
+ assert.equal(s.flow.results(q.id,r.workId)[0].output,'Output '+c.id);
+ await f.finish(r);await f.complete(r,'failed');assert.equal(q.report,undefined);assert.equal(f.notifications.length,0);
+});
+test('report snapshot is pinned, supplements stay same work until report, new request during report is queued separately',async t=>{
+ const f=await fixture(t,{reportMode:true}),s=f.service;
+ const r=await s.send(f.agents[0].id,{requestId:'report-queue-root',instruction:'元質問'});await f.submit(r);
+ await s.flow.configureReport(false);
+ await f.finish(r);await f.complete(r);const q=s.flow.root(r.humanRequestId),report=s.flow.run(q.works[0].currentRunId);
+ await f.submit(report);
+ await assert.rejects(s.send(r.agentId,{requestId:'report-invalid-steer',instruction:'補足',steerTarget:{runId:report.id,sessionId:report.sessionId,turnId:report.turnId}}),/補足対象/);
+ const later=await s.send(r.agentId,{requestId:'report-next-request',instruction:'次の独立依頼'});
+ assert.equal(later.state,'queued');assert.notEqual(later.humanRequestId,q.id);assert.equal(s.flow.root(later.humanRequestId).reportMode,false);
+ const count=f.sent.length;await s.tick();assert.equal(f.sent.length,count);
+ await f.finish(report);await f.complete(report);assert.equal(f.notifications.length,1);assert.equal(later.state,'awaiting_input');
+ assert.equal(s.flow.root(q.id).reportMode,true);
+});
+test('cancel before source completion or queued report prevents creation/dispatch and final attention',async t=>{
+ const f=await fixture(t,{reportMode:true}),s=f.service;
+ const r=await s.send(f.agents[0].id,{requestId:'report-cancel-source',instruction:'work'});await f.submit(r);await f.finish(r);
+ const q=s.flow.root(r.humanRequestId);await s.flow.cancel({humanRequestId:q.id,revision:q.revision});await f.complete(r);
+ assert.equal(q.report,undefined);assert.equal(f.notifications.length,0);
+ const r2=await s.send(f.agents[1].id,{requestId:'report-cancel-queued',instruction:'work'});await f.submit(r2);await f.finish(r2);
+ // A native completion can be observed and settled while dispatch remains withheld.
+ const native=f.runtimes.get(r2.agentId);native.turns.at(-1).state='completed';
+ await s.observe(s.agent(r2.agentId));await s.flow.settle();
+ const q2=s.flow.root(r2.humanRequestId),report=s.flow.run(q2.works[0].currentRunId);assert.equal(report.state,'queued');
+ await s.flow.cancel({humanRequestId:q2.id,revision:q2.revision});const count=f.sent.length;await s.tick();await f.restart();await f.service.tick();
+ assert.equal(f.sent.length,count);assert.equal(f.notifications.length,0);
+});
+test('report completed without finish remains hidden and resume is report-only; notification disabled does not skip report',async t=>{
+ const f=await fixture(t,{reportMode:true}),s=f.service;s.notifier.enqueue=async()=>({status:'disabled'});
+ const r=await s.send(f.agents[0].id,{requestId:'report-no-finish',instruction:'question'});await f.submit(r);await f.finish(r);await f.complete(r);
+ const q=s.flow.root(r.humanRequestId),report=s.flow.run(q.works[0].currentRunId);await f.submit(report);await f.complete(report);
+ assert.equal(q.status,'active');assert.equal(q.ticket.state,'available');assert(!JSON.stringify(s.snapshot()).includes('Final '+report.id));
+ const next=await s.flow.continue({humanRequestId:q.id,workId:r.workId,revision:q.revision,operationId:'report-resume-op',instruction:'resume'});
+ assert.equal(next.phase,'report');await s.tick();await f.submit(next);await f.finish(next);await f.complete(next);
+ assert.equal(q.status,'completed');assert.equal(q.notification.status,'disabled');assert.equal(q.ticket.state,'consumed');
+});
+test('both report settings survive restart; failed persistence does not falsely apply the switch',async t=>{
+ const f=await fixture(t);assert.equal((await f.restart()).flow.reportStatus().enabled,false);
+ await f.service.flow.configureReport(true);assert.equal((await f.restart()).flow.reportStatus().enabled,true);
+ const s=f.service,save=s.save;s.save=async()=>{throw Error('disk unavailable');};
+ await assert.rejects(s.flow.configureReport(false),/disk unavailable/);assert.equal(s.flow.reportStatus().enabled,true);s.save=save;
 });

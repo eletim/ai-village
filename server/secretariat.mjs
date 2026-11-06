@@ -1,3 +1,4 @@
+import {humanProjection} from './report-view.mjs';
 import {visualReportContext} from './visual-report-context.mjs';
 import {hasReport} from '../src/job-state.js';
 import { createHash, randomUUID } from 'node:crypto';
@@ -24,13 +25,14 @@ export class Secretariat {
   }
   snapshot() {
     if(!this.direct)return {status:this.status,messages:this.messages};
-    const agents=this.direct.data.agents.filter(a=>a.location==='mayor');
+    const visible=humanProjection(this.direct.data);
+    const agents=visible.agents.filter(a=>a.location==='mayor');
     const ids=new Set(agents.map(a=>a.id));
-    const messages=this.direct.data.runs.filter(r=>ids.has(r.agentId)).flatMap(r=>[
-      {id:r.id,role:'user',content:r.instruction,travelContexts:r.travelContexts,attachments:r.attachments,at:r.createdAt},
-      ...(r.state==='completed'?[{id:r.id+':reply',role:'assistant',content:r.output,at:r.completedAt}]:[])]);
+    const messages=visible.runs.filter(r=>ids.has(r.agentId)).flatMap(r=>[
+      ...(!r.suppressUser?[{id:r.id,role:'user',content:r.instruction,travelContexts:r.travelContexts,attachments:r.attachments,at:r.createdAt}]:[]),
+      ...(r.output&&r.state==='completed'?[{id:r.id+':reply',role:'assistant',content:r.output,at:r.completedAt}]:[])]);
     const available=agents.filter(a=>a.state!=='terminated'),target=available.length===1&&available[0].canSteer?available[0]:null;
-    return {steering:target?{agentId:target.id,steerTarget:target.steerTarget}:null,capabilities:{steering:true,travelContexts:true,attachments:!!this.direct.attachments},status:agents.some(a=>a.state==='busy')?'thinking':'idle',messages:[...this.messages,...messages],agents};
+    return {reportPending:agents.some(a=>a.reportPending),reportStatus:visible.runs.filter(r=>ids.has(r.agentId)&&r.phase==='report').at(-1)?.reportStatus,steering:target?{agentId:target.id,steerTarget:target.steerTarget}:null,capabilities:{steering:true,travelContexts:true,attachments:!!this.direct.attachments},status:agents.some(a=>a.state==='busy')?'thinking':'idle',messages:[...this.messages,...messages],agents};
   }
   async init() {
     await mkdir(this.dir, { recursive: true });
