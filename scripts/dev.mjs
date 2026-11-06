@@ -1,10 +1,11 @@
-import {AttachmentStore,MAX_FILE_BYTES} from '../server/attachments.mjs';
+import {TravelRegistry} from '../server/travel-registry.mjs';
+import {AttachmentStore} from '../server/attachments.mjs';
 import { DirectAgents } from '../server/direct.mjs';
 import { PullRequests } from '../server/pull-requests.mjs';
 import { listenAddresses } from '../server/network.mjs';
 import { TodoStore } from '../server/todos.mjs';
 import { accessPolicy } from '../server/access.mjs';
-import { ImageStore, MAX_IMAGE_BYTES } from '../server/images.mjs';
+import { ImageStore } from '../server/images.mjs';
 import { randomUUID } from 'node:crypto';
 import { run } from '../server/bridge.mjs';
 import { WebReader } from '../server/web-reader.mjs';
@@ -27,6 +28,7 @@ const bridge = new WorkshopBridge({ library });
 await bridge.init();
 const todos = new TodoStore(bridge.dir);
 await todos.init();
+const travelRegistry=new TravelRegistry(bridge.dir);await travelRegistry.init();
 const notifier = new VillageNotifier({ dir: bridge.dir });
 await notifier.init();
 const attachments=new AttachmentStore(bridge.dir);await attachments.init();
@@ -35,14 +37,14 @@ await direct.init();
 const development = new Development(bridge, library, {port});
 const images = new ImageStore(bridge.dir);
 await images.init();
-const operations = new VillageOperations(bridge, notifier, {web:new WebReader(),development,images,todos,direct,prs:new PullRequests(bridge.dir,library)});
+const operations = new VillageOperations(bridge, notifier, {web:new WebReader(),development,images,todos,direct,travelRegistry,prs:new PullRequests(bridge.dir,library)});
 const secretariat = new Secretariat(bridge, library, operations, notifier, images);
 await secretariat.init();
 secretariat.direct=direct;
 development.watch(secretariat);
 const instanceId=randomUUID(), runningCommit=(await run('git',['rev-parse','HEAD'])).trim();
 const snapshot = async () => ({ ...bridge.snapshot(), workshops: await library.workshops(), secretary: secretariat.snapshot() });
-const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };
+const mime = { '.html': 'text/html; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };
 const json = (res, status, body) => { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(body)); };
 const handleRequest = async (req, res) => {
   try {
@@ -81,6 +83,14 @@ const handleRequest = async (req, res) => {
         if(req.method==='POST' && agent)return json(res,200,await (agent[2]==='runs'?direct.send(agent[1],input):agent[2]==='view'?direct.viewAgent(agent[1],input):direct.stop(agent[1])));
         return json(res,404,{error:'Not found'});
       }
+      if(pathname==='/api/travel-registry'){
+        if(req.method==='GET')return json(res,200,travelRegistry.snapshot());
+        if(req.method!=='POST')return json(res,405,{error:'Method not allowed'});
+        if(!req.headers['content-type']?.startsWith('application/json'))return json(res,415,{error:'JSON required'});
+        let body='';for await(const chunk of req){body+=chunk;if(body.length>16000)return json(res,413,{error:'Request too large'});}
+        let input;try{input=JSON.parse(body);}catch{return json(res,400,{error:'Invalid JSON'});}
+        return json(res,200,await travelRegistry.update(input));
+      }
       if (pathname === '/api/todos') {
         if(req.method==='GET')return json(res,200,todos.snapshot());
         if(req.method==='POST'){
@@ -101,7 +111,7 @@ const handleRequest = async (req, res) => {
         res.writeHead(200,{'Content-Type':record.kind==='image'?'image/png':'application/octet-stream','Content-Disposition':(record.kind==='image'?'inline':'attachment')+"; filename*=UTF-8''"+encodeURIComponent(record.name).replaceAll("'",'%27'),'X-Content-Type-Options':'nosniff','Content-Security-Policy':"sandbox; default-src 'none'",'Cache-Control':'private, no-store'});res.end(bytes);return;
       }
       if(req.method==='POST'&&pathname==='/api/attachments'){
-        const chunks=[];let size=0;for await(const chunk of req){size+=chunk.length;if(size>MAX_FILE_BYTES)return json(res,413,{error:'ファイルは1件16 MiB以内です'});chunks.push(chunk);}
+        const chunks=[];for await(const chunk of req)chunks.push(chunk);
         return json(res,201,await attachments.save(Buffer.concat(chunks),new URL(req.url,'http://localhost').searchParams.get('name'),req.headers['content-type']));
       }
       const imageRoute = pathname.match(/^\/api\/images\/([0-9a-f-]{36})$/);
@@ -112,8 +122,8 @@ const handleRequest = async (req, res) => {
       }
       if (req.method === 'POST' && pathname === '/api/images') {
         if (!['image/png','image/jpeg','image/webp'].includes(req.headers['content-type'])) return json(res,415,{error:'PNG・JPEG・WebPを選んでください。'});
-        const chunks=[]; let size=0;
-        for await (const chunk of req) { size+=chunk.length; if(size>MAX_IMAGE_BYTES)return json(res,413,{error:'画像は1枚8 MiB以内にしてください。'}); chunks.push(chunk); }
+        const chunks=[];
+        for await (const chunk of req) chunks.push(chunk);
         const name = new URL(req.url,'http://localhost').searchParams.get('name') || '画像';
         return json(res,201,await images.save(Buffer.concat(chunks),name));
       }
@@ -152,7 +162,7 @@ const handleRequest = async (req, res) => {
       return json(res, 404, { error: 'Not found' });
     }
     // Never serve credentials, source of the bridge, or persisted job output.
-    if (req.method !== 'GET' || !(pathname === '/agents' || pathname === '/agents/' || pathname === '/agents.html' || pathname === '/' || pathname === '/index.html' || pathname === '/office' || pathname === '/office/' || /^\/src\/[a-z-]+\.(js|css)$/.test(pathname))) { res.writeHead(404); res.end('Not found'); return; }
+    if (req.method !== 'GET' || !(pathname === '/agents' || pathname === '/agents/' || pathname === '/agents.html' || pathname === '/' || pathname === '/index.html' || pathname === '/office' || pathname === '/office/' || /^\/src\/[a-z-]+\.(js|css)$/.test(pathname) || /^\/src\/vendor\/(?:[a-zA-Z0-9_.-]+\/)*[a-zA-Z0-9_-]+\.mjs$/.test(pathname)&&!pathname.split('/').some(p=>p==='..'||p==='.'))) { res.writeHead(404); res.end('Not found'); return; }
     const file = resolve(root, ['/agents','/agents/'].includes(pathname) ? 'agents.html' : ['/', '/office', '/office/'].includes(pathname) ? 'index.html' : '.' + pathname);
     const content = await readFile(file);
     res.writeHead(200, { 'Content-Type': mime[extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-store' }); res.end(content);

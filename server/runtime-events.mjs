@@ -26,3 +26,12 @@ export function correlate(run,snapshot){
  if(!turn)return {state:'unknown',reason:'turn-not-observed'};
  return {...turn,turnId:turn.id,inputId:candidates[0].id,sessionId:snapshot.sessionId};
 }
+
+// A terminal boundary only releases stale busy when no newer native input exists.
+export function terminalBoundary(snapshot,status){
+ if(!snapshot.available||snapshot.incompleteTail||!status.alive||!status.agentSessionId||snapshot.sessionId!==status.agentSessionId)return false;
+ const t=snapshot.turns.at(-1);
+ return !!t&&['completed','failed','interrupted'].includes(t.state)&&Number.isFinite(t.completionOffset)&&
+  snapshot.inputs.every(i=>Number.isFinite(i.offset)&&i.offset<=t.completionOffset)&&
+  !snapshot.turns.some(other=>other!==t&&(other.state==='running'||other.offset>t.completionOffset));
+}

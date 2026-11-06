@@ -211,3 +211,38 @@ test('busy agent accepts queued additions and delivers each once in order',async
  Object.assign(f.input('second'),{state:'completed',output:'done'});await f.service.tick();
  assert.equal(third.state,'awaiting_input');assert.equal(f.sends(),3);
 });
+
+test('Project pin uses revision updates, persists across rename and keeps create retries idempotent',async t=>{
+ const f=await fixture(t),s=f.service;
+ const {VillageOperations}=await import('../server/operations.mjs');
+ const ops=new VillageOperations({dir:f.options.dir},null,{direct:s});
+ const input={name:'Arbitrary project',requestId:'pin-project-test'};
+ const p=await s.putProject(input);
+ assert.equal(p.pinned,undefined);
+ assert.ok((await ops.execute(['help'])).result.some(c=>c.name==='projects pin'));
+ assert.equal((await ops.execute(['projects','pin',p.id,'0','true'])).ok,true);
+ assert.equal((await ops.execute(['projects','pin',p.id,'0','false'])).ok,false);
+ await assert.rejects(s.putProject({revision:1,pinned:'true'},p.id),{status:400});
+ assert.equal((await ops.execute(['projects','rename',p.id,'1','Renamed'])).ok,true);
+ assert.equal((await s.putProject(input)).id,p.id);
+ await assert.rejects(s.putProject({...input,name:'Different'}),{status:409});
+ const restored=new DirectAgents(f.options);await restored.init({watch:false});
+ assert.equal(restored.project(p.id).pinned,true);assert.equal(restored.project(p.id).name,'Renamed');
+ assert.equal(restored.project(p.id).revision,2);
+ const edits=await Promise.allSettled([restored.putProject({revision:2,pinned:false},p.id),restored.putProject({revision:2,name:'Stale'},p.id)]);
+ assert.equal(edits[0].status,'fulfilled');assert.equal(edits[1].reason.status,409);
+ assert.equal(restored.project(p.id).pinned,false);assert.equal(f.sends(),0);
+});
+
+test('stale busy releases only matching native terminal without later input or new running turn',async t=>{
+ const f=await fixture(t),remote=f.service.remote;
+ f.service.remote=async args=>args[2]==='status'?JSON.stringify({alive:true,cliState:'busy',agentSessionId:'session'}):remote(args);
+ // No terminal evidence: busy remains busy.
+ await f.service.tick();assert.equal(f.a.canSend,false);
+ f.data.cursor=10;f.data.inputs=[{id:'input',turnId:'old',offset:1}];f.data.turns=[{id:'old',state:'failed',completionOffset:10,error:'capacity'}];
+ await f.service.tick();assert.equal(f.a.canSend,true);assert.equal(f.a.state,'idle');
+ f.data.inputs.push({id:'new-input',turnId:'old',offset:11});await f.service.tick();assert.equal(f.a.canSend,false);assert.equal(f.a.state,'unknown');
+ f.data.turns.push({id:'new',state:'running',offset:12});await f.service.tick();assert.equal(f.a.canSend,false);assert.equal(f.a.state,'busy');
+ f.data.turns[0].state='completed';await f.service.tick();assert.equal(f.a.state,'busy');
+ f.data.sessionId='other-session';f.data.turns=[{id:'other',state:'failed',completionOffset:20}];await f.service.tick();assert.equal(f.a.canSend,false);
+});

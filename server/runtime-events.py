@@ -23,7 +23,8 @@ def read(provider,sid):
   return turns[tid]
  with p.open('rb') as f:
   for raw in f:
-   if not raw.endswith(b'\n'):break
+   if not raw.endswith(b'\n'):
+    result['incompleteTail']=True;break
    offset+=len(raw)
    try:x=json.loads(raw)
    except: return result
@@ -48,9 +49,13 @@ def read(provider,sid):
      # Terminal events must carry their own identity, never attach to a guessed latest turn.
      tid=v.get('turn_id')
      if tid and tid in turns:
-      turns[tid].update(state='completed' if kind=='task_complete' else 'interrupted',completedAt=at,completionEvent='offset:'+str(offset))
+      error=v.get('error')
+      failed=error is not None or turns[tid]['state']=='failed'
+      turns[tid].update(state='failed' if failed else 'completed' if kind=='task_complete' else 'interrupted',completedAt=at,completionEvent='offset:'+str(offset),completionOffset=offset)
+      if error is not None:
+       turns[tid].update(runtimeError=error,error=error.get('message','Runtime error') if isinstance(error,dict) else str(error),errorCode=error.get('codex_error_info') if isinstance(error,dict) else None)
       if kind=='task_complete' and isinstance(v.get('last_agent_message'),str):turns[tid]['finalOutput']=v['last_agent_message']
-     if kind=='task_complete' and not turns[tid]['messages'] and isinstance(v.get('last_agent_message'),str):turns[tid]['output']=v['last_agent_message']
+      if kind=='task_complete' and not turns[tid]['messages'] and isinstance(v.get('last_agent_message'),str):turns[tid]['output']=v['last_agent_message']
    elif provider=='claude':
     if x.get('isSidechain'):continue
     uid=x.get('uuid');parent=x.get('parentUuid');m=x.get('message',{});content=m.get('content',[])

@@ -1,3 +1,4 @@
+import {travelPicker} from './travel-picker.js';
 import {normalizeTravelContexts} from './travel-context.js';
 export function travelComposer(host,initial=[],onChange=()=>{}) {
  let value;try{value=normalizeTravelContexts(initial);}catch{value=[];}
@@ -8,7 +9,7 @@ export function travelComposer(host,initial=[],onChange=()=>{}) {
  const closeMenu=()=>{menu.hidden=true;add.setAttribute('aria-expanded','false');};
  const render=()=>{chip.hidden=!value.length;edit.textContent=value.length?'出張先：'+value[0].name:'';for(const b of host.querySelectorAll('button'))b.disabled=locked;};
  const change=()=>{render();onChange(structuredClone(value));};
- function open(){
+ function openManual(){
   if(locked)return;closeMenu();
   const dialog=document.createElement('dialog');dialog.className='travel-dialog';dialog.setAttribute('aria-label','出張先');
   dialog.innerHTML='<form><h2>出張先</h2><p>この依頼で使う接続先と作業場所を添付します。</p><label>名前<input name="name" required maxlength="120" autocomplete="off"></label><label>SSH接続先<input name="sshHost" required maxlength="200" placeholder="alias または user@host" autocomplete="off" spellcheck="false"></label><label>作業ディレクトリ<input name="cwd" required maxlength="2000" placeholder="/path/to/work" autocomplete="off" spellcheck="false"></label><label>補足<textarea name="notes" maxlength="4000" rows="3"></textarea></label><p class="travel-error" role="alert"></p><div><button type="button" data-cancel>キャンセル</button><button type="submit">保存</button></div></form>';
@@ -19,6 +20,7 @@ export function travelComposer(host,initial=[],onChange=()=>{}) {
   form.onsubmit=e=>{e.preventDefault();try{if(locked)return;value=normalizeTravelContexts([Object.fromEntries(new FormData(form))]);change();close();}catch(error){dialog.querySelector('.travel-error').textContent=error.message;}};
   dialog.showModal();
  }
+ function open(){if(locked)return;closeMenu();void travelPicker({initial:value,isLocked:()=>locked,onSelect:next=>{value=next;change();},onManual:openManual,onClose:()=>{if(host.isConnected)add.focus();}});}
  add.onclick=()=>{menu.hidden=!menu.hidden;add.setAttribute('aria-expanded',String(!menu.hidden));};
  host.addEventListener('keydown',e=>{if(e.key==='Escape'){closeMenu();add.focus();}});
  menu.querySelector('button').onclick=open;edit.onclick=open;remove.onclick=()=>{value=[];change();};render();

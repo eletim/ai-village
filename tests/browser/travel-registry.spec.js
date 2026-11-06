@@ -1,0 +1,32 @@
+import {test,expect} from '@playwright/test';
+test('registered computer/folder CRUD, selection isolation, immutable draft and concurrent editing',async({page,request})=>{
+ await page.route('**/api/direct',r=>r.fulfill({json:{capabilities:{travelContexts:true},agents:[{id:'registry-test',name:'Agent',connection:{},state:'idle',canSend:true}],runs:[],notification:{}}}));
+ await page.goto('/agents');
+ const open=async()=>{await page.getByRole('button',{name:'添付を追加',exact:true}).click();await page.getByRole('button',{name:'出張先を追加',exact:true}).click();};
+ await open();const dialog=page.getByRole('dialog',{name:'出張先',exact:true});await dialog.getByRole('button',{name:'登録・管理'}).click();
+ const computer=dialog.locator('[data-computer]'),folder=dialog.locator('[data-folder]');
+ await computer.getByLabel('表示名').fill('登録テストPC');await computer.getByLabel('SSH接続先').fill('test-host');await computer.getByRole('button',{name:'コンピューターを保存'}).click();
+ await expect(folder.getByLabel('表示名')).toBeEnabled();await folder.getByLabel('表示名').fill('資料');await folder.getByLabel('作業ディレクトリ').fill('/docs');await folder.getByLabel('補足').fill('以前の補足');await folder.getByRole('button',{name:'フォルダを保存'}).click();
+ await expect(folder.getByRole('button',{name:'削除',exact:true})).toBeEnabled();
+ const a=await computer.getByLabel('編集するコンピューター').inputValue(),f=await folder.getByLabel('編集するフォルダ').inputValue();
+ await computer.getByLabel('編集するコンピューター').selectOption('');await computer.getByLabel('表示名').fill('登録テストPC');await computer.getByLabel('SSH接続先').fill('another-host');await computer.getByRole('button',{name:'コンピューターを保存'}).click();await expect(computer.getByLabel('編集するコンピューター')).not.toHaveValue('');const b=await computer.getByLabel('編集するコンピューター').inputValue();
+ await dialog.getByRole('button',{name:'選択に戻る'}).click();const choose=dialog.locator('[data-select]');await choose.getByLabel('コンピューター').selectOption(a);await choose.getByLabel('フォルダ').selectOption(f);await expect(choose.getByRole('button',{name:'添付',exact:true})).toBeEnabled();
+ await choose.getByLabel('コンピューター').selectOption(b);await expect(choose.getByLabel('フォルダ')).toHaveValue('');await expect(choose.getByRole('button',{name:'添付',exact:true})).toBeDisabled();
+ await choose.getByLabel('コンピューター').selectOption(a);await choose.getByLabel('フォルダ').selectOption(f);await page.screenshot({path:'/tmp/village-travel-registry-picker.png'});await choose.getByRole('button',{name:'添付',exact:true}).click();await expect(page.getByRole('button',{name:'出張先：資料',exact:true})).toBeVisible();
+ await page.reload();await page.getByRole('button',{name:'出張先：資料',exact:true}).click();await expect(dialog.locator('.travel-current')).toContainText('/docs');await dialog.getByRole('button',{name:'登録・管理'}).click();await computer.getByLabel('編集するコンピューター').selectOption(a);await folder.getByLabel('編集するフォルダ').selectOption(f);
+ const state=await (await request.get('/api/travel-registry')).json();await request.post('/api/travel-registry',{data:{revision:state.revision,entity:'computer',action:'edit',id:a,name:'別タブ編集',sshHost:'new-host'}});
+ await folder.getByLabel('作業ディレクトリ').fill('/changed');await folder.getByRole('button',{name:'フォルダを保存'}).click();await expect(dialog.getByRole('alert')).toContainText('別の画面');await expect(folder.getByLabel('作業ディレクトリ')).toHaveValue('/changed');
+ await dialog.getByRole('button',{name:'一覧を再読込'}).click();await expect(folder.getByLabel('作業ディレクトリ')).toHaveValue('/docs');await folder.getByLabel('作業ディレクトリ').fill('/changed');await folder.getByRole('button',{name:'フォルダを保存'}).click();await expect(dialog.getByRole('alert')).toBeEmpty();await expect(folder.getByRole('button',{name:'フォルダを保存'})).toBeEnabled();await page.screenshot({path:'/tmp/village-travel-registry-manager.png'});
+ page.on('dialog',d=>d.accept());await folder.getByRole('button',{name:'削除',exact:true}).click();await expect(folder.getByLabel('作業ディレクトリ')).toHaveValue('');await computer.getByRole('button',{name:'削除',exact:true}).click();await expect(computer.getByLabel('表示名')).toHaveValue('');
+ await expect(dialog.locator('.travel-current')).toContainText('test-host');await expect(dialog.locator('.travel-current')).toContainText('/docs');await dialog.getByRole('button',{name:'閉じる',exact:true}).click();await page.reload();await expect(page.getByRole('button',{name:'出張先：資料',exact:true})).toBeVisible();
+});
+test('office selects registered snapshot and keeps conversation unchanged after registry edits',async({page,request})=>{
+ const update=async x=>{const s=await (await request.get('/api/travel-registry')).json();const r=await request.post('/api/travel-registry',{data:{revision:s.revision,...x}});expect(r.ok()).toBeTruthy();return r.json();};
+ let state=await update({entity:'computer',action:'add',name:'執務室テスト',sshHost:'office-host'});const id=state.computers.at(-1).id;
+ state=await update({entity:'folder',action:'add',computerId:id,name:'作業',cwd:'/before'});const folderId=state.computers.find(c=>c.id===id).folders[0].id;
+ const office={jobs:[],workshops:[],secretary:{status:'idle',capabilities:{travelContexts:true},messages:[]}};let sent;
+ await page.route('**/api/state',r=>r.fulfill({json:office}));await page.route('**/api/messages',r=>{sent=r.request().postDataJSON();office.secretary.messages.push({id:'test-message',role:'user',content:sent.message,travelContexts:structuredClone(sent.travelContexts),at:new Date().toISOString()});return r.fulfill({json:office});});
+ await page.goto('/office');await page.getByRole('button',{name:'添付を追加',exact:true}).click();await page.getByRole('button',{name:'出張先を追加',exact:true}).click();const dialog=page.getByRole('dialog',{name:'出張先',exact:true});await dialog.getByRole('combobox',{name:'コンピューター',exact:true}).selectOption(id);await dialog.getByRole('combobox',{name:'フォルダ',exact:true}).selectOption(folderId);await dialog.getByRole('button',{name:'添付',exact:true}).click();
+ await page.locator('#request').fill('確認');await page.locator('#request').press('Control+Enter');await expect.poll(()=>sent?.travelContexts).toEqual([{name:'作業',sshHost:'office-host',cwd:'/before',notes:''}]);
+ await update({entity:'folder',action:'edit',computerId:id,id:folderId,name:'変更',cwd:'/after'});await page.reload();await expect(page.locator('.travel-summary').first()).toContainText('/before');await expect(page.locator('.travel-summary').first()).not.toContainText('/after');
+});

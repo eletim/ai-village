@@ -4,13 +4,19 @@ export const receiveAttachment=`import sys,os,tempfile,hashlib,json
 expected=sys.argv[1]; suffix=sys.argv[2]
 assert len(expected)==64 and all(c in '0123456789abcdef' for c in expected)
 assert suffix in ('.png','.pdf','.txt','.csv','.json','.md','.log','.yaml','.yml','.tsv','.xml')
-data=sys.stdin.buffer.read(16*1024*1024+1)
-assert len(data)<=16*1024*1024 and hashlib.sha256(data).hexdigest()==expected
 folder=tempfile.mkdtemp(prefix='ai-village-attachment-',dir='/tmp')
 path=os.path.join(folder,'data'+suffix)
 fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
-with os.fdopen(fd,'wb') as f: f.write(data); f.flush(); os.fsync(f.fileno())
-print(json.dumps({'path':path,'sha256':expected,'size':len(data)}))`;
+digest=hashlib.sha256(); size=0
+with os.fdopen(fd,'wb') as f:
+ while True:
+  chunk=sys.stdin.buffer.read(1024*1024)
+  if not chunk: break
+  digest.update(chunk); size+=len(chunk); f.write(chunk)
+ f.flush(); os.fsync(f.fileno())
+if digest.hexdigest()!=expected:
+ os.unlink(path); os.rmdir(folder); raise ValueError('hash mismatch')
+print(json.dumps({'path':path,'sha256':expected,'size':size}))`;
 const quote=s=>"'"+String(s).replaceAll("'","'\\''")+"'";
 export function runInput(command,args,bytes){return new Promise((ok,no)=>{
  const child=spawn(command,args,{stdio:['pipe','pipe','pipe']}),chunks=[];let size=0;
