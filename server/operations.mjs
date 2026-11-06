@@ -7,10 +7,14 @@ import { isOnDesk, isSettled, jobStatus } from '../src/job-state.js';
 // The same registry serves the secretary, HTTP and the human CLI. Adding a village
 // operation doesn't require adding a new LLM action or teaching a keyword router.
 export class VillageOperations {
-  constructor(bridge, notifier, {web, development, images, todos, prs, direct} = {}) {
+  constructor(bridge, notifier, {web, development, images, todos, prs, direct, travelRegistry} = {}) {
     this.bridge = bridge;
     const detail = id => this.describe(bridge.jobById(id));
     this.commands = [
+      ...(travelRegistry?[
+        {name:'travel list',usage:'travel list (registered computers and folders; IDs and revision)',run:args=>{if(args.length)throw Error('引数は不要です');return travelRegistry.snapshot();}},
+        {name:'travel update',usage:'travel update JSON {revision,entity:computer|folder,action:add|edit|delete,id?,computerId?,name?,sshHost?,cwd?,notes?}',mutation:true,run:args=>{if(args.length!==1)throw Error('JSONを1つ指定してください');return travelRegistry.update(JSON.parse(args[0]));}}
+      ]:[]),
       ...(direct?[{name:'agents list',usage:'agents list',run:args=>{if(args.length)throw new Error('usage: agents list');return direct.discovery();}}]:[]),
       ...(direct?[
         {name:'agents create',usage:'agents create JSON({requestId,workshopId,cwd,name,provider,location,projectId?})',mutation:true,run:args=>{if(args.length!==1)throw Error('JSONを1つ指定してください');return direct.create(JSON.parse(args[0]));}},
