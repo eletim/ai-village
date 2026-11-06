@@ -2,7 +2,7 @@ import {stageAttachment} from './attachment-transfer.mjs';
 import {RequestFlow} from './requests.mjs';
 import {completedEntries} from '../src/completions.js';
 import {agentIdentity,agentPlaceName} from '../src/agent-identity.js';
-import {runtimeScript,inputHash,correlate} from './runtime-events.mjs';
+import {runtimeScript,inputHash,correlate,terminalBoundary} from './runtime-events.mjs';
 import { run } from './bridge.mjs';
 import { captureProcessesScript, stopProcessesScript } from './processes.mjs';
 import { createServer } from 'node:net';
@@ -79,18 +79,21 @@ export class DirectAgents {
     try{await this.save();}catch(e){for(const q of requests)delete q.reviewedAt;if(previous===undefined)delete this.data.agentReviews[id];else this.data.agentReviews[id]=previous;throw e;}
     return {...current,unreviewed:false,attention:false,attentionRequestIds:[]};
   });}
-  discovery(){return {agents:this.data.agents.map(a=>({...agentIdentity(a),projectId:a.projectId||null,projectName:this.data.projects.find(p=>p.id===a.projectId)?.name||null,metadataRevision:a.metadataRevision||0})),projects:structuredClone(this.data.projects),workshops:structuredClone(this.data.workshops),management:{help:'node scripts/village.mjs help',agentUpdate:'PUT /api/direct/agents/:id {revision,name?,projectId?}',projects:'POST /api/direct/projects {requestId,name}; PUT /api/direct/projects/:id {revision,name}',namePolicy:'村の表示名のみ変更。PurpleMuxのラベル、ID、セッション、接続先は維持。',requests:{help:'node scripts/village.mjs help',list:'GET /api/direct/requests',get:'POST /api/direct/requests/get {humanRequestId}',operations:'delegate / results / acknowledge / finish / retry / resume / cancel: POST /api/direct/requests/:operation',policy:'人間の依頼ごとに通知権1枚。正式delegateで親子を登録し、子結果を確認後、finishと対応native turn正常終了で全体完了。生PurpleMux送信・旧runを自動関連付けしない。'}}};}
+  discovery(){return {agents:this.data.agents.map(a=>({...agentIdentity(a),projectId:a.projectId||null,projectName:this.data.projects.find(p=>p.id===a.projectId)?.name||null,metadataRevision:a.metadataRevision||0})),projects:structuredClone(this.data.projects),workshops:structuredClone(this.data.workshops),management:{help:'node scripts/village.mjs help',agentUpdate:'PUT /api/direct/agents/:id {revision,name?,projectId?}',projects:'POST /api/direct/projects {requestId,name}; PUT /api/direct/projects/:id {revision,name?,pinned?:boolean}',namePolicy:'村の表示名のみ変更。PurpleMuxのラベル、ID、セッション、接続先は維持。',requests:{help:'node scripts/village.mjs help',list:'GET /api/direct/requests',get:'POST /api/direct/requests/get {humanRequestId}',operations:'delegate / results / acknowledge / finish / retry / resume / cancel: POST /api/direct/requests/:operation',policy:'人間の依頼ごとに通知権1枚。正式delegateで親子を登録し、子結果を確認後、finishと対応native turn正常終了で全体完了。生PurpleMux送信・旧runを自動関連付けしない。'}}};}
   project(id){return this.data.projects.find(p=>p.id===id)||fail('Projectがありません',404);}
   validName(name){if(typeof name!=='string'||!name.trim()||name.length>120)fail('名前を1〜120文字で指定してください',400);return name.trim();}
   async putProject(input,id){return this.locked('projects',async()=>{
-    const name=this.validName(input.name);
     if(id){
       const p=this.project(id);
+      if (!('name' in input)&&!('pinned' in input))fail('名前またはpinnedを指定してください',400);
+      if ('pinned' in input&&typeof input.pinned!=='boolean')fail('pinnedはbooleanです',400);
+      const name='name' in input?this.validName(input.name):p.name;
       if(!Number.isInteger(input.revision)||input.revision!==p.revision)fail('Projectが更新されています。再読込してください');
       if(this.data.projects.some(p=>p.id!==id&&p.name===name))fail('同名のProjectがあります');
-      const previous={...p};Object.assign(p,{name,revision:p.revision+1,updatedAt:now()});
-      try{await this.save();}catch(e){Object.assign(p,previous);throw e;}return {...p};
+      const previous={...p};Object.assign(p,{name,...('pinned' in input?{pinned:input.pinned}:{}),revision:p.revision+1,updatedAt:now()});
+      try{await this.save();}catch(e){if (!('pinned' in previous))delete p.pinned;Object.assign(p,previous);throw e;}return {...p};
     }
+    const name=this.validName(input.name);
     if(typeof input.requestId!=='string'||! /^[\w-]{8,100}$/.test(input.requestId))fail('requestIdが必要です',400);
     const old=this.data.projects.find(p=>p.requestId===input.requestId);
     if(old){if(old.initialName!==name)fail('requestIdの再利用です');return {...old};}
@@ -194,6 +197,7 @@ export class DirectAgents {
       r.attachmentError=null;
     }catch{r.attachmentError='添付を接続先へ転送できません。送信前に再試行します。';r.nextTransferAt=Date.now()+30000;await this.save();return r;}
     const confirmed=r.attachments?.length?await this.observe(a):baseline;if(!a.canSend)return r;
+    if(r.autoRecoveryFrom&&(Date.now()>r.recoveryDeadline||!this.flow.recoveryBoundary(this.flow.run(r.autoRecoveryFrom),confirmed,a.runtime))){r.state='interrupted';r.error='自動再試行前に新しい入力または状態変化を検出しました。requests getで確認し手動で復旧してください。';await this.save();return r;}
     const status=a.runtime;
     const deliveredInstruction=r.instruction+(a.location==='mayor'?this.secretaryContext():'')+this.flow.context(r);
     Object.assign(r,{state:'sending',acceptance:'pending',blocksInput:true,dispatchAttemptedAt:now(),baselineRuntime:{sessionId:confirmed.sessionId,cursor:confirmed.cursor,fileIdentity:confirmed.fileIdentity},inputHash:inputHash(deliveredInstruction),agentSessionId:status.agentSessionId||null});
@@ -219,8 +223,9 @@ export class DirectAgents {
         a.setupRequired=/Do you trust|trust this|trust the contents/i.test(capture.content||'');
       }
       const latest=snapshot.turns.at(-1);
-      a.activityState=s.permissionRequest||a.setupRequired||['needs-input','waiting-for-input','waiting-for-permission'].includes(s.cliState)?'waiting_input':latest?.state==='running'?'busy':ready(s)?'idle':s.cliState==='busy'?'busy':'unknown';
-      if(!snapshot.available||(a.observedSessionId&&!snapshot.sessionId))a.activityState='unknown';
+      a.activityState=s.permissionRequest||a.setupRequired||['needs-input','waiting-for-input','waiting-for-permission'].includes(s.cliState)?'waiting_input':latest?.state==='running'?'busy':(ready(s)||terminalBoundary(snapshot,s))?'idle':s.cliState==='busy'?'busy':'unknown';
+      if(latest&&Number.isFinite(latest.completionOffset)&&snapshot.inputs.some(i=>i.offset>latest.completionOffset))a.activityState='unknown';
+      if(!snapshot.available||snapshot.incompleteTail||(snapshot.sessionId&&s.agentSessionId&&snapshot.sessionId!==s.agentSessionId)||(a.observedSessionId&&!snapshot.sessionId))a.activityState='unknown';
       if(a.setupRequired)a.error='作業場所の信頼確認が必要です。PurpleMuxで確認してください。';
       a.currentAction=a.activityState==='busy'&&s.currentAction?.toolName?s.currentAction.toolName+': '+(s.currentAction.summary||''):null;
       if(snapshot.available){
@@ -234,7 +239,7 @@ export class DirectAgents {
         const observation=correlate(r,snapshot);
         if(observation.turnId){r.acceptance='accepted';r.acceptedAt ||= now();r.turnId=observation.turnId;r.sessionId=observation.sessionId;r.inputId ||= observation.inputId;if(typeof observation.output==='string')r.output=observation.output;if(typeof observation.finalOutput==='string')r.finalOutput=observation.finalOutput;}
         if(['completed','interrupted','failed'].includes(observation.state)){
-          Object.assign(r,{state:observation.state,output:observation.output,completedAt:observation.completedAt||now(),completionEvent:observation.completionEvent,error:observation.error||null,blocksInput:false});
+          Object.assign(r,{state:observation.state,output:observation.output,completedAt:observation.completedAt||now(),completionEvent:observation.completionEvent,error:observation.error||null,errorCode:observation.errorCode||null,runtimeError:observation.runtimeError||null,completionOffset:observation.completionOffset,blocksInput:false});
         }else{
           r.state=a.activityState==='waiting_input'?'waiting_input':observation.state==='running'&&s.alive?'running':observation.reason==='input-not-observed'&&r.dispatchAttemptedAt?'awaiting_input':'unknown';r.error=observation.reason||null;
           // Preserve uncertain attribution, but a later native terminal boundary plus

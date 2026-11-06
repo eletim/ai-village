@@ -5,7 +5,7 @@ import {attachmentComposer,attachmentHTML} from './attachments.js';
 import {chatScroll} from './chat-scroll.js';
 import {travelComposer} from './travel-composer.js';
 import {travelSummary,sameTravelContexts} from './travel-context.js';
-import {PAGE_SIZE,placeOf,orderedAgents,boardLayout} from './board-state.js';
+import {PAGE_SIZE,placeOf,orderedAgents,orderedProjects,boardLayout} from './board-state.js';
 import {agentEntries,unreadByAgent,visualState,faviconHref} from './completions.js';
 import {agentPlaceName} from './agent-identity.js';
 import {bindPromptInput} from './prompt-input.js';
@@ -46,13 +46,19 @@ function options(select,items){const previous=select.value,html=items.map(i=>`<o
 const isProject=id=>id.startsWith('project:');
 const inScope=(a,id)=>id==='all'||(isProject(id)?a.projectId===id.slice(8):placeId(a)===id);
 function filtered(){return live().filter(a=>inScope(a,selectedPlace));}
-function projectOptions(select){options(select,[{id:'',name:'未所属'},...(state.projects||[])]);}
+function projectOptions(select){options(select,[{id:'',name:'未所属'},...orderedProjects(state.projects||[])]);}
 function capturePositions(){for(const [id,card] of cards)if(!card.hidden)scrolls.get(id)?.capture();}
 function timeHTML(value){if(!value)return '';const date=new Date(value);return Number.isNaN(date.getTime())?'':`<time datetime="${esc(value)}" title="${esc(date.toLocaleString())}">${esc(date.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}))}</time>`;}
 function bubble(side,text,at,extra=''){return `<div class="message ${side}">${text?(side==='assistant'?reportHTML(text):`<pre>${linkedText(text)}</pre>`):''}${extra}${timeHTML(at)}</div>`;}
+function recoveryHTML(r){
+ const q=state.requests?.find(q=>q.id===r.humanRequestId),w=q?.works.find(w=>w.currentRunId===r.id);
+ if(!q||q.status!=='active'||!w||!['failed','interrupted'].includes(r.state))return '';
+ const reason=r.recovery?.status==='scheduled'?'自動再試行予定: '+new Date(r.recovery.nextAt).toLocaleTimeString():r.recovery?.reason||'停止理由を確認し、未完了の作業を再開できます。';
+ return `<div class="recovery"><p>${esc(reason)}</p>${!w.parentWorkId?`<button data-retry-run="${esc(r.id)}">確認して再試行</button>`:'<p>委任元でrequests get/resultsを確認し、requests retryで復旧してください。</p>'}<button data-cancel-request="${esc(q.id)}">依頼をキャンセル</button></div>`;
+}
 function runHTML(a){
  const entries=agentEntries(state,a);
- return entries.map(r=>`<div class="run">${bubble('user',r.instruction,r.createdAt,travelSummary(r.travelContexts)+attachmentHTML(r.attachments))}${r.output?bubble('assistant',r.output,r.completedAt):''}<p class="run-status"><span class="badge">${r.external?'PurpleMuxからの入力 · ':r.origin==='result'?'子作業結果の配送 · ':''}${esc(labels[r.state]||r.state)}</span> · ${r.humanRequestId?esc(({active:'依頼継続中',finalizing:'最終報告の完了待ち',completed:'依頼全体完了',cancelled:'依頼キャンセル'})[state.requests?.find(q=>q.id===r.humanRequestId)?.status]||'依頼照合中'):'達成状況: 未判定'} ${esc(r.attachmentError||r.error||'')} ${r.notification?' · 通知: '+esc(r.notification.status)+(r.notification.reason?' / '+esc(r.notification.reason):''):''}</p></div>`).join('');
+ return entries.map(r=>`<div class="run">${bubble('user',r.instruction,r.createdAt,travelSummary(r.travelContexts)+attachmentHTML(r.attachments))}${r.output?bubble('assistant',r.output,r.completedAt):''}<p class="run-status"><span class="badge">${r.external?'PurpleMuxからの入力 · ':r.origin==='result'?'子作業結果の配送 · ':''}${esc(labels[r.state]||r.state)}</span> · ${r.humanRequestId?esc(({active:'依頼継続中',finalizing:'最終報告の完了待ち',completed:'依頼全体完了',cancelled:'依頼キャンセル'})[state.requests?.find(q=>q.id===r.humanRequestId)?.status]||'依頼照合中'):'達成状況: 未判定'} ${esc(r.errorCode||'')} ${esc(r.attachmentError||r.error||'')} ${r.notification?' · 通知: '+esc(r.notification.status)+(r.notification.reason?' / '+esc(r.notification.reason):''):''}</p>${recoveryHTML(r)}</div>`).join('');
 }
 function renderHistory(){
  options($('#history-agent'),state.agents.filter(a=>a.state==='terminated').map(a=>({id:a.id,name:placeName(a)+' / '+a.name+(state.reviews?.[a.id]?.attention?' · 依頼完了・要確認':unread.get(a.id)?' · 更新あり':'')})));
@@ -131,7 +137,7 @@ function agentDot(a){
  return `<span class="agent-dot dot" data-agent-dot="${esc(a.id)}" data-state="${esc(visualState(a,agentEntries(state,a)))}" data-unread="${!!count}" data-attention="${!!state.reviews?.[a.id]?.attention}" role="img" title="${esc(text)}" aria-label="${esc(text)}"></span>`;
 }
 function renderPlaces(){
- const all=live(),places=sidebarMode==='projects'?(state.projects||[]).map(p=>({id:'project:'+p.id})):[{id:'mayor'},...state.workshops];
+ const all=live(),places=sidebarMode==='projects'?orderedProjects(state.projects||[]).map(p=>({id:'project:'+p.id})):[{id:'mayor'},...state.workshops];
  for(const button of document.querySelectorAll('[data-mode]'))button.setAttribute('aria-pressed',String(button.dataset.mode===sidebarMode));
  $('#places').setAttribute('aria-label',sidebarMode==='projects'?'プロジェクト':'場所');
  if(sidebarMode==='places'&&all.some(a=>placeId(a)==='unassigned'))places.push({id:'unassigned'});
@@ -255,7 +261,7 @@ function openMetadata(id){
 $('#metadata-form').onsubmit=e=>{e.preventDefault();const f=e.currentTarget;action(f,async()=>{await api('/agents/'+metadataId,{revision:metadataRevision,name:f.elements.name.value,projectId:f.elements.projectId.value||null},'PUT');$('#metadata-dialog').close();});};
 $('#stop-form').onsubmit=e=>{e.preventDefault();action(e.currentTarget,async()=>{await api('/agents/'+metadataId+'/stop',{});$('#metadata-dialog').close();});};
 function openProjects(){
- const f=$('#project-form');options(f.elements.id,[{id:'',name:'新規作成'},...(state.projects||[])]);f.elements.id.value='';f.elements.name.value='';delete f.dataset.requestId;$('#projects-dialog').showModal();
+ const f=$('#project-form');options(f.elements.id,[{id:'',name:'新規作成'},...orderedProjects(state.projects||[])]);f.elements.id.value='';f.elements.name.value='';delete f.dataset.requestId;$('#projects-dialog').showModal();
 }
 $('#project-form [name=id]').onchange=()=>{const f=$('#project-form'),p=(state.projects||[]).find(p=>p.id===f.elements.id.value);f.elements.name.value=p?.name||'';projectRevision=p?.revision||0;delete f.dataset.requestId;};
 $('#project-form').onsubmit=e=>{e.preventDefault();const f=e.currentTarget;f.dataset.requestId ||= newRequestId();action(f,async()=>{const id=f.elements.id.value;await api('/projects'+(id?'/'+id:''),{name:f.elements.name.value,revision:projectRevision,requestId:f.dataset.requestId},id?'PUT':'POST');$('#projects-dialog').close();});};
@@ -302,5 +308,15 @@ $('#agents').onsubmit=async e=>{
   }catch(error){if(error.status&&error.status<500){pending.delete(id);storeDrafts();}throw error;}
  });
 };
-$('#agents').onclick=e=>{const reconcile=e.target.closest('[data-reconcile]');if(reconcile){const id=reconcile.dataset.reconcile,receipt=pending.get(id);if(receipt)action(reconcile.closest('article'),async()=>{await api('/agents/'+id+'/runs',receipt);await refresh();});return;}const manage=e.target.closest('[data-manage-agent]'),zoom=e.target.closest('[data-zoom]');if(manage)openMetadata(manage.dataset.manageAgent);if(zoom)toggleZoom(zoom.dataset.zoom);};
+$('#agents').onclick=e=>{
+ const retry=e.target.closest('[data-retry-run]'),cancel=e.target.closest('[data-cancel-request]');
+ if(retry||cancel){
+  const r=retry&&state.runs.find(r=>r.id===retry.dataset.retryRun),q=state.requests.find(q=>q.id===(r?.humanRequestId||cancel?.dataset.cancelRequest));
+  if(!q||!confirm(retry?'既存変更・PR・委任結果を確認し、未完了部分だけ再開しますか？':'この依頼全体をキャンセルしますか？ 実行中のAgentは停止しません。'))return;
+  action((retry||cancel).closest('article'),async()=>{
+   if(cancel)await api('/requests/cancel',{humanRequestId:q.id,revision:q.revision});
+   else await api('/requests/retry',{humanRequestId:q.id,workId:r.workId,revision:q.revision,operationId:newRequestId(),instruction:'失敗・中断からの復旧です。既存変更・PR・外部操作・requests get/resultsの子作業を確認し、未完了部分だけ進めてください。子作業の再委任や二重操作を避け、モデルは変更しないでください。今回のrunでfinishを登録してください。\n元の指示（全文はrequests getで確認）:\n'+q.instruction.slice(0,12000)});
+  });return;
+ }
+ const reconcile=e.target.closest('[data-reconcile]');if(reconcile){const id=reconcile.dataset.reconcile,receipt=pending.get(id);if(receipt)action(reconcile.closest('article'),async()=>{await api('/agents/'+id+'/runs',receipt);await refresh();});return;}const manage=e.target.closest('[data-manage-agent]'),zoom=e.target.closest('[data-zoom]');if(manage)openMetadata(manage.dataset.manageAgent);if(zoom)toggleZoom(zoom.dataset.zoom);};
 await refresh();setInterval(refresh,2000);

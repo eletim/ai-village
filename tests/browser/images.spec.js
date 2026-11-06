@@ -25,3 +25,11 @@ test('image HTTP boundary rejects invalid payloads and forged image paths',async
   expect((await request.post('/api/messages',{data:{message:'',attachments:['../../private']}})).status()).toBe(400);
   expect((await request.get('/api/images/00000000-0000-4000-8000-000000000000')).status()).toBe(404);
 });
+
+test('pasting an image over 8 MiB is accepted by the composer',async({page})=>{
+ await page.route('**/api/state',r=>r.fulfill({json:{jobs:[],secretary:{status:'idle',capabilities:{attachments:true},messages:[]}}}));
+ await page.goto('/office');
+ await page.locator('#request').evaluate(el=>{const data=new DataTransfer();data.items.add(new File([new Uint8Array(9*1024*1024)],'large.png',{type:'image/png'}));el.dispatchEvent(new ClipboardEvent('paste',{clipboardData:data,bubbles:true,cancelable:true}));});
+ await expect(page.locator('.file-composer figcaption')).toContainText('large.png');
+ await expect(page.locator('.file-error')).toBeEmpty();
+});
