@@ -14,7 +14,7 @@ export class AttachmentStore {
   if(['image/png','image/jpeg','image/webp'].includes(mime)){
    const record=await this.images.save(bytes,name);return {...record,kind:'image',sha256:createHash('sha256').update(await this.images.content(record.id)).digest('hex')};
   }
-  if(!['.pdf','.txt','.csv','.json','.md','.log','.yaml','.yml','.tsv','.xml'].includes(extname(name).toLowerCase()))throw fail('PDF・テキスト・CSV・JSONなどのデータファイルを選んでください。');
+  if(!['.pdf','.docx','.txt','.csv','.json','.md','.log','.yaml','.yml','.tsv','.xml'].includes(extname(name).toLowerCase()))throw fail('PDF・DOCX・テキスト・CSV・JSONなどのデータファイルを選んでください。');
   const id=randomUUID(),record={id,kind:'file',name,mime:'application/octet-stream',size:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex'),at:new Date().toISOString()};
   await this.init();await writeFile(resolve(this.root,id+'.blob'),bytes,{flag:'wx',mode:0o600});await writeFile(resolve(this.root,id+'.tmp'),JSON.stringify(record),{flag:'wx',mode:0o600});await rename(resolve(this.root,id+'.tmp'),resolve(this.root,id+'.json'));return record;
  }

@@ -3,7 +3,7 @@ import {spawn} from 'node:child_process';
 export const receiveAttachment=`import sys,os,tempfile,hashlib,json
 expected=sys.argv[1]; suffix=sys.argv[2]
 assert len(expected)==64 and all(c in '0123456789abcdef' for c in expected)
-assert suffix in ('.png','.pdf','.txt','.csv','.json','.md','.log','.yaml','.yml','.tsv','.xml')
+assert suffix in ('.png','.pdf','.docx','.txt','.csv','.json','.md','.log','.yaml','.yml','.tsv','.xml')
 folder=tempfile.mkdtemp(prefix='ai-village-attachment-',dir='/tmp')
 path=os.path.join(folder,'data'+suffix)
 fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
