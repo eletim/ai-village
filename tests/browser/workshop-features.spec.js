@@ -19,34 +19,29 @@ test('TODO is shared by independent browsers, survives reload, handles edit conf
  await page.locator('#todo-list li').filter({hasText:'更新済み'}).getByRole('button',{name:'削除'}).click();await expect(other.locator('#todo-list')).not.toContainText('更新済み');
  expect((await (await request.get('/api/state')).json()).jobs).toEqual(original.jobs);await context.close();
 });
-test('resident secretary follows actual status and survives released workshop agents',async({page})=>{
- let state={jobs:[],workshops:[],secretary:{status:'idle',capabilities:{attachments:true},messages:[]}};
- await page.route('**/api/state',route=>route.fulfill({json:state}));await page.goto('/');
- const miku=page.locator('.resident-secretary');await expect(miku).toHaveAttribute('aria-label','ミク・待機中');await expect(page.locator('#legend')).toContainText('工房配置Agent 0人');
- state.secretary.status='thinking';await expect(miku).toHaveAttribute('aria-label','ミク・応答中');await expect(miku).not.toHaveClass(/hammering/);
- state.jobs=[{id:'released',tabId:'test',releaseState:'released',phase:'awaiting_review'}];state.secretary.status='idle';await expect(miku).toHaveAttribute('aria-label','ミク・待機中');
- await miku.click();await expect(page).toHaveURL(/\/office$/);await expect(page.locator('#room-secretary')).toContainText('待機中');
+test('office secretary continues to reflect legacy office status',async({page})=>{
+ const state={jobs:[],workshops:[],secretary:{status:'idle',messages:[]}};await page.route('**/api/state',r=>r.fulfill({json:state}));await page.goto('/office');await expect(page.locator('#room-secretary')).toContainText('待機中');state.secretary.status='thinking';await expect(page.locator('#room-secretary')).toContainText('応答中');
 });
-test('favicon baselines history, retains unread on village/reload and hidden tabs, clears only visible replies',async({page})=>{
+test('office favicon baselines history, retains unread on reload and hidden tabs, clears only visible replies',async({page})=>{
  let state={jobs:[],workshops:[],secretary:{status:'idle',capabilities:{attachments:true},messages:[{id:'old',role:'assistant',content:'過去の履歴',at:new Date().toISOString()}]}};
- await page.route('**/api/state',route=>route.fulfill({json:state}));await page.goto('/');const icon=page.locator('link[rel=icon]');await expect(icon).toHaveAttribute('data-unread','false');
+ await page.route('**/api/state',route=>route.fulfill({json:state}));await page.goto('/office');const icon=page.locator('link[rel=icon]');await expect(icon).toHaveAttribute('data-unread','false');
  state.secretary.messages.push({id:'new',role:'assistant',content:'新しい報告',at:new Date().toISOString()});await expect(icon).toHaveAttribute('data-unread','true');await page.reload();await expect(icon).toHaveAttribute('data-unread','true');
- await page.locator('.resident-secretary').click();await page.locator('#conversation-log').scrollIntoViewIfNeeded();await expect(icon).toHaveAttribute('data-unread','false');
+ await page.locator('#conversation-log').scrollIntoViewIfNeeded();await expect(icon).toHaveAttribute('data-unread','false');
  // Explicit visibility simulation avoids headless Chrome's platform-dependent tab focus policy.
  await page.evaluate(()=>{Object.defineProperty(document,'visibilityState',{configurable:true,get:()=> 'hidden'});document.dispatchEvent(new Event('visibilitychange'));});
  state.secretary.messages.push({id:'hidden',role:'assistant',content:'非表示中の返信',at:new Date().toISOString()});await expect(icon).toHaveAttribute('data-unread','true');
  await page.evaluate(()=>{delete document.visibilityState;document.dispatchEvent(new Event('visibilitychange'));});await page.locator('#conversation-log').scrollIntoViewIfNeeded();await expect(icon).toHaveAttribute('data-unread','false');
  await page.waitForTimeout(1700);await expect(icon).toHaveAttribute('data-unread','false');await page.reload();await expect(icon).toHaveAttribute('data-unread','false');
 });
-test('theme persistence, system changes, desktop/mobile/landscape and keyboard-sized viewport',async({page})=>{
- await mkdir(shots,{recursive:true});await page.emulateMedia({colorScheme:'dark'});await page.goto('/');await expect(page.locator('html')).toHaveAttribute('data-theme','dark');
- await page.emulateMedia({colorScheme:'light'});await expect(page.locator('html')).toHaveAttribute('data-theme','light');
+test('explicit theme persistence across system changes, desktop/mobile/landscape and keyboard-sized viewport',async({page})=>{
+ await mkdir(shots,{recursive:true});await page.emulateMedia({colorScheme:'dark'});await page.goto('/office');await expect(page.locator('html')).toHaveAttribute('data-theme','dark');
+ await page.emulateMedia({colorScheme:'light'});await expect(page.locator('html')).toHaveAttribute('data-theme','dark');
  for(const [device,width,height] of [['desktop',1440,1050],['mobile',390,844]]){
   await page.setViewportSize({width,height});
   for(const theme of ['light','dark']){
-   await page.getByLabel('配色',{exact:true}).selectOption(theme);
+   await page.getByRole('button',{name:'設定',exact:true}).click();await page.getByLabel('配色テーマ').selectOption(theme);await page.keyboard.press('Escape');
    for(const path of ['/','/office']){
-    await page.goto(path);await expect(page.locator('html')).toHaveAttribute('data-theme',theme);await expect(page.locator('.resident-secretary')).toHaveCount(1);
+    await page.goto(path);await expect(page.locator('html')).toHaveAttribute('data-theme',theme);await expect(page.locator(path==='/'?'.terrain':'#office-page')).toBeVisible();
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
     await page.waitForTimeout(400);await page.screenshot({path:shots+`${device}-${theme}-${path==='/'?'village':'office'}.png`,fullPage:true});
    }
@@ -64,7 +59,7 @@ test('TODO save failure preserves draft and reports failure',async({page})=>{
 test('mobile touch, long reply, documents and image attachment stay usable in dark mode',async({browser})=>{
  const context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true,colorScheme:'dark'}),page=await context.newPage();
  await page.route('**/api/state',route=>route.fulfill({json:{jobs:[],workshops:[],secretary:{status:'idle',capabilities:{attachments:true},messages:[{id:'long',role:'assistant',at:new Date().toISOString(),content:'長い会話でも末尾へスクロールできます。\n'.repeat(120)}]}}}));
- await page.goto('/');await page.locator('.resident-secretary').tap();await expect(page.locator('#office-page')).toBeVisible();
+ await page.goto('/office');await expect(page.locator('#office-page')).toBeVisible();
  await page.locator('#conversation-log').scrollIntoViewIfNeeded();await page.locator('#conversation-log').evaluate(el=>el.scrollTop=el.scrollHeight);expect(await page.locator('#conversation-log').evaluate(el=>el.scrollHeight-el.scrollTop-el.clientHeight<2)).toBe(true);
  await page.locator('[data-image]').setInputFiles({name:'mobile.png',mimeType:'image/png',buffer:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1cAAAAASUVORK5CYII=','base64')});await expect(page.locator('.file-composer img')).toBeVisible();
  await page.locator('#open-documents').tap();await expect(page.locator('#document-content')).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
@@ -76,17 +71,17 @@ test('memo empty state, safe text rendering, saved reply refresh and responsive 
  memo={updatedAt:'2026-10-24T00:00:00Z',value:{topic:'<img src=x onerror=alert(1)>',purpose:'村長と進めること',decisions:'共有TODO',permissions:'村長発言の参照',unfinished:'確認待ち',references:'manual.md'}};
  await expect(page.locator('#secretary-memo dt')).toHaveCount(6);await expect(page.locator('#secretary-memo')).toContainText('<img src=x');await expect(page.locator('#secretary-memo img')).toHaveCount(0);
  for(const [device,width,height] of [['desktop',1440,1050],['mobile',390,844]])for(const theme of ['light','dark']){
-  await page.setViewportSize({width,height});await page.getByLabel('配色',{exact:true}).selectOption(theme);await page.locator('.memo-panel').scrollIntoViewIfNeeded();
+  await page.setViewportSize({width,height});await page.getByRole('button',{name:'設定',exact:true}).click();await page.getByLabel('配色テーマ').selectOption(theme);await page.keyboard.press('Escape');await page.locator('.memo-panel').scrollIntoViewIfNeeded();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   await page.screenshot({path:shots+`${device}-${theme}-memo.png`,fullPage:true});
  }
 });
 test('bounded read markers migrate and simultaneous tabs retain independent reads',async({page,context})=>{
  const state={jobs:[],workshops:[],secretary:{status:'idle',capabilities:{attachments:true},messages:Array.from({length:700},(_,i)=>({id:`bounded-${i}`,role:'assistant',content:`返信${i}`,at:new Date().toISOString()}))}};
- await context.route('**/api/state',route=>route.fulfill({json:state}));await page.goto('/');
+ await context.route('**/api/state',route=>route.fulfill({json:state}));await page.goto('/office');
  await expect(page.locator('link[rel=icon]')).toHaveAttribute('data-unread','false');
  expect(await page.evaluate(()=>Object.keys(localStorage).filter(k=>k.startsWith('village-read-v2:')).length)).toBeLessThanOrEqual(512);
- const other=await context.newPage();await other.goto('/');
+ const other=await context.newPage();await other.goto('/office');
  // Emulate simultaneous independent message visibility writes; storage events must union, not replace.
  await Promise.all([page.evaluate(()=>localStorage.setItem('village-read-v2:race-a',String(Date.now()))),other.evaluate(()=>localStorage.setItem('village-read-v2:race-b',String(Date.now())))]);
  state.secretary.messages=state.secretary.messages.slice(-510).concat([{id:'race-a',role:'assistant',content:'A'},{id:'race-b',role:'assistant',content:'B'}]);

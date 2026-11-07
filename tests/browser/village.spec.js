@@ -1,41 +1,27 @@
 import {test,expect} from '@playwright/test';
-import {mkdir} from 'node:fs/promises';
-const shots=new URL('../../../verification/',import.meta.url).pathname;
-test('registered buildings, empty land and real assigned agents on desktop and narrow screens',async({page,request})=>{
-  await mkdir(shots,{recursive:true});
-  const actual=await (await request.get('/api/state')).json();
-  expect(actual.workshops).toEqual([{name:'第一工房',document:'workshops/first-workshop.md'}]);
-  let state={workshops:actual.workshops,jobs:[],job:null,secretary:{messages:[]}};
-  await page.route('**/api/state',r=>r.fulfill({json:state}));
-  const errors=[];page.on('pageerror',e=>errors.push(e.message));
-  await page.goto('/');
-  await expect(page.locator('.building')).toHaveCount(2);
-  await expect(page.locator('.person:not(.resident-secretary)')).toHaveCount(0);
-  await expect(page.locator('#workshop-count')).toHaveText('1 登録工房');
-  await page.screenshot({path:shots+'village-desktop-empty.png',fullPage:true});
-  await page.setViewportSize({width:390,height:844});
-  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
-  const bounds=await page.locator('.building').nth(1).boundingBox();expect(bounds.x).toBeGreaterThanOrEqual(0);expect(bounds.x+bounds.width).toBeLessThanOrEqual(390);
-  await page.screenshot({path:shots+'village-mobile-empty.png',fullPage:true});
-  await page.setViewportSize({width:1440,height:1050});
-  const job={id:'test-agent',workshopDocument:actual.workshops[0].document,workshopName:'第一工房',tabId:'fixture-tab',phase:'working',workerState:'busy',releaseState:'held',request:'表示検証'};
-  state={...state,job,jobs:[job]};
-  const agent=page.locator('.person:not(.resident-secretary)');await expect(agent).toHaveCount(1);await expect(agent).toHaveAttribute('aria-label','レン・作業中');
-  await page.screenshot({path:shots+'village-working.png',fullPage:true});
-  job.phase='awaiting_review';await expect(agent).toHaveAttribute('aria-label','レン・確認待ち');
-  await page.screenshot({path:shots+'village-review.png',fullPage:true});
-  job.releaseState='failed';job.connectionError='SSH unavailable';
-  await expect(agent).toHaveAttribute('aria-label','レン・解放失敗');
-  await expect(page.locator('#works')).toContainText('接続不能');await expect(page.locator('.building')).toHaveCount(2);
-  await page.screenshot({path:shots+'village-release-failed.png',fullPage:true});
-  job.releaseState='released';job.approvedAt='fixture';await expect(agent).toHaveCount(0);
-  await page.screenshot({path:shots+'village-released.png',fullPage:true});
-  state={...state,workshops:[{name:'第二工房',document:'workshops/second.md'}]};
-  await expect(page.locator('#works')).toContainText('第二工房');await expect(page.locator('#works')).not.toContainText('第一工房');
-  await expect(page.locator('.building')).toHaveCount(2);
-  state={...state,workshops:[]};await expect(page.locator('.building')).toHaveCount(1);
-  await page.goto('/office');await expect(page.locator('#office-page')).toBeVisible();
-  await page.screenshot({path:shots+'office-desktop.png',fullPage:true});
-  await page.setViewportSize({width:390,height:844});await page.screenshot({path:shots+'office-mobile.png',fullPage:true});
-  expect(errors).toEqual([]);
+const id=n=>'00000000-0000-4000-8000-'+String(n).padStart(12,'0');
+function fixture(shops=2,people=8){return {workshops:Array.from({length:shops},(_,i)=>({id:'w'+i,name:['木の工房','川辺の工房'][i]||'工房 '+(i+1),iconPattern:Array(8).fill(i%2?'diamond':'line')})),projects:[{id:'p',name:'村づくり'}],agents:Array.from({length:people},(_,i)=>({id:id(i),name:i<2?'秘書 '+(i+1):'住人 '+(i+1),location:i<2?'mayor':'workshop',workshopId:'w'+(i%shops),projectId:'p',state:i===0?'busy':i===3?'unknown':'idle',connection:{},canSend:true})),runs:[],reviews:{[id(2)]:{attention:true}},notification:{enabled:false}};}
+async function mock(page,state){let offline=false;const mutations=[];await page.route('**/api/**',r=>{if(r.request().method()!=='GET'){mutations.push(r.request().url());return r.fulfill({json:{ok:true,result:{enabled:false}}});}return offline?r.abort():r.fulfill({json:state});});return {offline:v=>offline=v,mutations};}
+test('registered village, selection, poll movement/deletion, deep link and return; no acknowledgement',async({page})=>{
+ const s=fixture(),m=await mock(page,s);await page.goto('/');await expect(page.locator('.village-lot')).toHaveCount(3);await expect(page.locator('#village-lots [data-resident]')).toHaveCount(8);await expect(page.locator('body')).not.toContainText('ミク');
+ await page.locator('[data-place="workshop:w0"]').click();await expect(page.locator('#place-detail h2')).toHaveText('木の工房');await page.locator('#village-lots [data-resident="'+id(2)+'"]').click();await expect(page.locator('#resident-detail')).toContainText('村づくり');await expect(page.locator('#resident-detail')).toContainText('要確認');
+ await page.screenshot({path:'/tmp/village-map-desktop.png',fullPage:true});
+ s.agents[2].workshopId='w1';await expect(page.locator('#place-detail h2')).toHaveText('川辺の工房');await expect(page.locator('#resident-detail h2')).toHaveText('住人 3');
+ expect(m.mutations).toEqual([]);await page.getByRole('link',{name:/このAgentと話す/}).click();await expect(page).toHaveURL(new RegExp('/agents#agent-'+id(2)));await expect(page.locator('#agent-'+id(2))).toBeVisible();await page.getByRole('link',{name:'村へ戻る',exact:true}).click();await expect(page.locator('.village-lot')).toHaveCount(3);
+ await page.locator('#village-lots [data-resident="'+id(2)+'"]').click();s.agents.splice(2,1);await expect(page.locator('#resident-detail')).toBeEmpty();
+ m.offline(true);await expect(page.locator('#map-connection')).toContainText('接続未確認');await expect(page.locator('#village-lots [data-status=unknown]')).toHaveCount(7);m.offline(false);await expect(page.locator('#map-connection')).toContainText('接続中');expect(m.mutations.filter(x=>!x.endsWith('/view'))).toEqual([]);
+});
+test('large village, mobile keyboard navigation and three themes stay within viewport',async({page})=>{
+ const s=fixture(9,29);await mock(page,s);await page.setViewportSize({width:390,height:844});await page.goto('/');await expect(page.locator('.village-lot')).toHaveCount(10);await expect(page.locator('#village-lots [data-resident]')).toHaveCount(29);
+ await page.locator('[data-place="workshop:w8"]').focus();await page.keyboard.press('Enter');await expect(page.locator('#place-detail h2')).toHaveText('工房 9');
+ for(const theme of ['dark','light','sepia']){await page.getByRole('button',{name:'設定',exact:true}).click();await page.getByLabel('配色テーマ').selectOption(theme);await page.keyboard.press('Escape');await expect(page.locator('.building-choice').first()).toHaveCSS('background-color','rgba(0, 0, 0, 0)');expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);}
+ await page.screenshot({path:'/tmp/village-map-mobile-many.png',fullPage:true});await page.evaluate(()=>scrollTo(0,0));await page.screenshot({path:'/tmp/village-map-mobile.png'});
+ // Each parcel is a distinct flow box; no fixed-coordinate overlap with later rows.
+ const boxes=await page.locator('.village-lot').evaluateAll(es=>es.map(e=>{const r=e.getBoundingClientRect();return {top:r.top,bottom:r.bottom};}));expect(boxes.every((b,i)=>!i||b.top>=boxes[i-1].bottom)).toBe(true);
+ await page.setViewportSize({width:1600,height:1050});const lots=await page.locator('.village-lot').evaluateAll(es=>es.map(e=>{const r=e.getBoundingClientRect();return {x:r.x,y:r.y,w:r.width,h:r.height};}));expect(lots.every((a,i)=>lots.slice(i+1).every(b=>a.x+a.w<=b.x||b.x+b.w<=a.x||a.y+a.h<=b.y||b.y+b.h<=a.y))).toBe(true);await page.screenshot({path:'/tmp/village-map-desktop-many.png',fullPage:true});await page.setViewportSize({width:390,height:844});await page.emulateMedia({reducedMotion:'reduce'});await page.locator('#village-lots [data-resident]').last().click();await expect(page.locator('#resident-detail .workspace-door')).toBeVisible();
+});
+test('empty, initial offline and new registration; office exit reaches new village',async({page})=>{
+ const s=fixture(0,0),m=await mock(page,s);m.offline(true);await page.goto('/');await expect(page.locator('#map-connection')).toContainText('接続未確認');await expect(page.locator('.village-lot')).toHaveCount(1);
+ m.offline(false);s.workshops.push({id:'new',name:'<script>工房</script>'});await expect(page.locator('.village-lot')).toHaveCount(2);await expect(page.locator('.building-sign').last()).toHaveText('<script>工房</script>');await expect(page.locator('.building-sign script')).toHaveCount(0);
+ await page.unroute('**/api/**');await page.route('**/api/**',r=>r.fulfill({json:{items:[],jobs:[],workshops:[],secretary:{status:'idle',messages:[]}}}));await page.goto('/office');await expect(page.locator('#request')).toBeVisible();await page.getByRole('link',{name:'← 出口・村へ戻る'}).click();await expect(page.locator('h1')).toHaveText('小道の先に、工房。');
 });
