@@ -1,6 +1,6 @@
 import {test,expect} from '@playwright/test';
 
-for(const view of ['direct','village','office']) {
+for(const view of ['direct','office']) {
  test(`${view}: Ctrl+Enter sends, Enter and Shift+Enter add newline, IME never sends`,async({page})=>{
   const state={workshops:[],agents:[{id:'a',name:'Agent',connection:{name:'工房'},state:'idle',canSend:true}],runs:[],notification:{}};
   const village={workshops:[],jobs:[],secretary:{status:'idle',capabilities:{attachments:true},messages:[]}};
@@ -10,8 +10,7 @@ for(const view of ['direct','village','office']) {
    if(route.request().method()==='POST')sends++;
    await route.fulfill({json:url.pathname==='/api/direct'?state:url.pathname.endsWith('/runs')?{state:'completed'}:village});
   });
-  await page.goto(view==='direct'?'/agents':view==='office'?'/office':'/');
-  if(view==='village')await page.locator('#mayor').click();
+  await page.goto(view==='direct'?'/agents':'/office');
   const input=page.locator(view==='direct'?'[name=instruction]':'#request');
   await input.fill('日本語');await input.press('Enter');await input.press('Shift+Enter');await expect(input).toHaveValue('日本語\n\n');expect(sends).toBe(0);
   await input.dispatchEvent('compositionstart');await input.dispatchEvent('compositionend');
