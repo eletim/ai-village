@@ -1,3 +1,4 @@
+import {ProjectGuides} from './project-guides.mjs';
 import {humanProjection} from './report-view.mjs';
 import {validWorkshopPattern} from '../src/workshop-pattern.js';
 import {deletionPlan,deleteProject} from './project-deletion.mjs';
@@ -26,6 +27,7 @@ export class DirectAgents {
   constructor({dir, remote, notifier, attachments, transferAttachment=stageAttachment, localRun=run, localBin=process.env.VILLAGE_PMUX_BIN || 'purplemux', pollMs=2000, villageUrl='http://127.0.0.1:5173'}) {
     Object.assign(this,{dir,remote,notifier,attachments,transferAttachment,localRun,localBin,pollMs,villageUrl});
     this.data={version:1,workshops:[],projects:[],agents:[],runs:[]};
+    this.projectGuides=new ProjectGuides();
     this.flow=new RequestFlow(this);
     this.queue=Promise.resolve(); this.locks=new Map(); this.monitors=new Map();
   }
@@ -219,7 +221,7 @@ export class DirectAgents {
     const confirmed=r.attachments?.length?await this.observe(a):baseline;if(!allowed(confirmed)||this.agentDeleting(a)){if(r.steerTarget){r.state='interrupted';r.error='添付転送中に補足対象が変わりました。自動送信しません。';await this.save();}return r;}
     if(r.autoRecoveryFrom&&(Date.now()>r.recoveryDeadline||!this.flow.recoveryBoundary(this.flow.run(r.autoRecoveryFrom),confirmed,a.runtime))){r.state='interrupted';r.error='自動再試行前に新しい入力または状態変化を検出しました。requests getで確認し手動で復旧してください。';await this.save();return r;}
     const status=a.runtime;
-    const deliveredInstruction=(r.steerTarget?'実行中の同じ作業への補足です。新しい依頼ではありません。以前のfinishは無効です。既存変更・子作業を保ち、再委任せず補足を反映し、以下の新runで最終finishしてください。\n':'')+r.instruction+(a.location==='mayor'&&r.phase!=='report'?this.secretaryContext(a):'')+this.flow.context(r);
+    const deliveredInstruction=(r.steerTarget?'実行中の同じ作業への補足です。新しい依頼ではありません。以前のfinishは無効です。既存変更・子作業を保ち、再委任せず補足を反映し、以下の新runで最終finishしてください。\n':'')+r.instruction+(a.location==='mayor'&&r.phase!=='report'?this.secretaryContext(a):'')+await this.projectGuides.context(a,r,this.villageUrl)+this.flow.context(r);
     Object.assign(r,{state:'sending',acceptance:'pending',blocksInput:true,dispatchAttemptedAt:now(),baselineRuntime:{sessionId:confirmed.sessionId,cursor:confirmed.cursor,fileIdentity:confirmed.fileIdentity},inputHash:inputHash(deliveredInstruction),agentSessionId:status.agentSessionId||null});
     await this.save();
     if(this.agentDeleting(a)){r.state='terminated';r.blocksInput=false;r.error='project-deletion-before-dispatch';await this.save();return r;}

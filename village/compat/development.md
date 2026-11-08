@@ -4,6 +4,8 @@ branch: feat/live-workshop
 source_dir: /home/koji/DevEnv/ai-village
 workshop_document: workshops/first-workshop.md
 ---
+> 互換情報: 旧jobs/執務室実装専用。Agent Workspaceの登録・requestsや現在の秘書方針には適用しません。記載の接続設定は現在の稼働を保証しません。
+
 # AI村自身の開発と稼働中の村への反映
 
 この先頭の設定が開発対象の原本です。工房の接続先・設備は `workshop_document` の資料を読みます。コアの場所と工房の場所は別です。現在のHEADや仕事の状態はこの文書ではなく、操作窓口の実測結果を参照してください。
