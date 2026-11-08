@@ -15,7 +15,7 @@ import {attachmentComposer,attachmentHTML} from './attachments.js';
 import {chatScroll} from './chat-scroll.js';
 import {travelComposer} from './travel-composer.js';
 import {travelSummary,sameTravelContexts} from './travel-context.js';
-import {PAGE_SIZE,isSuspended,suspensionSummary,placeOf,orderedAgents,orderedProjects,boardLayout} from './board-state.js';
+import {PAGE_SIZE,isSuspended,placeOf,orderedAgents,orderedProjects,boardLayout} from './board-state.js';
 import {agentEntries,unreadByAgent,visualState,faviconHref} from './completions.js';
 import {agentPlaceName} from './agent-identity.js';
 import {bindPromptInput} from './prompt-input.js';
@@ -416,8 +416,8 @@ document.addEventListener('click',async e=>{
 });
 
 function renderSuspended(){
- const projects=orderedProjects((state.projects||[]).filter(p=>p.suspended===true)),agents=live().filter(a=>isSuspended(state.projects||[],a));
- const summary=$('#suspended-projects summary'),text=`休止中（${projects.length}） · ${suspensionSummary(agents,state.reviews)}`;if(summary.textContent!==text)summary.textContent=text;
+ const projects=orderedProjects((state.projects||[]).filter(p=>p.suspended===true));
+ const summary=$('#suspended-projects summary'),text=`休止中(${projects.length})`;if(summary.textContent!==text)summary.textContent=text;
  const html=projects.map(p=>{const members=live().filter(a=>a.projectId===p.id);return Array.from({length:Math.max(1,Math.ceil(members.length/PAGE_SIZE))},(_,page)=>`<div class="place-row"><button data-place="project:${esc(p.id)}" data-page="${page}" ${selectedPlace==='project:'+p.id&&selectedPage===page?'aria-current="page"':''}><span>${esc(p.name)}${page?' ('+(page+1)+')':''}</span><span class="place-dots">${members.slice(page*PAGE_SIZE,(page+1)*PAGE_SIZE).map(agentDot).join('')}</span></button><button data-add="project:${esc(p.id)}" aria-label="${esc(p.name)}の操作">…</button></div>`).join('');}).join('')||'<p>休止中のProjectはありません。</p>';
  const host=$('#suspended-list');if(host.innerHTML!==html){const active=document.activeElement?.dataset;host.innerHTML=html;if(active?.place||active?.add)[...host.querySelectorAll('button')].find(b=>b.dataset.place===active.place&&b.dataset.add===active.add&&b.dataset.page===active.page)?.focus({preventScroll:true});}
 }
