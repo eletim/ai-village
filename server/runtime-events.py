@@ -30,6 +30,9 @@ def read(provider,sid):
    except: return result
    at=x.get('timestamp');v=x.get('payload',{});kind=v.get('type');meta=v.get('internal_chat_message_metadata_passthrough') or {}
    if provider=='codex':
+    if x.get('type')=='turn_context':
+     result['modelInfo']={'model':v.get('model'),'serviceTier':v.get('service_tier'),'recordedAt':at}
+
     if x.get('type')=='event_msg' and kind=='task_started':
      tid=v.get('turn_id');current=tid
      if tid:turn(tid,at)
@@ -66,6 +69,8 @@ def read(provider,sid):
     elif uid and parent in parents:
      tid=parents[parent];parents[uid]=tid
      if x.get('type')=='assistant':
+      result['modelInfo']={'model':m.get('model'),'serviceTier':(m.get('usage') or {}).get('speed'),'recordedAt':at}
+
       body=text(content)
       if body:turns[tid]['messages'].append({'id':uid,'text':body,'at':at,'offset':offset})
       if x.get('isApiErrorMessage') is True:
