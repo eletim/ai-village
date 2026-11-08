@@ -7,7 +7,8 @@ import {stageAttachment} from './attachment-transfer.mjs';
 import {RequestFlow} from './requests.mjs';
 import {completedEntries} from '../src/completions.js';
 import {agentIdentity,agentPlaceName} from '../src/agent-identity.js';
-import {runtimeScript,inputHash,correlate,terminalBoundary,outputBetween} from './runtime-events.mjs';
+import {RuntimeReader} from './runtime-reader.mjs';
+import {inputHash,inputMatches,resolveInputPosition,correlate,terminalBoundary,outputBetween} from './runtime-events.mjs';
 import { run } from './bridge.mjs';
 import { captureProcessesScript, stopProcessesScript } from './processes.mjs';
 import { createServer } from 'node:net';
@@ -180,7 +181,7 @@ export class DirectAgents {
     return this.localRun(args[0]==='purplemux'?this.localBin:args[0],args.slice(1));
   }
   async pmux(a,...args){return JSON.parse(await this.execute(a,['purplemux',...args]));}
-  async runtime(a,status){return JSON.parse(await this.execute(a,['python3','-c',runtimeScript,a.provider||'codex',status.agentSessionId||'']));}
+  async runtime(a,status){this.runtimeReader ||= new RuntimeReader(this.dir);return this.runtimeReader.read(a,status,(agent,args)=>this.execute(agent,args));}
   async create(input){return this.locked('projects',()=>this.locked('create:'+input.requestId,()=>this.createOnce(input)));}
   async createOnce({workshopId,cwd,name='Agent',requestId,provider='codex',location='workshop',projectId=null}){
     if(typeof requestId!=='string'||! /^[\w-]{8,100}$/.test(requestId))fail('requestIdが必要です',400);
@@ -238,7 +239,7 @@ export class DirectAgents {
     const q=this.flow.root(r.humanRequestId);
     if(q.status!=='active'||snapshot.sessionId!==t.sessionId||a.runtime.agentSessionId!==t.sessionId||snapshot.turns.at(-1)?.id!==t.turnId)return false;
     const observed=correlate(previous,snapshot);
-    return observed.state==='running'&&observed.turnId===t.turnId&&snapshot.inputs.filter(i=>i.turnId===t.turnId).every(i=>r.priorInputs.some(p=>p.id===i.id&&p.hash===i.hash&&p.offset===i.offset));
+    return observed.state==='running'&&observed.turnId===t.turnId&&snapshot.inputs.filter(i=>i.turnId===t.turnId).every(i=>r.priorInputs.some(p=>inputMatches(i,p)));
   }
   updateAvailability(a){
     a.canSteer=false;delete a.steerTarget;
@@ -289,8 +290,8 @@ export class DirectAgents {
           while(turn?.messageOffsets===true&&next.steerTarget&&!visited.has(next.id)){
             visited.add(next.id);
             const previous=this.data.runs.find(p=>p.id===next.steerTarget.runId);
-            const start=previous&&snapshot.inputs.find(i=>i.id===previous.inputId&&i.turnId===r.turnId);
-            const end=snapshot.inputs.find(i=>i.id===next.inputId&&i.turnId===r.turnId);
+            const start=previous&&resolveInputPosition(snapshot.inputs,previous.inputId,r.turnId);
+            const end=resolveInputPosition(snapshot.inputs,next.inputId,r.turnId);
             if(!previous||previous.state!=='superseded'||previous.sessionId!==r.sessionId||!start||!end||start.offset>=end.offset)break;
             previous.output=outputBetween(turn,start.offset,end.offset);
             next=previous;
