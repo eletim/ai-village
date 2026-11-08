@@ -1,12 +1,13 @@
+import {modelFields} from './model-usage.js';
 import {registeredRole} from './status-icon.js';
 import {reportHTML} from './report-content.js';
 import {updateReportHTML} from './report-visuals.js';
 
 export function agentProfileViewer(){
  const dialog=document.createElement('dialog');dialog.id='agent-profile-dialog';dialog.setAttribute('aria-labelledby','agent-profile-title');
- dialog.innerHTML='<header><h2 id="agent-profile-title">Agentのプロフィール</h2><button type="button" data-close aria-label="プロフィールを閉じる">閉じる</button></header><dl class="profile-fields"></dl><section class="profile-guide"><h3>秘書の方針</h3><p data-project></p><p>このProjectの秘書用の方針です。他Project・工房Agent・報告専用工程には適用しません。</p><button type="button" data-reload>再読込</button><p role="status" aria-live="polite"></p><div class="guide-body" tabindex="0" aria-label="方針の本文"></div></section>';
+ dialog.innerHTML='<header><h2 id="agent-profile-title">Agentのプロフィール</h2><button type="button" data-close aria-label="プロフィールを閉じる">閉じる</button></header><dl class="profile-fields"></dl><dl class="profile-fields" data-model-fields></dl><section class="profile-guide"><h3>秘書の方針</h3><p data-project></p><p>このProjectの秘書用の方針です。他Project・工房Agent・報告専用工程には適用しません。</p><button type="button" data-reload>再読込</button><p role="status" aria-live="polite"></p><div class="guide-body" tabindex="0" aria-label="方針の本文"></div></section>';
  document.body.append(dialog);
- const status=dialog.querySelector('[role=status]'),body=dialog.querySelector('.guide-body');let current,secretary=false,serial=0,controller;
+ const status=dialog.querySelector('[role=status]'),body=dialog.querySelector('.guide-body');let selectedId,current,secretary=false,serial=0,controller;
  function invalidate(){serial++;controller?.abort();controller=null;}
  async function load(){
   invalidate();if(!secretary)return;const version=serial;controller=new AbortController();
@@ -25,7 +26,14 @@ export function agentProfileViewer(){
  }
  dialog.querySelector('[data-close]').onclick=()=>dialog.close();dialog.querySelector('[data-reload]').onclick=load;
  dialog.addEventListener('close',()=>{invalidate();updateReportHTML(body,'');});
- return {open(agent,project){
+ function update(agent){
+  if(!dialog.open||agent.id!==selectedId)return;
+  const host=dialog.querySelector('[data-model-fields]');if(!host)return;
+  const fields=modelFields(agent),key=JSON.stringify(fields);if(host.dataset.fields===key)return;host.dataset.fields=key;
+  host.replaceChildren();for(const [label,value] of fields){const dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=label;dd.textContent=value;host.append(dt,dd);}
+ }
+ return {update,open(agent,project){
+  selectedId=agent.id;
   invalidate();updateReportHTML(body,'');status.textContent='';body.removeAttribute('aria-busy');
   const role=registeredRole(agent);secretary=role==='secretary';current=project;
   dialog.querySelector('.profile-guide').hidden=!secretary;
@@ -34,6 +42,6 @@ export function agentProfileViewer(){
    const term=document.createElement('dt'),detail=document.createElement('dd');term.textContent=label;detail.textContent=value;profile.append(term,detail);
   }
   dialog.querySelector('[data-project]').textContent='対象Project: '+(project?.name||(agent.projectId?'登録情報を確認できません':'未所属'));
-  if(!dialog.open)dialog.showModal();if(secretary)void load();
+  if(!dialog.open)dialog.showModal();update(agent);if(secretary)void load();
  }};
 }

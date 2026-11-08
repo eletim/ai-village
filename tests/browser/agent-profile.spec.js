@@ -7,7 +7,7 @@ test('project and secretary entries, safe Markdown, latest reload, draft and mob
  await fixture(page,(r,id)=>{requests.push(id);return r.fulfill({json:{ok:true,result:{available:true,projectId:id,content:'# 方針 '+version+'\n\n**工房を確認**\n\n<script>window.xss=1</script>\n\n[x](javascript:alert(1))\n\n'+('長い説明\n\n'.repeat(70))}}});});
  const input=page.locator('#agent-a textarea');await input.fill('保持する下書き');
  await expect(page.locator('#agent-b [data-profile-agent]')).toHaveCount(1);await expect(page.locator('#project-guide,.agent-guide')).toHaveCount(0);
- await page.locator('#agent-a [data-profile-agent]').focus();await page.keyboard.press('Enter');await expect(dialog(page).locator('h1')).toHaveText('方針 1');await expect(dialog(page)).toContainText('対象Project: 村実装');await expect(dialog(page).locator('dl')).toContainText('秘書（村実装）');await expect(dialog(page).locator('dl')).toContainText('Codex');await expect(dialog(page)).not.toContainText('/private/internal');
+ await page.locator('#agent-a [data-profile-agent]').focus();await page.keyboard.press('Enter');await expect(dialog(page).locator('h1')).toHaveText('方針 1');await expect(dialog(page)).toContainText('対象Project: 村実装');await expect(dialog(page).locator('dl:not([data-model-fields])')).toContainText('秘書（村実装）');await expect(dialog(page).locator('dl:not([data-model-fields])')).toContainText('Codex');await expect(dialog(page)).not.toContainText('/private/internal');
  expect(await page.evaluate(()=>window.xss)).toBeUndefined();await expect(dialog(page).locator('script,a[href^="javascript:"]')).toHaveCount(0);
  version=2;await dialog(page).getByRole('button',{name:'再読込'}).click();await expect(dialog(page).locator('h1')).toHaveText('方針 2');
  await page.keyboard.press('Escape');await expect(input).toHaveValue('保持する下書き');
@@ -19,7 +19,7 @@ test('project and secretary entries, safe Markdown, latest reload, draft and mob
 });
 test('unset, errors, loading and no use of another Project guide',async({page})=>{
  let fail=true;await fixture(page,(r,id)=>fail?r.fulfill({status:503,json:{error:'failure'}}):r.fulfill({json:{ok:true,result:{available:false}}}));
- await page.locator('[data-place="project:p2"]').click();await page.locator('[data-profile-agent]:visible').first().click();await expect(dialog(page)).toContainText('対象Project: 別Project');await expect(dialog(page).locator('dl')).toContainText('Claude');await expect(dialog(page)).toContainText('取得できません');
+ await page.locator('[data-place="project:p2"]').click();await page.locator('[data-profile-agent]:visible').first().click();await expect(dialog(page)).toContainText('対象Project: 別Project');await expect(dialog(page).locator('dl:not([data-model-fields])')).toContainText('Claude');await expect(dialog(page)).toContainText('取得できません');
  fail=false;await dialog(page).getByRole('button',{name:'再読込'}).click();await expect(dialog(page)).toContainText('未設定です');await page.keyboard.press('Escape');
  await page.locator('[data-place="all"]').click();await page.locator('#agent-c [data-profile-agent]').click();await expect(dialog(page)).toContainText('Project未所属');
 });
@@ -48,10 +48,10 @@ test('worker and unknown profiles never request secretary guidance; late secreta
  await page.locator('#agent-a [data-profile-agent]').click();await expect(dialog(page)).toContainText('読込中');await page.keyboard.press('Escape');
  const input=page.locator('#agent-b textarea');await input.fill('工房への下書き');
  const worker=page.getByRole('button',{name:'工房のプロフィール',exact:true});await worker.focus();await page.keyboard.press('Enter');
- await expect(dialog(page).locator('dl')).toContainText('工房Agent');await expect(dialog(page).locator('dl')).toContainText('登録工房');await expect(dialog(page).locator('dl')).toContainText('村実装');await expect(dialog(page).locator('dl')).toContainText('Claude');
+ await expect(dialog(page).locator('dl:not([data-model-fields])')).toContainText('工房Agent');await expect(dialog(page).locator('dl:not([data-model-fields])')).toContainText('登録工房');await expect(dialog(page).locator('dl:not([data-model-fields])')).toContainText('村実装');await expect(dialog(page).locator('dl:not([data-model-fields])')).toContainText('Claude');
  await expect(dialog(page).getByRole('heading',{name:'秘書の方針'})).toHaveCount(0);release();await page.waitForTimeout(150);
  await expect(dialog(page)).not.toContainText('SECRET guidance');expect(calls).toBe(1);
  await page.screenshot({path:'/tmp/agent-profile-worker-desktop.png'});await page.setViewportSize({width:390,height:844});await page.screenshot({path:'/tmp/agent-profile-worker-mobile.png'});
  await page.keyboard.press('Escape');await expect(input).toHaveValue('工房への下書き');await worker.focus();await page.keyboard.press('Space');await expect(dialog(page)).toBeVisible();await page.keyboard.press('Escape');
- await page.locator('#agent-unknown [data-profile-agent]').click();await expect(dialog(page).locator('dl')).toContainText('不明');await expect(dialog(page).locator('dl')).toContainText('登録情報を確認できません');await expect(dialog(page).getByRole('button',{name:'再読込'})).toHaveCount(0);expect(calls).toBe(1);
+ await page.locator('#agent-unknown [data-profile-agent]').click();await expect(dialog(page).locator('dl:not([data-model-fields])')).toContainText('不明');await expect(dialog(page).locator('dl:not([data-model-fields])')).toContainText('登録情報を確認できません');await expect(dialog(page).getByRole('button',{name:'再読込'})).toHaveCount(0);expect(calls).toBe(1);
 });

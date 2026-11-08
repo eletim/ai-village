@@ -1,3 +1,5 @@
+import {WeeklyUsage} from '../server/weekly-usage.mjs';
+const weeklyUsage=new WeeklyUsage();
 import {TravelRegistry} from '../server/travel-registry.mjs';
 import {AttachmentStore} from '../server/attachments.mjs';
 import { DirectAgents } from '../server/direct.mjs';
@@ -52,6 +54,7 @@ const handleRequest = async (req, res) => {
     const pathname = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
     if (pathname.startsWith('/api/')) {
       if (pathname.startsWith('/api/direct')) {
+        if(req.method==='GET' && pathname==='/api/direct/usage')return json(res,200,await weeklyUsage.get());
         if(req.method==='GET' && pathname==='/api/direct/requests')return json(res,200,{requests:direct.flow.list()});
         if(req.method==='GET' && pathname==='/api/direct/agents')return json(res,200,direct.discovery());
         if(req.method==='GET' && pathname==='/api/direct')return json(res,200,direct.snapshot());

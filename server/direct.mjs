@@ -1,3 +1,4 @@
+import {sessionModel} from './session-model.mjs';
 import {ProjectGuides} from './project-guides.mjs';
 import {humanProjection} from './report-view.mjs';
 import {validWorkshopPattern} from '../src/workshop-pattern.js';
@@ -47,6 +48,7 @@ export class DirectAgents {
     for(const w of this.data.workshops)w.connectionType ||= 'ssh';
     for(const a of this.data.agents) {
       a.connection.connectionType ||= 'ssh';
+      a.modelInfo={available:false};
       a.canSteer=false;delete a.steerTarget;a.canSend=false;a.canQueue=false;a.sendReason='再接続して稼働状態を確認しています';
       if(a.state!=='terminated'){a.connectionState='unknown';a.activityState='unknown';}
       if(a.state==='creating')a.state='creation_unknown';
@@ -255,6 +257,7 @@ export class DirectAgents {
       const s=await this.pmux(a,'tab','status','-w',a.workspaceId,a.tabId);
       const snapshot=await this.runtime(a,s);
       a.connectionState='connected';a.error=null;a.lastCheckedAt=now();a.runtime=s;
+      a.modelInfo=sessionModel(snapshot,s);
       a.lifecycle=!s.alive||s.cliState==='inactive'?'unavailable':!s.cliState||s.cliState==='unknown'?'unknown':'alive';a.setupRequired=false;
       if(s.alive&&!s.agentSessionId){
         const capture=await this.pmux(a,'tab','capture','-w',a.workspaceId,a.tabId);
@@ -310,7 +313,7 @@ export class DirectAgents {
       a.state=a.lifecycle==='alive'?a.activityState:a.lifecycle==='unknown'?'unknown':'unavailable';
       this.updateAvailability(a);await this.save();return snapshot;
     }catch{
-      a.connectionState='unknown';a.lifecycle='unknown';a.activityState='unknown';a.state='unknown';a.error='接続・状態取得ができません。監視を継続します。';this.updateAvailability(a);await this.save();return {available:false,turns:[],inputs:[]};
+      a.modelInfo={available:false};a.connectionState='unknown';a.lifecycle='unknown';a.activityState='unknown';a.state='unknown';a.error='接続・状態取得ができません。監視を継続します。';this.updateAvailability(a);await this.save();return {available:false,turns:[],inputs:[]};
     }
   }
   async poll(a){

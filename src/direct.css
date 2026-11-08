@@ -85,3 +85,9 @@
 #agent-profile-dialog .profile-guide:not([hidden]){display:flex;flex-direction:column;min-height:0}
 #agent-profile-dialog .profile-guide > :not(.guide-body){flex-shrink:0}
 #agent-profile-dialog .guide-body{min-height:0;flex:1}
+
+.sidebar{display:flex;flex-direction:column}#places{flex:1 0 auto}
+#weekly-usage{margin-top:16px;padding:8px 5px;border-top:1px solid #60758d;font-size:11px;overflow-wrap:anywhere}
+#weekly-usage h3{margin:0 0 6px;color:inherit;font-size:12px}
+#weekly-usage p{margin:4px 0;line-height:1.4}
+#weekly-usage .usage-provider{margin:10px 0}#weekly-usage meter{width:100%;height:8px}
