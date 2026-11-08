@@ -1,7 +1,8 @@
 import {test,expect} from '@playwright/test';
 import {WorkspaceSync} from '../../server/workspace-sync.mjs';
 import {workspaceSnapshot,historyPage} from '../../server/conversation-pages.mjs';
-test('incremental workspace retains history, drafts and repeated text through append, lost base and removal',async({page})=>{
+for(const origin of ['localhost','http']) test('incremental workspace retains history, drafts and repeated text through append, lost base and removal ('+origin+')',async({page})=>{
+ if(origin==='http') await page.route('http://village-http.test/**',async route=>{const u=new URL(route.request().url());const response=await route.fetch({headers:{},url:new URL(u.pathname+u.search,test.info().project.use.baseURL).href});await route.fulfill({response});});
  const state={agents:[{id:'a',name:'Fixture',location:'mayor',state:'idle',connection:{},canSend:true,nativeTurns:[]}],projects:[],workshops:[],reviews:{},requests:[],notification:{enabled:false},capabilities:{attachments:true},runs:Array.from({length:130},(_,i)=>({id:'r'+i,agentId:'a',createdAt:new Date(1700000000000+i*1000).toISOString(),state:'completed',instruction:'question '+i,output:'answer '+i,finalOutput:'final '+i}))};
  let server=new WorkspaceSync(),deltas=0,fulls=0;
  await page.route('**/api/**',r=>{
@@ -13,7 +14,7 @@ test('incremental workspace retains history, drafts and repeated text through ap
   }
   return r.fulfill({json:{providers:{}}});
  });
- const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto('/agents');const runs=page.locator('.runs .run');await expect(runs).toHaveCount(100);
+ const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto(origin==='http'?'http://village-http.test/agents':'/agents');if(origin==='http') expect(await page.evaluate(()=>({secure:isSecureContext,uuid:typeof crypto.randomUUID}))).toEqual({secure:false,uuid:'undefined'});const runs=page.locator('.runs .run');await expect(runs).toHaveCount(100);
  await page.locator('textarea[name=instruction]').fill('preserve my draft');
  await page.getByRole('button',{name:'古い会話を読み込む'}).click();await expect(runs).toHaveCount(130);expect(deltas).toBeGreaterThan(0);
  state.runs.push({id:'new',agentId:'a',createdAt:'2030-01-01',instruction:'new question',output:'repeat '.repeat(100),state:'running'});
