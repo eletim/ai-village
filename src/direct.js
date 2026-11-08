@@ -267,12 +267,14 @@ function focusAgent(){
 window.addEventListener('hashchange',()=>{focusedHash='';focusAgent();});
 $('#places').onclick=e=>{const add=e.target.closest('[data-add]'),place=e.target.closest('[data-place]');if(add)openManagement(add.dataset.add);else if(place)choosePlace(place.dataset.place,place.dataset.place==='all'?undefined:Number(place.dataset.page));};
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&zoomId&&!document.querySelector('dialog[open]'))toggleZoom(zoomId);});
-function openLauncher(place=selectedPlace){
+let launcherProjectId=null;
+function openLauncher(place=selectedPlace,projectId=null){
+ launcherProjectId=projectId;
  const f=$('#agent-form'),w=place==='mayor'?state.workshops.find(w=>w.connectionType==='local'):state.workshops.find(w=>w.id===place)||state.workshops[0];
  if(!w){if(place==='mayor')openSecretarySetup();else $('#settings-dialog').showModal();return;}
  f.elements.location.value=place==='mayor'?'mayor':'workshop';f.elements.workshopId.value=w.id;places();
  f.elements.name.value=place==='mayor'?'秘書':'Agent';
- projectOptions(f.elements.projectId);f.elements.projectId.value=isProject(manageScope)?manageScope.slice(8):isProject(place)?place.slice(8):'';
+ if(projectId)options(f.elements.projectId,(state.projects||[]).filter(p=>p.id===projectId));else projectOptions(f.elements.projectId);f.elements.projectId.disabled=!!projectId;f.elements.projectId.value=projectId||(isProject(manageScope)?manageScope.slice(8):isProject(place)?place.slice(8):'');
  $('#agent-dialog').showModal();f.elements.provider.focus();
 }
 let manageScope='all',metadataId='',metadataRevision=0,projectRevision=0;
@@ -286,9 +288,9 @@ function openSecretarySetup(){
  $('#settings-dialog').showModal();$('#workshop-form').elements.baseUrl.focus();
 }
 $('#settings-dialog').addEventListener('close',()=>{if(secretarySetup){$('#workshop-form').reset();$('#workshop-title').textContent='工房を登録';connectionFields();}secretarySetup=false;$('#secretary-setup-help').hidden=true;});
-function openManagement(scope=selectedPlace){manageScope=scope;openSettings();prepareSuspension();}
+function openManagement(scope=selectedPlace){manageScope=scope;if(isProject(scope))openProjectActions(scope.slice(8));else openSettings();}
 const openSettings=initDisplaySettings($('#manage'),$('#manage-dialog'));
-$('#manage').addEventListener('click',()=>{manageScope=selectedPlace;prepareSuspension();});
+$('#manage').addEventListener('click',()=>{manageScope=selectedPlace;});
 window.addEventListener('display-change',()=>{if(state)render();});
 $('#manual-add').onclick=()=>{$('#manage-dialog').close();openLauncher(manageScope);};
 $('#start-secretary').onclick=()=>{manageScope=selectedPlace;openLauncher('mayor');};
@@ -313,13 +315,18 @@ function renderProjectDeletion(result){
  $('#confirm-project-delete').textContent=result?'残りを再試行':'削除';
  $('#project-delete-dialog [data-close]').textContent=result?'閉じる':'キャンセル';
 }
-$('#delete-project').onclick=()=>action($('#projects-dialog'),async()=>{
- const id=$('#project-form').elements.id.value;if(!id)return;
- projectDeletePlan=await api('/projects/'+id+'/delete-plan',null,'GET');
- projectDeleteInput={operationId:projectDeletePlan.deletion?.operationId||newRequestId(),revision:projectDeletePlan.revision,members:projectDeletePlan.members.map(m=>({id:m.id,revision:m.revision}))};
- $('#project-delete-name').textContent='プロジェクト：'+projectDeletePlan.name;
- renderProjectDeletion(projectDeletePlan.deletion);$('#projects-dialog').close();$('#project-delete-dialog').showModal();
-});
+let deletePlanGeneration=0;
+async function openProjectDeletion(id,source){
+ const generation=++deletePlanGeneration;
+ const plan=await api('/projects/'+id+'/delete-plan',null,'GET');
+ if(!source.open||generation!==deletePlanGeneration)return;
+ projectDeletePlan=plan;
+ projectDeleteInput={operationId:plan.deletion?.operationId||newRequestId(),revision:plan.revision,members:plan.members.map(m=>({id:m.id,revision:m.revision}))};
+ $('#project-delete-name').textContent='プロジェクト：'+plan.name;
+ renderProjectDeletion(plan.deletion);source.close();$('#project-delete-dialog').showModal();
+}
+for(const id of ['projects-dialog','project-actions-dialog'])$('#'+id).addEventListener('close',()=>{deletePlanGeneration++;});
+$('#delete-project').onclick=()=>action($('#projects-dialog'),()=>openProjectDeletion($('#project-form').elements.id.value,$('#projects-dialog')));
 $('#confirm-project-delete').onclick=()=>action($('#project-delete-dialog'),async()=>{
  $('#project-delete-status').textContent='所属Agentの終了を確認しています。画面を閉じても開始した削除は取り消されません。';$('#project-delete-dialog [data-close]').textContent='閉じる';
  const result=await api('/projects/'+projectDeletePlan.projectId+'/delete',projectDeleteInput);renderProjectDeletion(result);
@@ -356,7 +363,7 @@ $('#workshop-form [name=connectionType]').onchange=connectionFields;
 $('#workshop-form').onsubmit=e=>{e.preventDefault();const f=e.currentTarget;action(f,async()=>{const x=Object.fromEntries(new FormData(f));if(secretarySetup&&x.connectionType!=='local')throw Error('秘書にはローカル（村長PC）を選んでください。');await api('/workshops'+(x.id?'/'+x.id:''),{...x,iconPattern:patternEditor.value(),workplaces:x.workplaces.split('\n').map(s=>s.trim()).filter(Boolean)},x.id?'PUT':'POST');f.reset();connectionFields();$('#workshop-title').textContent='工房を登録';if(secretarySetup){await refresh(true);$('#settings-dialog').close();openLauncher('mayor');}});};
 $('#reset-workshop').onclick=()=>{if(secretarySetup)prepareSecretaryForm();else{$('#workshop-form').reset();connectionFields();$('#workshop-title').textContent='工房を登録';}};
 $('#workshops').onclick=e=>{const id=e.target.dataset.edit;if(!id)return;const w=state.workshops.find(w=>w.id===id);for(const key of ['id','name','connectionType','sshHost','baseUrl','workplaces'])$('#workshop-form').elements[key].value=key==='workplaces'?w[key].join('\n'):(w[key]??(key==='connectionType'?'ssh':''));patternEditor.set(w);connectionFields();$('#workshop-title').textContent='工房を編集';};
-$('#agent-form').onsubmit=e=>{e.preventDefault();const f=e.currentTarget;f.dataset.requestId ||= newRequestId();action(f,async()=>{let a;try{a=await api('/agents',{...Object.fromEntries(new FormData(f)),requestId:f.dataset.requestId});}catch(error){if(error.status&&error.status<500)delete f.dataset.requestId;throw error;}delete f.dataset.requestId;$('#agent-dialog').close();await refresh(true);if(a.id){const scope=a.projectId?'project:'+a.projectId:placeId(a);choosePlace(scope,Math.floor(live().filter(x=>inScope(x,scope)).findIndex(x=>x.id===a.id)/PAGE_SIZE));cards.get(a.id)?.scrollIntoView({block:'nearest'});}});};
+$('#agent-form').onsubmit=e=>{e.preventDefault();const f=e.currentTarget;f.dataset.requestId ||= newRequestId();action(f,async()=>{let a;try{a=await api('/agents',{...Object.fromEntries(new FormData(f)),...(launcherProjectId?{projectId:launcherProjectId}:{}),requestId:f.dataset.requestId});}catch(error){if(error.status&&error.status<500)delete f.dataset.requestId;throw error;}delete f.dataset.requestId;$('#agent-dialog').close();await refresh(true);if(a.id){const scope=a.projectId?'project:'+a.projectId:placeId(a);choosePlace(scope,Math.floor(live().filter(x=>inScope(x,scope)).findIndex(x=>x.id===a.id)/PAGE_SIZE));cards.get(a.id)?.scrollIntoView({block:'nearest'});}});};
 $('#agents').onsubmit=async e=>{
  e.preventDefault();const f=e.target,id=f.dataset.send;if(!id||pending.has(id)||f.querySelector('button').disabled||(!f.elements.instruction.value.trim()&&!fileEditors.get(id).count))return;
  if(travelEditors.get(id).value.length&&!state.capabilities?.travelContexts){$('#error').textContent='出張先の送信にはサーバー更新の反映が必要です。下書きは保持しています。';return;}
@@ -414,13 +421,38 @@ function renderSuspended(){
  const html=projects.map(p=>{const members=live().filter(a=>a.projectId===p.id);return Array.from({length:Math.max(1,Math.ceil(members.length/PAGE_SIZE))},(_,page)=>`<div class="place-row"><button data-place="project:${esc(p.id)}" data-page="${page}" ${selectedPlace==='project:'+p.id&&selectedPage===page?'aria-current="page"':''}><span>${esc(p.name)}${page?' ('+(page+1)+')':''}</span><span class="place-dots">${members.slice(page*PAGE_SIZE,(page+1)*PAGE_SIZE).map(agentDot).join('')}</span></button><button data-add="project:${esc(p.id)}" aria-label="${esc(p.name)}の操作">…</button></div>`).join('');}).join('')||'<p>休止中のProjectはありません。</p>';
  const host=$('#suspended-list');if(host.innerHTML!==html){const active=document.activeElement?.dataset;host.innerHTML=html;if(active?.place||active?.add)[...host.querySelectorAll('button')].find(b=>b.dataset.place===active.place&&b.dataset.add===active.add&&b.dataset.page===active.page)?.focus({preventScroll:true});}
 }
-let suspensionTarget;
-function prepareSuspension(){
- const p=(state.projects||[]).find(p=>'project:'+p.id===manageScope),button=$('#project-suspension');button.hidden=!p;$('#project-suspension-help').hidden=!p;
- suspensionTarget=p?{id:p.id,revision:p.revision,suspended:!p.suspended}:null;
- if(p){button.textContent=p.suspended?'再開':'休止する';$('#project-suspension-help').textContent=p.name+'：表示整理のみです。Agent・所属・会話・依頼・通知はそのまま継続します。';}
+let projectActionTarget=null;
+function openProjectActions(id){
+ const p=(state.projects||[]).find(p=>p.id===id);if(!p)return;
+ projectActionTarget={...p};
+ $('#project-actions-title').textContent=p.name+' の操作';
+ $('#project-rename-form').elements.name.value=p.name;
+ $('#project-pin').textContent=p.pinned?'先頭固定を解除':'先頭に固定';
+ $('#project-suspension').textContent=p.suspended?'再開':'休止する';
+ $('#project-suspension-help').textContent=p.name+'：表示整理のみです。Agent・所属・会話・依頼・通知はそのまま継続します。';
+ $('#project-actions-dialog .dialog-error').textContent='';
+ $('#project-actions-dialog').showModal();
 }
-$('#project-suspension').onclick=()=>{const target=suspensionTarget;if(!target)return;action($('#manage-dialog'),async()=>{await api('/projects/'+target.id,{revision:target.revision,suspended:target.suspended},'PUT');if(target.suspended)$('#suspended-projects').open=true;$('#manage-dialog').close();});};
+function patchProject(patch){
+ const target=projectActionTarget;
+ return action($('#project-actions-dialog'),async()=>{
+  await api('/projects/'+target.id,{revision:target.revision,...patch},'PUT');
+  if(patch.suspended)$('#suspended-projects').open=true;
+  if(projectActionTarget===target)$('#project-actions-dialog').close();
+ });
+}
+$('#project-rename-form').onsubmit=e=>{e.preventDefault();patchProject({name:e.currentTarget.elements.name.value});};
+$('#project-pin').onclick=()=>patchProject({pinned:!projectActionTarget.pinned});
+$('#project-suspension').onclick=()=>patchProject({suspended:!projectActionTarget.suspended});
+$('#project-add-agent').onclick=()=>{
+ if(!state.workshops.length){$('#project-actions-dialog .dialog-error').textContent='利用できる工房がありません。右上の設定から工房を登録してください。';return;}
+ const id=projectActionTarget.id;$('#project-actions-dialog').close();openLauncher('project:'+id,id);
+};
+$('#project-actions-delete').onclick=()=>action($('#project-actions-dialog'),()=>openProjectDeletion(projectActionTarget.id,$('#project-actions-dialog')));
+$('#project-actions-dialog').addEventListener('close',()=>{
+ const id=projectActionTarget?.id;
+ requestAnimationFrame(()=>{if(!document.querySelector('dialog[open]'))[...document.querySelectorAll('[data-add]')].find(b=>b.dataset.add==='project:'+id)?.focus({preventScroll:true});});
+});
 $('#suspended-list').onclick=$('#places').onclick;
 try{$('#suspended-projects').open=localStorage.getItem('village-suspended-open')==='true'||(isProject(selectedPlace)&&(state?.projects||[]).some(p=>p.suspended&&'project:'+p.id===selectedPlace));}catch{}
 $('#suspended-projects').addEventListener('toggle',()=>{try{localStorage.setItem('village-suspended-open',String($('#suspended-projects').open));}catch{}});
