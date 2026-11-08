@@ -27,7 +27,10 @@ test('Direct preserves original work until report commits; failure keeps origina
  raw.runs[1].state='failed';await expect(log).toContainText('報告生成に失敗');await expect(log.getByRole('button',{name:'確認して再試行'})).toBeVisible();await expect(log).toContainText('SECRET original');
  raw.runs[1].state='unknown';await expect(log).toContainText('再送せず');await expect(log).toContainText('SECRET original');
  raw.runs[1].state='completed';raw.runs[1].output='完成した報告';raw.requests[0].status='completed';raw.requests[0].finalRunId='r';
- await expect(log).toContainText('完成した報告');await expect(log).not.toContainText('SECRET');await expect(log.locator('.message.user')).toHaveCount(1);
+ await expect(log).toContainText('完成した報告');await expect(log.getByText('SECRET original',{exact:true})).not.toBeVisible();
+ await log.locator('summary').click();await expect(log.getByText('SECRET original',{exact:true})).toBeVisible();
+ raw.runs[1].output='完成した報告（更新）';await expect(log).toContainText('完成した報告（更新）');await expect(log.locator('details')).toHaveAttribute('open','');
+ await log.locator('summary').click();await expect(log.getByText('SECRET original',{exact:true})).not.toBeVisible();await expect(log.locator('.message.user')).toHaveCount(1);
  await expect(page.locator('textarea[name=instruction]')).toHaveValue('次の質問');
  await page.screenshot({path:'/tmp/village-report-mode.png'});
 });
@@ -45,4 +48,13 @@ test('official HTTP report setting validates and remains independent of notifica
  expect((await op(['reports','configure','false'])).result.enabled).toBe(false);
  expect((await op(['reports','status'])).result.enabled).toBe(false);
  expect((await op(['reports','configure','true'])).result.enabled).toBe(true);
+});
+
+test('report mode off separates progress and final in Direct and office',async({page})=>{
+ const raw=fixture();raw.requests[0].reportMode=false;raw.agents[0].nativeTurns=[];raw.runs=raw.runs.slice(0,1);Object.assign(raw.runs[0],{output:'調査しています\n\n**修正できました**',finalOutput:'**修正できました**'});
+ await page.route('**/api/**',r=>r.fulfill({json:r.request().url().endsWith('/api/village')?{ok:true,result:{enabled:false}}:humanProjection(raw)}));
+ await page.goto('/agents');await expect(page.locator('.response-progress')).toContainText('調査しています');await expect(page.locator('.response-final')).toContainText('修正できました');await expect(page.locator('details.response-history')).toHaveCount(0);
+ await page.unroute('**/api/**');
+ await page.route('**/api/**',r=>r.fulfill({json:{items:[],jobs:[],workshops:[],secretary:{status:'idle',messages:[{id:'reply',role:'assistant',content:raw.runs[0].output,finalOutput:raw.runs[0].finalOutput,state:'completed',collapsedHistory:true}]}}}));
+ await page.goto('/office');const history=page.locator('#conversation-log details');await expect(history).not.toHaveAttribute('open','');await history.locator('summary').focus();await page.keyboard.press('Enter');await expect(history.locator('.response-progress')).toBeVisible();await expect(history.locator('.response-final')).toContainText('修正できました');
 });

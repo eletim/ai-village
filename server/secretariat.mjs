@@ -30,7 +30,7 @@ export class Secretariat {
     const ids=new Set(agents.map(a=>a.id));
     const messages=visible.runs.filter(r=>ids.has(r.agentId)).flatMap(r=>[
       ...(!r.suppressUser?[{id:r.id,role:'user',content:r.instruction,travelContexts:r.travelContexts,attachments:r.attachments,at:r.createdAt}]:[]),
-      ...(r.output&&r.state==='completed'?[{id:r.id+':reply',role:'assistant',content:r.output,at:r.completedAt}]:[])]);
+      ...(r.output?[{id:r.id+':reply',role:'assistant',content:r.output,finalOutput:r.finalOutput,collapsedHistory:r.collapsedHistory,state:r.state,at:r.completedAt}]:[])]);
     const available=agents.filter(a=>a.state!=='terminated'),target=available.length===1&&available[0].canSteer?available[0]:null;
     return {reportPending:agents.some(a=>a.reportPending),reportStatus:visible.runs.filter(r=>ids.has(r.agentId)&&r.phase==='report').at(-1)?.reportStatus,steering:target?{agentId:target.id,steerTarget:target.steerTarget}:null,capabilities:{steering:true,travelContexts:true,attachments:!!this.direct.attachments},status:agents.some(a=>a.state==='busy')?'thinking':'idle',messages:[...this.messages,...messages],agents};
   }
