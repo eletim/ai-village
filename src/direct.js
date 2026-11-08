@@ -1,3 +1,4 @@
+import {acceptWorkspace} from './workspace-sync.js';
 import {restorePendingMessage,matchingRun,unchangedDraft,pendingMessageStatus} from './pending-message.js';
 import {weeklyUsagePanel} from './model-usage.js';
 import {canCancelQueued} from './queued-run.js';
@@ -366,9 +367,18 @@ function render(){
  $('#notifications').textContent=`Notify: ${state.notification.enabled===false?'OFF':state.notification.latest?.status||(state.notification.destinationConfigured?'設定済み':'未設定')}`;
  $('#notifications').title='sentは通知サーバーの受理。端末への到着は未確認。';renderBoard();
 }
+const syncClient=crypto.randomUUID();let syncBase=null;
+async function fetchWorkspace(){
+ const path='?view=workspace&sync=1&client='+syncClient+'&ranges='+encodeURIComponent(JSON.stringify(historyRanges));
+ const result=await api(path+(syncBase?'&since='+encodeURIComponent(syncBase.cursor):''),null,'GET');
+ // A retained older server or isolated UI fixture can still return the original protocol.
+ if(!result.protocol){syncBase=null;return result;}
+ try{syncBase=acceptWorkspace(syncBase,result);return syncBase.state;}
+ catch{syncBase=null;syncBase=acceptWorkspace(null,await api(path,null,'GET'));return syncBase.state;}
+}
 async function refresh(force=false){
  if(refreshTask){await refreshTask;if(force)return refresh(true);return;}
- refreshTask=(async()=>{try{state=await api('?view=workspace&ranges='+encodeURIComponent(JSON.stringify(historyRanges)),null,'GET');for(const [id,page] of Object.entries(state.conversations||{}))if(page.cursor&&!historyRanges[id])historyRanges[id]=page.cursor;connected=true;render();focusAgent();$('#connection').textContent='● 接続 · '+new Date().toLocaleTimeString();}catch(e){connected=false;if(state)renderBoard();$('#connection').textContent='接続不明: '+e.message;}})();
+ refreshTask=(async()=>{try{state=await fetchWorkspace();for(const [id,page] of Object.entries(state.conversations||{}))if(page.cursor&&!historyRanges[id])historyRanges[id]=page.cursor;connected=true;render();focusAgent();$('#connection').textContent='● 接続 · '+new Date().toLocaleTimeString();}catch(e){connected=false;if(state)renderBoard();$('#connection').textContent='接続不明: '+e.message;}})();
  try{await refreshTask;}finally{refreshTask=null;}
 }
 $('#agent-form [name=workshopId]').onchange=places;
@@ -427,7 +437,8 @@ $('#agents').onclick=e=>{
   });return;
  }
  const reconcile=e.target.closest('[data-reconcile]');if(reconcile){const id=reconcile.dataset.reconcile,receipt=pending.get(id);if(receipt)action(reconcile.closest('article'),async()=>{await api('/agents/'+id+'/runs',receipt);await refresh();});return;}const manage=e.target.closest('[data-manage-agent]'),zoom=e.target.closest('[data-zoom]');if(manage)openMetadata(manage.dataset.manageAgent);if(zoom)toggleZoom(zoom.dataset.zoom);};
-await refresh();setInterval(refresh,2000);
+await refresh();setInterval(()=>{if(!document.hidden)void refresh();},2000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)void refresh(true);});
 
 function refreshMessageLog(id){
  const card=cards.get(id);if(!card)return;
