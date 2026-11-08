@@ -13,5 +13,11 @@ export function chatScroll(area,{saved,onSave=()=>{}}={}){
  const resize=new ResizeObserver(schedule);resize.observe(area);area.addEventListener('load',schedule,true);
  window.addEventListener('display-change',update);
  button.onclick=()=>{follow=true;newContent=false;schedule();};
- schedule();return {changed(){newContent=true;schedule();},restore:schedule,latest(){follow=true;newContent=false;schedule();},capture(){if(visible()){top=area.scrollTop;persist();}},destroy(){window.removeEventListener('display-change',update);content.disconnect();resize.disconnect();cancelAnimationFrame(frame);button.remove();}};
+ schedule();return {preserve(render){
+  const anchor=follow?null:[...area.querySelectorAll('[data-entry]')].find(n=>n.getBoundingClientRect().bottom>area.getBoundingClientRect().top);
+  const key=anchor?.dataset.entry,offset=anchor?.getBoundingClientRect().top;
+  render();
+  const next=key&&[...area.querySelectorAll('[data-entry]')].find(n=>n.dataset.entry===key);
+  if(next){top=Math.max(0,area.scrollTop+next.getBoundingClientRect().top-offset);expected=top;area.scrollTop=top;persist();}
+ },changed(){newContent=true;schedule();},restore:schedule,latest(){follow=true;newContent=false;schedule();},capture(){if(visible()){top=area.scrollTop;persist();}},destroy(){window.removeEventListener('display-change',update);content.disconnect();resize.disconnect();cancelAnimationFrame(frame);button.remove();}};
 }
