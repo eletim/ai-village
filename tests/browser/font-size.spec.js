@@ -1,12 +1,12 @@
 import {test,expect} from '@playwright/test';
 const output='# 見出し\n\n本文 **強調**\n\n```js\nconst x = 1;\n```\n\n'+Array.from({length:70},(_,i)=>`段落${i} 読み返す文章です。`).join('\n\n');
 async function setup(page,office=false){
- await page.route('**/api/**',r=>r.fulfill({json:r.request().url().endsWith('/api/village')?{ok:true,result:{enabled:false}}:office?{items:[],jobs:[],workshops:[],secretary:{status:'idle',messages:[{id:'m',role:'assistant',content:output,at:new Date().toISOString()},{id:'u',role:'user',content:'人間の入力',at:new Date().toISOString()}]}}:{agents:[{id:'a',name:'Agent',state:'idle',connection:{},canSend:true}],workshops:[],runs:[{id:'r',agentId:'a',instruction:'人間の入力',output,state:'completed'}],reviews:{},notification:{enabled:false}}}));
- await page.goto(office?'/office':'/agents');await expect(page.locator('.markdown-report h1')).toBeVisible();
+ await page.route('**/api/**',r=>r.fulfill({json:r.request().url().endsWith('/api/village')?{ok:true,result:{enabled:false}}:{agents:[{id:'a',name:'Agent',state:'idle',connection:{},canSend:true}],workshops:[],runs:[{id:'r',agentId:'a',instruction:'人間の入力',output,state:'completed'}],reviews:{},notification:{enabled:false}}}));
+ await page.goto(office?'/office':'/agents');await expect(page.locator('.markdown-report h1')).toBeVisible();if(office)await expect(page).toHaveURL(/\/agents/);
 }
 const px=el=>el.evaluate(e=>parseFloat(getComputedStyle(e).fontSize));
 for(const office of [false,true])test(`${office?'office':'Direct'} font sizes, reflow, caret, follow and read position`,async({page})=>{
- await setup(page,office);const input=page.locator(office?'#request':'#agent-a textarea'),log=page.locator(office?'#conversation-log':'.runs'),body=page.locator('.markdown-report'),code=body.locator('pre'),heading=body.locator('h1');
+ await setup(page,office);const input=page.locator('#agent-a textarea'),log=page.locator('.runs'),body=page.locator('.markdown-report'),code=body.locator('pre'),heading=body.locator('h1');
  const medium=await px(body),baseInput=await px(input),ratio=await px(heading)/medium,baseCode=await px(code);
  await input.fill('折り返し確認 '.repeat(22));await input.evaluate(e=>{e.focus();e.setSelectionRange(2,6);window.kept=e;});
  // Programmatic preference updates exercise focus/caret without the dialog taking focus.
@@ -20,7 +20,7 @@ for(const office of [false,true])test(`${office?'office':'Direct'} font sizes, r
  await page.getByRole('button',{name:'設定',exact:true}).click();await expect(page.getByLabel('文字サイズ')).toHaveValue('large');await expect(page.getByLabel('書体',{exact:true})).toHaveValue('meiryo');
 });
 test('three themes at narrow width and invalid stored values',async({page})=>{
- await page.addInitScript(()=>localStorage.setItem('village-display',JSON.stringify({font:'invalid',textSize:'huge',viewer:'markdown'})));await setup(page);await page.setViewportSize({width:390,height:844});await page.getByRole('button',{name:'設定',exact:true}).click();await expect(page.getByLabel('文字サイズ')).toHaveValue('medium');await expect(page.getByLabel('書体',{exact:true})).toHaveValue('standard');await page.getByLabel('文字サイズ').selectOption('large');await page.getByLabel('書体',{exact:true}).selectOption('meiryo');
+ await page.addInitScript(()=>localStorage.setItem('village-display',JSON.stringify({font:'invalid',textSize:'huge',viewer:'markdown'})));await setup(page);await page.setViewportSize({width:390,height:844});await page.getByRole('button',{name:'設定',exact:true}).click();await expect(page.getByLabel('文字サイズ')).toHaveValue('medium');await expect(page.getByLabel('書体',{exact:true})).toHaveValue('meiryo');await page.getByLabel('文字サイズ').selectOption('large');await page.getByLabel('書体',{exact:true}).selectOption('meiryo');
  for(const theme of ['dark','light','sepia']){await page.getByLabel('配色テーマ').selectOption(theme);await page.screenshot({path:`/tmp/village-font-${theme}-settings.png`});await page.keyboard.press('Escape');await page.screenshot({path:`/tmp/village-font-${theme}-mobile.png`});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.getByRole('button',{name:'設定',exact:true}).click();}
 });
 test('terminated Agent history uses stored size and font for both viewer modes',async({page})=>{

@@ -1,3 +1,4 @@
+import {restorePendingMessage,matchingRun,unchangedDraft,pendingMessageStatus} from './pending-message.js';
 import {weeklyUsagePanel} from './model-usage.js';
 import {canCancelQueued} from './queued-run.js';
 import {agentProfileViewer} from './agent-profile.js';
@@ -45,9 +46,11 @@ const pageKey=id=>sidebarMode+':'+id;
 const storageKey='ai-village-direct-drafts-v2';
 let saved={};try{saved=JSON.parse(sessionStorage.getItem(storageKey)||'{}');}catch{}
 const positions=new Map(Object.entries(saved.positions||{})),cards=new Map(),drafts=new Map(Object.entries(saved.drafts||{})),pending=new Map(Object.entries(saved.pending||{}));
-const fileEditors=new Map(),scrolls=new Map(),historyRanges={},historyLoading=new Set(),historyErrors=new Map(),sendStages=new Map();
+const draftVersions=new Map(Object.entries(saved.draftVersions||{})),outbox=new Map(Object.entries(saved.outbox||{}).map(([id,m])=>[id,restorePendingMessage(m)]));
+for(const [id,receipt] of pending)if(!outbox.has(id))outbox.set(id,{...receipt,stage:'unknown',draftVersion:draftVersions.get(id)||0});
+const fileEditors=new Map(),scrolls=new Map(),historyRanges={},historyLoading=new Set(),historyErrors=new Map();
 const travelDrafts=new Map(Object.entries(saved.travelDrafts||{})),travelEditors=new Map();
-function storeDrafts(){try{sessionStorage.setItem(storageKey,JSON.stringify({travelDrafts:Object.fromEntries(travelDrafts),positions:Object.fromEntries(positions),drafts:Object.fromEntries(drafts),pending:Object.fromEntries(pending)}));}catch{}}
+function storeDrafts(){try{sessionStorage.setItem(storageKey,JSON.stringify({travelDrafts:Object.fromEntries(travelDrafts),positions:Object.fromEntries(positions),drafts:Object.fromEntries(drafts),pending:Object.fromEntries(pending),outbox:Object.fromEntries(outbox),draftVersions:Object.fromEntries(draftVersions)}));}catch{}}
 window.addEventListener('pagehide',()=>{capturePositions();storeDrafts();});
 
 const live=()=>orderedAgents(state.agents);
@@ -82,8 +85,19 @@ function recoveryHTML(r){
  return `<div class="recovery"><p>${esc(reason)}</p>${!w.parentWorkId?`<button data-retry-run="${esc(r.id)}">確認して再試行</button>`:'<p>委任元でrequests get/resultsを確認し、requests retryで復旧してください。</p>'}<button data-cancel-request="${esc(q.id)}">依頼をキャンセル</button></div>`;
 }
 function runHTML(a){
- const page=state.conversations?.[a.id],entries=page?.entries||agentEntries(state,a),divider=dateDividers();
- return (historyErrors.has(a.id)?`<p role="alert" class="history-error">${esc(historyErrors.get(a.id))}</p>`:'')+(page?.hasMore?`<button type="button" data-load-history="${esc(a.id)}" ${historyLoading.has(a.id)?'disabled':''}>${historyLoading.has(a.id)?'読込中…':'古い会話を読み込む'}</button>`:'')+entries.map(r=>`${divider(r.createdAt||r.completedAt)}<div class="run" data-entry="${esc(JSON.stringify([r.external?'native':'run',r.external?(r.sessionId||r.agentSessionId||''):'',r.id]))}">${r.suppressUser?'':bubble('user',r.instruction,r.createdAt,travelSummary(r.travelContexts)+attachmentHTML(r.attachments))}${r.output||r.finalOutput?'<div class="message assistant">'+responseHTML(r)+timeHTML(r.completedAt)+'</div>':''}<p class="run-status"><span class="badge">${r.external?'PurpleMuxからの入力 · ':r.origin==='result'?'子作業結果の配送 · ':r.origin==='steering'?'実行中への補足 · ':''}${esc(r.queueCancelledAt?'送信取消済み':r.reportStatus||labels[r.state]||r.state)}</span> · ${r.humanRequestId?esc(({active:'依頼継続中',finalizing:'最終報告の完了待ち',completed:'依頼全体完了',cancelled:'依頼キャンセル'})[state.requests?.find(q=>q.id===r.humanRequestId)?.status]||'依頼照合中'):'達成状況: 未判定'} ${esc(r.errorCode||'')} ${esc(r.attachmentError||r.error||'')} ${r.notification?' · 通知: '+esc(r.notification.status)+(r.notification.reason?' / '+esc(r.notification.reason):''):''}</p>${canCancelQueued(r)?`<button type="button" data-cancel-queued="${esc(r.id)}" data-queue-agent="${esc(a.id)}">送信待ちを取り消す</button>`:''}${r.queueCancelledAt?'':recoveryHTML(r)}</div>`).join('')+divider.trailingToday();
+ const page=state.conversations?.[a.id],entries=page?.entries||agentEntries(state,a),divider=dateDividers(),localHTML=localMessageHTML(a.id);
+ return (historyErrors.has(a.id)?`<p role="alert" class="history-error">${esc(historyErrors.get(a.id))}</p>`:'')+(page?.hasMore?`<button type="button" data-load-history="${esc(a.id)}" ${historyLoading.has(a.id)?'disabled':''}>${historyLoading.has(a.id)?'読込中…':'古い会話を読み込む'}</button>`:'')+entries.map(r=>`${divider(r.createdAt||r.completedAt)}<div class="run" data-entry="${esc(JSON.stringify([r.external?'native':'run',r.external?(r.sessionId||r.agentSessionId||''):'',r.id]))}">${r.suppressUser?'':bubble('user',r.instruction,r.createdAt,travelSummary(r.travelContexts)+attachmentHTML(r.attachments))}${r.output||r.finalOutput?'<div class="message assistant">'+responseHTML(r)+timeHTML(r.completedAt)+'</div>':''}<p class="run-status"><span class="badge">${r.external?'PurpleMuxからの入力 · ':r.origin==='result'?'子作業結果の配送 · ':r.origin==='steering'?'実行中への補足 · ':''}${esc(r.queueCancelledAt?'送信取消済み':r.reportStatus||labels[r.state]||r.state)}</span> · ${r.humanRequestId?esc(({active:'依頼継続中',finalizing:'最終報告の完了待ち',completed:'依頼全体完了',cancelled:'依頼キャンセル'})[state.requests?.find(q=>q.id===r.humanRequestId)?.status]||'依頼照合中'):'達成状況: 未判定'} ${esc(r.errorCode||'')} ${esc(r.attachmentError||r.error||'')} ${r.notification?' · 通知: '+esc(r.notification.status)+(r.notification.reason?' / '+esc(r.notification.reason):''):''}</p>${canCancelQueued(r)?`<button type="button" data-cancel-queued="${esc(r.id)}" data-queue-agent="${esc(a.id)}">送信待ちを取り消す</button>`:''}${r.queueCancelledAt?'':recoveryHTML(r)}</div>`).join('')+(localHTML?divider(outbox.get(a.id)?.createdAt)+localHTML:'')+divider.trailingToday();
+}
+function localMessageHTML(id){
+ const m=outbox.get(id);if(!m||matchingRun(state,id,m.requestId))return '';
+ const files=(m.files||[]).map(f=>`<span>${esc(f.name)} · ${Math.ceil((f.size||0)/1024)} KiB</span>`).join('<br>');
+ return `<div class="run local-message" data-local-request="${esc(m.requestId)}">${bubble('user',m.instruction,m.createdAt,travelSummary(m.travelContexts)+(files?'<div class="file-previews">'+files+'</div>':'')+`<p class="send-progress ${['preparing','uploading','posting','syncing'].includes(m.stage)?'sending':''}" role="status">${esc(pendingMessageStatus(m))}</p>`)}</div>`;
+}
+function clearSubmittedDraft(id,receipt,message){
+ const input=cards.get(id)?.querySelector('textarea');
+ if(input&&(message?unchangedDraft(message,input.value,draftVersions.get(id)||0):input.value===receipt.instruction)){input.value='';drafts.delete(id);}
+ if(sameTravelContexts(travelDrafts.get(id),receipt.travelContexts))travelEditors.get(id).set([]);
+ fileEditors.get(id).clear();
 }
 function renderHistory(){
  options($('#history-agent'),state.agents.filter(a=>a.state==='terminated').map(a=>({id:a.id,name:placeName(a)+' / '+a.name+(state.reviews?.[a.id]?.attention?' · 依頼完了・要確認':unread.get(a.id)?' · 更新あり':'')})));
@@ -109,18 +123,18 @@ function renderBoard(){
  $('#pages').hidden=selectedPlace!=='all'||!!zoomId||pageCount===1;
  $('#page-number').textContent=`${selectedPage+1} / ${pageCount}`;
  $('#previous-page').disabled=selectedPage===0;$('#next-page').disabled=selectedPage===pageCount-1;
- for(const [id,card] of cards)if(!live().some(a=>a.id===id)){card.autogrow?.destroy();scrolls.get(id)?.destroy();scrolls.delete(id);fileEditors.get(id)?.destroy();fileEditors.delete(id);card.remove();cards.delete(id);travelDrafts.delete(id);travelEditors.delete(id);positions.delete(id);drafts.delete(id);pending.delete(id);storeDrafts();}
+ for(const [id,card] of cards)if(!live().some(a=>a.id===id)){card.autogrow?.destroy();scrolls.get(id)?.destroy();scrolls.delete(id);fileEditors.get(id)?.destroy();fileEditors.delete(id);card.remove();cards.delete(id);travelDrafts.delete(id);travelEditors.delete(id);positions.delete(id);drafts.delete(id);pending.delete(id);outbox.delete(id);draftVersions.delete(id);storeDrafts();}
  for(const a of live()){
   profileViewer.update(a);
   let card=cards.get(a.id);
   if(!card){card=document.createElement('article');card.className='agent-panel';card.id='agent-'+a.id;card.setAttribute('aria-labelledby','heading-'+a.id);card.tabIndex=0;card.hidden=true;
-   card.innerHTML=`<div class="panel-heading"><span class="dot"></span><h2></h2><span class="request-attention"></span><span class="selection-label"></span><span class="unread-badge"></span><button data-zoom="${esc(a.id)}" title="このAgentを拡大" aria-label="このAgentを拡大">⤢</button><button data-manage-agent="${esc(a.id)}" title="Agentの操作" aria-label="Agentの操作">…</button></div><div class="panel-info"></div><p class="current-action"></p><div class="runs" tabindex="0" aria-label="会話履歴"></div><form data-send="${esc(a.id)}"><textarea name="instruction" aria-label="このAgentに直接指示" placeholder="指示を入力…（Ctrl+Enterで送信、Enter / Shift+Enterで改行）" maxlength="16000" rows="2"></textarea><button type="submit">送信</button><button type="button" data-reconcile="${esc(a.id)}" hidden>送信結果を確認</button><p class="send-progress" role="status" hidden></p><div class="travel-slot"></div></form>`;
+   card.innerHTML=`<div class="panel-heading"><span class="dot"></span><h2></h2><span class="request-attention"></span><span class="selection-label"></span><span class="unread-badge"></span><button data-zoom="${esc(a.id)}" title="このAgentを拡大" aria-label="このAgentを拡大">⤢</button><button data-manage-agent="${esc(a.id)}" title="Agentの操作" aria-label="Agentの操作">…</button></div><div class="panel-info"></div><p class="current-action"></p><div class="runs" tabindex="0" aria-label="会話履歴"></div><form data-send="${esc(a.id)}"><textarea name="instruction" aria-label="このAgentに直接指示" placeholder="指示を入力…（Ctrl+Enterで送信、Enter / Shift+Enterで改行）" maxlength="16000" rows="2"></textarea><button type="submit">送信</button><button type="button" data-reconcile="${esc(a.id)}" hidden>送信結果を確認</button><div class="travel-slot"></div></form>`;
    const input=card.querySelector('textarea');input.value=drafts.get(a.id)||'';card.autogrow=autogrowInput(input,{panel:card});
    travelEditors.set(a.id,travelComposer(card.querySelector('.travel-slot'),travelDrafts.get(a.id)||[],value=>{travelDrafts.set(a.id,value);storeDrafts();}));
    fileEditors.set(a.id,attachmentComposer({host:card.querySelector('.travel-slot'),key:'agent:'+a.id,supported:()=>!!state?.capabilities?.attachments}));
    scrolls.set(a.id,chatScroll(card.querySelector('.runs'),{saved:positions.get(a.id),onSave:value=>{positions.set(a.id,value);storeDrafts();}}));
    bindPromptInput(input,()=>{const button=input.form.querySelector('button');if(!button.disabled)input.form.requestSubmit(button);});
-   input.oninput=()=>{drafts.set(a.id,input.value);storeDrafts();};
+   input.oninput=()=>{draftVersions.set(a.id,(draftVersions.get(a.id)||0)+1);drafts.set(a.id,input.value);storeDrafts();};
 
    cards.set(a.id,card);$('#agents').append(card);
   }
@@ -140,16 +154,18 @@ function renderBoard(){
   name.textContent=a.name||'名前未登録';name.setAttribute('aria-label',name.textContent+'のプロフィール');name.setAttribute('aria-haspopup','dialog');
   heading.title='名前を押すとプロフィールを表示します';
   card.querySelector('.panel-info').innerHTML=`<span class="badge">${esc(labels[visualState(a,agentEntries(state,a))]||a.state)}</span><span class="location-name">${esc(placeName(a))}</span>${a.terminalUrl?`<a href="${esc(a.terminalUrl)}" target="_blank" rel="noopener" title="PurpleMuxでタブを開く">PurpleMux ↗</a>`:''}`;
-  card.querySelector('.current-action').textContent=[['busy','waiting_input'].includes(a.state)?a.currentAction:null,a.error,a.canSend?null:a.sendReason,pending.has(a.id)&&!sendStages.has(a.id)?'送信結果を照合中（自動再送なし）':null].filter(Boolean).join(' · ');
+  card.querySelector('.current-action').textContent=[['busy','waiting_input'].includes(a.state)?a.currentAction:null,a.error,a.canSend?null:a.sendReason].filter(Boolean).join(' · ');
+  const receipt=pending.get(a.id),known=receipt&&matchingRun(state,a.id,receipt.requestId);
+  if(known){
+   if(!['unknown','send_unknown'].includes(known.state))clearSubmittedDraft(a.id,receipt,outbox.get(a.id));
+   pending.delete(a.id);outbox.delete(a.id);storeDrafts();
+  }
   const area=card.querySelector('.runs'),html=runHTML(a);scrolls.get(a.id).preserve(()=>updateReportHTML(area,html));
-  showSendStage(a.id);
-  const receipt=pending.get(a.id),known=receipt&&state.runs.find(r=>r.requestId===receipt.requestId);
-  if(known){pending.delete(a.id);fileEditors.get(a.id).clear();scrolls.get(a.id).latest();if(!['unknown','send_unknown'].includes(known.state)&&sameTravelContexts(travelDrafts.get(a.id),receipt.travelContexts))travelEditors.get(a.id).set([]);if(!['unknown','send_unknown'].includes(known.state)&&card.querySelector('textarea').value===receipt.instruction){card.querySelector('textarea').value='';drafts.delete(a.id);}storeDrafts();}
   const send=card.querySelector('[data-send] button:not([data-reconcile])');
   fileEditors.get(a.id).lock(card.dataset.pending==='true'||pending.has(a.id));
   travelEditors.get(a.id).lock(card.dataset.pending==='true'||pending.has(a.id));
   send.disabled=!connected||(a.canSend!==true&&a.canSteer!==true&&a.canQueue!==true)||card.dataset.pending==='true'||pending.has(a.id);
-  card.querySelector('[data-reconcile]').hidden=!pending.has(a.id);
+  card.querySelector('[data-reconcile]').hidden=!pending.has(a.id)||card.dataset.pending==='true';
   send.textContent=a.reportPending?'次の依頼を待機キューへ':a.canSteer?'実行中に補足':a.canQueue&&!a.canSend?'待機キューへ':'送信';
   send.title=pending.has(a.id)?'送信結果を確認中です。自動再送しません。':a.canSteer?'実行中の同じ依頼に補足します。native受付を照合し、通知は依頼全体で1回です。':a.canQueue&&!a.canSend?'別の依頼として保存し、現在の応答が終わったら渡します。':a.sendReason||'';
 
@@ -342,7 +358,7 @@ async function api(path,body,method='POST'){
  const response=await fetch('/api/direct'+path,{method,signal:AbortSignal.timeout(method==='GET'?10000:30000),headers:{'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});
  const value=await response.json();if(!response.ok)throw Object.assign(Error(value.error||'操作に失敗しました'),{status:response.status});return value;
 }
-async function action(form,fn){const buttons=[...form.querySelectorAll('button')],card=form.closest('.agent-panel');if(card)card.dataset.pending='true';buttons.forEach(b=>b.disabled=true);$('#error').textContent='';document.querySelectorAll('.dialog-error').forEach(el=>el.textContent='');try{await fn();await refresh(true);}catch(e){const target=document.querySelector('dialog[open] .dialog-error')||$('#error');target.textContent=e.message;}finally{if(form.dataset.send){sendStages.delete(form.dataset.send);showSendStage(form.dataset.send);}if(card)card.dataset.pending='false';buttons.forEach(b=>b.disabled=false);if(state)renderBoard();}}
+async function action(form,fn){const buttons=[...form.querySelectorAll('button')],card=form.closest('.agent-panel');if(card)card.dataset.pending='true';buttons.forEach(b=>b.disabled=true);$('#error').textContent='';document.querySelectorAll('.dialog-error').forEach(el=>el.textContent='');try{await fn();await refresh(true);}catch(e){const target=document.querySelector('dialog[open] .dialog-error')||$('#error');target.textContent=e.message;}finally{if(card)card.dataset.pending='false';buttons.forEach(b=>b.disabled=false);if(state)renderBoard();}}
 function places(){const w=state?.workshops.find(w=>w.id===$('#agent-form [name=workshopId]').value);options($('#agent-form [name=cwd]'),(w?.workplaces||[]).map(p=>({id:p,name:p})));}
 function render(){
  $('#workshops').innerHTML=state.workshops.map(w=>`<div class="workshop"><strong>${esc(w.name)}</strong><div class="meta">${w.connectionType==='local'?'ローカル（村長PC）':'SSH · '+esc(w.sshHost)}</div><button class="secondary" data-edit="${esc(w.id)}">編集</button></div>`).join('')||'<p>工房を登録してください。</p>';
@@ -367,17 +383,32 @@ $('#agent-form').onsubmit=e=>{e.preventDefault();const f=e.currentTarget;f.datas
 $('#agents').onsubmit=async e=>{
  e.preventDefault();const f=e.target,id=f.dataset.send;if(!id||pending.has(id)||f.querySelector('button').disabled||(!f.elements.instruction.value.trim()&&!fileEditors.get(id).count))return;
  if(travelEditors.get(id).value.length&&!state.capabilities?.travelContexts){$('#error').textContent='出張先の送信にはサーバー更新の反映が必要です。下書きは保持しています。';return;}
+ const target=state.agents.find(a=>a.id===id),steerTarget=target?.canSteer?structuredClone(target.steerTarget):null;
+ const receipt={...(steerTarget?{steerTarget}:{}),instruction:f.elements.instruction.value,attachments:[],travelContexts:structuredClone(travelEditors.get(id).value),requestId:newRequestId()};
+ const message={...receipt,createdAt:new Date().toISOString(),draftVersion:draftVersions.get(id)||0,files:fileEditors.get(id).summaries,mode:steerTarget?'steering':!target?.canSend?'queue':'direct',stage:fileEditors.get(id).count?'uploading':'preparing'};
+ outbox.set(id,message);storeDrafts();scrolls.get(id).latest();
  action(f,async()=>{
-  sendStages.set(id,fileEditors.get(id).count?'添付を準備・アップロード中…':'送信を準備中…');showSendStage(id);
-  const target=state.agents.find(a=>a.id===id),steerTarget=target?.canSteer?structuredClone(target.steerTarget):null;
-  fileEditors.get(id).lock(true);travelEditors.get(id).lock(true);
-  const attachmentIds=await fileEditors.get(id).upload();
-  const receipt={...(steerTarget?{steerTarget}:{}),instruction:f.elements.instruction.value,attachments:attachmentIds,travelContexts:travelEditors.get(id).value,requestId:newRequestId()};pending.set(id,receipt);storeDrafts();scrolls.get(id).latest();
-  sendStages.set(id,'サーバーへ送信中…');showSendStage(id);
-  try{const r=await api('/agents/'+id+'/runs',receipt);pending.delete(id);
-   if(!['unknown','send_unknown'].includes(r.state)){fileEditors.get(id).clear();if(sameTravelContexts(travelDrafts.get(id),receipt.travelContexts))travelEditors.get(id).set([]);if(f.elements.instruction.value===receipt.instruction){f.elements.instruction.value='';drafts.delete(id);}}
-   storeDrafts();sendStages.set(id,'受付状況を更新中…');showSendStage(id);
-  }catch(error){if(error.status&&error.status<500){pending.delete(id);storeDrafts();}throw error;}
+  fileEditors.get(id).lock(true);travelEditors.get(id).lock(true);refreshMessageLog(id);
+  try{
+   receipt.attachments=await fileEditors.get(id).upload();
+  }catch(error){message.stage='failed';message.error=error.message;storeDrafts();throw error;}
+  pending.set(id,receipt);message.stage='posting';storeDrafts();refreshMessageLog(id);
+  try{
+   const r=await api('/agents/'+id+'/runs',receipt);
+   // Poll may have reconciled this request before the POST response arrived.
+   if(pending.get(id)?.requestId===receipt.requestId){
+    if(!['unknown','send_unknown'].includes(r.state))clearSubmittedDraft(id,receipt,message);
+    message.stage=['unknown','send_unknown'].includes(r.state)?'unknown':'syncing';
+    storeDrafts();refreshMessageLog(id);
+   }
+  }catch(error){
+   if(pending.get(id)?.requestId===receipt.requestId){
+    if(error.status&&error.status<500){pending.delete(id);message.stage='failed';message.error=error.message;}
+    else message.stage='unknown';
+    storeDrafts();
+   }
+   throw error;
+  }
  });
 };
 $('#agents').onclick=e=>{
@@ -398,10 +429,10 @@ $('#agents').onclick=e=>{
  const reconcile=e.target.closest('[data-reconcile]');if(reconcile){const id=reconcile.dataset.reconcile,receipt=pending.get(id);if(receipt)action(reconcile.closest('article'),async()=>{await api('/agents/'+id+'/runs',receipt);await refresh();});return;}const manage=e.target.closest('[data-manage-agent]'),zoom=e.target.closest('[data-zoom]');if(manage)openMetadata(manage.dataset.manageAgent);if(zoom)toggleZoom(zoom.dataset.zoom);};
 await refresh();setInterval(refresh,2000);
 
-function showSendStage(id){
- const el=cards.get(id)?.querySelector('.send-progress');if(!el)return;
- const stage=sendStages.get(id)||(pending.has(id)?'送信結果の確認が必要です（自動再送しません）':'');
- el.hidden=!stage;if(el.textContent!==stage)el.textContent=stage;el.classList.toggle('sending',sendStages.has(id));
+function refreshMessageLog(id){
+ const card=cards.get(id);if(!card)return;
+ // Delivery feedback belongs to the message, not a second spinner beside the composer.
+ const area=card.querySelector('.runs');scrolls.get(id).preserve(()=>updateReportHTML(area,runHTML(state.agents.find(a=>a.id===id))));
 }
 document.addEventListener('click',async e=>{
  const button=e.target.closest('[data-load-history]');if(!button)return;
