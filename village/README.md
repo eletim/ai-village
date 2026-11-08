@@ -18,4 +18,4 @@
 - `compat/development.md` と `compat/workshops/`: 旧Development/WorkshopBridgeが読む設定と手順。Direct登録とは別系統で、現行の接続先の原本ではありません。
 - `compat/session-continuity.md`: 旧秘書の継続・診断の説明。
 
-旧API・保存済みjobs・互換設定の読み取りは維持します。古い文書パスは互換読み取りへ解決します。旧執務室はWorkspaceへの入口を案内しますが、旧会話やjobsをDirectの記録に変換する処理はありません。新規の仕事はWorkspaceで扱ってください。
+旧API・保存済みjobs・互換設定の読み取りは維持します。古い文書パスは互換読み取りへ解決します。旧執務室URLはWorkspaceへ転送します。旧会話やjobsをDirectの記録に変換する処理はありません。新規の仕事はWorkspaceで扱ってください。

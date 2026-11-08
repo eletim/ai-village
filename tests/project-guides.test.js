@@ -54,6 +54,6 @@ test('HTTP official operation returns latest guide; office points to Workspace',
  const result=await op(['projects','guide',projectId]);assert.equal(result.result.available,true);assert.match(result.result.content,/同じProject/);
  assert.equal((await op(['projects','guide','other'])).result.available,false);
  assert.equal((await op(['projects','guide','../../etc/passwd'])).result.available,false);
- assert.match(await (await fetch(base+'/office')).text(),/href="\/agents"/);
+ const office=await fetch(base+'/office',{redirect:'manual'});assert.equal(office.status,302);assert.equal(office.headers.get('location'),'/agents');
  const docs=await (await fetch(base+'/api/documents')).json();assert(!docs.documents.some(d=>d.path.startsWith('compat/')));
 });
