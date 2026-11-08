@@ -68,3 +68,10 @@
 :root[data-sidebar-collapsed=true] .sidebar{display:none}
 :root[data-sidebar-collapsed=true] #sidebar-toggle .sidebar-arrow{transform:translateX(28px) scaleX(-1)}
 @media(max-width:700px){.workspace-heading h1{font-size:14px}.workspace-heading h1 small{display:none}}
+
+#project-guide-dialog{width:min(760px,94vw);max-height:90dvh;box-sizing:border-box;overflow:auto}
+#project-guide-dialog header{display:flex;align-items:center;justify-content:space-between;gap:12px}
+#project-guide-dialog header h2{margin:0}
+#project-guide-dialog .guide-body{max-height:55dvh;overflow:auto;overflow-wrap:anywhere}
+#project-guide-dialog .guide-body pre{max-width:100%;overflow:auto}
+.agent-guide{align-self:start;justify-self:start;margin:0 12px 6px;font-size:12px}
