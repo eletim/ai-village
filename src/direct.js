@@ -1,3 +1,4 @@
+import {canCancelQueued} from './queued-run.js';
 import {agentProfileViewer} from './agent-profile.js';
 import {dateDividers} from './date-divider.js';
 import {responseHTML} from './response-content.js';
@@ -80,7 +81,7 @@ function recoveryHTML(r){
 }
 function runHTML(a){
  const entries=agentEntries(state,a),divider=dateDividers();
- return entries.map(r=>`${divider(r.createdAt||r.completedAt)}<div class="run">${r.suppressUser?'':bubble('user',r.instruction,r.createdAt,travelSummary(r.travelContexts)+attachmentHTML(r.attachments))}${r.output||r.finalOutput?'<div class="message assistant">'+responseHTML(r)+timeHTML(r.completedAt)+'</div>':''}<p class="run-status"><span class="badge">${r.external?'PurpleMuxからの入力 · ':r.origin==='result'?'子作業結果の配送 · ':r.origin==='steering'?'実行中への補足 · ':''}${esc(r.reportStatus||labels[r.state]||r.state)}</span> · ${r.humanRequestId?esc(({active:'依頼継続中',finalizing:'最終報告の完了待ち',completed:'依頼全体完了',cancelled:'依頼キャンセル'})[state.requests?.find(q=>q.id===r.humanRequestId)?.status]||'依頼照合中'):'達成状況: 未判定'} ${esc(r.errorCode||'')} ${esc(r.attachmentError||r.error||'')} ${r.notification?' · 通知: '+esc(r.notification.status)+(r.notification.reason?' / '+esc(r.notification.reason):''):''}</p>${recoveryHTML(r)}</div>`).join('')+divider.trailingToday();
+ return entries.map(r=>`${divider(r.createdAt||r.completedAt)}<div class="run">${r.suppressUser?'':bubble('user',r.instruction,r.createdAt,travelSummary(r.travelContexts)+attachmentHTML(r.attachments))}${r.output||r.finalOutput?'<div class="message assistant">'+responseHTML(r)+timeHTML(r.completedAt)+'</div>':''}<p class="run-status"><span class="badge">${r.external?'PurpleMuxからの入力 · ':r.origin==='result'?'子作業結果の配送 · ':r.origin==='steering'?'実行中への補足 · ':''}${esc(r.queueCancelledAt?'送信取消済み':r.reportStatus||labels[r.state]||r.state)}</span> · ${r.humanRequestId?esc(({active:'依頼継続中',finalizing:'最終報告の完了待ち',completed:'依頼全体完了',cancelled:'依頼キャンセル'})[state.requests?.find(q=>q.id===r.humanRequestId)?.status]||'依頼照合中'):'達成状況: 未判定'} ${esc(r.errorCode||'')} ${esc(r.attachmentError||r.error||'')} ${r.notification?' · 通知: '+esc(r.notification.status)+(r.notification.reason?' / '+esc(r.notification.reason):''):''}</p>${canCancelQueued(r)?`<button type="button" data-cancel-queued="${esc(r.id)}" data-queue-agent="${esc(a.id)}">送信待ちを取り消す</button>`:''}${r.queueCancelledAt?'':recoveryHTML(r)}</div>`).join('')+divider.trailingToday();
 }
 function renderHistory(){
  options($('#history-agent'),state.agents.filter(a=>a.state==='terminated').map(a=>({id:a.id,name:placeName(a)+' / '+a.name+(state.reviews?.[a.id]?.attention?' · 依頼完了・要確認':unread.get(a.id)?' · 更新あり':'')})));
@@ -362,6 +363,11 @@ $('#agents').onsubmit=async e=>{
  });
 };
 $('#agents').onclick=e=>{
+ const queued=e.target.closest('[data-cancel-queued]');if(queued){
+  const r=state.runs.find(r=>r.id===queued.dataset.cancelQueued&&r.agentId===queued.dataset.queueAgent);if(!r)return;
+  action(queued.closest('article'),async()=>{await api('/requests/cancel-queued',{humanRequestId:r.humanRequestId,agentId:r.agentId,runId:r.id});});return;
+ }
+
  const retry=e.target.closest('[data-retry-run]'),cancel=e.target.closest('[data-cancel-request]');
  if(retry||cancel){
   const r=retry&&state.runs.find(r=>r.id===retry.dataset.retryRun),q=state.requests.find(q=>q.id===(r?.humanRequestId||cancel?.dataset.cancelRequest));

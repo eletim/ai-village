@@ -6,7 +6,7 @@ import {stageAttachment} from './attachment-transfer.mjs';
 import {RequestFlow} from './requests.mjs';
 import {completedEntries} from '../src/completions.js';
 import {agentIdentity,agentPlaceName} from '../src/agent-identity.js';
-import {runtimeScript,inputHash,correlate,terminalBoundary} from './runtime-events.mjs';
+import {runtimeScript,inputHash,correlate,terminalBoundary,outputBetween} from './runtime-events.mjs';
 import { run } from './bridge.mjs';
 import { captureProcessesScript, stopProcessesScript } from './processes.mjs';
 import { createServer } from 'node:net';
@@ -276,6 +276,22 @@ export class DirectAgents {
       for(const r of this.data.runs.filter(r=>r.agentId===a.id&&active(r))){
         const observation=correlate(r,snapshot);
         if(observation.turnId){r.acceptance='accepted';r.acceptedAt ||= now();r.turnId=observation.turnId;r.sessionId=observation.sessionId;r.inputId ||= observation.inputId;if(typeof observation.output==='string')r.output=observation.output;if(typeof observation.finalOutput==='string')r.finalOutput=observation.finalOutput;}
+        if(observation.turnId&&r.steerTarget){
+          // Bring the superseded chain up to each confirmed input boundary.
+          // This also captures messages emitted between dispatch and acceptance.
+          const turn=snapshot.turns.find(t=>t.id===r.turnId);
+          let next=r;
+          const visited=new Set();
+          while(turn?.messageOffsets===true&&next.steerTarget&&!visited.has(next.id)){
+            visited.add(next.id);
+            const previous=this.data.runs.find(p=>p.id===next.steerTarget.runId);
+            const start=previous&&snapshot.inputs.find(i=>i.id===previous.inputId&&i.turnId===r.turnId);
+            const end=snapshot.inputs.find(i=>i.id===next.inputId&&i.turnId===r.turnId);
+            if(!previous||previous.state!=='superseded'||previous.sessionId!==r.sessionId||!start||!end||start.offset>=end.offset)break;
+            previous.output=outputBetween(turn,start.offset,end.offset);
+            next=previous;
+          }
+        }
         if(['completed','interrupted','failed'].includes(observation.state)){
           Object.assign(r,{state:observation.state,output:observation.output,completedAt:observation.completedAt||now(),completionEvent:observation.completionEvent,error:observation.error||null,errorCode:observation.errorCode||null,runtimeError:observation.runtimeError||null,completionOffset:observation.completionOffset,blocksInput:false});
         }else{
