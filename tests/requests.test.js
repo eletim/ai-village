@@ -369,3 +369,42 @@ test('compact work context retains completion and receipt rules with discoverabl
  for(const token of ['requests finish','revision','operationId','native正常終了','acknowledge','生purplemux tab send禁止','受付不明','server_overloaded','/api/village','["help"]','/api/direct/requests/get','village-image:UUID'])assert(text.includes(token),token);
  assert(text.includes(r.id));assert(text.includes(r.workId));assert(text.includes(r.humanRequestId));
 });
+test('steering partitions progress at actual acceptance through multiple supplements and restart',async t=>{
+ const f=await fixture(t),s=f.service,root=await s.send(f.agents[0].id,{requestId:randomUUID(),instruction:'Original'});await f.submit(root);
+ const n=f.runtimes.get(root.agentId),turn=n.turns[0];turn.messageOffsets=true;turn.messages=[];
+ const emit=async text=>{n.cursor+=2;turn.messages.push({id:'m'+n.cursor,offset:n.cursor,text});turn.output=turn.messages.map(m=>m.text).join('\n\n');await f.service.tick();};
+ await emit('before');const second=await steer(f,root);await emit('just before acceptance');assert(!second.output);await acceptSteer(f,second);
+ assert.equal(root.output,'before\n\njust before acceptance');assert.equal(second.output,'');
+ await emit('repeat');await emit('repeat');assert.equal(second.output,'repeat\n\nrepeat');
+ const third=await steer(f,second);await acceptSteer(f,third);assert.equal(third.output,'');await f.restart();await f.service.tick();
+ const restored=f.service.flow.run(third.id);await emit('after');assert.equal(restored.output,'after');assert.equal(f.service.flow.run(second.id).output,'repeat\n\nrepeat');
+ await f.finish(restored);await f.complete(restored);assert.equal(f.notifications.length,1);assert.equal(restored.finalOutput,'Final '+restored.id);
+});
+test('unsent input cancellation validates identity, survives restart and never dispatches or notifies',async t=>{
+ const f=await fixture(t),s=f.service,root=await s.send(f.agents[0].id,{requestId:randomUUID(),instruction:'Active'});await f.submit(root);
+ const r=await s.send(root.agentId,{requestId:randomUUID(),instruction:'queued'});assert.equal(r.state,'queued');
+ const x={humanRequestId:r.humanRequestId,agentId:r.agentId,runId:r.id};
+ await assert.rejects(s.flow.cancelQueued({...x,agentId:f.agents[1].id}),/一致/);
+ await Promise.all([s.flow.cancelQueued(x),s.flow.cancelQueued(x)]);assert.equal(r.acceptance,'cancelled');assert.equal(s.flow.root(r.humanRequestId).ticket.state,'cancelled');
+ await f.restart();await f.service.flow.cancelQueued(x);await f.complete(f.service.flow.run(root.id));await f.service.tick();assert.equal(f.sent.length,1);assert.equal(f.notifications.length,0);
+ for(const state of ['sending','send_unknown','running','awaiting_input']){const run=f.service.flow.run(root.id);run.state=state;await assert.rejects(f.service.flow.cancelQueued({humanRequestId:run.humanRequestId,agentId:run.agentId,runId:run.id}),/未送信/);}
+});
+test('cancellation serializes against dispatch and cannot claim a send that already started',async t=>{
+ const f=await fixture(t),s=f.service,r=await s.send(f.agents[0].id,{requestId:randomUUID(),instruction:'sent'});
+ // Recreate a queued boundary with deterministic fake transport; no real Agent.
+ r.state='queued';r.acceptance='queued';delete r.dispatchAttemptedAt;r.dispatchConfirmed=false;
+ let enter,release;const entered=new Promise(r=>enter=r),gate=new Promise(r=>release=r),observe=s.observe.bind(s);
+ s.observe=async a=>{enter();await gate;await observe(a);a.canSend=true;return {sessionId:'session-'+a.id,cursor:0};};
+ const dispatch=s.attemptRun(r);await entered;const cancel=s.flow.cancelQueued({humanRequestId:r.humanRequestId,agentId:r.agentId,runId:r.id});release();await dispatch;
+ await assert.rejects(cancel,/未送信/);assert.equal(r.state,'awaiting_input');
+});
+test('queued supplement cancellation restores the original work without sending or restoring old finish',async t=>{
+ const f=await fixture(t),s=f.service,root=await s.send(f.agents[0].id,{requestId:randomUUID(),instruction:'Original'});await f.submit(root);await f.finish(root);
+ const attempt=s.attemptRun.bind(s);s.attemptRun=async r=>r;const r=await steer(f,root);s.attemptRun=attempt;
+ await s.flow.cancelQueued({humanRequestId:r.humanRequestId,agentId:r.agentId,runId:r.id});const q=s.flow.root(r.humanRequestId);assert.equal(q.works[0].currentRunId,root.id);assert.equal(q.works[0].finish,undefined);await s.tick();assert.equal(f.sent.length,1);assert.equal(root.state,'running');assert.equal(q.ticket.state,'available');
+});
+test('failed persistence cannot turn a later duplicate cancellation into false success',async t=>{
+ const f=await fixture(t),s=f.service,root=await s.send(f.agents[0].id,{requestId:randomUUID(),instruction:'Active'});await f.submit(root);
+ const r=await s.send(root.agentId,{requestId:randomUUID(),instruction:'Queued'}),x={humanRequestId:r.humanRequestId,agentId:r.agentId,runId:r.id};
+ const save=s.save.bind(s);s.save=async()=>{throw Error('disk unavailable');};await assert.rejects(s.flow.cancelQueued(x),/disk/);assert.equal(r.state,'queued');assert.equal(r.queueCancelledAt,undefined);assert.equal(s.flow.root(r.humanRequestId).ticket.state,'available');s.save=save;await s.flow.cancelQueued(x);assert(r.queueCancelledAt);
+});

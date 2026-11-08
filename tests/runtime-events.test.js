@@ -57,3 +57,19 @@ test('Codex error-bearing completion retains structured reason and cannot become
  await appendFile(join(dir,'sessions',sid+'.jsonl'),'{"type":');
  const partial=JSON.parse(execFileSync('python3',['-c',runtimeScript,'codex',sid],{env:{...process.env,CODEX_HOME:dir}}));assert.equal(partial.incompleteTail,true);assert.equal(terminalBoundary(partial,{alive:true,agentSessionId:sid}),false);
 });
+test('same native turn steering owns only messages after accepted input, including repeated words and final',async t=>{
+ const dir=await mkdtemp(join(tmpdir(),'steering-output-'));t.after(()=>rm(dir,{recursive:true,force:true}));await mkdir(join(dir,'sessions'));
+ const sid='11111111-2222-3333-4444-555555555555',file=join(dir,'sessions',sid+'.jsonl');
+ const rows=[];
+ const add=async payload=>{rows.push(payload);await writeFile(file,rows.map(JSON.stringify).join('\n')+'\n');return JSON.parse(execFileSync('python3',['-c',runtimeScript,'codex',sid],{env:{...process.env,CODEX_HOME:dir}}));};
+ const user=(id,text)=>({type:'response_item',payload:{role:'user',id,turn_id:'t',content:[{type:'input_text',text}]}});
+ const answer=(id,text)=>({type:'response_item',payload:{role:'assistant',id,turn_id:'t',content:[{type:'output_text',text}]}});
+ await add({type:'event_msg',payload:{type:'task_started',turn_id:'t'}});await add(user('u1','original'));let s=await add(answer('m1','途中報告'));
+ const run={dispatchConfirmed:true,baselineRuntime:{sessionId:sid,cursor:s.cursor},inputHash:inputHash('supplement'),steerTarget:{sessionId:sid,turnId:'t'},priorInputs:s.inputs.map(({id,hash,offset})=>({id,hash,offset}))};
+ s=await add(answer('m2','受付直前'));assert.equal(correlate(run,s).state,'unknown');
+ s=await add(user('u2','supplement'));let observed=correlate(run,s);assert.equal(observed.state,'running');assert.equal(observed.output,'');
+ Object.assign(run,{turnId:'t',sessionId:sid,inputId:observed.inputId});
+ s=await add(answer('m3','途中報告'));assert.equal(correlate(run,s).output,'途中報告');
+ s=await add(answer('m4','途中報告'));assert.equal(correlate(run,s).output,'途中報告\n\n途中報告');
+ s=await add({type:'event_msg',payload:{type:'task_complete',turn_id:'t',last_agent_message:'途中報告'}});observed=correlate(run,s);assert.equal(observed.finalOutput,'途中報告');assert.equal(observed.state,'completed');assert(!observed.output.includes('受付直前'));
+});
