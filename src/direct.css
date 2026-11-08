@@ -74,4 +74,12 @@
 #project-guide-dialog header h2{margin:0}
 #project-guide-dialog .guide-body{max-height:55dvh;overflow:auto;overflow-wrap:anywhere}
 #project-guide-dialog .guide-body pre{max-width:100%;overflow:auto}
-.agent-guide{align-self:start;justify-self:start;margin:0 12px 6px;font-size:12px}
+
+
+.panel-heading .secretary-name{max-width:100%;font:inherit;color:inherit;text-align:left;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-color:transparent;background:transparent;padding:2px}
+.panel-heading .secretary-name:hover{background:var(--bg-selected,#273750)}
+.secretary-profile{display:grid;grid-template-columns:auto minmax(0,1fr);gap:7px 16px}
+.secretary-profile dt{opacity:.8}.secretary-profile dd{margin:0;overflow-wrap:anywhere}
+#project-guide-dialog[open]{display:flex;flex-direction:column;overflow:hidden}
+#project-guide-dialog > :not(.guide-body){flex-shrink:0}
+#project-guide-dialog .guide-body{min-height:0;flex:1}
