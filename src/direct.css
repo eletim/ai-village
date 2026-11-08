@@ -108,3 +108,9 @@
 .usage-provider[data-provider=claude] .usage-provider-icon{color:#d97757}
 .history-error{color:#df7e81;font-size:12px}
 .send-progress{flex-basis:100%;grid-column:1/-1}
+#suspended-projects{margin-top:12px;font-size:11px;border-top:1px solid var(--line);padding-top:8px;overflow-wrap:anywhere}
+#suspended-projects summary{cursor:pointer;color:var(--ink);line-height:1.7}
+#suspended-projects p{color:var(--muted);font-size:11px}
+#suspended-list .place-row>button:first-child{min-width:0;text-align:left;flex:1}
+#suspended-list .place-dots{display:flex;flex-wrap:wrap;gap:3px}
+#suspended-list [aria-current=page]{background:var(--heading)}

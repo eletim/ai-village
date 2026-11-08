@@ -1,4 +1,4 @@
-import {orderedAgents} from './board-state.js';
+import {orderedAgents,isSuspended,orderedProjects} from './board-state.js';
 import {registeredRole} from './status-icon.js';
 import {visualState,agentEntries} from './completions.js';
 const labels={busy:'作業中',running:'作業中',idle:'待機',completed:'応答完了',waiting_input:'確認待ち',failed:'失敗',interrupted:'中断',unknown:'状態不明',unavailable:'接続不可',stopping:'終了処理中',stop_unknown:'終了未確認',starting:'起動中',queued:'待機中'};
@@ -15,8 +15,10 @@ export function villageModel(snapshot={},online=true){
   places.find(p=>p.id===r.placeId).residents.push(r);return r;
  });
  const count=list=>({total:list.length,busy:list.filter(r=>['busy','running'].includes(r.status)).length,attention:list.filter(r=>r.attention).length,unknown:list.filter(r=>['unknown','unavailable','stop_unknown'].includes(r.status)).length});
- for(const p of places)p.count=count(p.residents);
- return {places,residents,workshops,count:count(residents),online};
+ const resting=residents.filter(r=>isSuspended(projects,r.source)),active=residents.filter(r=>!isSuspended(projects,r.source));
+ for(const p of places){p.residents=p.residents.filter(r=>!isSuspended(projects,r.source));p.count=count(p.residents);}
+ const suspendedProjects=orderedProjects(projects.filter(p=>p.suspended===true)).map(p=>({...p,residents:resting.filter(r=>r.source.projectId===p.id)}));
+ return {places,residents:active,workshops,count:count(active),suspendedProjects,suspendedCount:count(resting),online};
 }
 export function reconcileSelection(model,selection){
  const resident=model.residents.find(r=>r.id===selection.resident);

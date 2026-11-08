@@ -87,7 +87,7 @@ export class DirectAgents {
     try{await this.save();}catch(e){for(const q of requests)delete q.reviewedAt;if(previous===undefined)delete this.data.agentReviews[id];else this.data.agentReviews[id]=previous;throw e;}
     return {...current,unreviewed:false,attention:false,attentionRequestIds:[]};
   });}
-  discovery(){return {agents:this.data.agents.filter(a=>!a.deletedAt).map(a=>({...agentIdentity(a),projectId:a.projectId||null,projectName:this.data.projects.find(p=>p.id===a.projectId)?.name||null,metadataRevision:a.metadataRevision||0})),projects:structuredClone(this.data.projects.filter(p=>!p.deletedAt)),workshops:structuredClone(this.data.workshops),management:{workshopPattern:'PUT /api/direct/workshops/:id {iconPattern:[none|line|diamond x8]}; null resets to stable default; omitted fields preserved',help:'node scripts/village.mjs help',agentUpdate:'PUT /api/direct/agents/:id {revision,name?,projectId?}',projects:'POST /api/direct/projects {requestId,name}; PUT /api/direct/projects/:id {revision,name?,pinned?:boolean}',projectDelete:'GET /api/direct/projects/:id/delete-plan; POST /api/direct/projects/:id/delete {operationId,revision,members}; deletes all member Agents, retry same operation on partial result',namePolicy:'村の表示名のみ変更。PurpleMuxのラベル、ID、セッション、接続先は維持。',requests:{help:'node scripts/village.mjs help',list:'GET /api/direct/requests',get:'POST /api/direct/requests/get {humanRequestId}',operations:'delegate / results / acknowledge / finish / retry / resume / cancel: POST /api/direct/requests/:operation',policy:'人間の依頼ごとに通知権1枚。正式delegateで親子を登録し、子結果を確認後、finishと対応native turn正常終了で全体完了。生PurpleMux送信・旧runを自動関連付けしない。'}}};}
+  discovery(){return {agents:this.data.agents.filter(a=>!a.deletedAt).map(a=>({...agentIdentity(a),projectId:a.projectId||null,projectName:this.data.projects.find(p=>p.id===a.projectId)?.name||null,metadataRevision:a.metadataRevision||0})),projects:structuredClone(this.data.projects.filter(p=>!p.deletedAt)),workshops:structuredClone(this.data.workshops),management:{workshopPattern:'PUT /api/direct/workshops/:id {iconPattern:[none|line|diamond x8]}; null resets to stable default; omitted fields preserved',help:'node scripts/village.mjs help',agentUpdate:'PUT /api/direct/agents/:id {revision,name?,projectId?}',projects:'POST /api/direct/projects {requestId,name}; PUT /api/direct/projects/:id {revision,name?,pinned?:boolean,suspended?:boolean (display only)}',projectDelete:'GET /api/direct/projects/:id/delete-plan; POST /api/direct/projects/:id/delete {operationId,revision,members}; deletes all member Agents, retry same operation on partial result',namePolicy:'村の表示名のみ変更。PurpleMuxのラベル、ID、セッション、接続先は維持。',requests:{help:'node scripts/village.mjs help',list:'GET /api/direct/requests',get:'POST /api/direct/requests/get {humanRequestId}',operations:'delegate / results / acknowledge / finish / retry / resume / cancel: POST /api/direct/requests/:operation',policy:'人間の依頼ごとに通知権1枚。正式delegateで親子を登録し、子結果を確認後、finishと対応native turn正常終了で全体完了。生PurpleMux送信・旧runを自動関連付けしない。'}}};}
   project(id){return this.data.projects.find(p=>p.id===id)||fail('Projectがありません',404);}
   projectDeletePlan(id){return deletionPlan(this,id);}
   deleteProject(id,input){return deleteProject(this,id,input);}
@@ -98,13 +98,14 @@ export class DirectAgents {
   async putProject(input,id){return this.locked('projects',async()=>{
     if(id){
       const p=this.writableProject(id);
-      if (!('name' in input)&&!('pinned' in input))fail('名前またはpinnedを指定してください',400);
+      if (!('name' in input)&&!('pinned' in input)&&!('suspended' in input))fail('名前、pinnedまたはsuspendedを指定してください',400);
+      if ('suspended' in input&&typeof input.suspended!=='boolean')fail('suspendedはbooleanです',400);
       if ('pinned' in input&&typeof input.pinned!=='boolean')fail('pinnedはbooleanです',400);
       const name='name' in input?this.validName(input.name):p.name;
       if(!Number.isInteger(input.revision)||input.revision!==p.revision)fail('Projectが更新されています。再読込してください');
       if(this.data.projects.some(p=>!p.deletedAt&&p.id!==id&&p.name===name))fail('同名のProjectがあります');
-      const previous={...p};Object.assign(p,{name,...('pinned' in input?{pinned:input.pinned}:{}),revision:p.revision+1,updatedAt:now()});
-      try{await this.save();}catch(e){if (!('pinned' in previous))delete p.pinned;Object.assign(p,previous);throw e;}return {...p};
+      const previous={...p};Object.assign(p,{name,...('suspended' in input?{suspended:input.suspended}:{}),...('pinned' in input?{pinned:input.pinned}:{}),revision:p.revision+1,updatedAt:now()});
+      try{await this.save();}catch(e){for(const key of Object.keys(p))if(!(key in previous))delete p[key];Object.assign(p,previous);throw e;}return {...p};
     }
     const name=this.validName(input.name);
     if(typeof input.requestId!=='string'||! /^[\w-]{8,100}$/.test(input.requestId))fail('requestIdが必要です',400);
