@@ -53,6 +53,18 @@ const isProject=id=>id.startsWith('project:');
 const inScope=(a,id)=>id==='all'||(isProject(id)?a.projectId===id.slice(8):placeId(a)===id);
 function filtered(){return live().filter(a=>inScope(a,selectedPlace));}
 function projectOptions(select){options(select,[{id:'',name:'未所属'},...orderedProjects(state.projects||[])]);}
+function sidebarState(collapsed){
+ document.documentElement.dataset.sidebarCollapsed=String(collapsed);
+ const button=$('#sidebar-toggle'),label=collapsed?'サイドバーを開く':'サイドバーを閉じる';
+ button.setAttribute('aria-expanded',String(!collapsed));button.setAttribute('aria-label',label);button.title=label;
+}
+sidebarState(document.documentElement.dataset.sidebarCollapsed==='true');
+$('#sidebar-toggle').onclick=()=>{
+ capturePositions();
+ const collapsed=document.documentElement.dataset.sidebarCollapsed!=='true';
+ sidebarState(collapsed);
+ try{localStorage.setItem('village-sidebar-collapsed',String(collapsed));}catch{}
+};
 function capturePositions(){for(const [id,card] of cards)if(!card.hidden)scrolls.get(id)?.capture();}
 function timeHTML(value){if(!value)return '';const date=new Date(value);return Number.isNaN(date.getTime())?'':`<time datetime="${esc(value)}" title="${esc(date.toLocaleString())}">${esc(date.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}))}</time>`;}
 function bubble(side,text,at,extra=''){return `<div class="message ${side}">${text?(side==='assistant'?reportHTML(text):`<pre>${linkedText(text)}</pre>`):''}${extra}${timeHTML(at)}</div>`;}
