@@ -26,3 +26,5 @@
 .response-history{margin:.5em 0;border:1px solid var(--line,#526078);border-radius:8px;padding:.7em}
 .response-history summary{cursor:pointer;font-size:.9em}
 .response-history summary:focus-visible{outline:2px solid currentColor;outline-offset:4px}
+
+.date-divider{display:flex;align-items:center;gap:10px;width:100%;margin:16px 0;color:inherit;opacity:.7;font-size:12px;flex-shrink:0}.date-divider::before,.date-divider::after{content:"";height:1px;background:currentColor;opacity:.3;flex:1}.date-divider span{white-space:nowrap}

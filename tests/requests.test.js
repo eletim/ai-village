@@ -361,3 +361,11 @@ test('both report settings survive restart; failed persistence does not falsely 
  const s=f.service,save=s.save;s.save=async()=>{throw Error('disk unavailable');};
  await assert.rejects(s.flow.configureReport(false),/disk unavailable/);assert.equal(s.flow.reportStatus().enabled,true);s.save=save;
 });
+
+test('compact work context retains completion and receipt rules with discoverable detailed operations',async t=>{
+ const f=await fixture(t),r=await f.service.send(f.agents[0].id,{instruction:'context test',requestId:'compact-context-test'});
+ const text=f.service.flow.context(r);
+ assert(text.length<2200);
+ for(const token of ['requests finish','revision','operationId','native正常終了','acknowledge','生purplemux tab send禁止','受付不明','server_overloaded','/api/village','["help"]','/api/direct/requests/get','village-image:UUID'])assert(text.includes(token),token);
+ assert(text.includes(r.id));assert(text.includes(r.workId));assert(text.includes(r.humanRequestId));
+});
