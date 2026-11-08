@@ -1,3 +1,4 @@
+import {workspaceSnapshot,historyPage} from '../server/conversation-pages.mjs';
 import {WeeklyUsage} from '../server/weekly-usage.mjs';
 const weeklyUsage=new WeeklyUsage();
 import {TravelRegistry} from '../server/travel-registry.mjs';
@@ -57,7 +58,19 @@ const handleRequest = async (req, res) => {
         if(req.method==='GET' && pathname==='/api/direct/usage')return json(res,200,await weeklyUsage.get());
         if(req.method==='GET' && pathname==='/api/direct/requests')return json(res,200,{requests:direct.flow.list()});
         if(req.method==='GET' && pathname==='/api/direct/agents')return json(res,200,direct.discovery());
-        if(req.method==='GET' && pathname==='/api/direct')return json(res,200,direct.snapshot());
+        if(req.method==='GET' && pathname==='/api/direct'){
+          const params=new URL(req.url,'http://localhost').searchParams;
+          if(params.get('view')==='workspace'){
+            let ranges;try{ranges=JSON.parse(params.get('ranges')||'{}');}catch{return json(res,400,{error:'Invalid history ranges'});}
+            return json(res,200,workspaceSnapshot(direct.snapshot(),ranges));
+          }
+          return json(res,200,direct.snapshot());
+        }
+        const history=pathname.match(/^\/api\/direct\/agents\/([^/]+)\/history$/);
+        if(req.method==='GET'&&history){
+          const params=new URL(req.url,'http://localhost').searchParams,page=historyPage(direct.snapshot(),history[1],params.get('before'));
+          return json(res,200,params.get('boundaryOnly')==='1'?{cursor:page.cursor,hasMore:page.hasMore}:page);
+        }
         const deletion=pathname.match(/^\/api\/direct\/projects\/([0-9a-f-]{36})\/(delete-plan|delete)$/);
         if(deletion&&req.method==='GET'&&deletion[2]==='delete-plan')return json(res,200,direct.projectDeletePlan(deletion[1]));
         if(!['POST','PUT'].includes(req.method))return json(res,405,{error:'Method not allowed'});

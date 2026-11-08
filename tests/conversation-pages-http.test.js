@@ -1,0 +1,23 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdtemp,writeFile,rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {spawn} from 'node:child_process';
+import {once} from 'node:events';
+import {createServer} from 'node:net';
+import {randomUUID} from 'node:crypto';
+test('workspace HTTP pages reduce bytes while legacy GET and formal requests retain full bodies',async t=>{
+ const dir=await mkdtemp(join(tmpdir(),'pages-http-'));t.after(()=>rm(dir,{recursive:true,force:true}));const agentId=randomUUID(),qid=randomUUID(),workId=randomUUID();
+ const runs=Array.from({length:235},(_,i)=>({id:randomUUID(),agentId,humanRequestId:qid,workId,requestId:randomUUID(),state:'completed',createdAt:new Date(1700000000000+i*1000).toISOString(),instruction:'question '+i,output:'reply '+i+' body'.repeat(1000)}));
+ const q={id:qid,status:'completed',revision:0,works:[{id:workId,agentId,currentRunId:runs.at(-1).id,runIds:runs.map(r=>r.id)}],inbox:[],ticket:{state:'consumed'}};
+ await writeFile(join(dir,'direct.json'),JSON.stringify({version:1,workshops:[],projects:[],agents:[{id:agentId,name:'test',state:'terminated',connection:{connectionType:'local'}}],runs,requests:[q]}));
+ const bin=join(dir,'pmux');await writeFile(bin,'#!/bin/sh\nexit 1\n',{mode:0o700});const socket=createServer();socket.listen(0,'127.0.0.1');await once(socket,'listening');const port=socket.address().port;await new Promise(r=>socket.close(r));
+ const child=spawn(process.execPath,['scripts/dev.mjs','--port',String(port)],{env:{...process.env,HOME:dir,VILLAGE_STATE_DIR:dir,VILLAGE_PMUX_BIN:bin,VILLAGE_NOTIFICATIONS:'false',VILLAGE_AUTH_FILE:'',VILLAGE_PUBLIC_ORIGIN:'',VILLAGE_VPN_ADDRESS:'',CODEX_HOME:dir},stdio:['ignore','pipe','pipe']});t.after(async()=>{if(child.exitCode===null){const done=once(child,'exit');child.kill();await done;}});
+ await new Promise((ok,no)=>{const timer=setTimeout(()=>no(Error('timeout')),10000);child.once('exit',()=>{clearTimeout(timer);no(Error('exit'));});child.stdout.on('data',b=>{if(b.toString().includes('AI村 →')){clearTimeout(timer);ok();}});});
+ const url=`http://127.0.0.1:${port}/api/direct`,get=async suffix=>{const r=await fetch(url+suffix);assert.equal(r.status,200);return r.text();};
+ const full=await get(''),small=await get('?view=workspace'),s=JSON.parse(small);assert.equal(JSON.parse(full).runs.length,235);assert.equal(s.conversations[agentId].entries.length,100);assert(small.length<full.length*.55);t.diagnostic(`fixture legacy=${Buffer.byteLength(full)} limited=${Buffer.byteLength(small)} bytes`);
+ const cursor=s.conversations[agentId].cursor,older=JSON.parse(await get('/agents/'+agentId+'/history?before='+encodeURIComponent(cursor)));assert.equal(older.entries.length,100);assert.equal(older.entries.at(-1).id,runs[134].id);
+ const bad=await fetch(url+'/agents/'+agentId+'/history?before=bad');assert.equal(bad.status,400);
+ const formal=await fetch(url+'/requests/get',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({humanRequestId:qid})});const raw=await formal.json();assert.equal(raw.runs.length,235);assert.equal(raw.runs[0].output,runs[0].output);
+});

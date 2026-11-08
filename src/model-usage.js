@@ -1,3 +1,4 @@
+import {providerIcons} from './provider-icons.js';
 export function modelFields(agent){
  const m=agent.modelInfo;
  if(!m?.available)return [['モデル','取得不能・不明'],['速度 / Tier','不明'],['モデル記録','現在のセッション情報を確認できません']];
@@ -17,7 +18,7 @@ export function weeklyUsagePanel(host){
    const value=data?.providers?.[provider],row=document.createElement('details'),summary=document.createElement('summary');
    row.className='usage-provider';row.dataset.provider=provider;row.open=opened.has(provider);
    const line=document.createElement('span');line.className='usage-line';
-   const label=document.createElement('strong');label.textContent=name;
+   const label=document.createElement('span');label.innerHTML=providerIcons[provider];label.title=name;summary.setAttribute('aria-label',name+' 週次使用状況・詳細');
    const amount=document.createElement('span');amount.textContent=value?.available?Math.round(value.usedPercent)+'%':'未取得';
    line.append(label,amount);summary.append(line);
    const meta=document.createElement('span');meta.className='usage-meta';
