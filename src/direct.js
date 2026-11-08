@@ -19,9 +19,7 @@ import {agentPlaceName} from './agent-identity.js';
 import {bindPromptInput} from './prompt-input.js';
 const $=s=>document.querySelector(s);
 const guideViewer=projectGuideViewer();
-function openProjectGuide(id){const project=(state?.projects||[]).find(p=>p.id===id);guideViewer.open(project||null);}
-$('#project-guide').onclick=()=>openProjectGuide(selectedPlace.slice(8));
-$('#agents').addEventListener('click',e=>{const button=e.target.closest('[data-guide-agent]');if(button){const a=state.agents.find(a=>a.id===button.dataset.guideAgent);if(a?.location==='mayor')openProjectGuide(a.projectId);}});
+$('#agents').addEventListener('click',e=>{const button=e.target.closest('[data-profile-agent]');if(button){const a=state.agents.find(a=>a.id===button.dataset.profileAgent);if(a?.location==='mayor')guideViewer.open(a,(state.projects||[]).find(p=>p.id===a.projectId)||null);}});
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 // getRandomValues is available on VPN HTTP origins where randomUUID is not.
 function newRequestId(){const b=crypto.getRandomValues(new Uint8Array(16));b[6]=(b[6]&15)|64;b[8]=(b[8]&63)|128;const h=[...b].map(v=>v.toString(16).padStart(2,'0')).join('');return `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`;}
@@ -103,7 +101,6 @@ function renderBoard(){
  if(restoreScroll!==null)zoomId='';
  const shown=zoomId?list.filter(a=>a.id===zoomId):list.slice(selectedPage*PAGE_SIZE,(selectedPage+1)*PAGE_SIZE),ids=new Set(shown.map(a=>a.id));
  $('#board-title').textContent=zoomId?shown[0].name:groupTitle(selectedPlace,selectedPage);
- $('#project-guide').hidden=!isProject(selectedPlace);
  $('#agent-count').textContent=`${shown.length} / ${list.length} Agent`;
  $('#pages').hidden=selectedPlace!=='all'||!!zoomId||pageCount===1;
  $('#page-number').textContent=`${selectedPage+1} / ${pageCount}`;
@@ -112,7 +109,7 @@ function renderBoard(){
  for(const a of live()){
   let card=cards.get(a.id);
   if(!card){card=document.createElement('article');card.className='agent-panel';card.id='agent-'+a.id;card.setAttribute('aria-labelledby','heading-'+a.id);card.tabIndex=0;card.hidden=true;
-   card.innerHTML=`<div class="panel-heading"><span class="dot"></span><h2></h2><span class="request-attention"></span><span class="selection-label"></span><span class="unread-badge"></span><button data-zoom="${esc(a.id)}" title="このAgentを拡大" aria-label="このAgentを拡大">⤢</button><button data-manage-agent="${esc(a.id)}" title="Agentの操作" aria-label="Agentの操作">…</button></div><div class="panel-info"></div><button type="button" class="agent-guide" data-guide-agent="${esc(a.id)}" hidden>秘書の方針</button><p class="current-action"></p><div class="runs" tabindex="0" aria-label="会話履歴"></div><form data-send="${esc(a.id)}"><textarea name="instruction" aria-label="このAgentに直接指示" placeholder="指示を入力…（Ctrl+Enterで送信、Enter / Shift+Enterで改行）" maxlength="16000" rows="2"></textarea><button type="submit">送信</button><button type="button" data-reconcile="${esc(a.id)}" hidden>送信結果を確認</button><div class="travel-slot"></div></form>`;
+   card.innerHTML=`<div class="panel-heading"><span class="dot"></span><h2></h2><span class="request-attention"></span><span class="selection-label"></span><span class="unread-badge"></span><button data-zoom="${esc(a.id)}" title="このAgentを拡大" aria-label="このAgentを拡大">⤢</button><button data-manage-agent="${esc(a.id)}" title="Agentの操作" aria-label="Agentの操作">…</button></div><div class="panel-info"></div><p class="current-action"></p><div class="runs" tabindex="0" aria-label="会話履歴"></div><form data-send="${esc(a.id)}"><textarea name="instruction" aria-label="このAgentに直接指示" placeholder="指示を入力…（Ctrl+Enterで送信、Enter / Shift+Enterで改行）" maxlength="16000" rows="2"></textarea><button type="submit">送信</button><button type="button" data-reconcile="${esc(a.id)}" hidden>送信結果を確認</button><div class="travel-slot"></div></form>`;
    const input=card.querySelector('textarea');input.value=drafts.get(a.id)||'';card.autogrow=autogrowInput(input,{panel:card});
    travelEditors.set(a.id,travelComposer(card.querySelector('.travel-slot'),travelDrafts.get(a.id)||[],value=>{travelDrafts.set(a.id,value);storeDrafts();}));
    fileEditors.set(a.id,attachmentComposer({host:card.querySelector('.travel-slot'),key:'agent:'+a.id,supported:()=>!!state?.capabilities?.attachments}));
@@ -132,10 +129,14 @@ function renderBoard(){
   const zoom=card.querySelector('[data-zoom]'),expanded=zoomId===a.id;
   zoom.textContent=expanded?'⤡':'⤢';zoom.title=expanded?'一覧に戻る':'このAgentを拡大';zoom.setAttribute('aria-label',zoom.title);zoom.setAttribute('aria-expanded',String(expanded));
   card.querySelector('h2').id='heading-'+a.id;
-  card.querySelector('h2').textContent=`${a.name} · ${a.provider==='claude'?'Claude':'Codex'}`;
-  card.querySelector('h2').title=`${a.name} · ${a.cwd||''}`;
+  const heading=card.querySelector('h2'),secretary=a.location==='mayor';
+  let name=heading.querySelector('[data-profile-agent]');
+  if(secretary){
+   if(!name){name=document.createElement('button');name.type='button';name.className='secretary-name';name.dataset.profileAgent=a.id;heading.replaceChildren(name);}
+   name.textContent=a.name;name.setAttribute('aria-label',a.name+'のプロフィール');name.setAttribute('aria-haspopup','dialog');
+   heading.title='秘書名を押すとプロフィールと方針を表示します';
+  }else{heading.textContent=`${a.name} · ${a.provider==='claude'?'Claude':'Codex'}`;heading.title=a.name;}
   card.querySelector('.panel-info').innerHTML=`<span class="badge">${esc(labels[visualState(a,agentEntries(state,a))]||a.state)}</span><span class="location-name">${esc(placeName(a))}</span>${a.terminalUrl?`<a href="${esc(a.terminalUrl)}" target="_blank" rel="noopener" title="PurpleMuxでタブを開く">PurpleMux ↗</a>`:''}`;
-  card.querySelector('[data-guide-agent]').hidden=a.location!=='mayor';
   card.querySelector('.current-action').textContent=[['busy','waiting_input'].includes(a.state)?a.currentAction:null,a.error,a.canSend?null:a.sendReason,pending.has(a.id)?'送信結果を照合中（自動再送なし）':null].filter(Boolean).join(' · ');
   const area=card.querySelector('.runs'),html=runHTML(a);updateReportHTML(area,html);
   const receipt=pending.get(a.id),known=receipt&&state.runs.find(r=>r.requestId===receipt.requestId);
