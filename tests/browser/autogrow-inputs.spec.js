@@ -4,11 +4,11 @@ async function setup(page,mode){
  const state={workshops:[],agents:[{id:'a',name:'Agent',connection:{},state:'idle',canSend:true}],runs:Array.from({length:20},(_,i)=>({id:'r'+i,agentId:'a',instruction:'past',output:'応答\n'.repeat(10),state:'completed'})),notification:{}};
  const office={workshops:[],jobs:[],secretary:{status:'idle',messages:state.runs.map(r=>({id:r.id,role:'assistant',content:r.output,at:new Date().toISOString()}))}};let failure=false,sends=0;
  await page.route('**/api/**',r=>{const path=new URL(r.request().url()).pathname;if(r.request().method()==='POST'&&(path.endsWith('/runs')||path==='/api/messages')){sends++;if(failure)return r.fulfill({status:409,json:{error:'fixture failure'}});return r.fulfill({json:mode==='direct'?{state:'completed'}:office});}return r.fulfill({json:path==='/api/direct'?state:path==='/api/todos'?{items:[]}:office});});
- await page.goto(mode==='direct'?'/agents':mode==='office'?'/office':'/');if(mode==='village')await page.locator('#mayor').click();
+ await page.goto(mode==='direct'?'/agents':'/office');
  const input=page.locator(mode==='direct'?'[name=instruction]':'#request'),log=page.locator(mode==='direct'?'.runs':'#conversation-log');await expect(input).toBeVisible();await expect.poll(()=>height(input)).toBeGreaterThan(20);
  return {input,log,sends:()=>sends,fail:value=>failure=value};
 }
-for(const mode of ['direct','office','village'])test(`${mode}: grow/shrink, wrap, IME, draft, resize, cap, send failure and clear`,async({page})=>{
+for(const mode of ['direct','office'])test(`${mode}: grow/shrink, wrap, IME, draft, resize, cap, send failure and clear`,async({page})=>{
  const f=await setup(page,mode),input=f.input;await input.fill('短文');await page.waitForTimeout(60);const small=await height(input);
  await input.fill('折り返し確認用の文章です。'.repeat(24));await expect.poll(()=>height(input)).toBeGreaterThan(small);const wide=await height(input);
  await page.setViewportSize({width:700,height:900});await expect.poll(()=>height(input)).toBeGreaterThan(wide);if(mode==='direct')await expect.poll(()=>f.log.evaluate(el=>el.scrollHeight-el.scrollTop-el.clientHeight<3)).toBe(true);

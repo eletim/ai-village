@@ -163,7 +163,7 @@ const handleRequest = async (req, res) => {
     }
     // Never serve credentials, source of the bridge, or persisted job output.
     if (req.method !== 'GET' || !(pathname === '/agents' || pathname === '/agents/' || pathname === '/agents.html' || pathname === '/' || pathname === '/index.html' || pathname === '/office' || pathname === '/office/' || /^\/src\/[a-z-]+\.(js|css)$/.test(pathname) || /^\/src\/vendor\/(?:[a-zA-Z0-9_.-]+\/)*[a-zA-Z0-9_-]+\.mjs$/.test(pathname)&&!pathname.split('/').some(p=>p==='..'||p==='.'))) { res.writeHead(404); res.end('Not found'); return; }
-    const file = resolve(root, ['/agents','/agents/'].includes(pathname) ? 'agents.html' : ['/', '/office', '/office/'].includes(pathname) ? 'index.html' : '.' + pathname);
+    const file = resolve(root, ['/agents','/agents/'].includes(pathname) ? 'agents.html' : ['/office', '/office/'].includes(pathname) ? 'office.html' : pathname === '/' ? 'index.html' : '.' + pathname);
     const content = await readFile(file);
     res.writeHead(200, { 'Content-Type': mime[extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-store' }); res.end(content);
   } catch (error) {
