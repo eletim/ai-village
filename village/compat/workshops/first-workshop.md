@@ -4,6 +4,8 @@ ssh_host: E-ryzen
 purplemux_url: http://e-ryzen.tail6bc726.ts.net:8022/
 work_root: /home/eletim/ai-village-workshop
 ---
+> 互換情報: 旧jobs/執務室実装専用。Agent Workspaceの登録・requestsや現在の秘書方針には適用しません。記載の接続設定は現在の稼働を保証しません。
+
 # 第一工房 — E-ryzen
 
 AI村の最初の工房です。専用ディレクトリとPurpleMuxのCodex tabを使い、自然文で任せた仕事を実行します。ここに書く設備は調査時点の記録です。現在の負荷やAgentの実行状況とは区別してください。

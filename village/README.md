@@ -1,13 +1,21 @@
-# AI村の案内と資料の目次
+# AI村の現在の入口
 
-ここは村長と秘書ミクが同じ書類を読むための書棚です。Markdownファイルを編集すると、次の閲覧・秘書の参照に反映されます。資料は設備や接続方法についての記録であり、現在の作業中・確認待ち・解放状態は村の実状態を確認してください。
+標準は **[Agent Workspace](/agents)** です。Directの正式登録（Agent・場所・Project）とrequestsの会話・親子作業・完了記録を正とします。村マップは登録の別表現であり、名前やcwdから所属を推測しません。
 
-- [第一工房の資料](workshops/first-workshop.md)：接続先、PurpleMux、作業場所、確認済みの設備。
-- [村の操作マニュアル](manual.md)：仕事・報告の検索、キャンセル、承認と解放、机の片付け、結果確認、UIを閉じた後の動作と通知設定。
-- [村の運用メモ](operations.md)：秘書の役割、仕事の合意、成果の確認とAgent解放。
+## Projectの秘書方針
 
-工房資料の先頭にある `---` の間は接続に必要な情報です。その下に、人間が読み書きする説明や調査記録があります。接続先を変更するときは工房資料だけを更新します。過去の仕事には作成時の接続情報が残り、変更後の接続先へ解放操作が飛ぶことはありません。
+[村実装の短い方針](projects/village-implementation.md)を、[Project IDとの対応設定](projects/index.json)で明示しています。対象Projectの秘書の通常runだけに取得案内を渡します。worker・他Project・報告専用runには付けません。
 
-- [村自身の開発と反映](development.md)：別PCでのclone・修正・検証・commit・Push、コアへの反映、再起動、稼働確認。
+- CLI: `node scripts/village.mjs projects guide PROJECT_ID`
+- HTTP: `POST /api/village` に `{"argv":["projects","guide","PROJECT_ID"]}`（既存認証）。CLIのないSSH側でも村の接続可能なURLを使えます。
+- 毎回ファイルを読み直し、本文とhashを返します。未設定・欠落・取得不能は `available:false`。文書変更でruntime登録を書き換えません。案内は本文を埋め込まず、今回の判断前に取得するよう求めます。
 
-- [秘書のセッション継続と復旧](session-continuity.md) — メモ、上限の観測、再起動と操作記録、診断の仕様。
+## 互換実装の境界
+
+`compat/` は旧jobs/旧秘書の互換情報です。通常の書棚一覧から除外しています。旧「工房1つ・Agent1人」「ミク/レン固定」の運用メモは廃止しました。
+
+- `compat/manual.md`: 旧Secretariatの操作前hash検証が必要な操作仕様。
+- `compat/development.md` と `compat/workshops/`: 旧Development/WorkshopBridgeが読む設定と手順。Direct登録とは別系統で、現行の接続先の原本ではありません。
+- `compat/session-continuity.md`: 旧秘書の継続・診断の説明。
+
+旧API・保存済みjobs・互換設定の読み取りは維持します。古い文書パスは互換読み取りへ解決します。旧執務室URLはWorkspaceへ転送します。旧会話やjobsをDirectの記録に変換する処理はありません。新規の仕事はWorkspaceで扱ってください。

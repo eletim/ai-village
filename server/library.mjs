@@ -5,18 +5,24 @@ export class VillageLibrary {
   constructor(root = process.env.VILLAGE_LIBRARY_DIR || 'village') { this.root = resolve(root); }
   async read(path) {
     if (typeof path !== 'string' || !path.endsWith('.md')) throw new Error('資料はMarkdownファイルを指定してください。');
-    const root = await realpath(this.root), file = await realpath(resolve(root, path));
+    const root = await realpath(this.root);
+    let file;
+    try { file=await realpath(resolve(root,path)); } catch(error) {
+      // Old persisted job references and legacy manual gate retain their paths.
+      if(error.code!=='ENOENT'||!['manual.md','development.md','session-continuity.md','workshops/first-workshop.md'].includes(path))throw error;
+      file=await realpath(resolve(root,'compat',path));
+    }
     if (!file.startsWith(root + sep)) throw new Error('資料の範囲外です。');
     if ((await stat(file)).size > 131072) throw new Error('資料は128KiB以内にしてください。');
     const content = await readFile(file, 'utf8');
     return { path: relative(root, file).split(sep).join('/'), content, hash: createHash('sha256').update(content).digest('hex') };
   }
-  async catalog() {
+  async catalog({compat=false}={}) {
     const files = [];
     const walk = async dir => {
       for (const entry of await readdir(resolve(this.root, dir), { withFileTypes: true })) {
         const path = dir ? `${dir}/${entry.name}` : entry.name;
-        if (entry.isDirectory()) await walk(path);
+        if (entry.isDirectory()) { if(compat||path!=='compat')await walk(path); }
         else if (entry.isFile() && path.endsWith('.md')) {
           const doc = await this.read(path);
           files.push({ path: doc.path, title: doc.content.match(/^# (.+)$/m)?.[1] || entry.name, hash: doc.hash });
@@ -41,7 +47,7 @@ export class VillageLibrary {
   }
   async workshops() {
     const workshops = [];
-    for (const doc of await this.catalog()) {
+    for (const doc of await this.catalog({compat:true})) {
       try {
         const { name, document } = await this.workshop(doc.path);
         workshops.push({ name, document });
@@ -50,7 +56,7 @@ export class VillageLibrary {
     return workshops;
   }
   async firstWorkshop() {
-    for (const doc of await this.catalog()) {
+    for (const doc of await this.catalog({compat:true})) {
       try { return await this.workshop(doc.path); } catch { /* prose documents have no connection header */ }
     }
     throw new Error('接続情報を持つ工房資料がありません。');

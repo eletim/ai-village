@@ -9,7 +9,7 @@ const evidence=resolve(process.env.VILLAGE_IMAGE_EVIDENCE || `.runtime/image-ver
 const port=Number(process.env.VILLAGE_IMAGE_PORT || 5198), url=`http://127.0.0.1:${port}`;
 await mkdir(resolve(evidence,'library'),{recursive:true});
 await writeFile(resolve(evidence,'library/README.md'),'# 画像認識の独立検証\n外部通知や仕事の起動・承認・解放は行わない。\n');
-await copyFile('village/manual.md',resolve(evidence,'library/manual.md'));
+await copyFile('village/compat/manual.md',resolve(evidence,'library/manual.md'));
 let backend,browser;
 const delay=ms=>new Promise(r=>setTimeout(r,ms));
 async function start(){
