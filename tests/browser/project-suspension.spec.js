@@ -13,7 +13,7 @@ test('suspend by project menu, hidden in all/place, accessible still paused; res
 });
 test('stale update fails without pretending to suspend; all suspended and empty projects remain reachable',async({page})=>{
  const s=fixture();s.agents=s.agents.slice(0,1);await mock(page,s);await page.goto('/agents');await page.locator(`[data-add="project:${pid}"]`).click();s.projects[0].revision++;
- await page.getByRole('button',{name:'休止する',exact:true}).click();await expect(page.locator('#manage-dialog .dialog-error')).toContainText('更新されています');expect(s.projects[0].suspended).toBeUndefined();await page.locator('#manage-dialog [data-close]').click();
+ await page.getByRole('button',{name:'休止する',exact:true}).click();await expect(page.locator('#project-actions-dialog .dialog-error')).toContainText('更新されています');expect(s.projects[0].suspended).toBeUndefined();await page.locator('#project-actions-dialog [data-close]').click();
  s.projects.forEach(p=>p.suspended=true);await expect(page.locator('.agent-panel:visible')).toHaveCount(0);await expect(page.locator('#suspended-projects summary')).toContainText('休止中（2）');await page.locator('#suspended-projects summary').click();await page.locator('[data-place="project:q"]').click();await expect(page.locator('#empty')).toBeVisible();await expect(page.locator('#board-title')).toContainText('Other');
  s.projects.splice(1,1);await expect(page.locator('#board-title')).toHaveText('全部表示');
 });
