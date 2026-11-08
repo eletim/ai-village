@@ -1,7 +1,7 @@
 // A controller per log: explicit reader scroll overrides follow; hidden logs retain state.
 export function chatScroll(area,{saved,onSave=()=>{}}={}){
  let follow=saved&&typeof saved==='object'?saved.follow!==false:true,top=saved&&typeof saved==='object'?saved.top:0,newContent=false,frame,expected=null;
- const button=document.createElement('button');button.type='button';button.className='latest-message';button.textContent='最新へ';button.hidden=true;area.after(button);
+ const button=document.createElement('button');button.type='button';button.className='latest-message';button.title='最新へ';button.setAttribute('aria-label','最新へ');button.innerHTML='<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 4v16m-6-6 6 6 6-6"/></svg>';button.hidden=true;area.after(button);
  const visible=()=>area.clientHeight>0&&area.getClientRects().length;
  // Layout clamping during composer/viewport resize is not a reader scroll.
  let width=area.clientWidth,height=area.clientHeight;
