@@ -6,21 +6,38 @@ export function modelFields(agent){
 }
 export function weeklyUsagePanel(host){
  let pending=false;
- const compactDate=value=>new Date(value).toLocaleString(undefined,{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'});
+ const remaining=value=>{
+  const minutes=Math.max(0,Math.ceil((value-Date.now())/60000)),days=Math.floor(minutes/1440),hours=Math.floor(minutes%1440/60);
+  return days?days+'d '+hours+'h':hours?hours+'h '+minutes%60+'m':minutes+'m';
+ };
  const render=data=>{
-  host.replaceChildren();const title=document.createElement('h3');title.textContent='週次使用状況';host.append(title);
-  const note=document.createElement('p');note.textContent='コアPC · PurpleMux';note.title='コアPCのキャッシュのみ。アカウント識別情報なし。他PC・他アカウントとは合算しません。';host.append(note);
+  const opened=new Set([...host.querySelectorAll('details[open]')].map(e=>e.dataset.provider));
+  host.replaceChildren();host.setAttribute('aria-label','週次使用状況');
   for(const [provider,name] of [['codex','Codex'],['claude','Claude']]){
-   const value=data?.providers?.[provider],row=document.createElement('div'),label=document.createElement('strong'),detail=document.createElement('p');row.className='usage-provider';label.textContent=name;row.append(label);
+   const value=data?.providers?.[provider],row=document.createElement('details'),summary=document.createElement('summary');
+   row.className='usage-provider';row.dataset.provider=provider;row.open=opened.has(provider);
+   const line=document.createElement('span');line.className='usage-line';
+   const label=document.createElement('strong');label.textContent=name;
+   const amount=document.createElement('span');amount.textContent=value?.available?Math.round(value.usedPercent)+'%':'未取得';
+   line.append(label,amount);summary.append(line);
+   const meta=document.createElement('span');meta.className='usage-meta';
+   meta.textContent='7d · '+(value?.available?(value.stale?'古い記録':remaining(value.resetsAt)):'週次使用率');
+   meta.title=value?.available&&!value.stale?'リセットまで '+remaining(value.resetsAt):meta.textContent;summary.append(meta);
    if(value?.available){
-    detail.textContent=(value.stale?'古い記録 · ':'')+'使用 '+Math.round(value.usedPercent*10)/10+'%';row.append(detail);
-    const meter=document.createElement('meter');meter.min=0;meter.max=100;meter.value=value.usedPercent;meter.setAttribute('aria-label',name+' 週次使用率');row.append(meter);
-    const reset=document.createElement('p');reset.textContent='リセット '+compactDate(value.resetsAt);reset.title=new Date(value.resetsAt).toLocaleString();row.append(reset);
-    const at=document.createElement('p');at.textContent='キャッシュ '+compactDate(value.cachedAt);at.title=new Date(value.cachedAt).toLocaleString();row.append(at);
-   }else{detail.textContent='取得不能・不明';row.append(detail);}
-   host.append(row);
+    const bar=document.createElement('span');bar.className='usage-bar';bar.setAttribute('role','meter');bar.setAttribute('aria-label',name+' 週次使用率');
+    bar.setAttribute('aria-valuemin','0');bar.setAttribute('aria-valuemax','100');bar.setAttribute('aria-valuenow',String(value.usedPercent));
+    const fill=document.createElement('span');fill.style.width=value.usedPercent+'%';fill.dataset.level=value.stale?'stale':value.usedPercent>=80?'high':value.usedPercent>=50?'medium':'low';bar.append(fill);summary.append(bar);
+   }
+   summary.title=name+'の週次使用状況・詳細を開く';row.append(summary);
+   const detail=document.createElement('div');detail.className='usage-details';
+   const texts=['コアPCのPurpleMuxを参照'];
+   if(value?.available)texts.push('使用 '+value.usedPercent+'%', 'リセット '+new Date(value.resetsAt).toLocaleString(),'更新 '+new Date(value.cachedAt).toLocaleString());
+   else texts.push('使用率を取得できていません');
+   if(value?.stale)texts.push('古い記録のため、現在の使用率とは異なる場合があります。');
+   texts.push('他PC・他アカウントとは合算していません。');
+   for(const text of texts){const p=document.createElement('p');p.textContent=text;detail.append(p);}
+   row.append(detail);host.append(row);
   }
-  const scope=document.createElement('p');scope.textContent='アカウント未識別・合算なし';host.append(scope);
  };
  async function refresh(){if(pending||document.hidden)return;pending=true;try{const r=await fetch('/api/direct/usage',{signal:AbortSignal.timeout(5000)});if(!r.ok)throw Error();render(await r.json());}catch{render(null);}finally{pending=false;}}
  render(null);void refresh();const timer=setInterval(refresh,60000);document.addEventListener('visibilitychange',refresh);
