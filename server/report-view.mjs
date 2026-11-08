@@ -1,6 +1,6 @@
 // Human-facing projection only. requests get/results retain the immutable source.
 // Work stays visible until the final report commits. Internal report turns are
-// always withheld; afterwards the report replaces the original work output.
+// always withheld; afterwards original work is available as collapsed history.
 export function humanProjection(data){
  const view=structuredClone(data),protectedRequests=new Map((data.requests||[]).filter(q=>q.reportMode===true).map(q=>[q.id,q]));
  const protectedRuns=data.runs.filter(r=>protectedRequests.has(r.humanRequestId));
@@ -27,11 +27,14 @@ export function humanProjection(data){
   // Whitelist the presentation fields: hashes/checkpoints/retry prompts must not
   // inadvertently expose internal instructions or intermediate answers.
   for(const key of Object.keys(r))if(!['id','requestId','agentId','humanRequestId','workId','origin','phase','state','acceptance','createdAt','completedAt','turnId','sessionId','agentSessionId','instruction','travelContexts','attachments','output','error','errorCode','recovery'].includes(key))delete r[key];
-  r.output=show?(original.finalOutput||original.output||''):'';
+  const archive=q.status==='completed'&&r.phase!=='report';
+  r.output=show?(original.finalOutput||original.output||''):archive?(original.output||original.finalOutput||''):'';
+  if(show)r.finalOutput=r.output;
+  if(archive){r.collapsedHistory=true;r.finalOutput=original.finalOutput||'';}
   r.suppressUser=!['human','steering'].includes(r.origin);
   if(r.suppressUser){r.instruction='';r.attachments=[];r.travelContexts=[];}
   const current=q.works.find(w=>w.id===r.workId)?.currentRunId===r.id;
-  r.hideEntry=r.suppressUser&&!current&&!show;
+  r.hideEntry=r.suppressUser&&!current&&!show&&!r.collapsedHistory;
   r.reportStatus=q.status==='cancelled'?'依頼キャンセル':q.status==='completed'&&!show?'作業完了（報告に統合済み）':show?'報告完了':r.phase==='report'?
    ['failed','interrupted','terminated'].includes(r.state)?'報告生成に失敗しました。元回答を引き続き表示しています。':
    ['unknown','send_unknown','awaiting_input','waiting_input'].includes(r.state)?'報告の受付・実行状態を確認中です。再送せず接続先を確認してください。':

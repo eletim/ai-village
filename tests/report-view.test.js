@@ -15,7 +15,9 @@ test('shows work until report commits, hides internal report streams, preserves 
  data.requests[0].status='cancelled';assert.equal(humanProjection(data).runs[0].output,'secret draft');data.requests[0].status='active';
  data.runs[1].state='completed';data.runs[1].finalOutput='human report';Object.assign(data.requests[0],{status:'completed',finalRunId:'report'});
  const messages=Secretariat.prototype.snapshot.call(secretary).messages;
- assert.deepEqual(messages.map(m=>m.content),['question','human report']);
+ assert.deepEqual(messages.map(m=>m.content),['question','secret draft','human report']);
+ assert.equal(messages[1].collapsedHistory,true);assert.equal(messages[1].finalOutput,'secret final');
+ assert(!JSON.stringify(messages).includes('secret prompt'));assert(!JSON.stringify(messages).includes('secret report stream'));
  delete data.requests[0].reportMode;
  assert(humanProjection(data).runs[0].output.includes('secret draft'));
 });

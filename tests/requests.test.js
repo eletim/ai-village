@@ -292,7 +292,7 @@ test('two-stage report replaces visible work after completion, waits for accepta
  await f.finish(report);assert.equal(f.notifications.length,0);await f.complete(report);
  assert.equal(f.notifications.length,1);assert.match(f.notifications[0].content,new RegExp('Final '+report.id));
  assert.equal(s.flow.root(q.id).ticket.state,'consumed');assert.equal(s.snapshot().reviews[source.agentId].attention,true);
- assert(!JSON.stringify(s.snapshot()).includes('Final '+source.id));assert(JSON.stringify(s.snapshot()).includes('Final '+report.id));
+ assert.equal(s.snapshot().runs.find(r=>r.id===source.id).collapsedHistory,true);assert.equal(s.snapshot().runs.find(r=>r.id===source.id).finalOutput,'Final '+source.id);assert(JSON.stringify(s.snapshot()).includes('Final '+report.id));
  await s.tick();await s.tick();await f.restart();await f.service.tick();assert.equal(f.notifications.length,1);
  assert.equal(f.service.data.runs.filter(r=>r.phase==='report').length,1);
 });
