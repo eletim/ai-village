@@ -1,0 +1,23 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdtemp,writeFile,readFile,rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {spawn} from 'node:child_process';
+import {once} from 'node:events';
+import {createServer} from 'node:net';
+test('official HTTP/CLI suspension persists across server restart, rejects invalid/stale writes and preserves rename/delete',async t=>{
+ const dir=await mkdtemp(join(tmpdir(),'suspend-http-'));t.after(()=>rm(dir,{recursive:true,force:true}));const bin=join(dir,'pmux');await writeFile(bin,'#!/bin/sh\nexit 1\n',{mode:0o700});
+ const socket=createServer();socket.listen(0,'127.0.0.1');await once(socket,'listening');const port=socket.address().port;await new Promise(r=>socket.close(r));let child;
+ const stop=async()=>{if(child?.exitCode===null){const done=once(child,'exit');child.kill();await done;}};t.after(stop);
+ const start=async()=>{child=spawn(process.execPath,['scripts/dev.mjs','--port',String(port)],{env:{...process.env,HOME:dir,VILLAGE_STATE_DIR:dir,VILLAGE_PMUX_BIN:bin,VILLAGE_NOTIFICATIONS:'false',VILLAGE_AUTH_FILE:'',VILLAGE_PUBLIC_ORIGIN:'',VILLAGE_VPN_ADDRESS:'',CODEX_HOME:dir},stdio:['ignore','pipe','pipe']});await new Promise((ok,no)=>{const timer=setTimeout(()=>no(Error('timeout')),10000);child.once('exit',()=>{clearTimeout(timer);no(Error('exit'));});child.stdout.on('data',b=>{if(b.toString().includes('AI村 →')){clearTimeout(timer);ok();}});});};
+ const request=async(path,data,method='POST')=>{const r=await fetch(`http://127.0.0.1:${port}`+path,{method,headers:{'Content-Type':'application/json'},...(data?{body:JSON.stringify(data)}:{})});return {status:r.status,data:await r.json()};};const cli=argv=>request('/api/village',{argv});
+ await start();const {data:p}=await request('/api/direct/projects',{name:'Sample',requestId:'create-example'});assert.notEqual(p.suspended,true);
+ assert.equal((await request('/api/direct/projects/'+p.id,{revision:0,suspended:1},'PUT')).status,400);
+ const suspended=await cli(['projects','suspend',p.id,'0']);assert.equal(suspended.data.ok,true);assert.equal(suspended.data.result.suspended,true);assert.equal((await cli(['projects','resume',p.id,'0'])).data.ok,false);
+ await stop();await start();let list=(await cli(['projects','list'])).data.result;assert.equal(list[0].suspended,true);assert.equal((await cli(['projects','rename',p.id,'1','New name'])).data.ok,true);assert.equal((await request('/api/direct/projects/'+p.id,{revision:2,pinned:true},'PUT')).status,200);
+ assert.equal((await cli(['projects','resume',p.id,'3'])).data.result.suspended,false);assert.equal((await cli(['projects','suspend',p.id,'4'])).data.result.suspended,true);
+ const saved=JSON.parse(await readFile(join(dir,'direct.json'),'utf8'));assert.equal(saved.projects[0].pinned,true);assert.equal(saved.projects[0].name,'New name');assert.equal(saved.agents.length,0);
+ const plan=(await request('/api/direct/projects/'+p.id+'/delete-plan',null,'GET')).data;
+ assert.equal((await request('/api/direct/projects/'+p.id+'/delete',{operationId:'delete-empty-project',revision:plan.revision,members:[]})).data.status,'deleted');assert.equal((await cli(['projects','list'])).data.result.length,0);
+});

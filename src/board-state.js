@@ -11,3 +11,10 @@ export function boardLayout(count,width,height){
 
 // Explicit pins precede other projects; retain relative order within each group.
 export function orderedProjects(projects){return [...projects].sort((a,b)=>Number(b.pinned===true)-Number(a.pinned===true));}
+
+// A display preference on explicit Project membership, never a process state.
+export const isSuspended=(projects,agent)=>projects.some(p=>p.id===agent.projectId&&!p.deletedAt&&p.suspended===true);
+export function suspensionSummary(agents,reviews={}){
+ const count=predicate=>agents.filter(predicate).length;
+ return [['作業中',count(a=>['busy','running','starting','creating','sending'].includes(a.state))],['確認待ち',count(a=>['waiting_input','awaiting_input','send_unknown','queued'].includes(a.state))],['更新',count(a=>reviews[a.id]?.unreviewed)],['要確認',count(a=>reviews[a.id]?.attention)],['エラー/不明',count(a=>['failed','interrupted','unknown','send_unknown','unavailable','stop_unknown','creation_unknown'].includes(a.state)||a.connectionState==='unknown')]].filter(([,n])=>n).map(([label,n])=>label+' '+n).join(' · ')||'更新・警告なし';
+}
