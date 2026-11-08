@@ -1,4 +1,3 @@
-import {suspensionSummary} from './board-state.js';
 import {villageModel,reconcileSelection,workspaceLink} from './village-model.js';
 import {faviconHref} from './completions.js';
 import {houseArt,gardenArt} from './village-art.js';
@@ -25,7 +24,7 @@ function render(){
  const suspendedOpen=$('.map-suspended')?.open;
  replace('#village-overview',`<h2>村のいま</h2><p class="overview-count"><strong>${hasSnapshot?model.count.total:'—'}</strong> 人の住人 <span>/ ${model.workshops.length}工房</span></p><dl class="village-stats"><div><dt>作業中</dt><dd>${model.count.busy}</dd></div><div><dt>要確認</dt><dd>${model.count.attention}</dd></div><div><dt>不明・接続不可</dt><dd>${model.count.unknown}</dd></div></dl>${!online?`<p class="offline-note">${hasSnapshot?'接続未確認です。前回取得した登録を表示し、現在の稼働状態は不明として扱います。':'登録情報をまだ取得できていません。接続を待っています。'}</p>`:''}`);
  const overview=$('#village-overview');const suspended=document.createElement('details');suspended.className='map-suspended';
- suspended.innerHTML=`<summary>休止中（${model.suspendedProjects.length}） · ${suspensionSummary(model.suspendedProjects.flatMap(p=>p.residents.map(r=>({...r.source,state:r.status}))),snapshot.reviews)}</summary><p>表示整理のみ。Agent・依頼・通知は継続します。</p>${model.suspendedProjects.map(p=>`<p><a data-paused-project="${esc(p.id)}" href="/agents#project-${encodeURIComponent(p.id)}">${esc(p.name)}の会話を見る</a> · ${p.residents.length}人</p>`).join('')}`;
+ suspended.innerHTML=`<summary>休止中(${model.suspendedProjects.length})</summary><p>表示整理のみ。Agent・依頼・通知は継続します。</p>${model.suspendedProjects.map(p=>`<p><a data-paused-project="${esc(p.id)}" href="/agents#project-${encodeURIComponent(p.id)}">${esc(p.name)}の会話を見る</a> · ${p.residents.length}人</p>`).join('')}`;
  suspended.open=!!suspendedOpen;overview.append(suspended);
  const place=model.places.find(p=>p.id===selection.place);
  replace('#place-detail',place?`<p class="eyebrow">選択した場所</p><h2>${esc(place.name)}</h2><p>${totals(place.count)}</p><div class="notice-residents">${place.residents.map(residentButton).join('')||'<p>ここにはAgentが配置されていません。</p>'}</div>`:'<p class="eyebrow">村の歩き方</p><h2>どの工房を訪ねますか？</h2><p>建物の看板で場所を、住人で詳細を選べます。村長の家には登録された秘書が集まります。</p>');
