@@ -69,17 +69,19 @@
 :root[data-sidebar-collapsed=true] #sidebar-toggle .sidebar-arrow{transform:translateX(28px) scaleX(-1)}
 @media(max-width:700px){.workspace-heading h1{font-size:14px}.workspace-heading h1 small{display:none}}
 
-#project-guide-dialog{width:min(760px,94vw);max-height:90dvh;box-sizing:border-box;overflow:auto}
-#project-guide-dialog header{display:flex;align-items:center;justify-content:space-between;gap:12px}
-#project-guide-dialog header h2{margin:0}
-#project-guide-dialog .guide-body{max-height:55dvh;overflow:auto;overflow-wrap:anywhere}
-#project-guide-dialog .guide-body pre{max-width:100%;overflow:auto}
+#agent-profile-dialog{width:min(760px,94vw);max-height:90dvh;box-sizing:border-box;overflow:auto}
+#agent-profile-dialog header{display:flex;align-items:center;justify-content:space-between;gap:12px}
+#agent-profile-dialog header h2{margin:0}
+#agent-profile-dialog .guide-body{max-height:55dvh;overflow:auto;overflow-wrap:anywhere}
+#agent-profile-dialog .guide-body pre{max-width:100%;overflow:auto}
 
 
-.panel-heading .secretary-name{max-width:100%;font:inherit;color:inherit;text-align:left;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-color:transparent;background:transparent;padding:2px}
-.panel-heading .secretary-name:hover{background:var(--bg-selected,#273750)}
-.secretary-profile{display:grid;grid-template-columns:auto minmax(0,1fr);gap:7px 16px}
-.secretary-profile dt{opacity:.8}.secretary-profile dd{margin:0;overflow-wrap:anywhere}
-#project-guide-dialog[open]{display:flex;flex-direction:column;overflow:hidden}
-#project-guide-dialog > :not(.guide-body){flex-shrink:0}
-#project-guide-dialog .guide-body{min-height:0;flex:1}
+.panel-heading .agent-name{max-width:100%;font:inherit;color:inherit;text-align:left;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-color:transparent;background:transparent;padding:2px}
+.panel-heading .agent-name:hover{background:var(--bg-selected,#273750)}
+.profile-fields{display:grid;grid-template-columns:auto minmax(0,1fr);gap:7px 16px}
+.profile-fields dt{opacity:.8}.profile-fields dd{margin:0;overflow-wrap:anywhere}
+#agent-profile-dialog[open]{display:flex;flex-direction:column;overflow:hidden}
+#agent-profile-dialog > :not(.profile-guide){flex-shrink:0}
+#agent-profile-dialog .profile-guide:not([hidden]){display:flex;flex-direction:column;min-height:0}
+#agent-profile-dialog .profile-guide > :not(.guide-body){flex-shrink:0}
+#agent-profile-dialog .guide-body{min-height:0;flex:1}

@@ -1,4 +1,4 @@
-import {projectGuideViewer} from './project-guide.js';
+import {agentProfileViewer} from './agent-profile.js';
 import {dateDividers} from './date-divider.js';
 import {responseHTML} from './response-content.js';
 import {workshopPatternEditor} from './workshop-pattern-editor.js';
@@ -18,8 +18,8 @@ import {agentEntries,unreadByAgent,visualState,faviconHref} from './completions.
 import {agentPlaceName} from './agent-identity.js';
 import {bindPromptInput} from './prompt-input.js';
 const $=s=>document.querySelector(s);
-const guideViewer=projectGuideViewer();
-$('#agents').addEventListener('click',e=>{const button=e.target.closest('[data-profile-agent]');if(button){const a=state.agents.find(a=>a.id===button.dataset.profileAgent);if(a?.location==='mayor')guideViewer.open(a,(state.projects||[]).find(p=>p.id===a.projectId)||null);}});
+const profileViewer=agentProfileViewer();
+$('#agents').addEventListener('click',e=>{const button=e.target.closest('[data-profile-agent]');if(button){const a=state.agents.find(a=>a.id===button.dataset.profileAgent);if(a)profileViewer.open(a,(state.projects||[]).find(p=>p.id===a.projectId)||null);}});
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 // getRandomValues is available on VPN HTTP origins where randomUUID is not.
 function newRequestId(){const b=crypto.getRandomValues(new Uint8Array(16));b[6]=(b[6]&15)|64;b[8]=(b[8]&63)|128;const h=[...b].map(v=>v.toString(16).padStart(2,'0')).join('');return `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`;}
@@ -129,13 +129,11 @@ function renderBoard(){
   const zoom=card.querySelector('[data-zoom]'),expanded=zoomId===a.id;
   zoom.textContent=expanded?'⤡':'⤢';zoom.title=expanded?'一覧に戻る':'このAgentを拡大';zoom.setAttribute('aria-label',zoom.title);zoom.setAttribute('aria-expanded',String(expanded));
   card.querySelector('h2').id='heading-'+a.id;
-  const heading=card.querySelector('h2'),secretary=a.location==='mayor';
+  const heading=card.querySelector('h2');
   let name=heading.querySelector('[data-profile-agent]');
-  if(secretary){
-   if(!name){name=document.createElement('button');name.type='button';name.className='secretary-name';name.dataset.profileAgent=a.id;heading.replaceChildren(name);}
-   name.textContent=a.name;name.setAttribute('aria-label',a.name+'のプロフィール');name.setAttribute('aria-haspopup','dialog');
-   heading.title='秘書名を押すとプロフィールと方針を表示します';
-  }else{heading.textContent=`${a.name} · ${a.provider==='claude'?'Claude':'Codex'}`;heading.title=a.name;}
+  if(!name){name=document.createElement('button');name.type='button';name.className='agent-name';name.dataset.profileAgent=a.id;heading.replaceChildren(name);}
+  name.textContent=a.name||'名前未登録';name.setAttribute('aria-label',name.textContent+'のプロフィール');name.setAttribute('aria-haspopup','dialog');
+  heading.title='名前を押すとプロフィールを表示します';
   card.querySelector('.panel-info').innerHTML=`<span class="badge">${esc(labels[visualState(a,agentEntries(state,a))]||a.state)}</span><span class="location-name">${esc(placeName(a))}</span>${a.terminalUrl?`<a href="${esc(a.terminalUrl)}" target="_blank" rel="noopener" title="PurpleMuxでタブを開く">PurpleMux ↗</a>`:''}`;
   card.querySelector('.current-action').textContent=[['busy','waiting_input'].includes(a.state)?a.currentAction:null,a.error,a.canSend?null:a.sendReason,pending.has(a.id)?'送信結果を照合中（自動再送なし）':null].filter(Boolean).join(' · ');
   const area=card.querySelector('.runs'),html=runHTML(a);updateReportHTML(area,html);
