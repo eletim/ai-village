@@ -246,3 +246,18 @@ test('stale busy releases only matching native terminal without later input or n
  f.data.turns[0].state='completed';await f.service.tick();assert.equal(f.a.state,'busy');
  f.data.sessionId='other-session';f.data.turns=[{id:'other',state:'failed',completionOffset:20}];await f.service.tick();assert.equal(f.a.canSend,false);
 });
+
+test('discovery prompt carries only recipient identity and stays fixed as the village grows',async t=>{
+ const f=await fixture(t);f.a.location='mayor';f.a.projectId='project-one';
+ const before=f.service.secretaryContext(f.a);
+ const own=JSON.parse(before.split('自分の登録（送信時点のデータ）: ')[1].split('\n')[0]);
+ assert.equal(own.agentId,f.a.id);assert.equal(own.projectId,'project-one');assert.equal(own.role,'secretary');
+ assert(!before.includes('nativeTurns'));assert(!before.includes('lastCheckedAt'));
+ for(let i=0;i<100;i++)f.service.data.agents.push({...f.a,id:'other-'+i,name:'OTHER-PRIVATE-NAME-'+i,projectId:'different-project'});
+ assert.equal(f.service.secretaryContext(f.a),before);assert(before.length<1000);
+ assert.equal(f.service.discovery().agents.length,101);
+ f.a.projectId='project-two';f.a.metadataRevision=2;
+ assert(f.service.secretaryContext(f.a).includes('project-two'));assert(!f.service.secretaryContext(f.a).includes('project-one'));
+ f.service.villageUrl='http://core.example:5173';
+ assert(f.service.secretaryContext(f.a).includes('GET http://core.example:5173/api/direct/agents'));
+});
