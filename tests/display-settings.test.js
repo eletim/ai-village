@@ -7,7 +7,7 @@ import {VillageNotifier} from '../server/notifier.mjs';
 import {normalizeDisplay} from '../src/display-preferences.js';
 import {reportHTML} from '../src/report-content.js';
 test('display validation and plain safe literal rendering',()=>{
- assert.deepEqual(normalizeDisplay({font:'url(evil)',viewer:'html'}),{textSize:'medium',iconMode:'dots',theme:'dark',font:'standard',viewer:'markdown'});
+ assert.deepEqual(normalizeDisplay({font:'url(evil)',viewer:'html'}),{projectView:'secretary',textSize:'medium',iconMode:'roles',theme:'dark',font:'meiryo',viewer:'markdown'});
  globalThis.localStorage={getItem:()=>JSON.stringify({font:'serif',viewer:'plain'})};
  try{const html=reportHTML('# heading\n<script>bad()</script>\n![x](https://evil.test/x)');assert.match(html,/plain-report/);assert.match(html,/# heading/);assert.match(html,/&lt;script&gt;/);assert(!html.includes('<img'));}finally{delete globalThis.localStorage;}
 });
@@ -30,5 +30,9 @@ test('Meiryo and text sizes validate; partial saves retain other browser prefere
  assert.equal(normalizeDisplay({textSize:'huge'}).textSize,'medium');assert.equal(normalizeDisplay(null).textSize,'medium');
  let saved=JSON.stringify({theme:'sepia',iconMode:'roles',font:'mono',viewer:'plain'});
  globalThis.localStorage={getItem:()=>saved,setItem:(_,v)=>saved=v};globalThis.window={dispatchEvent:()=>{}};
- try{saveDisplay({textSize:'large'});assert.deepEqual(displayPreferences(),{textSize:'large',theme:'sepia',iconMode:'roles',font:'mono',viewer:'plain'});saveDisplay({font:'meiryo'});assert.equal(displayPreferences().textSize,'large');}finally{delete globalThis.localStorage;delete globalThis.window;}
+ try{saveDisplay({textSize:'large'});assert.deepEqual(displayPreferences(),{projectView:'secretary',textSize:'large',theme:'sepia',iconMode:'roles',font:'mono',viewer:'plain'});saveDisplay({font:'meiryo'});assert.equal(displayPreferences().textSize,'large');}finally{delete globalThis.localStorage;delete globalThis.window;}
+});
+test('unset defaults use roles/dark/medium/Meiryo, saved selections remain authoritative',()=>{
+ assert.deepEqual(normalizeDisplay(),{projectView:'secretary',textSize:'medium',iconMode:'roles',theme:'dark',font:'meiryo',viewer:'markdown'});
+ assert.deepEqual(normalizeDisplay({textSize:'small',iconMode:'dots',theme:'light',font:'standard',viewer:'plain'}),{projectView:'secretary',textSize:'small',iconMode:'dots',theme:'light',font:'standard',viewer:'plain'});
 });

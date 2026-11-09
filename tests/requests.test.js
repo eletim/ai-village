@@ -12,7 +12,7 @@ async function fixture(t,{reportMode=false}={}){
  const runtimes=new Map(),sent=[],notifications=[];let offline=false,lose=false;
  const execute=async(args,host,id)=>{
   if(offline)throw Error('offline');
-  const agent=[...runtimes.keys()].find(a=>args.includes('ws-'+a)||args.at(-1)==='session-'+a)||id;
+  const agent=[...runtimes.keys()].find(a=>args.includes('ws-'+a)||args.includes('session-'+a))||id;
   const native=runtimes.get(agent);
   if(args[0]==='python3')return JSON.stringify(native);
   if(args[2]==='status')return JSON.stringify({alive:true,cliState:native.turns.at(-1)?.state==='running'?'busy':'idle',agentSessionId:'session-'+agent});
@@ -407,4 +407,21 @@ test('failed persistence cannot turn a later duplicate cancellation into false s
  const f=await fixture(t),s=f.service,root=await s.send(f.agents[0].id,{requestId:randomUUID(),instruction:'Active'});await f.submit(root);
  const r=await s.send(root.agentId,{requestId:randomUUID(),instruction:'Queued'}),x={humanRequestId:r.humanRequestId,agentId:r.agentId,runId:r.id};
  const save=s.save.bind(s);s.save=async()=>{throw Error('disk unavailable');};await assert.rejects(s.flow.cancelQueued(x),/disk/);assert.equal(r.state,'queued');assert.equal(r.queueCancelledAt,undefined);assert.equal(s.flow.root(r.humanRequestId).ticket.state,'available');s.save=save;await s.flow.cancelQueued(x);assert(r.queueCancelledAt);
+});
+test('event-to-response upgrade preserves Direct steering boundary and superseded output partitions',async t=>{
+ const f=await fixture(t),s=f.service,root=await s.send(f.agents[0].id,{requestId:randomUUID(),instruction:'Original'});await f.submit(root);
+ const n=f.runtimes.get(root.agentId),turn=n.turns[0];turn.messageOffsets=true;turn.messages=[];
+ const emit=async text=>{n.cursor+=2;turn.messages.push({id:'m'+n.cursor,offset:n.cursor,text});turn.output=turn.messages.map(m=>m.text).join('\n\n');await f.service.tick();};
+ const upgrade=run=>{const i=n.inputs.find(i=>i.id===run.inputId),old={id:i.id,offset:i.offset};n.cursor+=2;Object.assign(i,{id:'response-'+i.id,offset:n.cursor,aliases:[old]});};
+ await emit('before');upgrade(root);await s.tick();assert.equal(root.state,'running');assert.equal(s.agent(root.agentId).canSteer,true);
+ const second=await steer(f,root);await acceptSteer(f,second);await emit('between');
+ // The next send snapshots the event ID, then its canonical response arrives
+ // before attemptRun's second native observation (dispatch race).
+ const runtime=s.runtime.bind(s);let observations=0;
+ s.runtime=async(...args)=>{observations++;if(observations===2)upgrade(second);return runtime(...args);};
+ const third=await steer(f,second);s.runtime=runtime;assert.equal(third.state,'awaiting_input');
+ await acceptSteer(f,third);await emit('after');
+ assert.equal(root.output,'before');assert.equal(second.output,'between');assert.equal(third.output,'after');
+ await f.restart();await f.service.tick();assert.equal(f.service.flow.run(second.id).output,'between');
+ await f.finish(f.service.flow.run(third.id));await f.complete(f.service.flow.run(third.id));assert.equal(f.notifications.length,1);
 });

@@ -67,6 +67,17 @@ test('local dispatch and exact owned-process cleanup never call SSH',async t=>{
  f.service.remote=()=>{throw Error('SSH forbidden');};await f.service.poll(a);await f.service.send(a.id,{instruction:'$(literal)',requestId:'request-local'});await f.service.stop(a.id);
  assert.equal(a.state,'terminated');assert.equal(a.processVerification.remainingOwned,0);assert(local>5);
 });
+test('a new Claude session can receive its first instruction before a native transcript exists',async t=>{
+ const f=await fixture(t),originalPmux=f.service.pmux.bind(f.service);
+ f.a.provider='claude';
+ f.service.pmux=async(a,...args)=>args[1]==='status'?{alive:true,cliState:'idle',agentSessionId:'session',lastEvent:{name:'session-start'},eventSeq:1}:originalPmux(a,...args);
+ f.service.runtime=async()=>({available:false,unrecorded:true,sessionId:'session',turns:[],inputs:[],cursor:0});
+ await f.service.poll(f.a);
+ assert.equal(f.a.state,'idle');assert.equal(f.a.canSend,true);assert.equal(f.a.modelInfo.reason,'not-recorded');
+ const r=await f.service.send(f.a.id,{instruction:'first instruction',requestId:'claude-first'});
+ assert.equal(f.sends(),1);assert.equal(r.state,'awaiting_input');assert.equal(f.a.canSend,false);
+ await f.service.tick();assert.equal(f.a.state,'unknown');assert.equal(f.a.canSend,false);
+});
 test('connection snapshots persist; only one monitoring process owns the state',async t=>{
  const f=await fixture(t);await f.service.putWorkshop({...f.w,sshHost:'other'},f.w.id);assert.equal(f.a.connection.sshHost,'host');
  const one=new DirectAgents(f.options),two=new DirectAgents(f.options);await one.init();t.after(()=>one.close());t.after(()=>two.close());await assert.rejects(two.init(),{code:'EADDRINUSE'});

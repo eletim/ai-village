@@ -1,4 +1,7 @@
 import {workspaceSnapshot,historyPage} from '../server/conversation-pages.mjs';
+import {WorkspaceSync} from '../server/workspace-sync.mjs';
+import {syncResponse} from '../server/sync-response.mjs';
+const workspaceSync=new WorkspaceSync();
 import {WeeklyUsage} from '../server/weekly-usage.mjs';
 const weeklyUsage=new WeeklyUsage();
 import {TravelRegistry} from '../server/travel-registry.mjs';
@@ -62,7 +65,9 @@ const handleRequest = async (req, res) => {
           const params=new URL(req.url,'http://localhost').searchParams;
           if(params.get('view')==='workspace'){
             let ranges;try{ranges=JSON.parse(params.get('ranges')||'{}');}catch{return json(res,400,{error:'Invalid history ranges'});}
-            return json(res,200,workspaceSnapshot(direct.snapshot(),ranges));
+            const snapshot=workspaceSnapshot(direct.snapshot(),ranges);
+            if(params.get('sync')==='1')return await syncResponse(req,res,workspaceSync.reply({client:params.get('client'),since:params.get('since'),scope:params.get('ranges')||'{}'},snapshot));
+            return json(res,200,snapshot);
           }
           return json(res,200,direct.snapshot());
         }

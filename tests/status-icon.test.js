@@ -14,5 +14,5 @@ test('workshop identicon is stable across Agent and workshop renames; absent ID 
 test('labels and attributes are escaped; SVG never contains names, IDs, URLs or scripts',()=>{
  const a={id:'" onerror="evil',name:'<script>x</script>',location:'workshop',workshopId:'"<svg>',connection:{name:'<img src=x>'}};
  const html=statusIcon(a,{mode:'roles',sidebar:true,state:'" onclick="evil',attention:true});assert(!html.includes('<script>'));assert(!html.includes('<img'));assert(!html.includes(' onerror="evil'));assert.match(html,/&lt;script&gt;/);assert(!roleSVG(a).includes(a.workshopId));assert(!roleSVG(a).includes('http'));assert.equal((html.match(/<svg/g)||[]).length,1);
- assert(!statusIcon(a).includes('<svg'));assert.equal(normalizeDisplay().iconMode,'dots');assert.equal(normalizeDisplay({iconMode:'bad'}).iconMode,'dots');assert.deepEqual(normalizeDisplay({iconMode:'roles',theme:'sepia',font:'serif',viewer:'plain'}),{textSize:'medium',iconMode:'roles',theme:'sepia',font:'serif',viewer:'plain'});
+ assert(!statusIcon(a).includes('<svg'));assert.equal(normalizeDisplay().iconMode,'roles');assert.equal(normalizeDisplay({iconMode:'bad'}).iconMode,'roles');assert.deepEqual(normalizeDisplay({iconMode:'roles',theme:'sepia',font:'serif',viewer:'plain'}),{projectView:'secretary',textSize:'medium',iconMode:'roles',theme:'sepia',font:'serif',viewer:'plain'});
 });
