@@ -1,3 +1,4 @@
+import {readJSON} from './read-json.js';
 import {acceptWorkspace} from './workspace-sync.js';
 import {restorePendingMessage,matchingRun,unchangedDraft,pendingMessageStatus} from './pending-message.js';
 import {weeklyUsagePanel} from './model-usage.js';
@@ -356,7 +357,8 @@ async function api(path,body,method='POST'){
  if(path.endsWith('/runs')&&body?.steerTarget&&!state?.capabilities?.steering)throw Error('実行中の補足にはサーバー更新が必要です。');
  if(path.endsWith('/runs')&&body?.attachments?.length&&!state?.capabilities?.attachments)throw Error('添付にはサーバー更新の反映が必要です。');
  if(path.endsWith('/runs')&&body?.travelContexts?.length&&!state?.capabilities?.travelContexts)throw Error('出張先の送信にはサーバー更新の反映が必要です。下書きは保持しています。');
- const response=await fetch('/api/direct'+path,{method,signal:AbortSignal.timeout(method==='GET'?10000:30000),headers:{'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});
+ if(method==='GET')return readJSON('/api/direct'+path,{onProgress:bytes=>{if(path.startsWith('?view=workspace'))$('#connection').textContent='同期中 · '+Math.ceil(bytes/1024)+' KB受信';}});
+ const response=await fetch('/api/direct'+path,{method,signal:AbortSignal.timeout(30000),headers:{'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});
  const value=await response.json();if(!response.ok)throw Object.assign(Error(value.error||'操作に失敗しました'),{status:response.status});return value;
 }
 async function action(form,fn){const buttons=[...form.querySelectorAll('button')],card=form.closest('.agent-panel');if(card)card.dataset.pending='true';buttons.forEach(b=>b.disabled=true);$('#error').textContent='';document.querySelectorAll('.dialog-error').forEach(el=>el.textContent='');try{await fn();await refresh(true);}catch(e){const target=document.querySelector('dialog[open] .dialog-error')||$('#error');target.textContent=e.message;}finally{if(card)card.dataset.pending='false';buttons.forEach(b=>b.disabled=false);if(state)renderBoard();}}
@@ -367,7 +369,7 @@ function render(){
  $('#notifications').textContent=`Notify: ${state.notification.enabled===false?'OFF':state.notification.latest?.status||(state.notification.destinationConfigured?'設定済み':'未設定')}`;
  $('#notifications').title='sentは通知サーバーの受理。端末への到着は未確認。';renderBoard();
 }
-const syncClient=newRequestId();let syncBase=null;
+const syncClient=newRequestId();let syncBase=null,retryAt=0,syncFailures=0;
 async function fetchWorkspace(){
  const path='?view=workspace&sync=1&client='+syncClient+'&ranges='+encodeURIComponent(JSON.stringify(historyRanges));
  const result=await api(path+(syncBase?'&since='+encodeURIComponent(syncBase.cursor):''),null,'GET');
@@ -377,9 +379,11 @@ async function fetchWorkspace(){
  catch{syncBase=null;syncBase=acceptWorkspace(null,await api(path,null,'GET'));return syncBase.state;}
 }
 async function refresh(force=false){
- if(refreshTask){await refreshTask;if(force)return refresh(true);return;}
- refreshTask=(async()=>{try{state=await fetchWorkspace();for(const [id,page] of Object.entries(state.conversations||{}))if(page.cursor&&!historyRanges[id])historyRanges[id]=page.cursor;connected=true;render();focusAgent();$('#connection').textContent='● 接続 · '+new Date().toLocaleTimeString();}catch(e){connected=false;if(state)renderBoard();$('#connection').textContent='接続不明: '+e.message;}})();
- try{await refreshTask;}finally{refreshTask=null;}
+ if(refreshTask){const result=await refreshTask;if(force)return refresh(true);return result;}
+ if(!force&&Date.now()<retryAt)return false;
+ $('#connection').textContent=state?'同期中…':'接続中 · 履歴を読み込んでいます…';
+ refreshTask=(async()=>{try{state=await fetchWorkspace();for(const [id,page] of Object.entries(state.conversations||{}))if(page.cursor&&!historyRanges[id])historyRanges[id]=page.cursor;connected=true;retryAt=0;syncFailures=0;render();focusAgent();$('#connection').textContent='● 接続 · '+new Date().toLocaleTimeString();return true;}catch(e){connected=false;const delay=Math.min(30000,5000*2**Math.min(syncFailures++,3));retryAt=Date.now()+delay;if(state)renderBoard();$('#connection').textContent='接続不明: '+(e.message==='Failed to fetch'?'通信できませんでした。':e.message)+'（'+delay/1000+'秒後に再試行）';return false;}})();
+ try{return await refreshTask;}finally{refreshTask=null;}
 }
 $('#agent-form [name=workshopId]').onchange=places;
 $('#agent-form [name=location]').onchange=()=>{if($('#agent-form [name=location]').value==='mayor'){const w=state.workshops.find(w=>w.connectionType==='local');if(w)$('#agent-form [name=workshopId]').value=w.id;$('#agent-form [name=name]').value='秘書';places();}};
@@ -452,7 +456,7 @@ document.addEventListener('click',async e=>{
  try{
   const older=await api('/agents/'+encodeURIComponent(id)+'/history?boundaryOnly=1&before='+encodeURIComponent(page.cursor),null,'GET');
   if(older.cursor)historyRanges[id]=older.cursor;
-  await refresh(true);if($('#history-dialog').open)renderHistory();
+  if(!await refresh(true))throw Error('同期が中断しました。取得済みの会話は保持しています。');if($('#history-dialog').open)renderHistory();
  }catch(error){historyErrors.set(id,'履歴を取得できません。再試行できます: '+error.message);}
  finally{historyLoading.delete(id);renderBoard();if($('#history-dialog').open)renderHistory();}
 });

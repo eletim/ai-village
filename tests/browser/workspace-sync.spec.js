@@ -24,3 +24,18 @@ for(const origin of ['localhost','http']) test('incremental workspace retains hi
  state.runs.pop();await expect(runs).toHaveCount(130);expect(errors).toEqual([]);
  await page.setViewportSize({width:390,height:844});await expect(page.locator('.runs')).toBeVisible();
 });
+test('slow HTTP initial sync survives ten seconds and recovers from an interrupted delta',async({page})=>{
+ test.setTimeout(45000);
+ await page.route('http://village-http.test/**',async route=>{const u=new URL(route.request().url());await route.fulfill({response:await route.fetch({headers:{},url:new URL(u.pathname+u.search,test.info().project.use.baseURL).href})});});
+ const state={agents:[{id:'slow',name:'Slow fixture',location:'mayor',state:'idle',connection:{},canSend:true,nativeTurns:[]}],projects:[],workshops:[],reviews:{},requests:[],notification:{enabled:false},capabilities:{},runs:[]};
+ const server=new WorkspaceSync();let calls=0;const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.route('**/api/**',async route=>{
+  const u=new URL(route.request().url());if(u.pathname!=='/api/direct')return route.fulfill({json:{providers:{}}});
+  calls++;if(calls===1)await new Promise(r=>setTimeout(r,11000));if(calls===2)return route.abort('connectionreset');
+  await route.fulfill({json:server.reply({client:u.searchParams.get('client'),since:u.searchParams.get('since')},workspaceSnapshot(state))});
+ });
+ await page.goto('http://village-http.test/agents');await expect(page.locator('#connection')).toContainText('● 接続',{timeout:18000});
+ await page.locator('textarea[name=instruction]').fill('keep this draft');
+ await expect(page.locator('#connection')).toContainText('再試行',{timeout:6000});const failedCalls=calls;await page.waitForTimeout(2200);expect(calls).toBe(failedCalls);
+ await expect(page.locator('#connection')).toContainText('● 接続',{timeout:10000});await expect(page.locator('textarea[name=instruction]')).toHaveValue('keep this draft');expect(errors).toEqual([]);
+});
