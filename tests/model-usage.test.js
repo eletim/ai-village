@@ -19,6 +19,8 @@ test('session identity and availability gate model; credentials/unrelated fields
  const snapshot={available:true,sessionId:'s',modelInfo:{model:'gpt-fixture',serviceTier:'priority',recordedAt:'2026-11-08T10:00:00Z',token:'SECRET'}},status={alive:true,agentSessionId:'s'};
  const m=sessionModel(snapshot,status);assert.equal(m.model,'gpt-fixture');assert.equal(m.serviceTier,'priority');assert(!JSON.stringify(m).includes('SECRET'));
  for(const s of [{...snapshot,sessionId:'other'},{...snapshot,available:false},{...snapshot,incompleteTail:true}])assert.equal(sessionModel(s,status).available,false);
+ assert.equal(sessionModel({available:false,unrecorded:true,sessionId:status.agentSessionId},status).reason,'not-recorded');
+ assert.equal(modelFields({modelInfo:{available:false,reason:'not-recorded'}})[0][1],'会話前・未記録');
  assert.equal(sessionModel(snapshot,{...status,alive:false}).available,false);assert.equal(sessionModel({...snapshot,modelInfo:{}},status).available,false);
  assert.match(modelFields({modelInfo:{available:true,model:'gpt',serviceTier:null}})[1][1],/不明/);
 });

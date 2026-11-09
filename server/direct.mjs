@@ -257,6 +257,7 @@ export class DirectAgents {
     try{
       const s=await this.pmux(a,'tab','status','-w',a.workspaceId,a.tabId);
       const snapshot=await this.runtime(a,s);
+      const freshClaude=a.provider==='claude'&&snapshot.unrecorded===true&&s.alive&&ready(s)&&s.lastEvent?.name==='session-start'&&!s.lastUserMessage&&!this.data.runs.some(r=>r.agentId===a.id&&r.dispatchAttemptedAt);
       a.connectionState='connected';a.error=null;a.lastCheckedAt=now();a.runtime=s;
       a.modelInfo=sessionModel(snapshot,s);
       a.lifecycle=!s.alive||s.cliState==='inactive'?'unavailable':!s.cliState||s.cliState==='unknown'?'unknown':'alive';a.setupRequired=false;
@@ -267,7 +268,7 @@ export class DirectAgents {
       const latest=snapshot.turns.at(-1);
       a.activityState=s.permissionRequest||a.setupRequired||['needs-input','waiting-for-input','waiting-for-permission'].includes(s.cliState)?'waiting_input':latest?.state==='running'?'busy':(ready(s)||terminalBoundary(snapshot,s))?'idle':s.cliState==='busy'?'busy':'unknown';
       if(latest&&Number.isFinite(latest.completionOffset)&&snapshot.inputs.some(i=>i.offset>latest.completionOffset))a.activityState='unknown';
-      if(!snapshot.available||snapshot.incompleteTail||(snapshot.sessionId&&s.agentSessionId&&snapshot.sessionId!==s.agentSessionId)||(a.observedSessionId&&!snapshot.sessionId))a.activityState='unknown';
+      if((!snapshot.available&&!freshClaude)||snapshot.incompleteTail||(snapshot.sessionId&&s.agentSessionId&&snapshot.sessionId!==s.agentSessionId)||(a.observedSessionId&&!snapshot.sessionId))a.activityState='unknown';
       if(a.setupRequired)a.error='作業場所の信頼確認が必要です。PurpleMuxで確認してください。';
       a.currentAction=a.activityState==='busy'&&s.currentAction?.toolName?s.currentAction.toolName+': '+(s.currentAction.summary||''):null;
       if(snapshot.available){

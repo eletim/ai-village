@@ -1,6 +1,7 @@
 import {providerIcons} from './provider-icons.js';
 export function modelFields(agent){
  const m=agent.modelInfo;
+ if(m?.reason==='not-recorded')return [['モデル','会話前・未記録'],['速度 / Tier','未記録'],['モデル記録','最初の会話後に表示します']];
  if(!m?.available)return [['モデル','取得不能・不明'],['速度 / Tier','不明'],['モデル記録','現在のセッション情報を確認できません']];
  const tier=m.serviceTier,label=tier==='priority'?'Fast（priority）':tier==='fast'?'Fast':tier==='default'||tier==='standard'?'標準（'+tier+'）':tier?'Tier: '+tier:'不明（記録なし）';
  return [['モデル',m.model],['速度 / Tier',label],['モデル記録',m.recordedAt?new Date(m.recordedAt).toLocaleString()+' · セッションの最終記録':'記録時刻不明']];

@@ -13,6 +13,7 @@ def read(provider,sid):
  home=Path.home()
  root=Path(os.environ.get('CODEX_HOME',str(home/'.codex')))/'sessions' if provider=='codex' else home/'.claude/projects'
  paths=list(root.glob('**/*'+sid+'.jsonl'))
+ if provider=='claude' and not paths:return dict(result,unrecorded=True)
  if len(paths)!=1:return result
  p=paths[0]
  if p.is_symlink() or p.stat().st_size>64*1024*1024:return result
