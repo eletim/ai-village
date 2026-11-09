@@ -7,7 +7,7 @@ import {agentProfileViewer} from './agent-profile.js';
 import {dateDividers} from './date-divider.js';
 import {responseHTML} from './response-content.js';
 import {workshopPatternEditor} from './workshop-pattern-editor.js';
-import {statusIcon} from './status-icon.js';
+import {statusIcon,registeredRole} from './status-icon.js';
 import {displayPreferences} from './display-preferences.js';
 import {initDisplaySettings} from './display-settings.js';
 import {reportHTML} from './report-content.js';
@@ -30,6 +30,7 @@ const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 // getRandomValues is available on VPN HTTP origins where randomUUID is not.
 function newRequestId(){const b=crypto.getRandomValues(new Uint8Array(16));b[6]=(b[6]&15)|64;b[8]=(b[8]&63)|128;const h=[...b].map(v=>v.toString(16).padStart(2,'0')).join('');return `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`;}
 const labels={superseded:'補足runへ引継ぎ',queued:'送信待ち',awaiting_input:'受付照合中',idle:'待機中',busy:'作業中',starting:'起動待ち',creating:'起動中',creation_unknown:'起動結果不明',unknown:'接続・状態不明',waiting_input:'入力待ち',interrupted:'中断',failed:'ランタイムエラー',unavailable:'端末利用不可',terminated:'終了',stopping:'終了処理中',stop_unknown:'終了結果不明',sending:'送信中',running:'応答待ち',send_unknown:'送信結果不明',completed:'応答完了'};
+let projectOpening=true;
 let state,focusedHash='',selectedPlace='all',selectedPage=0,zoomId='',selectedAgent='',boardScroll=0,connected=false,refreshTask;
 const navigationKey='ai-village-sidebar-v1';
 let navigation={mode:'projects',projects:{id:'all',page:0},places:{id:'all',page:0}};
@@ -117,6 +118,7 @@ function renderBoard(){
  rememberNavigation();
  renderPlaces();
  const list=filtered();
+ if(projectOpening){projectOpening=false;if(isProject(selectedPlace)&&displayPreferences().projectView==='secretary')zoomId=list.find(a=>registeredRole(a)==='secretary')?.id||'';}
  const restoreScroll=zoomId&&!list.some(a=>a.id===zoomId)?boardScroll:null;
  if(restoreScroll!==null)zoomId='';
  const shown=zoomId?list.filter(a=>a.id===zoomId):list.slice(selectedPage*PAGE_SIZE,(selectedPage+1)*PAGE_SIZE),ids=new Set(shown.map(a=>a.id));
@@ -256,12 +258,12 @@ function choosePlace(id,page){
  capturePositions();pageMemory.set(pageKey(selectedPlace),selectedPage);rememberNavigation();
  if(id!=='all')sidebarMode=isProject(id)?'projects':'places';
  if(isProject(id)&&(state.projects||[]).find(p=>p.id===id.slice(8))?.suspended)$('#suspended-projects').open=true;
- selectedPlace=id;selectedAgent='';selectedPage=page??pageMemory.get(pageKey(id))??0;zoomId='';boardScroll=0;$('#agents').scrollTop=0;renderBoard();
+ selectedPlace=id;selectedAgent='';selectedPage=page??pageMemory.get(pageKey(id))??0;zoomId='';projectOpening=true;boardScroll=0;$('#agents').scrollTop=0;renderBoard();
 }
 $('#sidebar-mode').onclick=e=>{
  const mode=e.target.closest('[data-mode]')?.dataset.mode;if(!mode||mode===sidebarMode)return;
  capturePositions();pageMemory.set(pageKey(selectedPlace),selectedPage);rememberNavigation();sidebarMode=mode;
- const choice=navigation[mode];selectedPlace=choice.id;selectedPage=choice.page;selectedAgent='';zoomId='';boardScroll=0;$('#agents').scrollTop=0;renderBoard();
+ const choice=navigation[mode];selectedPlace=choice.id;selectedPage=choice.page;selectedAgent='';zoomId='';projectOpening=true;boardScroll=0;$('#agents').scrollTop=0;renderBoard();
 };
 $('#previous-page').onclick=()=>choosePlace('all',selectedPage-1);
 $('#next-page').onclick=()=>choosePlace('all',selectedPage+1);
