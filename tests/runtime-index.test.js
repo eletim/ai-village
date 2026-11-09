@@ -102,3 +102,11 @@ test('event input upgraded to response retains accepted ownership, priorInputs a
  await appendFile(f.file,lines([extra]));s=await f.reader.read(f.a,f.status,f.execute);
  assert.equal(s.inputs.length,3);assert.equal(correlate(supplement,s).state,'unknown');
 });
+test('fresh Claude missing session stays unrecorded through the indexed reader, but ambiguity does not',async t=>{
+ const f=await setup(t);const root=join(f.dir,'.claude','projects');await mkdir(root,{recursive:true});
+ const a={provider:'claude',connection:{connectionType:'local'}};
+ const execute=async(a,args)=>execFileSync(args[0],args.slice(1),{env:{...f.env,HOME:f.dir},maxBuffer:15*1024*1024}).toString();
+ const first=await f.reader.read(a,f.status,execute);assert.equal(first.unrecorded,true);assert.equal(first.available,false);assert.equal(first.sessionId,sid);
+ await writeFile(join(root,sid+'.jsonl'),'');await mkdir(join(root,'other'));await writeFile(join(root,'other',sid+'.jsonl'),'');
+ const ambiguous=await f.reader.read(a,f.status,execute);assert.equal(ambiguous.available,false);assert.notEqual(ambiguous.unrecorded,true);
+});

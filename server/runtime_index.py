@@ -65,6 +65,7 @@ def index_read(provider,sid,request,parse):
  if provider not in ('codex','claude') or not re.fullmatch(r'[a-zA-Z0-9_-]{10,100}',sid):return unavailable('invalid-session')
  home=Path.home();root=Path(os.environ.get('CODEX_HOME',str(home/'.codex')))/'sessions' if provider=='codex' else home/'.claude/projects'
  paths=list(root.glob('**/*'+sid+'.jsonl'))
+ if provider=='claude' and not paths:return unavailable('session-file-unrecorded',unrecorded=True,sessionId=sid)
  if len(paths)!=1:return unavailable('session-file-ambiguous-or-missing')
  path=paths[0]
  if path.is_symlink():return unavailable('session-symlink')
