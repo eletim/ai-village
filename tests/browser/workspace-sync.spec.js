@@ -31,11 +31,41 @@ test('slow HTTP initial sync survives ten seconds and recovers from an interrupt
  const server=new WorkspaceSync();let calls=0;const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.route('**/api/**',async route=>{
   const u=new URL(route.request().url());if(u.pathname!=='/api/direct')return route.fulfill({json:{providers:{}}});
-  calls++;if(calls===1)await new Promise(r=>setTimeout(r,11000));if(calls===2)return route.abort('connectionreset');
+  // call 1: slow initial summary (focus=[]); call 2: the automatic focus follow-up once the board
+  // knows which agent to show; call 3: the next regular poll, dropped to exercise retry/backoff.
+  calls++;if(calls===1)await new Promise(r=>setTimeout(r,11000));if(calls===3)return route.abort('connectionreset');
   await route.fulfill({json:server.reply({client:u.searchParams.get('client'),since:u.searchParams.get('since')},workspaceSnapshot(state))});
  });
  await page.goto('http://village-http.test/agents');await expect(page.locator('#connection')).toContainText('● 接続',{timeout:18000});
  await page.locator('textarea[name=instruction]').fill('keep this draft');
  await expect(page.locator('#connection')).toContainText('再試行',{timeout:6000});const failedCalls=calls;await page.waitForTimeout(2200);expect(calls).toBe(failedCalls);
  await expect(page.locator('#connection')).toContainText('● 接続',{timeout:10000});await expect(page.locator('textarea[name=instruction]')).toHaveValue('keep this draft');expect(errors).toEqual([]);
+});
+test('quick normal polls keep the connected footer without flashing the syncing text',async({page})=>{
+ const state={agents:[{id:'a',name:'Fixture',location:'mayor',state:'idle',connection:{},canSend:true,nativeTurns:[]}],projects:[],workshops:[],reviews:{},requests:[],notification:{enabled:false},capabilities:{},runs:[]};
+ const server=new WorkspaceSync();
+ await page.route('**/api/**',async route=>{
+  const u=new URL(route.request().url());if(u.pathname!=='/api/direct')return route.fulfill({json:{providers:{}}});
+  await route.fulfill({json:server.reply({client:u.searchParams.get('client'),since:u.searchParams.get('since')},workspaceSnapshot(state))});
+ });
+ await page.goto('/agents');await expect(page.locator('#connection')).toContainText('● 接続');
+ await page.evaluate(()=>{window.__connectionTexts=[];new MutationObserver(()=>window.__connectionTexts.push(document.querySelector('#connection').textContent)).observe(document.querySelector('#connection'),{childList:true,characterData:true,subtree:true});});
+ await page.waitForTimeout(6500);
+ const seen=await page.evaluate(()=>window.__connectionTexts);expect(seen.some(t=>t.includes('同期中'))).toBe(false);
+});
+test('initial sync shows immediately and subsequent sync uses last success age',async({page})=>{
+ await page.clock.install({time:new Date(2026,0,1)});await page.clock.pauseAt(new Date(2026,0,1));
+ const state={agents:[],projects:[],workshops:[],reviews:{},requests:[],notification:{enabled:false},capabilities:{},runs:[]};
+ let pending=[];
+ await page.route('**/api/**',route=>{
+  if(new URL(route.request().url()).pathname!=='/api/direct')return route.fulfill({json:{providers:{}}});
+  pending.push(()=>route.fulfill({json:state}));
+ });
+ await page.goto('/agents');await expect(page.locator('#connection')).toContainText('同期中');
+ await expect.poll(()=>pending.length).toBe(1);await pending.shift()();await expect(page.locator('#connection')).toContainText('● 接続');
+ await page.clock.fastForward(2000);await expect.poll(()=>pending.length).toBe(1);
+ await expect(page.locator('#connection')).toContainText('● 接続');
+ await page.clock.fastForward(7999);await expect(page.locator('#connection')).toContainText('● 接続');
+ await page.clock.fastForward(1);await expect(page.locator('#connection')).toContainText('同期中');
+ await pending.shift()();await expect(page.locator('#connection')).toContainText('● 接続');
 });

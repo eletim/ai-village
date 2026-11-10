@@ -65,8 +65,9 @@ const handleRequest = async (req, res) => {
           const params=new URL(req.url,'http://localhost').searchParams;
           if(params.get('view')==='workspace'){
             let ranges;try{ranges=JSON.parse(params.get('ranges')||'{}');}catch{return json(res,400,{error:'Invalid history ranges'});}
-            const snapshot=workspaceSnapshot(direct.snapshot(),ranges);
-            if(params.get('sync')==='1')return await syncResponse(req,res,workspaceSync.reply({client:params.get('client'),since:params.get('since'),scope:params.get('ranges')||'{}'},snapshot));
+            let focus=null;if(params.has('focus')){try{focus=JSON.parse(params.get('focus'));}catch{return json(res,400,{error:'Invalid focus agents'});}}
+            const snapshot=workspaceSnapshot(direct.snapshot(),ranges,focus);
+            if(params.get('sync')==='1')return await syncResponse(req,res,workspaceSync.reply({client:params.get('client'),since:params.get('since'),scope:(params.get('ranges')||'{}')+'|'+(params.get('focus')||'')},snapshot));
             return json(res,200,snapshot);
           }
           return json(res,200,direct.snapshot());

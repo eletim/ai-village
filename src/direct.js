@@ -32,6 +32,9 @@ function newRequestId(){const b=crypto.getRandomValues(new Uint8Array(16));b[6]=
 const labels={superseded:'補足runへ引継ぎ',queued:'送信待ち',awaiting_input:'受付照合中',idle:'待機中',busy:'作業中',starting:'起動待ち',creating:'起動中',creation_unknown:'起動結果不明',unknown:'接続・状態不明',waiting_input:'入力待ち',interrupted:'中断',failed:'ランタイムエラー',unavailable:'端末利用不可',terminated:'終了',stopping:'終了処理中',stop_unknown:'終了結果不明',sending:'送信中',running:'応答待ち',send_unknown:'送信結果不明',completed:'応答完了'};
 let projectOpening=true;
 let state,focusedHash='',selectedPlace='all',selectedPage=0,zoomId='',selectedAgent='',boardScroll=0,connected=false,refreshTask;
+// The agent IDs actually rendered as cards right now; sync only fetches conversation bodies for these.
+let focusIds=new Set();
+const focusKey=()=>JSON.stringify([...focusIds].sort());
 const navigationKey='ai-village-sidebar-v1';
 let navigation={mode:'projects',projects:{id:'all',page:0},places:{id:'all',page:0}};
 try{
@@ -52,6 +55,15 @@ const positions=new Map(Object.entries(saved.positions||{})),cards=new Map(),dra
 const draftVersions=new Map(Object.entries(saved.draftVersions||{})),outbox=new Map(Object.entries(saved.outbox||{}).map(([id,m])=>[id,restorePendingMessage(m)]));
 for(const [id,receipt] of pending)if(!outbox.has(id))outbox.set(id,{...receipt,stage:'unknown',draftVersion:draftVersions.get(id)||0});
 const fileEditors=new Map(),scrolls=new Map(),historyRanges={},historyLoading=new Set(),historyErrors=new Map();
+// Bounds how many agents' loaded-history boundaries we keep once they leave focus.
+const HISTORY_RANGE_CAP=16;
+function capHistoryRanges(){
+ const keys=Object.keys(historyRanges);
+ while(keys.length>HISTORY_RANGE_CAP){
+  const evict=keys.find(k=>!focusIds.has(k));if(!evict)break;
+  delete historyRanges[evict];keys.splice(keys.indexOf(evict),1);
+ }
+}
 const travelDrafts=new Map(Object.entries(saved.travelDrafts||{})),travelEditors=new Map();
 function storeDrafts(){try{sessionStorage.setItem(storageKey,JSON.stringify({travelDrafts:Object.fromEntries(travelDrafts),positions:Object.fromEntries(positions),drafts:Object.fromEntries(drafts),pending:Object.fromEntries(pending),outbox:Object.fromEntries(outbox),draftVersions:Object.fromEntries(draftVersions)}));}catch{}}
 window.addEventListener('pagehide',()=>{capturePositions();storeDrafts();});
@@ -88,7 +100,10 @@ function recoveryHTML(r){
  return `<div class="recovery"><p>${esc(reason)}</p>${!w.parentWorkId?`<button data-retry-run="${esc(r.id)}">確認して再試行</button>`:'<p>委任元でrequests get/resultsを確認し、requests retryで復旧してください。</p>'}<button data-cancel-request="${esc(q.id)}">依頼をキャンセル</button></div>`;
 }
 function runHTML(a){
- const page=state.conversations?.[a.id],entries=page?.entries||agentEntries(state,a),divider=dateDividers(),localHTML=localMessageHTML(a.id);
+ const page=state.conversations?.[a.id];
+ // Just-focused but not yet synced: say so, rather than showing bodiless controls as if they were the full thread.
+ if(state.conversations&&!page&&focusIds.has(a.id))return '<p>会話を読み込み中…</p>';
+ const entries=page?.entries||agentEntries(state,a),divider=dateDividers(),localHTML=localMessageHTML(a.id);
  return (historyErrors.has(a.id)?`<p role="alert" class="history-error">${esc(historyErrors.get(a.id))}</p>`:'')+(page?.hasMore?`<button type="button" data-load-history="${esc(a.id)}" ${historyLoading.has(a.id)?'disabled':''}>${historyLoading.has(a.id)?'読込中…':'古い会話を読み込む'}</button>`:'')+entries.map(r=>`${divider(r.createdAt||r.completedAt)}<div class="run" data-entry="${esc(JSON.stringify([r.external?'native':'run',r.external?(r.sessionId||r.agentSessionId||''):'',r.id]))}">${r.suppressUser?'':bubble('user',r.instruction,r.createdAt,travelSummary(r.travelContexts)+attachmentHTML(r.attachments))}${r.output||r.finalOutput?'<div class="message assistant">'+responseHTML(r)+timeHTML(r.completedAt)+'</div>':''}<p class="run-status"><span class="badge">${r.external?'PurpleMuxからの入力 · ':r.origin==='result'?'子作業結果の配送 · ':r.origin==='steering'?'実行中への補足 · ':''}${esc(r.queueCancelledAt?'送信取消済み':r.reportStatus||labels[r.state]||r.state)}</span> · ${r.humanRequestId?esc(({active:'依頼継続中',finalizing:'最終報告の完了待ち',completed:'依頼全体完了',cancelled:'依頼キャンセル'})[state.requests?.find(q=>q.id===r.humanRequestId)?.status]||'依頼照合中'):'達成状況: 未判定'} ${esc(r.errorCode||'')} ${esc(r.attachmentError||r.error||'')} ${r.notification?' · 通知: '+esc(r.notification.status)+(r.notification.reason?' / '+esc(r.notification.reason):''):''}</p>${canCancelQueued(r)?`<button type="button" data-cancel-queued="${esc(r.id)}" data-queue-agent="${esc(a.id)}">送信待ちを取り消す</button>`:''}${r.queueCancelledAt?'':recoveryHTML(r)}</div>`).join('')+(localHTML?divider(outbox.get(a.id)?.createdAt)+localHTML:'')+divider.trailingToday();
 }
 function localMessageHTML(id){
@@ -105,6 +120,8 @@ function clearSubmittedDraft(id,receipt,message){
 function renderHistory(){
  options($('#history-agent'),state.agents.filter(a=>a.state==='terminated').map(a=>({id:a.id,name:placeName(a)+' / '+a.name+(state.reviews?.[a.id]?.attention?' · 依頼完了・要確認':unread.get(a.id)?' · 更新あり':'')})));
  const a=state.agents.find(a=>a.id===$('#history-agent').value);
+ // Terminated agents sit outside the board's focus set; viewing one in the dialog is its own focus.
+ if($('#history-dialog').open&&a)focusIds.add(a.id);
  const html=a?runHTML(a)||'<p>会話履歴はありません。</p>':'<p>終了したAgentはありません。</p>';
  const host=$('#history-content'),anchor=[...host.querySelectorAll('[data-entry]')].find(n=>n.getBoundingClientRect().bottom>host.getBoundingClientRect().top),offset=anchor?.getBoundingClientRect().top,key=anchor?.dataset.entry;
  updateReportHTML(host,html);const next=key&&[...host.querySelectorAll('[data-entry]')].find(n=>n.dataset.entry===key);if(next)host.scrollTop+=next.getBoundingClientRect().top-offset;
@@ -122,6 +139,7 @@ function renderBoard(){
  const restoreScroll=zoomId&&!list.some(a=>a.id===zoomId)?boardScroll:null;
  if(restoreScroll!==null)zoomId='';
  const shown=zoomId?list.filter(a=>a.id===zoomId):list.slice(selectedPage*PAGE_SIZE,(selectedPage+1)*PAGE_SIZE),ids=new Set(shown.map(a=>a.id));
+ focusIds=ids;
  $('#board-title').textContent=(zoomId?shown[0].name:groupTitle(selectedPlace,selectedPage))+(isProject(selectedPlace)&&(state.projects||[]).find(p=>p.id===selectedPlace.slice(8))?.suspended?' · 休止中（表示整理のみ）':'');
  $('#agent-count').textContent=`${shown.length} / ${list.length} Agent`;
  $('#pages').hidden=selectedPlace!=='all'||!!zoomId||pageCount===1;
@@ -164,7 +182,7 @@ function renderBoard(){
    if(!['unknown','send_unknown'].includes(known.state))clearSubmittedDraft(a.id,receipt,outbox.get(a.id));
    pending.delete(a.id);outbox.delete(a.id);storeDrafts();
   }
-  const area=card.querySelector('.runs'),html=runHTML(a);scrolls.get(a.id).preserve(()=>updateReportHTML(area,html));
+  const area=card.querySelector('.runs'),html=runHTML(a),wasLoading=area.dataset.loading==='true';area.dataset.loading=String(!!state.conversations&&!state.conversations[a.id]);if(wasLoading){updateReportHTML(area,html);scrolls.get(a.id).loaded();}else scrolls.get(a.id).preserve(()=>updateReportHTML(area,html));
   const send=card.querySelector('[data-send] button:not([data-reconcile])');
   fileEditors.get(a.id).lock(card.dataset.pending==='true'||pending.has(a.id));
   travelEditors.get(a.id).lock(card.dataset.pending==='true'||pending.has(a.id));
@@ -263,10 +281,10 @@ function choosePlace(id,page){
 $('#sidebar-mode').onclick=e=>{
  const mode=e.target.closest('[data-mode]')?.dataset.mode;if(!mode||mode===sidebarMode)return;
  capturePositions();pageMemory.set(pageKey(selectedPlace),selectedPage);rememberNavigation();sidebarMode=mode;
- const choice=navigation[mode];selectedPlace=choice.id;selectedPage=choice.page;selectedAgent='';zoomId='';projectOpening=true;boardScroll=0;$('#agents').scrollTop=0;renderBoard();
+ const choice=navigation[mode];selectedPlace=choice.id;selectedPage=choice.page;selectedAgent='';zoomId='';projectOpening=true;boardScroll=0;$('#agents').scrollTop=0;renderBoard();void refresh(true);
 };
-$('#previous-page').onclick=()=>choosePlace('all',selectedPage-1);
-$('#next-page').onclick=()=>choosePlace('all',selectedPage+1);
+$('#previous-page').onclick=()=>{choosePlace('all',selectedPage-1);void refresh(true);};
+$('#next-page').onclick=()=>{choosePlace('all',selectedPage+1);void refresh(true);};
 function toggleZoom(id){
  capturePositions();const restore=zoomId===id;
  if(!zoomId)boardScroll=$('#agents').scrollTop;
@@ -285,8 +303,8 @@ function focusAgent(){
  if(zoomId!==id)toggleZoom(id);cards.get(id)?.focus({preventScroll:true});
 }
 window.addEventListener('hashchange',()=>{focusedHash='';focusAgent();});
-$('#places').onclick=e=>{const add=e.target.closest('[data-add]'),place=e.target.closest('[data-place]');if(add)openManagement(add.dataset.add);else if(place)choosePlace(place.dataset.place,place.dataset.place==='all'?undefined:Number(place.dataset.page));};
-document.addEventListener('keydown',e=>{if(e.key==='Escape'&&zoomId&&!document.querySelector('dialog[open]'))toggleZoom(zoomId);});
+$('#places').onclick=e=>{const add=e.target.closest('[data-add]'),place=e.target.closest('[data-place]');if(add)openManagement(add.dataset.add);else if(place){choosePlace(place.dataset.place,place.dataset.place==='all'?undefined:Number(place.dataset.page));void refresh(true);}};
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&zoomId&&!document.querySelector('dialog[open]')){toggleZoom(zoomId);void refresh(true);}});
 let launcherProjectId=null;
 function openLauncher(place=selectedPlace,projectId=null){
  launcherProjectId=projectId;
@@ -352,14 +370,14 @@ $('#confirm-project-delete').onclick=()=>action($('#project-delete-dialog'),asyn
  const result=await api('/projects/'+projectDeletePlan.projectId+'/delete',projectDeleteInput);renderProjectDeletion(result);
  if(result.status==='deleted')$('#project-delete-dialog').close();
 });
-for(const b of document.querySelectorAll('[data-open]'))b.onclick=()=>{if(b.closest('#manage-dialog'))$('#manage-dialog').close();if(b.dataset.open==='projects-dialog')openProjects();else $('#'+b.dataset.open).showModal();};
+for(const b of document.querySelectorAll('[data-open]'))b.onclick=()=>{if(b.closest('#manage-dialog'))$('#manage-dialog').close();if(b.dataset.open==='projects-dialog')openProjects();else $('#'+b.dataset.open).showModal();if(b.dataset.open==='history-dialog')void refresh(true);};
 for(const b of document.querySelectorAll('[data-close]'))b.onclick=()=>b.closest('dialog').close();
-$('#history-agent').onchange=()=>{renderHistory();selectAgent($('#history-agent').value);};
+$('#history-agent').onchange=()=>{renderHistory();selectAgent($('#history-agent').value);void refresh(true);};
 async function api(path,body,method='POST'){
  if(path.endsWith('/runs')&&body?.steerTarget&&!state?.capabilities?.steering)throw Error('実行中の補足にはサーバー更新が必要です。');
  if(path.endsWith('/runs')&&body?.attachments?.length&&!state?.capabilities?.attachments)throw Error('添付にはサーバー更新の反映が必要です。');
  if(path.endsWith('/runs')&&body?.travelContexts?.length&&!state?.capabilities?.travelContexts)throw Error('出張先の送信にはサーバー更新の反映が必要です。下書きは保持しています。');
- if(method==='GET')return readJSON('/api/direct'+path,{onProgress:bytes=>{if(path.startsWith('?view=workspace'))$('#connection').textContent='同期中 · '+Math.ceil(bytes/1024)+' KB受信';}});
+ if(method==='GET')return readJSON('/api/direct'+path,{onProgress:bytes=>{if(path.startsWith('?view=workspace')&&syncIndicatorDue)$('#connection').textContent='同期中 · '+Math.ceil(bytes/1024)+' KB受信';}});
  const response=await fetch('/api/direct'+path,{method,signal:AbortSignal.timeout(30000),headers:{'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});
  const value=await response.json();if(!response.ok)throw Object.assign(Error(value.error||'操作に失敗しました'),{status:response.status});return value;
 }
@@ -372,8 +390,17 @@ function render(){
  $('#notifications').title='sentは通知サーバーの受理。端末への到着は未確認。';renderBoard();
 }
 const syncClient=newRequestId();let syncBase=null,retryAt=0,syncFailures=0;
+// Keep recent successful syncs visually stable; initial/stale loads show progress.
+let syncIndicatorTimer=null,syncIndicatorDue=false,lastSyncSucceededAt=null;
+function armSyncIndicator(){
+ syncIndicatorDue=false;
+ const reveal=()=>{syncIndicatorDue=true;$('#connection').textContent=state?'同期中…':'同期中 · 履歴を読み込んでいます…';};
+ const remaining=lastSyncSucceededAt===null?0:Math.max(0,10000-(Date.now()-lastSyncSucceededAt));
+ if(remaining===0)reveal();else syncIndicatorTimer=setTimeout(reveal,remaining);
+}
+function disarmSyncIndicator(){clearTimeout(syncIndicatorTimer);syncIndicatorTimer=null;syncIndicatorDue=false;}
 async function fetchWorkspace(){
- const path='?view=workspace&sync=1&client='+syncClient+'&ranges='+encodeURIComponent(JSON.stringify(historyRanges));
+ const path='?view=workspace&sync=1&client='+syncClient+'&ranges='+encodeURIComponent(JSON.stringify(historyRanges))+'&focus='+encodeURIComponent(JSON.stringify([...focusIds]));
  const result=await api(path+(syncBase?'&since='+encodeURIComponent(syncBase.cursor):''),null,'GET');
  // A retained older server or isolated UI fixture can still return the original protocol.
  if(!result.protocol){syncBase=null;return result;}
@@ -383,9 +410,14 @@ async function fetchWorkspace(){
 async function refresh(force=false){
  if(refreshTask){const result=await refreshTask;if(force)return refresh(true);return result;}
  if(!force&&Date.now()<retryAt)return false;
- $('#connection').textContent=state?'同期中…':'接続中 · 履歴を読み込んでいます…';
- refreshTask=(async()=>{try{state=await fetchWorkspace();for(const [id,page] of Object.entries(state.conversations||{}))if(page.cursor&&!historyRanges[id])historyRanges[id]=page.cursor;connected=true;retryAt=0;syncFailures=0;render();focusAgent();$('#connection').textContent='● 接続 · '+new Date().toLocaleTimeString();return true;}catch(e){connected=false;const delay=Math.min(30000,5000*2**Math.min(syncFailures++,3));retryAt=Date.now()+delay;if(state)renderBoard();$('#connection').textContent='接続不明: '+(e.message==='Failed to fetch'?'通信できませんでした。':e.message)+'（'+delay/1000+'秒後に再試行）';return false;}})();
- try{return await refreshTask;}finally{refreshTask=null;}
+ armSyncIndicator();
+ const requestedFocus=focusKey();
+ refreshTask=(async()=>{try{state=await fetchWorkspace();connected=true;retryAt=0;syncFailures=0;render();focusAgent();lastSyncSucceededAt=Date.now();disarmSyncIndicator();$('#connection').textContent='● 接続 · '+new Date().toLocaleTimeString();return true;}catch(e){connected=false;const delay=Math.min(30000,5000*2**Math.min(syncFailures++,3));retryAt=Date.now()+delay;if(state)renderBoard();disarmSyncIndicator();$('#connection').textContent='接続不明: '+(e.message==='Failed to fetch'?'通信できませんでした。':e.message)+'（'+delay/1000+'秒後に再試行）';return false;}})();
+ let result;try{result=await refreshTask;}finally{refreshTask=null;}
+ // renderBoard() (inside render()/focusAgent()) may have widened focus past what we just asked for
+ // (e.g. the very first summary-only reply reveals which agent should actually be shown) — go again.
+ if(result&&focusKey()!==requestedFocus)void refresh(true);
+ return result;
 }
 $('#agent-form [name=workshopId]').onchange=places;
 $('#agent-form [name=location]').onchange=()=>{if($('#agent-form [name=location]').value==='mayor'){const w=state.workshops.find(w=>w.connectionType==='local');if(w)$('#agent-form [name=workshopId]').value=w.id;$('#agent-form [name=name]').value='秘書';places();}};
@@ -395,7 +427,7 @@ $('#workshop-form [name=connectionType]').onchange=connectionFields;
 $('#workshop-form').onsubmit=e=>{e.preventDefault();const f=e.currentTarget;action(f,async()=>{const x=Object.fromEntries(new FormData(f));if(secretarySetup&&x.connectionType!=='local')throw Error('秘書にはローカル（村長PC）を選んでください。');await api('/workshops'+(x.id?'/'+x.id:''),{...x,iconPattern:patternEditor.value(),workplaces:x.workplaces.split('\n').map(s=>s.trim()).filter(Boolean)},x.id?'PUT':'POST');f.reset();connectionFields();$('#workshop-title').textContent='工房を登録';if(secretarySetup){await refresh(true);$('#settings-dialog').close();openLauncher('mayor');}});};
 $('#reset-workshop').onclick=()=>{if(secretarySetup)prepareSecretaryForm();else{$('#workshop-form').reset();connectionFields();$('#workshop-title').textContent='工房を登録';}};
 $('#workshops').onclick=e=>{const id=e.target.dataset.edit;if(!id)return;const w=state.workshops.find(w=>w.id===id);for(const key of ['id','name','connectionType','sshHost','baseUrl','workplaces'])$('#workshop-form').elements[key].value=key==='workplaces'?w[key].join('\n'):(w[key]??(key==='connectionType'?'ssh':''));patternEditor.set(w);connectionFields();$('#workshop-title').textContent='工房を編集';};
-$('#agent-form').onsubmit=e=>{e.preventDefault();const f=e.currentTarget;f.dataset.requestId ||= newRequestId();action(f,async()=>{let a;try{a=await api('/agents',{...Object.fromEntries(new FormData(f)),...(launcherProjectId?{projectId:launcherProjectId}:{}),requestId:f.dataset.requestId});}catch(error){if(error.status&&error.status<500)delete f.dataset.requestId;throw error;}delete f.dataset.requestId;$('#agent-dialog').close();await refresh(true);if(a.id){const scope=a.projectId?'project:'+a.projectId:placeId(a);choosePlace(scope,Math.floor(live().filter(x=>inScope(x,scope)).findIndex(x=>x.id===a.id)/PAGE_SIZE));cards.get(a.id)?.scrollIntoView({block:'nearest'});}});};
+$('#agent-form').onsubmit=e=>{e.preventDefault();const f=e.currentTarget;f.dataset.requestId ||= newRequestId();action(f,async()=>{let a;try{a=await api('/agents',{...Object.fromEntries(new FormData(f)),...(launcherProjectId?{projectId:launcherProjectId}:{}),requestId:f.dataset.requestId});}catch(error){if(error.status&&error.status<500)delete f.dataset.requestId;throw error;}delete f.dataset.requestId;$('#agent-dialog').close();await refresh(true);if(a.id){const scope=a.projectId?'project:'+a.projectId:placeId(a);choosePlace(scope,Math.floor(live().filter(x=>inScope(x,scope)).findIndex(x=>x.id===a.id)/PAGE_SIZE));void refresh(true);cards.get(a.id)?.scrollIntoView({block:'nearest'});}});};
 $('#agents').onsubmit=async e=>{
  e.preventDefault();const f=e.target,id=f.dataset.send;if(!id||pending.has(id)||f.querySelector('button').disabled||(!f.elements.instruction.value.trim()&&!fileEditors.get(id).count))return;
  if(travelEditors.get(id).value.length&&!state.capabilities?.travelContexts){$('#error').textContent='出張先の送信にはサーバー更新の反映が必要です。下書きは保持しています。';return;}
@@ -442,7 +474,7 @@ $('#agents').onclick=e=>{
    else {const full=await api('/requests/get',{humanRequestId:q.id});await api(r.phase==='report'&&r.state==='completed'?'/requests/resume':'/requests/retry',{humanRequestId:q.id,workId:r.workId,revision:full.revision,operationId:newRequestId(),instruction:'失敗・中断からの復旧です。既存変更・PR・外部操作・requests get/resultsの子作業を確認し、未完了部分だけ進めてください。子作業の再委任や二重操作を避け、モデルは変更しないでください。今回のrunでfinishを登録してください。\n元の指示（全文はrequests getで確認）:\n'+(full.instruction||'').slice(0,12000)});}
   });return;
  }
- const reconcile=e.target.closest('[data-reconcile]');if(reconcile){const id=reconcile.dataset.reconcile,receipt=pending.get(id);if(receipt)action(reconcile.closest('article'),async()=>{await api('/agents/'+id+'/runs',receipt);await refresh();});return;}const manage=e.target.closest('[data-manage-agent]'),zoom=e.target.closest('[data-zoom]');if(manage)openMetadata(manage.dataset.manageAgent);if(zoom)toggleZoom(zoom.dataset.zoom);};
+ const reconcile=e.target.closest('[data-reconcile]');if(reconcile){const id=reconcile.dataset.reconcile,receipt=pending.get(id);if(receipt)action(reconcile.closest('article'),async()=>{await api('/agents/'+id+'/runs',receipt);await refresh();});return;}const manage=e.target.closest('[data-manage-agent]'),zoom=e.target.closest('[data-zoom]');if(manage)openMetadata(manage.dataset.manageAgent);if(zoom){toggleZoom(zoom.dataset.zoom);void refresh(true);}};
 await refresh();setInterval(()=>{if(!document.hidden)void refresh();},2000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)void refresh(true);});
 
@@ -457,7 +489,7 @@ document.addEventListener('click',async e=>{
  historyErrors.delete(id);historyLoading.add(id);button.disabled=true;button.textContent='読込中…';
  try{
   const older=await api('/agents/'+encodeURIComponent(id)+'/history?boundaryOnly=1&before='+encodeURIComponent(page.cursor),null,'GET');
-  if(older.cursor)historyRanges[id]=older.cursor;
+  if(older.cursor){historyRanges[id]=older.cursor;capHistoryRanges();}
   if(!await refresh(true))throw Error('同期が中断しました。取得済みの会話は保持しています。');if($('#history-dialog').open)renderHistory();
  }catch(error){historyErrors.set(id,'履歴を取得できません。再試行できます: '+error.message);}
  finally{historyLoading.delete(id);renderBoard();if($('#history-dialog').open)renderHistory();}
