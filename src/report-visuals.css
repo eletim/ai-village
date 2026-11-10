@@ -30,3 +30,6 @@
 .date-divider{display:flex;align-items:center;gap:10px;width:100%;margin:16px 0;color:inherit;opacity:.7;font-size:12px;flex-shrink:0}.date-divider::before,.date-divider::after{content:"";height:1px;background:currentColor;opacity:.3;flex:1}.date-divider span{white-space:nowrap}
 /* Match the unset display preference before the settings module applies saved overrides. */
 :root{--reply-font:Meiryo,sans-serif;--text-scale:1}
+
+/* Keep touch composers at the iOS focus-zoom threshold, including landscape. */
+@media (any-pointer:coarse){.agent-panel textarea{font-size:max(16px,calc(16px * var(--text-scale,1)))}}

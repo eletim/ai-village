@@ -28,3 +28,16 @@ test('terminated Agent history uses stored size and font for both viewer modes',
  await page.route('**/api/**',r=>r.fulfill({json:r.request().url().endsWith('/api/village')?{ok:true,result:{enabled:false}}:{agents:[{id:'old',name:'履歴Agent',state:'terminated',connection:{}}],workshops:[],runs:[{id:'r',agentId:'old',instruction:'以前の依頼',output:'# 過去の報告\n\n本文',state:'completed'}],notification:{enabled:false}}}));await page.goto('/agents');await page.getByRole('button',{name:'設定',exact:true}).click();await page.getByRole('button',{name:'終了Agentの履歴',exact:true}).click();const history=page.locator('#history-content');await expect(history.locator('.markdown-report')).toHaveCSS('font-size','16.8px');await expect(history.locator('.markdown-report')).toHaveCSS('font-family',/Meiryo/);await expect(history.locator('.message.user pre')).toHaveCSS('font-size','15.6px');
  await page.evaluate(async()=>(await import('/src/display-preferences.js')).saveDisplay({viewer:'plain',textSize:'small'}));await expect(history.locator('.plain-report')).toHaveCSS('font-size','11.9px');await expect(history.locator('.plain-report')).toContainText('# 過去の報告');
 });
+test('touch composers stay at or above the iOS zoom threshold across text sizes and orientations; desktop keeps the plain text-scale size',async({page,browser})=>{
+ await setup(page);const input=page.locator('#agent-a textarea');
+ const change=p=>p.evaluate(async v=>(await import('/src/display-preferences.js')).saveDisplay(v),{textSize:'small'});
+ // Desktop (any-pointer:fine) is unaffected by the touch floor: small/large still fall below 16px.
+ const medium=await px(input);await change(page);expect(await px(input)).toBeCloseTo(medium*.85);
+ for(const viewport of [{width:390,height:844},{width:844,height:390}]){
+  const touch=await browser.newContext({viewport,isMobile:true,hasTouch:true}),tpage=await touch.newPage();
+  await setup(tpage);const tInput=tpage.locator('#agent-a textarea');
+  const setSize=textSize=>tpage.evaluate(async v=>(await import('/src/display-preferences.js')).saveDisplay(v),{textSize});
+  for(const [textSize,expected] of [['small',16],['medium',16],['large',19.2]]){await setSize(textSize);expect(await px(tInput)).toBeCloseTo(expected,1);}
+  await touch.close();
+ }
+});
