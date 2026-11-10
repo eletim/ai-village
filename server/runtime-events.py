@@ -57,7 +57,7 @@ def parse_event(db,provider,x,offset):
     if body:message(tid,uid,body)
     if x.get('isApiErrorMessage') is True:t.update(state='failed',outputFromMessages=True,outputThrough=offset,error=x.get('error') or 'runtime-api-error',completedAt=at,completionEvent=uid)
     elif m.get('stop_reason') in ('end_turn','stop_sequence','max_tokens'):t.update(state='interrupted' if m.get('stop_reason')=='max_tokens' else 'completed',finalOutput=body,outputFromMessages=True,outputThrough=offset,completedAt=at,completionEvent=uid)
-    elif m.get('stop_reason')=='tool_use':t['state']='running'
+    elif m.get('stop_reason')=='tool_use':t.update(state='running',outputFromMessages=True)
     db.put('turn',tid,t)
 
 if __name__=='__main__':

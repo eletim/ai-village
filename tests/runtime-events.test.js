@@ -40,6 +40,19 @@ test('Claude native UUID ancestry and stop reasons distinguish replies from API 
  await writeFile(join(root,sid+'.jsonl'),rows.map(JSON.stringify).join('\n')+'\n');
  const limited=JSON.parse(execFileSync('python3',['-c',runtimeScript,'claude',sid],{env:{...process.env,HOME:home}}));assert.equal(limited.turns[2].state,'interrupted');
 });
+test('Claude interim prose across multiple tool_use round trips accumulates before the turn ever completes',async t=>{
+ const home=await mkdtemp(join(tmpdir(),'claude-interim-'));t.after(()=>rm(home,{recursive:true,force:true}));
+ const root=join(home,'.claude/projects/test');await mkdir(root,{recursive:true});const sid='11111111-2222-3333-4444-555555555555';
+ const rows=[{type:'user',uuid:'u',message:{content:'hello'}},{type:'assistant',uuid:'a1',parentUuid:'u',message:{stop_reason:'tool_use',content:[{type:'thinking',text:'ignored'},{type:'text',text:'step one'},{type:'tool_use',id:'t1',name:'Read'}]}}];
+ const run=async()=>{await writeFile(join(root,sid+'.jsonl'),rows.map(JSON.stringify).join('\n')+'\n');return JSON.parse(execFileSync('python3',['-c',runtimeScript,'claude',sid],{env:{...process.env,HOME:home}}));};
+ let s=await run();assert.equal(s.turns[0].state,'running');assert.equal(s.turns[0].output,'step one');assert.equal(s.turns[0].completionOffset,undefined);
+ assert.equal(terminalBoundary(s,{alive:true,agentSessionId:sid}),false);
+ rows.push({type:'user',uuid:'r1',parentUuid:'a1',message:{content:[{type:'tool_result',content:'ok'}]}},{type:'assistant',uuid:'a2',parentUuid:'r1',message:{stop_reason:'tool_use',content:[{type:'text',text:'step two'},{type:'tool_use',id:'t2',name:'Read'}]}});
+ s=await run();assert.equal(s.turns[0].state,'running');assert.equal(s.turns[0].output,'step one\n\nstep two');
+ rows.push({type:'user',uuid:'r2',parentUuid:'a2',message:{content:[{type:'tool_result',content:'ok'}]}},{type:'assistant',uuid:'a3',parentUuid:'r2',message:{stop_reason:'end_turn',content:[{type:'text',text:'final reply'}]}});
+ s=await run();
+ assert.equal(s.turns[0].state,'completed');assert.equal(s.turns[0].finalOutput,'final reply');assert.equal(s.turns[0].output,'step one\n\nstep two\n\nfinal reply');
+});
 test('all visible Codex assistant messages are retained without using their contents for completion',async t=>{
  const dir=await mkdtemp(join(tmpdir(),'native-prose-'));t.after(()=>rm(dir,{recursive:true,force:true}));await mkdir(join(dir,'sessions'));const sid='11111111-2222-3333-4444-555555555555';
  const rows=[{type:'event_msg',payload:{type:'task_started',turn_id:'t'}},...['commentary','final_answer'].map(phase=>({type:'response_item',payload:{role:'assistant',phase,content:[{type:'output_text',text:phase+' free prose'}]}})),{type:'event_msg',payload:{type:'task_complete',turn_id:'t',last_agent_message:'final_answer free prose'}}];
