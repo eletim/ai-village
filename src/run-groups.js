@@ -12,10 +12,12 @@ export function rootRunIds(requests){
 // A human only ever speaks through a direct request ('human'), the raw native/PurpleMux
 // terminal (external, no managed origin at all), or legacy/未分類 runs with no origin recorded
 // at all (never fold what we can't classify). Everything else — steering, delegation,
-// retries/resumes, the report-only prompt, a child task's result delivery — is the village
-// talking to itself, and stays folded by default, unless it is still the live head above.
+// retries/resumes, the report-only prompt, a child task's result delivery, and an independent
+// new request one Agent sent another directly via the CLI/API 'requests start' path ('agent',
+// as opposed to the browser's own route or the office chat relay, both still 'human') — is the
+// village talking to itself, and stays folded by default, unless it is still the live head above.
 export const isAlwaysVisible=(r,current)=>!!r.external||r.origin==null||r.origin==='human'||!!current?.has(r.id);
-const originLabel={steering:'補足',delegation:'委任',retry:'再試行',continuation:'再開',report:'報告指示',result:'子作業結果'};
+const originLabel={steering:'補足',delegation:'委任',retry:'再試行',continuation:'再開',report:'報告指示',result:'子作業結果',agent:'他Agentからの依頼'};
 function groupSummary(group){
  const labels=[...new Set(group.map(r=>originLabel[r.origin]||r.origin||'内部'))];
  // Lead with the count so it is the first thing read, matching response-content.js's

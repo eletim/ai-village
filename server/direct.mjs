@@ -208,7 +208,7 @@ export class DirectAgents {
       await this.save();return a;
     });
   }
-  async send(id,input){return this.flow.start(id,input);}
+  async send(id,input,originKind='human'){return this.flow.start(id,input,originKind);}
   async attemptRun(r){return this.locked(r.agentId,async()=>{
     if(r.state!=='queued'||r.nextTransferAt>Date.now())return r;
     const a=this.agent(r.agentId);
