@@ -52,6 +52,12 @@ test('a retried answer on a non-human-origin run that is still the root work\'s 
  const order=[...html.matchAll(/data-id="([^"]+)"/g)].map(m=>m[1]);
  assert.deepEqual(order,['h1','retry-run']);
 });
+test('the summary leads with an accurate entry count for both a single folded entry and several',()=>{
+ const single=foldEntriesHTML([{id:'s1',origin:'steering'}],render);
+ assert.match(single,/<summary>人間以外のやり取りを見る（1件・補足）<\/summary>/);
+ const several=foldEntriesHTML([{id:'s1',origin:'steering'},{id:'d1',origin:'delegation'},{id:'d2',origin:'delegation'}],render);
+ assert.match(several,/<summary>人間以外のやり取りを見る（3件・補足・委任）<\/summary>/);
+});
 test('a dangerous entry id cannot break out of the data-disclosure attribute',()=>{
  const html=foldEntriesHTML([{id:'"><script>alert(1)</script>',origin:'steering'},{id:'r2',origin:'result'}],()=>'');
  assert(!html.includes('<script>'));

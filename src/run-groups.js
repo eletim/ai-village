@@ -18,7 +18,9 @@ export const isAlwaysVisible=(r,current)=>!!r.external||r.origin==null||r.origin
 const originLabel={steering:'補足',delegation:'委任',retry:'再試行',continuation:'再開',report:'報告指示',result:'子作業結果'};
 function groupSummary(group){
  const labels=[...new Set(group.map(r=>originLabel[r.origin]||r.origin||'内部'))];
- return `人間以外の入出力 ${group.length}件を表示（${labels.join('・')}）`;
+ // Lead with the count so it is the first thing read, matching response-content.js's
+ // own disclosure phrasing ("経過を見る（途中報告・元の最終回答）").
+ return `人間以外のやり取りを見る（${group.length}件・${labels.join('・')}）`;
 }
 // Groups a maximal run of consecutive foldable entries into one collapsed <details>, keyed by
 // its first entry so the open/closed state (restored by updateReportHTML) survives later appends
