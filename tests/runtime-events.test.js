@@ -40,6 +40,17 @@ test('Claude native UUID ancestry and stop reasons distinguish replies from API 
  await writeFile(join(root,sid+'.jsonl'),rows.map(JSON.stringify).join('\n')+'\n');
  const limited=JSON.parse(execFileSync('python3',['-c',runtimeScript,'claude',sid],{env:{...process.env,HOME:home}}));assert.equal(limited.turns[2].state,'interrupted');
 });
+test('Claude input recorded inside a pasted_content wrapper still hashes as the delivered prompt',async t=>{
+ const home=await mkdtemp(join(tmpdir(),'claude-pasted-'));t.after(()=>rm(home,{recursive:true,force:true}));
+ const root=join(home,'.claude/projects/test');await mkdir(root,{recursive:true});const sid='11111111-2222-3333-4444-555555555555';
+ const prompt='依頼本文\n\n<ai-village-request>\n{"humanRequestId":"x"}\n</ai-village-request>';
+ const wrapped='\n\n<pasted_content id="b984">\n'+prompt+'\n</pasted_content id="b984">\n';
+ const mismatched='<pasted_content id="a">\n'+prompt+'\n</pasted_content id="b">';
+ const rows=[{type:'user',uuid:'input-1',message:{content:wrapped}},{type:'user',uuid:'input-2',message:{content:prompt}},{type:'user',uuid:'input-3',message:{content:mismatched}}];
+ await writeFile(join(root,sid+'.jsonl'),rows.map(JSON.stringify).join('\n')+'\n');
+ const s=JSON.parse(execFileSync('python3',['-c',runtimeScript,'claude',sid],{env:{...process.env,HOME:home}}));
+ assert.equal(s.inputs[0].hash,inputHash(prompt));assert.equal(s.inputs[1].hash,inputHash(prompt));assert.equal(s.inputs[2].hash,inputHash(mismatched));
+});
 test('Claude interim prose across multiple tool_use round trips accumulates before the turn ever completes',async t=>{
  const home=await mkdtemp(join(tmpdir(),'claude-interim-'));t.after(()=>rm(home,{recursive:true,force:true}));
  const root=join(home,'.claude/projects/test');await mkdir(root,{recursive:true});const sid='11111111-2222-3333-4444-555555555555';
