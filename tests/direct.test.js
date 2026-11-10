@@ -141,6 +141,27 @@ test('an old terminal result cannot release uncertain input; stopping preserves 
  const f=await fixture(t);Object.assign(f.input('old'),{state:'completed',completedAt:'2099-01-01T00:00:00Z'});
  f.lose();const r=await f.service.send(f.a.id,{instruction:'new',requestId:'new-unknown'});await f.service.tick();assert.equal(f.a.canSend,false);assert.equal(r.state,'awaiting_input');await f.service.stop(f.a.id);assert.equal(r.state,'terminated');assert.equal(r.blocksInput,false);assert.equal(f.a.lifecycle,'terminated');
 });
+// Once the agent itself is terminated it is never observed again, so releaseStuckRuns()
+// (the bounded-wait path for 'unknown'/'send_unknown') can never fire for its own runs either.
+// stop() must resolve them itself or the owning work/request can never finish/retry/resume again.
+test('stopping an Agent while its run is unknown resolves that run to terminated, unblocking retry',async t=>{
+ const f=await fixture(t),r=await f.service.send(f.a.id,{instruction:'next',requestId:'request-unknown-1'});
+ f.input('next');f.input('direct interference');await f.service.tick();assert.equal(r.state,'unknown');const originalError=r.error;assert(originalError);
+ await f.service.stop(f.a.id);
+ assert.equal(r.state,'terminated');assert.equal(r.blocksInput,false);assert.equal(r.error,originalError);assert(r.unknownResolvedAt);
+ const q=f.service.flow.root(r.humanRequestId);
+ const retried=await f.service.flow.continue({humanRequestId:r.humanRequestId,workId:r.workId,revision:q.revision,operationId:'retry-after-stop',instruction:'retry now'},true);
+ assert.equal(retried.workId,r.workId);assert.equal(retried.origin,'retry');
+});
+test('stopping an Agent while its run is send_unknown resolves that run to terminated, preserving the original error',async t=>{
+ const f=await fixture(t);f.lose();const r=await f.service.send(f.a.id,{instruction:'hello',requestId:'request-send-unknown-1'});
+ assert.equal(r.state,'send_unknown');const originalError=r.error;assert(originalError);
+ await f.service.stop(f.a.id);
+ assert.equal(r.state,'terminated');assert.equal(r.blocksInput,false);assert.equal(r.error,originalError);assert(r.unknownResolvedAt);
+ const q=f.service.flow.root(r.humanRequestId);
+ const retried=await f.service.flow.continue({humanRequestId:r.humanRequestId,workId:r.workId,revision:q.revision,operationId:'retry-after-stop-2',instruction:'retry now'},true);
+ assert.equal(retried.workId,r.workId);
+});
 
 test('discovery joins saved placement to exact PurpleMux identities, including legacy and terminated Agents',async t=>{
  const f=await fixture(t);

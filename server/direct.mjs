@@ -369,7 +369,14 @@ export class DirectAgents {
       if(a.ownedProcesses)a.processVerification=JSON.parse(await this.execute(a,['python3','-c',stopProcessesScript,JSON.stringify(a.ownedProcesses),a.cwd,'[]','--owned-only']));
       if(a.ownedProcesses&&a.processVerification?.remainingOwned!==0)throw Error('所有プロセスの終了を確認できません');
       a.state='terminated';a.lifecycle='terminated';a.activityState='unknown';a.canSend=false;a.error=null;a.terminatedAt=now();
-      for(const r of this.data.runs)if(r.agentId===id&&active(r)){r.blocksInput=false;r.agentTerminatedAt=a.terminatedAt;if(!['unknown','send_unknown'].includes(r.state))r.state='terminated';}
+      // A terminated agent is never observed/polled again, so releaseStuckRuns() can never
+      // resolve an 'unknown'/'send_unknown' run of its own. Administrative stop is itself the
+      // bounded wait's outcome here: resolve the same way, never as a presumed success.
+      for(const r of this.data.runs)if(r.agentId===id&&active(r)){
+       r.blocksInput=false;r.agentTerminatedAt=a.terminatedAt;
+       if(['unknown','send_unknown'].includes(r.state)){r.error=r.error||'runtime-correlation-timeout';r.unknownResolvedAt=a.terminatedAt;}
+       r.state='terminated';
+      }
     }catch(e){a.state='stop_unknown';a.lifecycle='unknown';a.canSend=false;a.error='終了結果不明。'+e.message+' 再度終了を選ぶと対象tabの存在を照合します。';}
     await this.save();return a;
   });}

@@ -310,6 +310,10 @@ test('two-stage report replaces visible work after completion, waits for accepta
  assert.equal(q.ticket.state,'available');assert.equal(q.status,'active');assert.equal(f.notifications.length,0);
  let report=s.flow.run(q.works[0].currentRunId);assert.equal(report.phase,'report');assert.equal(report.workId,source.workId);
  assert.match(report.instruction,/元の質問/);assert.match(report.instruction,/追加作業/);
+ // finish must come before the report body is written, so a trailing habitual remark can
+ // never become the run's last message and clobber the report in finalOutput.
+ assert.match(report.instruction,/まず今回のrunで正式finishを登録し、その後に報告本文を書いて/);
+ assert.match(report.instruction,/本文の後には（finish登録済みの確認や一言なども含め）何も書き加えないで/);
  assert(JSON.stringify(s.snapshot()).includes('Output '+source.id));
  assert(!JSON.stringify(s.snapshot()).includes('人間向けの報告だけを作成'));
  assert.equal(s.snapshot().reviews[source.agentId].attention,false);

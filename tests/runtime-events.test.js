@@ -86,3 +86,18 @@ test('same native turn steering owns only messages after accepted input, includi
  s=await add(answer('m4','途中報告'));assert.equal(correlate(run,s).output,'途中報告\n\n途中報告');
  s=await add({type:'event_msg',payload:{type:'task_complete',turn_id:'t',last_agent_message:'途中報告'}});observed=correlate(run,s);assert.equal(observed.finalOutput,'途中報告');assert.equal(observed.state,'completed');assert(!observed.output.includes('受付直前'));
 });
+// reportPrompt() now tells the model to call finish BEFORE writing the report body, so the
+// report is always the run's truly last message. Confirms the native parser correctly isolates
+// finalOutput as that last message even when an earlier finish-related tool_use/remark happened
+// first in the same turn — the exact shape that previously corrupted finalOutput when the model
+// habitually appended a trailing remark *after* the report (old order: report, then finish, then
+// "Finish registered." became finalOutput, losing the report).
+test('Claude finalOutput isolates the report as the run\'s last message, surviving an earlier finish-tool remark in the same turn',async t=>{
+ const home=await mkdtemp(join(tmpdir(),'claude-report-order-'));t.after(()=>rm(home,{recursive:true,force:true}));
+ const root=join(home,'.claude/projects/test');await mkdir(root,{recursive:true});const sid='11111111-2222-3333-4444-555555555555';
+ const report='## 報告\n元のご質問に対する結果です。\n\n詳細な本文がここに続きます。';
+ const rows=[{type:'user',uuid:'u',message:{content:'報告だけを作成してください'}},{type:'assistant',uuid:'a1',parentUuid:'u',message:{stop_reason:'tool_use',content:[{type:'text',text:'先にfinishを登録します。'},{type:'tool_use',id:'t1',name:'Bash',input:{command:'requests finish ...'}}]}},{type:'user',uuid:'r1',parentUuid:'a1',message:{content:[{type:'tool_result',content:'ok'}]}},{type:'assistant',uuid:'a2',parentUuid:'r1',message:{stop_reason:'end_turn',content:[{type:'text',text:report}]}}];
+ await writeFile(join(root,sid+'.jsonl'),rows.map(JSON.stringify).join('\n')+'\n');
+ const s=JSON.parse(execFileSync('python3',['-c',runtimeScript,'claude',sid],{env:{...process.env,HOME:home}}));
+ assert.equal(s.turns[0].state,'completed');assert.equal(s.turns[0].finalOutput,report);assert.equal(s.turns[0].output,'先にfinishを登録します。\n\n'+report);
+});
