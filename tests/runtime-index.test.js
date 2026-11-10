@@ -57,8 +57,12 @@ test('invalid complete JSON and oversized single row stay unconfirmed instead of
 test('Claude ancestry, model and tool output boundaries survive append and restart',async t=>{
  const f=await setup(t),root=join(f.dir,'.claude','projects','test');await mkdir(root,{recursive:true});const file=join(root,sid+'.jsonl');
  const execute=async(a,args)=>execFileSync(args[0],args.slice(1),{env:{...f.env,HOME:f.dir},maxBuffer:15e6}).toString(),a={...f.a,provider:'claude'};
- await writeFile(file,lines([{type:'user',uuid:'u',message:{content:'hello'}},{type:'assistant',uuid:'tool',parentUuid:'u',message:{stop_reason:'tool_use',content:[]}}]));let s=await f.reader.read(a,f.status,execute);assert.equal(s.turns[0].state,'running');
- await appendFile(file,lines([{type:'user',uuid:'tool-result',parentUuid:'tool',message:{content:[{type:'tool_result',content:'ok'}]}},{type:'assistant',uuid:'answer',parentUuid:'tool-result',message:{model:'claude-test',usage:{speed:'fast'},stop_reason:'end_turn',content:[{type:'text',text:'answer'}]}}]));f.reader=new RuntimeReader(f.dir);s=await f.reader.read(a,f.status,execute);assert.equal(s.turns[0].output,'answer');assert.equal(s.modelInfo.serviceTier,'fast');assert.equal(correlate({dispatchConfirmed:true,baselineRuntime:{cursor:0,sessionId:sid},inputHash:inputHash('hello')},s).state,'completed');
+ // Interim prose beside a tool_use block must surface as output while the turn is still running, matching Codex parity.
+ await writeFile(file,lines([{type:'user',uuid:'u',message:{content:'hello'}},{type:'assistant',uuid:'tool',parentUuid:'u',message:{stop_reason:'tool_use',content:[{type:'thinking',text:'ignored'},{type:'text',text:'looking into it'},{type:'tool_use',id:'t1',name:'Read'}]}}]));let s=await f.reader.read(a,f.status,execute);
+ assert.equal(s.turns[0].state,'running');assert.equal(s.turns[0].output,'looking into it');assert.equal(s.turns[0].completionOffset,undefined);
+ await appendFile(file,lines([{type:'user',uuid:'tool-result',parentUuid:'tool',message:{content:[{type:'tool_result',content:'ok'}]}},{type:'assistant',uuid:'answer',parentUuid:'tool-result',message:{model:'claude-test',usage:{speed:'fast'},stop_reason:'end_turn',content:[{type:'text',text:'answer'}]}}]));f.reader=new RuntimeReader(f.dir);s=await f.reader.read(a,f.status,execute);
+ assert.equal(s.turns[0].output,'looking into it\n\nanswer');assert.equal(s.turns[0].finalOutput,'answer');assert.equal(s.turns[0].state,'completed');
+ assert.equal(s.modelInfo.serviceTier,'fast');assert.equal(correlate({dispatchConfirmed:true,baselineRuntime:{cursor:0,sessionId:sid},inputHash:inputHash('hello')},s).state,'completed');
 });
 test('a Claude compaction boundary appended mid-session never rotates fileIdentity or severs prior turn ownership',async t=>{
  // Reproduces, byte-for-byte, what a real Claude Code auto/manual compaction writes to
