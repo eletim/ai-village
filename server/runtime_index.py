@@ -89,7 +89,7 @@ def index_read(provider,sid,request,parse):
   try:cp=json.loads(row[0]) if row else None
   except ValueError:raise sqlite3.DatabaseError('invalid checkpoint')
   with os.fdopen(os.open(path,os.O_RDONLY|os.O_NOFOLLOW),'rb') as f:
-   st=os.fstat(f.fileno());now=stamp(st)
+   st=os.fstat(f.fileno());now=stamp(st);before_edges=edges(f,now[2])
    # Source continuity is independent of the rebuildable parser generation.
    proof=None;proof_bad=False
    try:proof=json.loads(proofpath.read_text())
@@ -97,13 +97,15 @@ def index_read(provider,sid,request,parse):
    except (ValueError,OSError):proof_bad=True
    if proof_bad and not cp:return unavailable('source-proof-corrupt')
    proof=proof or cp
-   # ctime also moves on metadata-only operations (chmod, utime, xattr/ACL writes, a
-   # hardlink count change) that touch no content byte at all; only mtime is a reliable
-   # content-change signal when size hasn't moved, and edges() independently confirms the
-   # actual bytes anyway. Requiring ctime stability too flagged a live, untouched session
-   # as "replaced" on nothing more than an incidental metadata write.
+   # Neither timestamp is a dependable content-change signal: ctime also moves on a
+   # metadata-only touch (chmod, utime, xattr/ACL, a hardlink count change) that writes no
+   # content byte, and a live, actively-growing Claude Code session was observed moving
+   # BOTH mtime and ctime with the size and edges() (the actual head+tail content hash)
+   # completely unchanged — some internal preallocation/checkpoint write, not a real
+   # rewrite. edges() is the real content check; neither timestamp adds a safe guarantee
+   # beyond it, only false positives, so same-size continuity relies on edges() alone.
    def same_source(p):
-    return bool(p and p.get('path')==str(path.resolve()) and p['stat'][:2]==now[:2] and now[2]>=p['stat'][2] and not (now[2]==p['stat'][2] and now[3]!=p['stat'][3]) and edges(f,p['offset'])==p.get('edges'))
+    return bool(p and p.get('path')==str(path.resolve()) and p['stat'][:2]==now[:2] and now[2]>=p['stat'][2] and edges(f,p['offset'])==p.get('edges'))
    continuity=same_source(proof)
    source_changed=bool(proof) and not continuity
    reset=not cp or cp.get('version')!=PARSER_VERSION or not same_source(cp)
@@ -122,9 +124,10 @@ def index_read(provider,sid,request,parse):
     except (ValueError,UnicodeDecodeError):reason='invalid-json-line';break
     parse(db,provider,x,offset+len(raw));offset+=len(raw);count+=1
    after=stamp(os.fstat(f.fileno()))
-   # Concurrent append is safe for parsed prefix; replacement/rewrite is not. mtime alone
-   # is the content-change signal here too; see same_source() above for why ctime isn't.
-   if after[:2]!=now[:2] or after[2]<now[2] or (after[2]==now[2] and after[3]!=now[3]) or stamp(path.stat())[:2]!=now[:2]:
+   # Concurrent append is safe for parsed prefix; replacement/rewrite is not. Re-checking
+   # edges() at the same offset (now[2]) is the content-change signal here too, for the
+   # same reason same_source() above no longer trusts either timestamp for this.
+   if after[:2]!=now[:2] or after[2]<now[2] or (after[2]==now[2] and edges(f,now[2])!=before_edges) or stamp(path.stat())[:2]!=now[:2]:
     c.rollback();return unavailable('source-changed-during-read')
    cp.update(offset=offset,current=db.current,stat=now,edges=edges(f,offset));c.execute("insert or replace into meta values('checkpoint',?)",(encode(cp),))
   top=c.execute('select coalesce(max(seq),0) from changes').fetchone()[0]
