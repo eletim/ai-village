@@ -44,3 +44,11 @@ test('bad bases and malformed append never partly update a browser snapshot',()=
  delta.changes.find(c=>c.op==='append').length=0;assert.throws(()=>acceptWorkspace(current,delta));assert.deepEqual(current,before);
  assert.throws(()=>applyChanges({},[{op:'set',path:['__proto__','polluted'],value:true}]));assert.equal({}.polluted,undefined);
 });
+test('final suffix travels once and is restored exactly through full and delta responses',()=>{
+ const snapshot=fixture(1),entry=snapshot.conversations.a.entries[0];entry.finalOutput='最終回答'.repeat(1000);entry.output='途中報告\n'+entry.finalOutput;
+ const packed=packWorkspace(snapshot);assert.deepEqual(unpackWorkspace(packed),snapshot);
+ assert.ok(JSON.stringify(packed).length<JSON.stringify(snapshot).length-entry.finalOutput.length/2);
+ const server=new WorkspaceSync();let base=acceptWorkspace(null,server.reply({client:'final-dedup'},snapshot));
+ entry.output='更新した経過\n'+entry.finalOutput;base=acceptWorkspace(base,server.reply({client:'final-dedup',since:base.cursor},snapshot));assert.deepEqual(base.state,snapshot);
+ entry.output='末尾が最終回答と一致しない';base=acceptWorkspace(base,server.reply({client:'final-dedup',since:base.cursor},snapshot));assert.deepEqual(base.state,snapshot);
+});

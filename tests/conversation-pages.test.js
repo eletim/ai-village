@@ -25,3 +25,34 @@ test('cursor unaffected by managed run acceptance and external sessions remain d
  const v=fixture(1);const p=historyPage(v,'a');v.runs[0].sessionId='new';assert.equal(workspaceSnapshot(v,{a:p.cursor}).conversations.a.entries.length,1);
  v.agents[0].nativeTurns=[{id:'same',sessionId:'x',startedAt:'2020',output:'same text'},{id:'same',sessionId:'y',startedAt:'2020',output:'same text'}];assert.equal(historyPage(v,'a').entries.length,3);
 });
+test('focus narrows bodies to the requested agents; everyone else keeps only a bodiless latest control',()=>{
+ const v=fixture(3);v.agents.push({id:'b',state:'idle',name:'Other',location:'mayor',connection:{},nativeTurns:[]});
+ v.runs.push(...Array.from({length:5},(_,i)=>({id:'b'+i,agentId:'b',createdAt:new Date(1800000000000+i*1000).toISOString(),state:'completed',instruction:'b question '+i,output:'b answer '+i,humanRequestId:'qb'})));
+ v.requests=[{id:'qb',status:'active',works:[{id:'wb',currentRunId:'b4'}]}];
+ const s=workspaceSnapshot(v,{},['a']);
+ assert(s.conversations.a);assert.equal(s.conversations.a.entries.length,3);assert.equal(s.conversations.a.entries[0].output,v.runs[0].output);
+ assert.equal(s.conversations.b,undefined);
+ const bControl=s.runs.find(r=>r.id==='b4');assert(bControl);assert.equal(bControl.output,undefined);assert.equal(bControl.instruction,undefined);
+ assert.equal(s.runs.some(r=>r.id==='b0'),false);
+ assert.equal(s.requests.length,1);assert.equal(s.requests[0].id,'qb');
+ assert(!JSON.stringify(s).includes('b question'));assert(!JSON.stringify(s).includes('b answer'));
+});
+test('empty focus (initial summary) sends no conversation bodies for anyone',()=>{
+ const v=fixture(3);v.agents.push({id:'b',state:'idle',name:'Other',location:'mayor',connection:{},nativeTurns:[]});
+ const s=workspaceSnapshot(v,{},[]);
+ assert.deepEqual(s.conversations,{});
+ assert.equal(s.runs.length,1);assert.equal(s.runs[0].id,'r2');assert.equal(s.runs[0].output,undefined);
+ assert(!JSON.stringify(s).includes('answer'));
+});
+test('omitted focus keeps legacy full-snapshot behaviour',()=>{
+ const v=fixture(3);v.agents.push({id:'b',state:'idle',name:'Other',location:'mayor',connection:{},nativeTurns:[]});
+ const s=workspaceSnapshot(v);assert(s.conversations.a);assert.equal(s.conversations.a.entries.length,3);
+ // 'b' still gets a (empty) conversation entry without focus-narrowing, unlike the focus=['a'] case above.
+ assert.deepEqual(s.conversations.b,{entries:[],hasMore:false,cursor:null});
+});
+test('invalid focus is rejected',()=>{
+ const v=fixture(1);
+ assert.throws(()=>workspaceSnapshot(v,{},'a'),{status:400});
+ assert.throws(()=>workspaceSnapshot(v,{},[1]),{status:400});
+ assert.throws(()=>workspaceSnapshot(v,{},['x'.repeat(201)]),{status:400});
+});

@@ -31,7 +31,9 @@ test('slow HTTP initial sync survives ten seconds and recovers from an interrupt
  const server=new WorkspaceSync();let calls=0;const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.route('**/api/**',async route=>{
   const u=new URL(route.request().url());if(u.pathname!=='/api/direct')return route.fulfill({json:{providers:{}}});
-  calls++;if(calls===1)await new Promise(r=>setTimeout(r,11000));if(calls===2)return route.abort('connectionreset');
+  // call 1: slow initial summary (focus=[]); call 2: the automatic focus follow-up once the board
+  // knows which agent to show; call 3: the next regular poll, dropped to exercise retry/backoff.
+  calls++;if(calls===1)await new Promise(r=>setTimeout(r,11000));if(calls===3)return route.abort('connectionreset');
   await route.fulfill({json:server.reply({client:u.searchParams.get('client'),since:u.searchParams.get('since')},workspaceSnapshot(state))});
  });
  await page.goto('http://village-http.test/agents');await expect(page.locator('#connection')).toContainText('● 接続',{timeout:18000});

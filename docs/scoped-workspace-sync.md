@@ -1,0 +1,13 @@
+# Scoped Workspace transport
+
+Workspace now starts with `focus=[]` (summary only), then requests only the Agent IDs represented by visible cards or the open archived-Agent history dialog. All Agent state/review indicators remain available; conversations of other Projects and terminated Agents are not prefetched. The full audit API and saved source histories are unchanged.
+
+The UI retains the current keyed delta base only. History boundaries are remembered for at most 16 Agent IDs (nonfocused IDs evicted first). Normal polling retains the latest 100 entries, rather than pinning the initial boundary forever; explicitly requesting older history widens that Agent's range. A manually expanded active history can still be large. This is not a per-byte cap for individual conversations.
+
+A parent review added a non-localhost HTTP scenario for initial summary, focused bodies, old history, rapid switching while a reply is delayed, drafts, scroll position, and server-base reset. A loading marker prevents empty placeholders from overwriting saved chat scroll positions. Legacy snapshots without `conversations` remain renderable. The old complete-browser run before this compatibility correction is not representative of the final code.
+
+Transport packing removes exact output/finalOutput suffix duplication and reconstructs the original fields in the client. Controls carry only IDs, state and identity needed by controls, not duplicate error/recovery bodies. Process ownership and creation metadata are omitted from Workspace Agent summaries but remain in audit/management endpoints.
+
+Frozen live-data comparison, before gzip: old initial 2,184,694 B / 386 entries / 25 Agents. New summary 54,941 B, followed by focused village secretary delta 306,543 B / 104 entries (100 recent plus active older records). Combined 361,484 B, 83.45% lower. Identical no-change delta 136 B. These are same-source snapshot measurements, not time-separated live samples. Defaults displaying more cards transfer more bodies.
+
+Final validation: 245 node tests passed; the two existing TODO/travel HTTP tests still expect 200 from a legacy URL now returning 302. Six targeted browser cases passed, including non-localhost HTTP, slow sync, scoped switching and race/reconnect cases. Live VPN HTTP at 256 kbps / 100 ms reached the selected conversation in 11.1 seconds with no page errors; history grew from 104 to 186 entries, Project switching and offline/online recovery succeeded. A fresh live response measured 54,377 B summary + 313,010 B focused delta (live source differs from the frozen comparison above). Main was not merged.
