@@ -13,6 +13,7 @@ test('only human-origin, external/native and unclassified-origin entries are nev
  assert.equal(isAlwaysVisible({origin:'continuation'}),false);
  assert.equal(isAlwaysVisible({origin:'report'}),false);
  assert.equal(isAlwaysVisible({origin:'result'}),false);
+ assert.equal(isAlwaysVisible({origin:'agent'}),false);
 });
 test('a run that is the live head of its own request\'s root work is visible even with a non-human origin',()=>{
  const current=rootRunIds([{works:[{id:'w',parentWorkId:null,currentRunId:'retry-run'}]}]);
@@ -51,6 +52,14 @@ test('a retried answer on a non-human-origin run that is still the root work\'s 
  assert(!html.includes('<details'));
  const order=[...html.matchAll(/data-id="([^"]+)"/g)].map(m=>m[1]);
  assert.deepEqual(order,['h1','retry-run']);
+});
+test('an Agent-to-Agent independent request (origin agent) folds by default but stays visible if it is still the root work\'s current run',()=>{
+ const folded=foldEntriesHTML([{id:'a1',origin:'agent'}],render);
+ assert.match(folded,/^<details class="run-group" data-disclosure="group:a1">/);
+ assert.match(folded,/他Agentからの依頼/);
+ const current=rootRunIds([{works:[{id:'w',parentWorkId:null,currentRunId:'a1'}]}]);
+ const unfolded=foldEntriesHTML([{id:'a1',origin:'agent'}],render,current);
+ assert(!unfolded.includes('<details'));
 });
 test('a dangerous entry id cannot break out of the data-disclosure attribute',()=>{
  const html=foldEntriesHTML([{id:'"><script>alert(1)</script>',origin:'steering'},{id:'r2',origin:'result'}],()=>'');

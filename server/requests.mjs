@@ -65,7 +65,14 @@ export class RequestFlow {
    '委任・結果確認・復旧の詳細は必要時にCLI help、またはPOST '+apiBase+'/api/village {"argv":["help"]}（requests delegate/results/acknowledge/retry/resume/cancel）を確認してください。\n</ai-village-request>';
 
  }
- async start(agentId,input){
+ // originKind tags who actually dispatched this independent new request. The browser's own
+ // /api/direct/agents/:id/runs route and the office chat relay (Secretariat.send()) never pass
+ // a third argument, so they keep the default 'human'; the generic CLI/API 'requests start'
+ // operation is the one path an Agent can also reach directly (bypassing requests delegate), so
+ // it is the only caller that overrides this to 'agent'. Steering already tags its own origin
+ // regardless of this value, since who may supplement an active turn is unrelated to who may
+ // start a brand-new one.
+ async start(agentId,input,originKind='human'){
   if(input.steerTarget!==undefined){
    const t=input.steerTarget;
    if(!t||typeof t!=='object'||Array.isArray(t)||['runId','sessionId','turnId'].some(k=>typeof t[k]!=='string'||!t[k]||t[k].length>200)||Object.keys(t).length!==3)fail('steerTargetにはrunId/sessionId/turnIdを指定してください',400);
@@ -100,7 +107,7 @@ export class RequestFlow {
    const a=this.d.writableAgent(this.d.agent(agentId));if(!a.tabId||['terminated','stopping','stop_unknown'].includes(a.state))fail('Agentは送信可能ではありません');
    q={reportMode:this.reportStatus().enabled,id:randomUUID(),clientRequestId:input.requestId,instruction:input.instruction,travelContexts,attachments,originAgentId:agentId,finalAgentId:agentId,status:'active',revision:0,createdAt:now(),ticket:{id:randomUUID(),state:'available'},works:[],inbox:[]};
    const w={id:randomUUID(),parentWorkId:null,agentId,runIds:[],state:'active'};q.rootWorkId=w.id;q.works.push(w);this.requests.push(q);
-   const r=this.enqueue(q,w,input.instruction,'human','human');r.requestId=input.requestId;q.initialRunId=r.id;
+   const r=this.enqueue(q,w,input.instruction,'human',originKind);r.requestId=input.requestId;q.initialRunId=r.id;
    await this.d.save();await this.d.attemptRun(r);return r;
   });
  }

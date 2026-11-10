@@ -131,6 +131,19 @@ test('official CLI exposes delegation, results and finalization using the same p
  const receipt=await ops.execute(['requests','finish',JSON.stringify(payload)]);assert.equal(receipt.ok,true);assert.equal(f.notifications.length,0);
  await f.complete(r);assert.equal(f.notifications.length,1);assert.equal((await ops.execute(['requests','finish',JSON.stringify(payload)])).ok,true);await s.tick();assert.equal(f.notifications.length,1);
 });
+test('requests start reached through the CLI/API is tagged origin agent, never human, while the browser/office relay path stays human',async t=>{
+ const f=await fixture(t),s=f.service,ops=new VillageOperations({dir:f.options.dir},null,{direct:s});
+ const human=await s.send(f.agents[0].id,{instruction:'Browser or office relay',requestId:'origin-check-human'});
+ assert.equal(human.origin,'human');
+ const payload={agentId:f.agents[1].id,requestId:'origin-check-agent',instruction:'Agent to Agent'};
+ const started=await ops.execute(['requests','start',JSON.stringify(payload)]);assert.equal(started.ok,true);
+ const agentRun=s.flow.run(started.result.id);assert.equal(agentRun.origin,'agent');assert.equal(agentRun.humanRequestId,started.result.humanRequestId);
+ // Steering always tags its own origin regardless of which path dispatched the follow-up.
+ await f.submit(agentRun);
+ const steerPayload={agentId:f.agents[1].id,requestId:'origin-check-agent-steer',instruction:'follow up',steerTarget:structuredClone(s.agent(f.agents[1].id).steerTarget)};
+ const steered=await ops.execute(['requests','start',JSON.stringify(steerPayload)]);assert.equal(steered.ok,true);
+ assert.equal(s.flow.run(steered.result.id).origin,'steering');
+});
 test('same Agent queues distinct human requests; resume keeps its original ticket and cannot complete another request',async t=>{
  const f=await fixture(t),s=f.service,a=f.agents[0];
  const r1=await s.send(a.id,{instruction:'First',requestId:'queued-first-request'});await f.submit(r1);
