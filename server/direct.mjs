@@ -22,6 +22,10 @@ const now = () => new Date().toISOString();
 const ready = s => ['idle','ready-for-review'].includes(s.cliState);
 const active = r => ['sending','awaiting_input','running','send_unknown','unknown','waiting_input'].includes(r.state);
 const blocking = r => active(r)&&r.blocksInput!==false;
+// A run whose native correlation stays unresolved must not block an agent forever.
+// canSend still requires a freshly observed idle CLI, so releasing the stale block
+// here never races a turn that native polling still reports as busy.
+const STUCK_RUN_TIMEOUT_MS = 10*60*1000;
 
 
 // Human and future secretary callers share this service. No model-generated
@@ -237,6 +241,19 @@ export class DirectAgents {
     const observed=correlate(previous,snapshot);
     return observed.state==='running'&&observed.turnId===t.turnId&&snapshot.inputs.filter(i=>i.turnId===t.turnId).every(i=>r.priorInputs.some(p=>inputMatches(i,p)));
   }
+  // 'unknown'/'send_unknown' only mean native correlation is currently unresolved,
+  // never that the run finished. After a bounded wait we stop trusting it as a
+  // reason to block new dispatch and let it be retried like any other terminated run.
+  releaseStuckRuns(a){
+    for(const r of this.data.runs.filter(r=>r.agentId===a.id)){
+      if((r.state==='unknown'||r.state==='send_unknown')&&r.blocksInput!==false){
+        r.unknownSince ||= now();
+        if(Date.now()-Date.parse(r.unknownSince)>=STUCK_RUN_TIMEOUT_MS){
+          r.state='terminated';r.blocksInput=false;r.error=r.error||'runtime-correlation-timeout';r.unknownResolvedAt=now();
+        }
+      }else delete r.unknownSince;
+    }
+  }
   updateAvailability(a){
     a.canSteer=false;delete a.steerTarget;
 
@@ -250,7 +267,7 @@ export class DirectAgents {
     a.sendReason=a.canSend||a.canSteer?null:a.connectionState!=='connected'?'接続・稼働状態を確認できません':a.lifecycle!=='alive'?'Agentが稼働していません':a.activityState==='waiting_input'?'PurpleMuxで入力・許可を確認してください':blocked?'前の指示の受付・実行状態を確認中です':a.activityState==='busy'?'Agentが実行中です':'待機状態を確認できません';
   }
   async observe(a){
-    if(this.agentDeleting(a)){this.updateAvailability(a);return {available:false,turns:[],inputs:[]};}
+    if(this.agentDeleting(a)){this.releaseStuckRuns(a);this.updateAvailability(a);return {available:false,turns:[],inputs:[]};}
     try{
       const s=await this.pmux(a,'tab','status','-w',a.workspaceId,a.tabId);
       const snapshot=await this.runtime(a,s);
@@ -300,8 +317,13 @@ export class DirectAgents {
           r.state=a.activityState==='waiting_input'?'waiting_input':observation.state==='running'&&s.alive?'running':observation.reason==='input-not-observed'&&r.dispatchAttemptedAt?'awaiting_input':'unknown';r.error=observation.reason||null;
           // Preserve uncertain attribution, but a later native terminal boundary plus
           // an idle live CLI can release the input gate. Never resend or infer success.
+          // A fileIdentity rotation (e.g. the host's native-index cache losing its
+          // continuity proof around a log rotation/compaction) does not by itself
+          // mean a different session: sessionId is the stronger, provider-assigned
+          // continuity signal, so it alone gates this release. correlate() above is
+          // unaffected and keeps rejecting fileIdentity mismatches for ownership.
           const checkpoint=r.baselineRuntime;
-          const sameStream=checkpoint&&(!checkpoint.sessionId||checkpoint.sessionId===snapshot.sessionId)&&(!checkpoint.fileIdentity||checkpoint.fileIdentity===snapshot.fileIdentity);
+          const sameStream=checkpoint&&(!checkpoint.sessionId||checkpoint.sessionId===snapshot.sessionId);
           const oldSession=r.sessionId||r.agentSessionId||checkpoint?.sessionId;
           const boundary=latest&&['completed','interrupted','failed'].includes(latest.state)&&(
             (sameStream&&snapshot.inputs.some(i=>i.offset>checkpoint.cursor&&i.turnId===latest.id))||
@@ -310,9 +332,9 @@ export class DirectAgents {
         }
       }
       a.state=a.lifecycle==='alive'?a.activityState:a.lifecycle==='unknown'?'unknown':'unavailable';
-      this.updateAvailability(a);await this.save();return snapshot;
+      this.releaseStuckRuns(a);this.updateAvailability(a);await this.save();return snapshot;
     }catch{
-      a.modelInfo={available:false};a.connectionState='unknown';a.lifecycle='unknown';a.activityState='unknown';a.state='unknown';a.error='接続・状態取得ができません。監視を継続します。';this.updateAvailability(a);await this.save();return {available:false,turns:[],inputs:[]};
+      a.modelInfo={available:false};a.connectionState='unknown';a.lifecycle='unknown';a.activityState='unknown';a.state='unknown';a.error='接続・状態取得ができません。監視を継続します。';this.releaseStuckRuns(a);this.updateAvailability(a);await this.save();return {available:false,turns:[],inputs:[]};
     }
   }
   async poll(a){

@@ -102,6 +102,36 @@ test('uncertain delivery retains uncertainty but a later native terminal boundar
  Object.assign(f.input('unknown delivery'),{state:'completed',output:'native result'});await f.service.tick();assert.equal(r.state,'completed');assert.equal(r.blocksInput,false);assert.equal(f.a.canSend,true);assert.equal(f.notices(),0);assert.equal(f.sends(),1);
  assert.equal((await f.service.send(f.a.id,{instruction:'unknown delivery',requestId:'request-uncertain'})).id,r.id);assert.equal(f.sends(),1);
 });
+test('a fileIdentity rotation within the same session is treated as continuation, not a different session',async t=>{
+ // Mimics a host-side native-index identity rotation (e.g. around a log
+ // rotation/compaction) that happens mid-run while the native sessionId never
+ // changes: correlate() still refuses to attribute output to a different
+ // fileIdentity, but the agent must not stay blocked forever once a terminal
+ // native boundary is independently observed for that same session.
+ const f=await fixture(t);f.data.fileIdentity='file-1';
+ const r=await f.service.send(f.a.id,{instruction:'rotated',requestId:'request-rotated'});
+ assert.equal(r.state,'awaiting_input');assert.equal(f.a.canSend,false);
+ f.data.fileIdentity='file-2';
+ Object.assign(f.input('rotated'),{state:'completed',output:'native result'});
+ await f.service.tick();
+ assert.equal(r.state,'unknown');assert.equal(r.error,'runtime-file-replaced');
+ assert.equal(r.blocksInput,false);assert.equal(f.a.canSend,true);
+});
+test('a run stuck without native correlation times out instead of blocking the agent forever',async t=>{
+ const f=await fixture(t);f.data.fileIdentity='file-1';
+ const r=await f.service.send(f.a.id,{instruction:'stuck',requestId:'request-stuck'});assert.equal(f.sends(),1);
+ f.data.fileIdentity='file-2';await f.service.tick();
+ assert.equal(r.state,'unknown');assert.equal(f.a.canSend,false);
+ const stuck=f.service.data.runs.find(x=>x.id===r.id);assert(stuck.unknownSince);
+ await f.service.tick();assert.equal(stuck.state,'unknown');assert.equal(f.a.canSend,false);
+ stuck.unknownSince=new Date(Date.now()-11*60*1000).toISOString();
+ await f.service.tick();
+ assert.equal(stuck.state,'terminated');assert.equal(stuck.blocksInput,false);assert.equal(f.a.canSend,true);
+ const q=f.service.flow.root(r.humanRequestId);
+ const retried=await f.service.flow.continue({humanRequestId:r.humanRequestId,workId:r.workId,revision:q.revision,operationId:'retry-after-timeout',instruction:'retry now'},true);
+ assert.equal(retried.state,'queued');await f.service.tick();
+ assert.equal(f.service.flow.run(retried.id).state,'awaiting_input');assert.equal(f.sends(),2);
+});
 test('concurrent launch retries return one identity and terminated agents do not block new launch',async t=>{
  const f=await fixture(t),input={workshopId:f.w.id,cwd:'/tmp',requestId:'concurrent-create',provider:'claude'};
  const [a,b]=await Promise.all([f.service.create(input),f.service.create(input)]);assert.equal(a.id,b.id);await f.service.stop(a.id);

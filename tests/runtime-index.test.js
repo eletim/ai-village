@@ -60,6 +60,33 @@ test('Claude ancestry, model and tool output boundaries survive append and resta
  await writeFile(file,lines([{type:'user',uuid:'u',message:{content:'hello'}},{type:'assistant',uuid:'tool',parentUuid:'u',message:{stop_reason:'tool_use',content:[]}}]));let s=await f.reader.read(a,f.status,execute);assert.equal(s.turns[0].state,'running');
  await appendFile(file,lines([{type:'user',uuid:'tool-result',parentUuid:'tool',message:{content:[{type:'tool_result',content:'ok'}]}},{type:'assistant',uuid:'answer',parentUuid:'tool-result',message:{model:'claude-test',usage:{speed:'fast'},stop_reason:'end_turn',content:[{type:'text',text:'answer'}]}}]));f.reader=new RuntimeReader(f.dir);s=await f.reader.read(a,f.status,execute);assert.equal(s.turns[0].output,'answer');assert.equal(s.modelInfo.serviceTier,'fast');assert.equal(correlate({dispatchConfirmed:true,baselineRuntime:{cursor:0,sessionId:sid},inputHash:inputHash('hello')},s).state,'completed');
 });
+test('a Claude compaction boundary appended mid-session never rotates fileIdentity or severs prior turn ownership',async t=>{
+ // Reproduces, byte-for-byte, what a real Claude Code auto/manual compaction writes to
+ // the transcript: a `system`/`compact_boundary` line followed by an `isMeta` summary
+ // `user` line, both purely appended (verified empirically against a live Claude Code
+ // 2.1.272 session: same inode, identical head-byte hash, monotonically growing size
+ // across 100ms-resolution polling through a forced autocompaction). Any lineage
+ // softening belongs at the direct.mjs blocksInput layer, never here: fileIdentity must
+ // stay exactly stable and ownership of turns observed before the boundary must survive.
+ const f=await setup(t),root=join(f.dir,'.claude','projects','test');await mkdir(root,{recursive:true});const file=join(root,sid+'.jsonl');
+ const execute=async(a,args)=>execFileSync(args[0],args.slice(1),{env:{...f.env,HOME:f.dir},maxBuffer:15e6}).toString(),a={...f.a,provider:'claude'};
+ await writeFile(file,lines([{type:'user',uuid:'u1',message:{content:'hello'}},{type:'assistant',uuid:'a1',parentUuid:'u1',message:{stop_reason:'end_turn',content:[{type:'text',text:'first answer'}]}}]));
+ let s=await f.reader.read(a,f.status,execute);const identity=s.fileIdentity,firstCursor=0;
+ const baseline1={dispatchConfirmed:true,baselineRuntime:{cursor:firstCursor,sessionId:sid,fileIdentity:identity},inputHash:inputHash('hello')};
+ const accepted1=correlate(baseline1,s);assert.equal(accepted1.state,'completed');
+ const bound1={...baseline1,turnId:accepted1.turnId,inputId:accepted1.inputId,sessionId:sid};
+ await appendFile(file,lines([{type:'system',subtype:'compact_boundary',isMeta:true},{type:'user',isMeta:true,isCompactSummary:true,uuid:'summary',message:{content:'condensed summary of the conversation so far'}}]));
+ f.reader=new RuntimeReader(f.dir);s=await f.reader.read(a,f.status,execute);
+ assert.equal(s.fileIdentity,identity);assert.equal(s.turns.length,1);const secondCursor=s.cursor;
+ assert.equal(correlate(bound1,s).state,'completed');
+ await appendFile(file,lines([{type:'user',uuid:'u2',message:{content:'next'}},{type:'assistant',uuid:'a2',parentUuid:'u2',message:{stop_reason:'end_turn',content:[{type:'text',text:'second answer'}]}}]));
+ f.reader=new RuntimeReader(f.dir);s=await f.reader.read(a,f.status,execute);
+ assert.equal(s.fileIdentity,identity);assert.equal(s.turns.length,2);
+ // Ownership of the pre-compaction turn, bound before the boundary was ever written, is still intact several appends later.
+ assert.equal(correlate(bound1,s).state,'completed');
+ const baseline2={dispatchConfirmed:true,baselineRuntime:{cursor:secondCursor,sessionId:sid,fileIdentity:identity},inputHash:inputHash('next')};
+ const accepted2=correlate(baseline2,s);assert.equal(accepted2.state,'completed');assert.notEqual(accepted2.turnId,accepted1.turnId);
+});
 test('incremental snapshots match the frozen pre-index parser for both providers at every append boundary',async t=>{
  const f=await setup(t),reference=new URL('./fixtures/runtime-events-reference.py',import.meta.url).pathname;
  const codex=[start,{type:'turn_context',payload:{model:'model',service_tier:'fast'}},{type:'event_msg',payload:{type:'user_message',turn_id:'t',message:'hello'}},input,answer('same'),answer('same'),done,{type:'response_item',payload:{role:'user',id:'u2',turn_id:'t',content:[{type:'input_text',text:'supplement'}]}},answer('after'),{type:'event_msg',payload:{type:'task_complete',turn_id:'t',error:{message:'capacity',codex_error_info:'server_overloaded'}}}];
