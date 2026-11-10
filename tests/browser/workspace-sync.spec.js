@@ -39,3 +39,15 @@ test('slow HTTP initial sync survives ten seconds and recovers from an interrupt
  await expect(page.locator('#connection')).toContainText('再試行',{timeout:6000});const failedCalls=calls;await page.waitForTimeout(2200);expect(calls).toBe(failedCalls);
  await expect(page.locator('#connection')).toContainText('● 接続',{timeout:10000});await expect(page.locator('textarea[name=instruction]')).toHaveValue('keep this draft');expect(errors).toEqual([]);
 });
+test('quick normal polls keep the connected footer without flashing the syncing text',async({page})=>{
+ const state={agents:[{id:'a',name:'Fixture',location:'mayor',state:'idle',connection:{},canSend:true,nativeTurns:[]}],projects:[],workshops:[],reviews:{},requests:[],notification:{enabled:false},capabilities:{},runs:[]};
+ const server=new WorkspaceSync();
+ await page.route('**/api/**',async route=>{
+  const u=new URL(route.request().url());if(u.pathname!=='/api/direct')return route.fulfill({json:{providers:{}}});
+  await route.fulfill({json:server.reply({client:u.searchParams.get('client'),since:u.searchParams.get('since')},workspaceSnapshot(state))});
+ });
+ await page.goto('/agents');await expect(page.locator('#connection')).toContainText('● 接続');
+ await page.evaluate(()=>{window.__connectionTexts=[];new MutationObserver(()=>window.__connectionTexts.push(document.querySelector('#connection').textContent)).observe(document.querySelector('#connection'),{childList:true,characterData:true,subtree:true});});
+ await page.waitForTimeout(6500);
+ const seen=await page.evaluate(()=>window.__connectionTexts);expect(seen.some(t=>t.includes('同期中'))).toBe(false);
+});

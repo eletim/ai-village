@@ -359,7 +359,7 @@ async function api(path,body,method='POST'){
  if(path.endsWith('/runs')&&body?.steerTarget&&!state?.capabilities?.steering)throw Error('実行中の補足にはサーバー更新が必要です。');
  if(path.endsWith('/runs')&&body?.attachments?.length&&!state?.capabilities?.attachments)throw Error('添付にはサーバー更新の反映が必要です。');
  if(path.endsWith('/runs')&&body?.travelContexts?.length&&!state?.capabilities?.travelContexts)throw Error('出張先の送信にはサーバー更新の反映が必要です。下書きは保持しています。');
- if(method==='GET')return readJSON('/api/direct'+path,{onProgress:bytes=>{if(path.startsWith('?view=workspace'))$('#connection').textContent='同期中 · '+Math.ceil(bytes/1024)+' KB受信';}});
+ if(method==='GET')return readJSON('/api/direct'+path,{onProgress:bytes=>{if(path.startsWith('?view=workspace')&&syncIndicatorDue)$('#connection').textContent='同期中 · '+Math.ceil(bytes/1024)+' KB受信';}});
  const response=await fetch('/api/direct'+path,{method,signal:AbortSignal.timeout(30000),headers:{'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});
  const value=await response.json();if(!response.ok)throw Object.assign(Error(value.error||'操作に失敗しました'),{status:response.status});return value;
 }
@@ -372,6 +372,16 @@ function render(){
  $('#notifications').title='sentは通知サーバーの受理。端末への到着は未確認。';renderBoard();
 }
 const syncClient=newRequestId();let syncBase=null,retryAt=0,syncFailures=0;
+// A sync that finishes within ten seconds should never flip the footer away from
+// its connected/connecting text; only a poll that is actually slow gets the
+// syncing/progress display, and finishing cancels the pending reveal so it can't
+// overwrite the success or error text that lands first.
+let syncIndicatorTimer=null,syncIndicatorDue=false;
+function armSyncIndicator(){
+ syncIndicatorDue=false;
+ syncIndicatorTimer=setTimeout(()=>{syncIndicatorDue=true;$('#connection').textContent=state?'同期中…':'接続中 · 履歴を読み込んでいます…';},10000);
+}
+function disarmSyncIndicator(){clearTimeout(syncIndicatorTimer);syncIndicatorTimer=null;syncIndicatorDue=false;}
 async function fetchWorkspace(){
  const path='?view=workspace&sync=1&client='+syncClient+'&ranges='+encodeURIComponent(JSON.stringify(historyRanges));
  const result=await api(path+(syncBase?'&since='+encodeURIComponent(syncBase.cursor):''),null,'GET');
@@ -383,8 +393,8 @@ async function fetchWorkspace(){
 async function refresh(force=false){
  if(refreshTask){const result=await refreshTask;if(force)return refresh(true);return result;}
  if(!force&&Date.now()<retryAt)return false;
- $('#connection').textContent=state?'同期中…':'接続中 · 履歴を読み込んでいます…';
- refreshTask=(async()=>{try{state=await fetchWorkspace();for(const [id,page] of Object.entries(state.conversations||{}))if(page.cursor&&!historyRanges[id])historyRanges[id]=page.cursor;connected=true;retryAt=0;syncFailures=0;render();focusAgent();$('#connection').textContent='● 接続 · '+new Date().toLocaleTimeString();return true;}catch(e){connected=false;const delay=Math.min(30000,5000*2**Math.min(syncFailures++,3));retryAt=Date.now()+delay;if(state)renderBoard();$('#connection').textContent='接続不明: '+(e.message==='Failed to fetch'?'通信できませんでした。':e.message)+'（'+delay/1000+'秒後に再試行）';return false;}})();
+ armSyncIndicator();
+ refreshTask=(async()=>{try{state=await fetchWorkspace();for(const [id,page] of Object.entries(state.conversations||{}))if(page.cursor&&!historyRanges[id])historyRanges[id]=page.cursor;connected=true;retryAt=0;syncFailures=0;render();focusAgent();disarmSyncIndicator();$('#connection').textContent='● 接続 · '+new Date().toLocaleTimeString();return true;}catch(e){connected=false;const delay=Math.min(30000,5000*2**Math.min(syncFailures++,3));retryAt=Date.now()+delay;if(state)renderBoard();disarmSyncIndicator();$('#connection').textContent='接続不明: '+(e.message==='Failed to fetch'?'通信できませんでした。':e.message)+'（'+delay/1000+'秒後に再試行）';return false;}})();
  try{return await refreshTask;}finally{refreshTask=null;}
 }
 $('#agent-form [name=workshopId]').onchange=places;
