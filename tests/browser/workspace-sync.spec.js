@@ -51,3 +51,19 @@ test('quick normal polls keep the connected footer without flashing the syncing 
  await page.waitForTimeout(6500);
  const seen=await page.evaluate(()=>window.__connectionTexts);expect(seen.some(t=>t.includes('同期中'))).toBe(false);
 });
+test('initial sync shows immediately and subsequent sync uses last success age',async({page})=>{
+ await page.clock.install({time:new Date(2026,0,1)});await page.clock.pauseAt(new Date(2026,0,1));
+ const state={agents:[],projects:[],workshops:[],reviews:{},requests:[],notification:{enabled:false},capabilities:{},runs:[]};
+ let pending=[];
+ await page.route('**/api/**',route=>{
+  if(new URL(route.request().url()).pathname!=='/api/direct')return route.fulfill({json:{providers:{}}});
+  pending.push(()=>route.fulfill({json:state}));
+ });
+ await page.goto('/agents');await expect(page.locator('#connection')).toContainText('同期中');
+ await expect.poll(()=>pending.length).toBe(1);await pending.shift()();await expect(page.locator('#connection')).toContainText('● 接続');
+ await page.clock.fastForward(2000);await expect.poll(()=>pending.length).toBe(1);
+ await expect(page.locator('#connection')).toContainText('● 接続');
+ await page.clock.fastForward(7999);await expect(page.locator('#connection')).toContainText('● 接続');
+ await page.clock.fastForward(1);await expect(page.locator('#connection')).toContainText('同期中');
+ await pending.shift()();await expect(page.locator('#connection')).toContainText('● 接続');
+});

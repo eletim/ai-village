@@ -372,14 +372,13 @@ function render(){
  $('#notifications').title='sentは通知サーバーの受理。端末への到着は未確認。';renderBoard();
 }
 const syncClient=newRequestId();let syncBase=null,retryAt=0,syncFailures=0;
-// A sync that finishes within ten seconds should never flip the footer away from
-// its connected/connecting text; only a poll that is actually slow gets the
-// syncing/progress display, and finishing cancels the pending reveal so it can't
-// overwrite the success or error text that lands first.
-let syncIndicatorTimer=null,syncIndicatorDue=false;
+// Keep recent successful syncs visually stable; initial/stale loads show progress.
+let syncIndicatorTimer=null,syncIndicatorDue=false,lastSyncSucceededAt=null;
 function armSyncIndicator(){
  syncIndicatorDue=false;
- syncIndicatorTimer=setTimeout(()=>{syncIndicatorDue=true;$('#connection').textContent=state?'同期中…':'接続中 · 履歴を読み込んでいます…';},10000);
+ const reveal=()=>{syncIndicatorDue=true;$('#connection').textContent=state?'同期中…':'同期中 · 履歴を読み込んでいます…';};
+ const remaining=lastSyncSucceededAt===null?0:Math.max(0,10000-(Date.now()-lastSyncSucceededAt));
+ if(remaining===0)reveal();else syncIndicatorTimer=setTimeout(reveal,remaining);
 }
 function disarmSyncIndicator(){clearTimeout(syncIndicatorTimer);syncIndicatorTimer=null;syncIndicatorDue=false;}
 async function fetchWorkspace(){
@@ -394,7 +393,7 @@ async function refresh(force=false){
  if(refreshTask){const result=await refreshTask;if(force)return refresh(true);return result;}
  if(!force&&Date.now()<retryAt)return false;
  armSyncIndicator();
- refreshTask=(async()=>{try{state=await fetchWorkspace();for(const [id,page] of Object.entries(state.conversations||{}))if(page.cursor&&!historyRanges[id])historyRanges[id]=page.cursor;connected=true;retryAt=0;syncFailures=0;render();focusAgent();disarmSyncIndicator();$('#connection').textContent='● 接続 · '+new Date().toLocaleTimeString();return true;}catch(e){connected=false;const delay=Math.min(30000,5000*2**Math.min(syncFailures++,3));retryAt=Date.now()+delay;if(state)renderBoard();disarmSyncIndicator();$('#connection').textContent='接続不明: '+(e.message==='Failed to fetch'?'通信できませんでした。':e.message)+'（'+delay/1000+'秒後に再試行）';return false;}})();
+ refreshTask=(async()=>{try{state=await fetchWorkspace();for(const [id,page] of Object.entries(state.conversations||{}))if(page.cursor&&!historyRanges[id])historyRanges[id]=page.cursor;connected=true;retryAt=0;syncFailures=0;render();focusAgent();lastSyncSucceededAt=Date.now();disarmSyncIndicator();$('#connection').textContent='● 接続 · '+new Date().toLocaleTimeString();return true;}catch(e){connected=false;const delay=Math.min(30000,5000*2**Math.min(syncFailures++,3));retryAt=Date.now()+delay;if(state)renderBoard();disarmSyncIndicator();$('#connection').textContent='接続不明: '+(e.message==='Failed to fetch'?'通信できませんでした。':e.message)+'（'+delay/1000+'秒後に再試行）';return false;}})();
  try{return await refreshTask;}finally{refreshTask=null;}
 }
 $('#agent-form [name=workshopId]').onchange=places;
