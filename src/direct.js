@@ -16,6 +16,7 @@ import {autogrowInput} from './autogrow-input.js';
 import {linkedText} from './linked-text.js';
 import {attachmentComposer,attachmentHTML} from './attachments.js';
 import {chatScroll} from './chat-scroll.js';
+import {foldEntriesHTML,rootRunIds} from './run-groups.js';
 import {travelComposer} from './travel-composer.js';
 import {travelSummary,sameTravelContexts} from './travel-context.js';
 import {PAGE_SIZE,isSuspended,placeOf,orderedAgents,orderedProjects,boardLayout} from './board-state.js';
@@ -99,12 +100,15 @@ function recoveryHTML(r){
  const reason=r.recovery?.status==='scheduled'?'自動再試行予定: '+new Date(r.recovery.nextAt).toLocaleTimeString():r.recovery?.reason||'停止理由を確認し、未完了の作業を再開できます。';
  return `<div class="recovery"><p>${esc(reason)}</p>${!w.parentWorkId?`<button data-retry-run="${esc(r.id)}">確認して再試行</button>`:'<p>委任元でrequests get/resultsを確認し、requests retryで復旧してください。</p>'}<button data-cancel-request="${esc(q.id)}">依頼をキャンセル</button></div>`;
 }
+function entryHTML(a,r,divider){
+ return `${divider(r.createdAt||r.completedAt)}<div class="run" data-entry="${esc(JSON.stringify([r.external?'native':'run',r.external?(r.sessionId||r.agentSessionId||''):'',r.id]))}">${r.suppressUser?'':bubble('user',r.instruction,r.createdAt,travelSummary(r.travelContexts)+attachmentHTML(r.attachments))}${r.output||r.finalOutput?'<div class="message assistant">'+responseHTML(r)+timeHTML(r.completedAt)+'</div>':''}<p class="run-status"><span class="badge">${r.external?'PurpleMuxからの入力 · ':r.origin==='result'?'子作業結果の配送 · ':r.origin==='steering'?'実行中への補足 · ':''}${esc(r.queueCancelledAt?'送信取消済み':r.reportStatus||labels[r.state]||r.state)}</span> · ${r.humanRequestId?esc(({active:'依頼継続中',finalizing:'最終報告の完了待ち',completed:'依頼全体完了',cancelled:'依頼キャンセル'})[state.requests?.find(q=>q.id===r.humanRequestId)?.status]||'依頼照合中'):'達成状況: 未判定'} ${esc(r.errorCode||'')} ${esc(r.attachmentError||r.error||'')} ${r.notification?' · 通知: '+esc(r.notification.status)+(r.notification.reason?' / '+esc(r.notification.reason):''):''}</p>${canCancelQueued(r)?`<button type="button" data-cancel-queued="${esc(r.id)}" data-queue-agent="${esc(a.id)}">送信待ちを取り消す</button>`:''}${r.queueCancelledAt?'':recoveryHTML(r)}</div>`;
+}
 function runHTML(a){
  const page=state.conversations?.[a.id];
  // Just-focused but not yet synced: say so, rather than showing bodiless controls as if they were the full thread.
  if(state.conversations&&!page&&focusIds.has(a.id))return '<p>会話を読み込み中…</p>';
- const entries=page?.entries||agentEntries(state,a),divider=dateDividers(),localHTML=localMessageHTML(a.id);
- return (historyErrors.has(a.id)?`<p role="alert" class="history-error">${esc(historyErrors.get(a.id))}</p>`:'')+(page?.hasMore?`<button type="button" data-load-history="${esc(a.id)}" ${historyLoading.has(a.id)?'disabled':''}>${historyLoading.has(a.id)?'読込中…':'古い会話を読み込む'}</button>`:'')+entries.map(r=>`${divider(r.createdAt||r.completedAt)}<div class="run" data-entry="${esc(JSON.stringify([r.external?'native':'run',r.external?(r.sessionId||r.agentSessionId||''):'',r.id]))}">${r.suppressUser?'':bubble('user',r.instruction,r.createdAt,travelSummary(r.travelContexts)+attachmentHTML(r.attachments))}${r.output||r.finalOutput?'<div class="message assistant">'+responseHTML(r)+timeHTML(r.completedAt)+'</div>':''}<p class="run-status"><span class="badge">${r.external?'PurpleMuxからの入力 · ':r.origin==='result'?'子作業結果の配送 · ':r.origin==='steering'?'実行中への補足 · ':''}${esc(r.queueCancelledAt?'送信取消済み':r.reportStatus||labels[r.state]||r.state)}</span> · ${r.humanRequestId?esc(({active:'依頼継続中',finalizing:'最終報告の完了待ち',completed:'依頼全体完了',cancelled:'依頼キャンセル'})[state.requests?.find(q=>q.id===r.humanRequestId)?.status]||'依頼照合中'):'達成状況: 未判定'} ${esc(r.errorCode||'')} ${esc(r.attachmentError||r.error||'')} ${r.notification?' · 通知: '+esc(r.notification.status)+(r.notification.reason?' / '+esc(r.notification.reason):''):''}</p>${canCancelQueued(r)?`<button type="button" data-cancel-queued="${esc(r.id)}" data-queue-agent="${esc(a.id)}">送信待ちを取り消す</button>`:''}${r.queueCancelledAt?'':recoveryHTML(r)}</div>`).join('')+(localHTML?divider(outbox.get(a.id)?.createdAt)+localHTML:'')+divider.trailingToday();
+ const entries=page?.entries||agentEntries(state,a),divider=dateDividers(),localHTML=localMessageHTML(a.id),current=rootRunIds(state.requests);
+ return (historyErrors.has(a.id)?`<p role="alert" class="history-error">${esc(historyErrors.get(a.id))}</p>`:'')+(page?.hasMore?`<button type="button" data-load-history="${esc(a.id)}" ${historyLoading.has(a.id)?'disabled':''}>${historyLoading.has(a.id)?'読込中…':'古い会話を読み込む'}</button>`:'')+foldEntriesHTML(entries,r=>entryHTML(a,r,divider),current)+(localHTML?divider(outbox.get(a.id)?.createdAt)+localHTML:'')+divider.trailingToday();
 }
 function localMessageHTML(id){
  const m=outbox.get(id);if(!m||matchingRun(state,id,m.requestId))return '';
