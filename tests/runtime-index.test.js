@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,mkdir,writeFile,appendFile,readFile,rm,readdir,rename} from 'node:fs/promises';
+import {mkdtemp,mkdir,writeFile,appendFile,readFile,rm,readdir,rename,chmod} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {execFileSync} from 'node:child_process';
@@ -29,6 +29,21 @@ test('same-size rewrite, truncation, inode replacement, alternative path and dup
  await rename(f.file,f.file+'.old');await writeFile(f.file,content);s=await f.reader.read(f.a,f.status,f.execute);assert.notEqual(s.fileIdentity,identity);
  await mkdir(join(f.dir,'sessions','nested'));await rename(f.file,join(f.dir,'sessions','nested',sid+'.jsonl'));identity=s.fileIdentity;s=await f.reader.read(f.a,f.status,f.execute);assert.notEqual(s.fileIdentity,identity);
  await writeFile(f.file,content);s=await f.reader.read(f.a,f.status,f.execute);assert.equal(s.available,false);assert.match(s.reason,/ambiguous/);
+});
+// chmod/utime move ctime without writing a single content byte: a backup/AV scanner,
+// an SELinux relabel, or even an unrelated hardlink count change can all do this to a
+// live, otherwise-untouched session file mid-poll. Confirmed experimentally against a
+// real Claude Code session file (see docs/runtime-file-replaced-investigation.md):
+// chmod alone reproduces exactly this stat() shape with edges() unchanged.
+test('a chmod/utime metadata-only touch never rotates fileIdentity; a real same-size rewrite still does',async t=>{
+ const f=await setup(t);const content=lines([start,input,done]);await writeFile(f.file,content);
+ let s=await f.reader.read(f.a,f.status,f.execute);const identity=s.fileIdentity;
+ const run={baselineRuntime:{fileIdentity:identity,cursor:0,sessionId:sid},dispatchConfirmed:true,inputHash:inputHash('hello')};
+ await chmod(f.file,0o640);
+ s=await f.reader.read(f.a,f.status,f.execute);assert.equal(s.fileIdentity,identity);assert.equal(correlate(run,s).state,'completed');
+ // A genuine same-size content rewrite (mtime moves too, and edges() mismatches) must still rotate.
+ await writeFile(f.file,content.replace('hello','other'));
+ s=await f.reader.read(f.a,f.status,f.execute);assert.notEqual(s.fileIdentity,identity);assert.equal(correlate(run,s).state,'unknown');
 });
 test('parser upgrade and corrupt host/core caches rebuild without silently completing stale ownership',async t=>{
  const f=await setup(t);await writeFile(f.file,lines([start,input,done]));let s=await f.reader.read(f.a,f.status,f.execute);const old=s.fileIdentity,db=join(f.dir,'cache',(await readdir(join(f.dir,'cache'))).find(n=>n.endsWith('.sqlite')));
