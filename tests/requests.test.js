@@ -85,6 +85,22 @@ test('failure, retry, interrupted finalization and cancellation do not consume a
  await s.flow.cancel({humanRequestId:q.id,revision:q.revision});await s.tick();assert.equal(q.ticket.state,'cancelled');assert.equal(f.notifications.length,0);
  await assert.rejects(s.flow.delegate({humanRequestId:q.id,parentWorkId:r.workId,actorRunId:r.id,agentId:f.agents[3].id,instruction:'no',operationId:'after-cancel'}),/受付中では/);
 });
+test('an acknowledged child terminated before dispatch (its agent was stopped) never blocks parent finish once a successor child completes',async t=>{
+ const f=await fixture(t),s=f.service,r=await s.send(f.agents[0].id,{instruction:'work',requestId:'human-terminated-child'});await f.submit(r);
+ const stale=await f.delegate(r,f.agents[2]);f.agents[2].state='terminated';await s.tick();await s.tick();
+ const q=s.flow.root(r.humanRequestId),staleRun=s.flow.run(stale.currentRunId);
+ assert.equal(staleRun.state,'terminated');assert.equal(staleRun.error,'target-unavailable-before-dispatch');
+ assert.equal(q.works.find(w=>w.id===stale.id).state,'terminated');assert.equal(q.inbox[0].outcome,'terminated');
+ // Unacknowledged, it still blocks exactly like a real pending/failed child would.
+ await assert.rejects(f.finish(r),/未完了/);
+ await s.flow.acknowledge({humanRequestId:q.id,workId:r.workId,actorRunId:r.id,resultIds:[q.inbox[0].id]});
+ const redo=await f.delegate(r,f.agents[3]);await s.tick();const redoRun=s.flow.run(redo.currentRunId);
+ // A second, still-active child keeps blocking even though the acknowledged terminated one no longer does.
+ await assert.rejects(f.finish(r),/未完了/);
+ await f.submit(redoRun);await f.finish(redoRun);await f.complete(redoRun);
+ const redoEvent=q.inbox.find(e=>e.workId===redo.id);await s.flow.acknowledge({humanRequestId:q.id,workId:r.workId,actorRunId:r.id,resultIds:[redoEvent.id]});
+ await f.finish(r);await f.complete(r);assert.equal(q.status,'completed');assert.equal(q.ticket.state,'consumed');
+});
 test('multiple human requests and secretaries keep exact ownership; nested delegation remains attached',async t=>{
  const f=await fixture(t),s=f.service,a=await s.send(f.agents[0].id,{instruction:'A',requestId:'request-owner-a'}),b=await s.send(f.agents[1].id,{instruction:'B',requestId:'request-owner-b'});
  await f.submit(a);await f.submit(b);const wa=await f.delegate(a,f.agents[2]);await s.tick();const ca=s.flow.run(wa.currentRunId);await f.submit(ca);const wb=await f.delegate(ca,f.agents[3]);await s.tick();const cb=s.flow.run(wb.currentRunId);await f.submit(cb);await f.finish(cb);await f.complete(cb);

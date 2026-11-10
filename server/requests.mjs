@@ -115,9 +115,16 @@ export class RequestFlow {
   return r;
  }
  ready(q,w){
+  // 'terminated' means the child was abandoned for an administrative reason (its
+  // agent was stopped, its target became unavailable before dispatch, a stuck
+  // unknown run timed out, ...), never that native work actually ran and produced
+  // a result. Once the actor has acknowledged that outcome, it can never gain a
+  // real result to wait for, so it must not block completion forever. 'failed' and
+  // 'interrupted' keep requiring 'completed' (via retry): those carry an actual
+  // native runtime signal worth addressing, not just an abandoned dispatch.
   for(const child of q.works.filter(c=>c.parentWorkId===w.id)){
    const e=q.inbox.find(e=>e.id===child.latestResultId);
-   if(child.state!=='completed'||!e?.acknowledgedAt||e.resultRunId!==child.currentRunId)fail('未完了または最新結果未確認の子作業があります');
+   if(!['completed','terminated'].includes(child.state)||!e?.acknowledgedAt||e.resultRunId!==child.currentRunId)fail('未完了または最新結果未確認の子作業があります');
   }
  }
  async delegate(x){return this.d.locked('request-graph',async()=>{
