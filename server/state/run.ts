@@ -7,7 +7,7 @@ export type RunState = { kind:'queued' } | { kind:'sent'; sessionId:string|null;
  | { kind:'cancelled' };
 export type Fact = Readonly<{ type:string; at:number; sessionId?:string; turnId?:string; inputId?:string; outcome?:Outcome; errorCode?:string }>;
 export type Run = Readonly<{
- id:string; requestId:string; parentRunId:string|null; retryOf:string|null; phase:'work'|'report';
+ id:string; requestId:string; parentRunId:string|null; retryOf:string|null; phase:'work'|'report'|'result'; resultOf:string|null; recipientRunId:string|null;
  state:RunState; facts:readonly Fact[]; decisions:readonly {actor:Actor; reason:string}[];
  retryBudget:Readonly<{count:number; firstFailureAt:number|null}>;
 }>;
@@ -18,10 +18,13 @@ export type RunEvent =
  | Command<'lost','program',{at:number; reason:'session-changed'|'turn-ended-without-marker'|'timeout'}>
  | Command<'cancel','human'> | Command<'close-tracking','human',{reason:string}>;
 export const runAuthorities = {dispatch:['program'],input:['program'],terminal:['program'],lost:['program'],cancel:['human'],'close-tracking':['human']} as const;
-export function newRun(id:string, requestId:string, actor:Actor, parentRunId:string|null=null): Result<Run> {
+export type RunKind = {phase:'work'} | {phase:'report'} | {phase:'result'; resultOf:string; recipientRunId:string};
+export const creationAuthorities = {work:['human','agent'],report:['program'],result:['program']} as const;
+export function newRun(id:string, requestId:string, actor:Actor, parentRunId:string|null=null, kind:RunKind={phase:'work'}): Result<Run> {
  if (!id || !requestId) return reject('missing-id');
- if (actor!=='human' && !(actor==='agent' && parentRunId)) return reject('actor-forbidden');
- return accept({id,requestId,parentRunId,retryOf:null,phase:'work',state:{kind:'queued'},facts:[],decisions:[],retryBudget:{count:0,firstFailureAt:null}});
+ if (!(creationAuthorities[kind.phase] as readonly string[]).includes(actor) || (actor==='agent'&&!parentRunId)) return reject('actor-forbidden');
+ if(kind.phase==='result'&&(!kind.resultOf||!kind.recipientRunId))return reject('missing-result-reference');
+ return accept({id,requestId,parentRunId,retryOf:null,phase:kind.phase,resultOf:kind.phase==='result'?kind.resultOf:null,recipientRunId:kind.phase==='result'?kind.recipientRunId:null,state:{kind:'queued'},facts:[],decisions:[],retryBudget:{count:0,firstFailureAt:null}});
 }
 export const isTerminal = (r:Run):boolean => r.state.kind==='ended'||r.state.kind==='cancelled';
 export function transitionRun(r:Run,e:RunEvent):Result<Run> {
@@ -59,7 +62,7 @@ export function retryRun(r:Run,e:RetryEvent):Result<Run> {
  if(r.state.kind!=='ended'||r.state.outcome==='normal'||!e.id||e.id===r.id)return reject('not-retryable');
  if(e.actor==='program') {
   const first=r.retryBudget.firstFailureAt;
-  if(r.state.outcome!=='failed'||r.state.errorCode!=='server_overloaded'||r.phase==='report'||r.parentRunId!==null||!e.leafRoot||!e.boundaryConfirmed||!e.agentIdle)return reject('auto-retry-not-safe');
+  if(r.state.outcome!=='failed'||r.state.errorCode!=='server_overloaded'||r.phase!=='work'||r.parentRunId!==null||!e.leafRoot||!e.boundaryConfirmed||!e.agentIdle)return reject('auto-retry-not-safe');
   if(first===null||!Number.isFinite(e.at)||e.at<first||e.at-first>=600000||r.retryBudget.count>=2)return reject('retry-budget-exhausted');
  }
  return accept({...r,id:e.id,retryOf:r.id,state:{kind:'queued'},facts:[],decisions:[{actor:e.actor,reason:'retry'}],retryBudget:e.actor==='program'?{...r.retryBudget,count:r.retryBudget.count+1}:{count:0,firstFailureAt:null}});

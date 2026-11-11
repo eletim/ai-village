@@ -1,7 +1,8 @@
+import {checkProgress,stalledRequests,nextSteps} from '../server/state/progress.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {newRun,transitionRun,retryRun} from '../server/state/run.ts';
-import {newRequest,transitionRequest} from '../server/state/request.ts';
+import {newRequest,transitionRequest,reconcile} from '../server/state/request.ts';
 import {deriveAgent,transitionAgent,sendControls} from '../server/state/agent.ts';
 import {migrateDirect} from '../server/state/migrate.ts';
 const ok=r=>{assert.equal(r.ok,true,JSON.stringify(r));return r.value;};
@@ -88,8 +89,10 @@ test('no-delegation request completes on normal native return without declaratio
 test('delegated completion records early claims, needs claimant normal return, has no acknowledge operation',()=>{
  let q=runRoot(active());q=ok(transitionRequest(q,{type:'delegate',actor:'agent',parentRunId:'r',id:'child'}));
  q=event(q,'child',dispatch);q=event(q,'child',{...input,text:'ai-village-run-child',turnId:'ct'});q=event(q,'child',{...terminal,turnId:'ct'});
- q=ok(transitionRequest(q,{type:'declare-complete',actor:'agent',id:'claim',runId:'r',at:2}));assert.equal(q.declarations.length,1);assert.equal(q.state.kind,'active');
- q=event(q,'r',terminal);assert.equal(q.state.kind,'completed');
+ q=ok(transitionRequest(q,{type:'deliver-result',actor:'program',id:'delivery',childRunId:'child'}));
+ q=event(q,'r',terminal);q=event(q,'delivery',dispatch);q=event(q,'delivery',{...input,text:'ai-village-run-delivery'});
+ q=ok(transitionRequest(q,{type:'declare-complete',actor:'agent',id:'claim',runId:'delivery',at:2}));assert.equal(q.declarations.length,1);assert.equal(q.state.kind,'active');
+ q=event(q,'delivery',terminal);assert.equal(q.state.kind,'completed');
  const late=ok(transitionRequest(q,{type:'declare-complete',actor:'agent',id:'late',runId:'missing',at:8}));assert.equal(late.state.kind,'completed');assert.equal(late.declarations.length,2);
 });
 test('unverified declarations are recorded; contradictory facts require human review',()=>{
@@ -167,7 +170,10 @@ test('delegated normal termination without coordinator claim remains active, the
  no(transitionRequest(q,{type:'delegate',actor:'agent',parentRunId:'r',id:'child'}));
  q=event(q,'child',dispatch);q=event(q,'child',{...input,text:'ai-village-run-child',turnId:'child-turn'});q=event(q,'child',{...terminal,turnId:'child-turn'});q=event(q,'r',terminal);
  assert.equal(q.state.kind,'active');assert.equal(q.state.review.length,0);
- q=ok(transitionRequest(q,{type:'declare-complete',actor:'agent',id:'late',runId:'r',at:5}));assert.equal(q.state.kind,'completed');
+ q=ok(transitionRequest(q,{type:'deliver-result',actor:'program',id:'delivery',childRunId:'child'}));
+ q=event(q,'delivery',dispatch);q=event(q,'delivery',{...input,text:'ai-village-run-delivery'});q=event(q,'delivery',terminal);
+ assert(q.state.review.includes('needs-decision'));
+ q=ok(transitionRequest(q,{type:'declare-complete',actor:'agent',id:'late',runId:'delivery',at:5}));assert.equal(q.state.kind,'completed');
 });
 test('each nonterminal Agent state has a stop path, ending only on observed absence',()=>{
  const samples=[{id:'a',intent:'start',observation:null},...['idle','running','input-needed','unknown'].map(activity=>({id:'a',intent:null,observation:{connected:true,process:'alive',activity,canSteer:false}})),{id:'a',intent:'stop',observation:{connected:true,process:'alive',activity:'running',canSteer:false}},{id:'a',intent:null,observation:{connected:false,process:'unknown',activity:'unknown',canSteer:false}}];
@@ -176,4 +182,78 @@ test('each nonterminal Agent state has a stop path, ending only on observed abse
 test('migration diagnoses broken parent links and cycles rather than silently treating them as new roots',()=>{
  const migrated=migrateDirect({runs:[{id:'a',humanRequestId:'q',workId:'wa',state:'unknown'},{id:'b',humanRequestId:'q',workId:'wb',state:'unknown'}],requests:[{id:'q',status:'active',works:[{id:'wa',parentWorkId:'wb',runIds:['a'],currentRunId:'a'},{id:'wb',parentWorkId:'wa',runIds:['b'],currentRunId:'b'}]}]});
  assert(migrated.issues.includes('parent-cycle:a'));assert(migrated.issues.includes('parent-cycle:b'));
+});
+
+test('program creation is limited to report and result; humans/agents cannot impersonate system delivery',()=>{
+ ok(newRun('report','q','program',null,{phase:'report'}));
+ const kind={phase:'result',resultOf:'child',recipientRunId:'parent'};
+ ok(newRun('result','q','program',null,kind));no(newRun('work','q','program'));
+ for(const actor of ['human','agent'])for(const options of [{phase:'report'},kind])no(newRun('system','q',actor,'parent',options));
+ no(newRun('result','q','program',null,{...kind,resultOf:''}));
+});
+test('progress invariant detects stalled roots and import preserves decisions without silently completing or sending',()=>{
+ const done=ok(transitionRun(running(),terminal));
+ const stalled={...active(),runs:[done]};assert.equal(checkProgress(stalled).ok,false);assert.deepEqual(stalledRequests([stalled]),['q']);
+ for(const reportMode of [false,true]){
+  const migrated=migrateDirect({runs:[{id:'r',humanRequestId:'q',workId:'w',state:'completed',acceptance:'accepted',completionEvent:'native'}],requests:[{id:'q',status:'active',reportMode,rootWorkId:'w',works:[{id:'w',currentRunId:'r',runIds:['r']}]}]}).requests[0];
+  assert.equal(migrated.state.kind,'active');assert.equal(migrated.runs.length,1);assert(checkProgress(migrated).ok);
+  if(reportMode){assert.deepEqual(nextSteps(migrated),[{type:'prepare-report'}]);const report=ok(transitionRequest(migrated,{type:'prepare-report',actor:'program',id:'report'}));assert.equal(report.runs.at(-1).phase,'report');}
+  else assert(migrated.state.review.includes('legacy-needs-decision'));
+ }
+ let q=active();q=ok(transitionRequest(q,{type:'run-action',actor:'human',runId:'r',event:{type:'cancel',actor:'human'}}));assert(q.state.review.includes('needs-decision'));assert(checkProgress(q).ok);
+});
+for(const outcome of ['normal','failed','interrupted','unconfirmed','cancelled'])test('deliver each terminal child result once: '+outcome,()=>{
+ let q=runRoot(active());q=ok(transitionRequest(q,{type:'delegate',actor:'agent',id:'child',parentRunId:'r'}));
+ const deliver={type:'deliver-result',actor:'program',id:'delivery',childRunId:'child'};
+ no(transitionRequest(q,deliver));
+ if(outcome==='cancelled')q=ok(transitionRequest(q,{type:'run-action',actor:'human',runId:'child',event:{type:'cancel',actor:'human'}}));
+ else{
+  q=event(q,'child',dispatch);
+  if(outcome==='unconfirmed')q=event(q,'child',{type:'lost',actor:'program',at:4,reason:'timeout'});
+  else{q=event(q,'child',{...input,text:'ai-village-run-child',turnId:'ct'});q=event(q,'child',{...terminal,turnId:'ct',outcome});}
+ }
+ assert(nextSteps(q).some(s=>s.type==='deliver-result'&&s.childRunId==='child'));
+ for(const actor of ['human','agent'])no(transitionRequest(q,{...deliver,actor}));
+ q=ok(transitionRequest(q,deliver));const delivered=q.runs.at(-1);
+ assert.equal(delivered.phase,'result');assert.equal(delivered.resultOf,'child');assert.equal(delivered.recipientRunId,'r');assert.equal(delivered.parentRunId,null);assert.equal(q.rootRunId,'delivery');
+ no(transitionRequest(q,deliver));no(transitionRequest(q,{...deliver,id:'duplicate'}));
+ q=event(q,'delivery',dispatch);q=event(q,'delivery',{type:'lost',actor:'program',at:8,reason:'timeout'});
+ assert(q.state.review.includes('run-needs-review:delivery'));assert(checkProgress(q).ok);
+});
+test('nested delivery targets the parent conversation, then its result can reach the root',()=>{
+ let q=runRoot(active());q=ok(transitionRequest(q,{type:'delegate',actor:'agent',id:'child',parentRunId:'r'}));
+ q=event(q,'child',dispatch);q=event(q,'child',{...input,text:'ai-village-run-child',turnId:'ct'});
+ q=ok(transitionRequest(q,{type:'delegate',actor:'agent',id:'grandchild',parentRunId:'child'}));
+ q=ok(transitionRequest(q,{type:'run-action',actor:'human',runId:'grandchild',event:{type:'cancel',actor:'human'}}));
+ q=ok(transitionRequest(q,{type:'deliver-result',actor:'program',id:'nested-delivery',childRunId:'grandchild'}));
+ assert.equal(q.rootRunId,'r');assert.equal(q.runs.at(-1).recipientRunId,'child');assert.equal(q.runs.at(-1).parentRunId,'r');
+ q=event(q,'nested-delivery',dispatch);q=event(q,'nested-delivery',{...input,text:'ai-village-run-nested-delivery'});q=event(q,'nested-delivery',terminal);
+ q=ok(transitionRequest(q,{type:'deliver-result',actor:'program',id:'root-delivery',childRunId:'nested-delivery'}));assert.equal(q.rootRunId,'root-delivery');
+});
+test('migration maps result kind and source identity so already delivered child results are not delivered again',()=>{
+ const source={runs:[{id:'r',humanRequestId:'q',workId:'root',state:'completed',acceptance:'accepted',completionEvent:'t'},{id:'child',humanRequestId:'q',workId:'child-work',state:'completed',acceptance:'accepted',completionEvent:'ct'},{id:'delivery',humanRequestId:'q',workId:'root',origin:'result',resultId:'inbox',state:'unknown'}],requests:[{id:'q',status:'active',rootWorkId:'root',works:[{id:'root',currentRunId:'delivery',runIds:['r','delivery']},{id:'child-work',parentWorkId:'root',currentRunId:'child',runIds:['child']}],inbox:[{id:'inbox',resultRunId:'child',deliveryRunId:'delivery'}]}]};
+ const migrated=migrateDirect(source),q=migrated.requests[0],delivery=q.runs.at(-1);
+ assert.equal(delivery.phase,'result');assert.equal(delivery.resultOf,'child');assert.equal(delivery.recipientRunId,'r');assert.equal(nextSteps(q).some(s=>s.type==='deliver-result'),false);assert(checkProgress(q).ok);
+ no(transitionRequest(q,{type:'deliver-result',actor:'program',id:'duplicate',childRunId:'child'}));
+});
+test('seeded random transition sequences preserve progress after every accepted transition',()=>{
+ let seed=12345;const random=n=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed%n;};
+ for(let sample=0;sample<100;sample++){
+  let q=ok(newRequest('q','r','human',!!random(2)));
+  for(let i=0;i<100;i++){
+   const r=q.runs[random(q.runs.length)],id='new-'+i;
+   const programEvent={type:'run-event',actor:'program',runId:r.id,event:r.state.kind==='queued'?dispatch:r.state.kind==='sent'?{...input,text:'ai-village-run-'+r.id}:{...terminal,outcome:['normal','failed','interrupted'][random(3)]}};
+   const events=[programEvent,{type:'delegate',actor:'agent',id,parentRunId:r.id},{type:'declare-complete',actor:'agent',id,runId:r.id,at:i},{type:'deliver-result',actor:'program',id,childRunId:r.id},{type:'prepare-report',actor:'program',id},{type:'run-action',actor:'human',runId:r.id,event:{type:'cancel',actor:'human'}},{type:'run-event',actor:'program',runId:r.id,event:{type:'lost',actor:'program',at:i,reason:'timeout'}},{type:'retry',actor:'human',runId:r.id,retry:{type:'retry',actor:'human',id,at:i}}];
+   const next=transitionRequest(q,events[random(events.length)]);if(next.ok){q=next.value;assert(checkProgress(q).ok,JSON.stringify({sample,i,q}));for(const step of nextSteps(q))ok(transitionRequest(q,{...step,actor:'program',id:'probe-'+sample+'-'+i}));}
+  }
+ }
+});
+
+test('ambiguous delivery recipient is not advertised as an executable next step',()=>{
+ const root=ok(transitionRun(running(),terminal));
+ const child={...root,id:'child',parentRunId:'r'};
+ const q={...active(),delegated:true,runs:[root,child,{...root,id:'next1',retryOf:'r'},{...root,id:'next2',retryOf:'r'}]};
+ assert.deepEqual(nextSteps(q),[]);assert.equal(checkProgress(q).ok,false);
+ const checked=reconcile(q);assert(checked.state.review.includes('needs-decision'));
+ no(transitionRequest(checked,{type:'deliver-result',actor:'program',id:'delivery',childRunId:'child'}));
 });

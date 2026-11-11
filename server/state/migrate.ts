@@ -1,3 +1,4 @@
+import { ensureProgress } from './progress.ts';
 import type { Agent } from './agent.ts';
 import type { Run, RunState } from './run.ts';
 import type { Request, Declaration } from './request.ts';
@@ -41,7 +42,10 @@ export function migrateDirect(source:unknown):Migration {
   if(work?.parentWorkId&&!parentRunId)issues.push('missing-parent:'+str(r.id));
   const siblings=oldRuns.filter(other=>other.humanRequestId===r.humanRequestId&&other.workId===r.workId&&other.phase!=='report');
   const prior=r.phase==='report'||!work?null:siblings[siblings.indexOf(r)-1];
-  return {id:str(r.id),requestId:str(r.humanRequestId),parentRunId,retryOf:prior?str(prior.id):null,phase:r.phase==='report'?'report':'work',state,facts:[],decisions:[],retryBudget:{count:0,firstFailureAt:null}};
+  const delivery=rows(request?.inbox).find(e=>e.deliveryRunId===r.id||e.id===r.resultId);
+  const resultOf=r.origin==='result'?str(delivery?.resultRunId)||null:null;
+  if(r.origin==='result'&&!resultOf)issues.push('missing-result-source:'+str(r.id));
+  return {id:str(r.id),requestId:str(r.humanRequestId),parentRunId,retryOf:prior?str(prior.id):null,phase:r.phase==='report'?'report':r.origin==='result'?'result':'work',resultOf,recipientRunId:r.origin==='result'?(prior?str(prior.id):null):null,state,facts:[],decisions:[],retryBudget:{count:0,firstFailureAt:null}};
  });
  for(const r of runs){
   if(r.parentRunId&&!runs.some(parent=>parent.id===r.parentRunId&&parent.requestId===r.requestId))issues.push('invalid-parent-run:'+r.id);
@@ -68,7 +72,8 @@ export function migrateDirect(source:unknown):Migration {
   // Do not silently complete active requests during import. Preserve old raw claims,
   // and surface discrepancies even when the import has no fresh runtime evidence.
   const checked=reconcile({...value,runs:owned.filter(r=>currentIds.has(r.id))});
-  return value.state.kind==='active'&&checked.state.kind==='active'?{...value,state:checked.state}:value;
+  const imported=value.state.kind==='active'&&checked.state.kind==='active'?{...value,state:{...checked.state,review:checked.state.review.map(reason=>reason==='needs-decision'?'legacy-needs-decision':reason)}}:value;
+  return ensureProgress(imported,'legacy-needs-decision');
  });
  return {version:1,agents,runs,requests,issues,legacy:structuredClone(source)};
 }
