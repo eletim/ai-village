@@ -112,3 +112,25 @@ test('Claude finalOutput isolates the report as the run\'s last message, survivi
  const s=JSON.parse(execFileSync('python3',['-c',runtimeScript,'claude',sid],{env:{...process.env,HOME:home}}));
  assert.equal(s.turns[0].state,'completed');assert.equal(s.turns[0].finalOutput,report);assert.equal(s.turns[0].output,'先にfinishを登録します。\n\n'+report);
 });
+
+test('run marker survives Claude paste escaping and whitespace while ownership and competing input fail closed',async t=>{
+ const home=await mkdtemp(join(tmpdir(),'claude-marker-'));t.after(()=>rm(home,{recursive:true,force:true}));
+ const root=join(home,'.claude/projects/test');await mkdir(root,{recursive:true});const sid='11111111-2222-3333-4444-555555555555';
+ const marker='ai-village-run-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
+ const delivered='本文 <pasted_content>\n<ai-village-request> '+marker+' </ai-village-request>';
+ const body='\n\n<pasted_content id="abc">\n'+delivered.replace('<pasted_content>','<\\pasted_content>').replace('> '+marker,'>\n  '+marker)+'\n</pasted_content id="abc">\n';
+ const rows=[{type:'user',uuid:'u',message:{content:body}},{type:'assistant',uuid:'a',parentUuid:'u',message:{stop_reason:'end_turn',content:[{type:'text',text:'done'}]}}];
+ await writeFile(join(root,sid+'.jsonl'),rows.map(JSON.stringify).join('\n')+'\n');
+ const snapshot=JSON.parse(execFileSync('python3',['-c',runtimeScript,'claude',sid],{env:{...process.env,HOME:home}}));
+ const run={dispatchConfirmed:true,inputMarker:marker,inputHash:inputHash(delivered),baselineRuntime:{sessionId:sid,cursor:0}};
+ assert.notEqual(snapshot.inputs[0].hash,run.inputHash);
+ const accepted=correlate(run,snapshot);assert.equal(accepted.state,'completed');
+ const owned={...run,...accepted};assert.equal(correlate(owned,snapshot).state,'completed');
+ const stranger={id:'foreign',turnId:'other',offset:snapshot.cursor+1,text:'no marker',hash:run.inputHash};
+ assert.equal(correlate(run,{...snapshot,inputs:[...snapshot.inputs,stranger]}).reason,'competing-or-unmatched-input');
+ assert.equal(correlate(owned,{...snapshot,inputs:[{...snapshot.inputs[0],text:'missing',hash:run.inputHash}]}).reason,'owned-input-mismatch');
+ assert.equal(correlate(run,{...snapshot,inputs:[{...snapshot.inputs[0],text:marker+'-suffix'}]}).state,'unknown');
+ assert.equal(correlate(run,{...snapshot,inputs:[...snapshot.inputs,{...snapshot.inputs[0],id:'duplicate',offset:snapshot.cursor+1}]}).state,'unknown');
+ assert.equal(correlate(owned,{...snapshot,inputs:[...snapshot.inputs,{...stranger,turnId:'u'}]}).reason,'additional-input-in-owned-turn');
+ assert.equal(correlate({...run,steerTarget:{sessionId:sid,turnId:'u'}},snapshot).reason,'steering-turn-attribution-missing');
+});

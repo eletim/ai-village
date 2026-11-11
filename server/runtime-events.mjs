@@ -1,3 +1,4 @@
+import {matchesRunInput} from './input-envelope.mjs';
 import {readFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 export const runtimeScript=(await readFile(new URL('./runtime_index.py',import.meta.url),'utf8'))+'\n'+(await readFile(new URL('./runtime-events.py',import.meta.url),'utf8'));
@@ -33,7 +34,7 @@ export function correlate(run,snapshot){
  if(run.sessionId&&snapshot.sessionId!==run.sessionId)return {state:'unknown',reason:'session-changed'};
  if(run.priorInputs?.some(p=>snapshot.inputs.filter(i=>inputMatches(i,p)).length!==1))return {state:'unknown',reason:'steering-prior-input-missing'};
  if(run.turnId){
-  if(run.inputId&&run.inputHash&&!snapshot.inputs.some(i=>byId(i,run.inputId)&&i.turnId===run.turnId&&i.hash===run.inputHash))return {state:'unknown',reason:'owned-input-mismatch'};
+  if(run.inputId&&(run.inputMarker||run.inputHash)&&!snapshot.inputs.some(i=>byId(i,run.inputId)&&i.turnId===run.turnId&&matchesRunInput(run,i)))return {state:'unknown',reason:'owned-input-mismatch'};
   if(run.inputId&&snapshot.inputs.some(i=>i.turnId===run.turnId&&!byId(i,run.inputId)&&!run.priorInputs?.some(p=>inputMatches(i,p))))return {state:'unknown',reason:'additional-input-in-owned-turn'};
   const turn=snapshot.turns.find(t=>t.id===run.turnId);
   return turn?ownedTurn(run,turn,resolveInputPosition(snapshot.inputs,run.inputId,run.turnId),snapshot):{state:'unknown',reason:'turn-missing'};
@@ -43,10 +44,10 @@ export function correlate(run,snapshot){
  if(!baseline)return {state:'unknown',reason:'legacy-run-without-runtime-checkpoint'};
  if(baseline.sessionId&&baseline.sessionId!==snapshot.sessionId)return {state:'unknown',reason:'session-changed'};
  const inputs=snapshot.inputs.filter(i=>positions(i).every(p=>p.offset>(baseline.cursor||0)));
- const candidates=inputs.filter(i=>i.hash===run.inputHash);
+ const candidates=inputs.filter(i=>matchesRunInput(run,i));
  const turnIds=[...new Set(candidates.map(i=>i.turnId))];
  // Unbound competing input, including duplicate identical text, stays unknown.
- if(turnIds.length!==1||inputs.some(i=>i.turnId!==turnIds[0]||i.hash!==run.inputHash)||candidates.length!==1)return {state:'unknown',reason:inputs.length?'competing-or-unmatched-input':'input-not-observed'};
+ if(turnIds.length!==1||inputs.some(i=>i.turnId!==turnIds[0]||!matchesRunInput(run,i))||candidates.length!==1)return {state:'unknown',reason:inputs.length?'competing-or-unmatched-input':'input-not-observed'};
  if(run.steerTarget&&candidates.some(i=>i.explicitTurn!==true))return {state:'unknown',reason:'steering-turn-attribution-missing'};
  if(run.steerTarget&&(snapshot.sessionId!==run.steerTarget.sessionId||turnIds[0]!==run.steerTarget.turnId))return {state:'unknown',reason:'steering-target-changed'};
  const turn=snapshot.turns.find(t=>t.id===turnIds[0]);

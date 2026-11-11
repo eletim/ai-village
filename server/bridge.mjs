@@ -1,3 +1,4 @@
+import {runMarker,markerContext} from './input-envelope.mjs';
 import {runtimeScript,inputHash,correlate} from './runtime-events.mjs';
 import { spawn } from 'node:child_process';
 import { mkdir, readFile, writeFile, rename, readdir, appendFile } from 'node:fs/promises';
@@ -171,8 +172,9 @@ export class WorkshopBridge {
     const status=await this.pmux('tab','status','-w',workspace.id,tab.tabId);
     const baseline=JSON.parse(await this.remote(['python3','-c',runtimeScript,'codex',status.agentSessionId||'']));
     if(!baseline.available)throw new Error('実行記録不明のため送信しません');
-    await this.update({baselineRuntime:{sessionId:baseline.sessionId,cursor:baseline.cursor,fileIdentity:baseline.fileIdentity},inputHash:inputHash(this.job.instruction)});
-    await this.pmux('tab', 'send', '-w', workspace.id, tab.tabId, this.job.instruction);
+    const delivered=this.job.instruction+markerContext(this.job.id);
+    await this.update({inputMarker:runMarker(this.job.id),dispatchAttemptedAt:new Date().toISOString(),baselineRuntime:{sessionId:baseline.sessionId,cursor:baseline.cursor,fileIdentity:baseline.fileIdentity},inputHash:inputHash(delivered)});
+    await this.pmux('tab', 'send', '-w', workspace.id, tab.tabId, delivered);
     this.assertRunning();
     await this.update({dispatchConfirmed:true});
     await this.collect();

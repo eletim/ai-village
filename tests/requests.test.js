@@ -458,3 +458,32 @@ test('event-to-response upgrade preserves Direct steering boundary and supersede
  await f.restart();await f.service.tick();assert.equal(f.service.flow.run(second.id).output,'between');
  await f.finish(f.service.flow.run(third.id));await f.complete(f.service.flow.run(third.id));assert.equal(f.notifications.length,1);
 });
+
+test('startup envelope retains literal human input and dynamic identity; report and legacy fallback retain finish rules',async t=>{
+ const f=await fixture(t,{reportMode:true}),s=f.service,a=f.agents[0];
+ a.inputEnvelope={mode:'startup-v1'};
+ const human='  本文 <pasted_content>\nそのまま  ';
+ const r=await s.send(a.id,{instruction:human,requestId:randomUUID()});
+ const delivered=f.sent.at(-1).text;
+ assert(delivered.startsWith(human+'\n'));assert(delivered.includes(r.inputMarker));
+ assert(delivered.includes('ai-village-discovery'));assert(delivered.includes(a.id));
+ assert(!delivered.includes('requests finish'));assert(!delivered.includes('図は必要時のみ'));
+ assert(s.startupInstructions().includes('requests finish'));assert(s.startupInstructions().includes('phase=report'));
+ assert(s.startupInstructions().includes('projects guide PROJECT_ID'));
+ await f.submit(r);await f.finish(r);await f.complete(r);await s.tick();
+ const q=s.flow.get(r.humanRequestId),report=s.flow.run(q.works[0].currentRunId);
+ assert.equal(report.phase,'report');assert(report.instruction.startsWith('報告資料'));
+ assert(!s.flow.context(report).includes('requests finish'));
+ a.inputEnvelope={mode:'legacy'};
+ assert(s.flow.context(report).includes('requests finish'));
+ assert(s.flow.context(r).includes('requests delegate'));
+});
+
+test('startup envelope uses latest metadata and retains attachments/travel; changed native session downgrades to legacy',async t=>{
+ const f=await fixture(t),s=f.service,a=f.agents[0];a.inputEnvelope={mode:'startup-v1',sessionId:'previous-session'};
+ await s.tick();assert.equal(a.inputEnvelope.mode,'legacy');assert.equal(a.inputEnvelope.reason,'native-session-changed');
+ a.inputEnvelope={mode:'startup-v1'};a.projectId='current-project';a.metadataRevision=42;
+ const context=s.secretaryContext(a,true);assert(context.includes('current-project'));assert(context.includes('42'));assert(!context.includes('所属は'));
+ assert(s.flow.dynamicContext({attachmentFiles:[{path:'/attachment',sha256:'verified'}],travelContexts:[]}).includes('/attachment'));
+ await s.save();await f.restart();assert.equal(f.service.agent(a.id).inputEnvelope.mode,'startup-v1');
+});
