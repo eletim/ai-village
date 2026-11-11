@@ -1,3 +1,4 @@
+import {checkUploadSize,imageCapacity,MAX_IMAGE_PIXELS,uploadError} from './upload-limits.mjs';
 import { mkdir, writeFile, rename, readdir, open } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { resolve, basename } from 'node:path';
@@ -10,15 +11,19 @@ export class ImageStore {
   constructor(dir) { this.root = resolve(dir, 'images'); }
   async init() { await mkdir(this.root, {recursive:true, mode:0o700}); }
   async save(bytes, name = '画像', source = {kind:'upload'}) {
+    checkUploadSize(bytes);
+    return imageCapacity.use(()=>this.decodeAndSave(bytes,name,source));
+  }
+  async decodeAndSave(bytes,name,source) {
     if (!Buffer.isBuffer(bytes) || !bytes.length) throw fail('画像データが空です。');
     let output, metadata;
     try {
-      const decoder = sharp(bytes, {limitInputPixels:false, failOn:'warning'});
+      const decoder = sharp(bytes, {limitInputPixels:MAX_IMAGE_PIXELS, failOn:'warning'});
       metadata = await decoder.metadata();
       if (!['png','jpeg','webp'].includes(metadata.format) || (metadata.pages || 1) > 1) throw new Error('format');
       output = await decoder.rotate().png().toBuffer();
-    } catch { throw fail('画像を読み込めません。静止画のPNG・JPEG・WebPを選んでください。'); }
-    const id = randomUUID(), info = await sharp(output, {limitInputPixels:false}).metadata();
+    } catch(error) { if(/pixel limit/i.test(error.message))throw uploadError('画像は2400万画素以下にしてください。',413);throw fail('画像を読み込めません。静止画のPNG・JPEG・WebPを選んでください。'); }
+    const id = randomUUID(), info = await sharp(output, {limitInputPixels:MAX_IMAGE_PIXELS}).metadata();
     const record = {id, name:basename(String(name)).slice(0,160), mime:'image/png', size:output.length, width:info.width, height:info.height, source, at:new Date().toISOString()};
     await this.init();
     await writeFile(resolve(this.root,`${id}.png`),output,{flag:'wx',mode:0o600});

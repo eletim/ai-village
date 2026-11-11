@@ -1,3 +1,4 @@
+import {receiveUpload} from '../server/upload-limits.mjs';
 import {apiValue} from '../server/state-projection.mjs';
 import {workspaceSnapshot,historyPage} from '../server/conversation-pages.mjs';
 import {WorkspaceSync} from '../server/workspace-sync.mjs';
@@ -127,8 +128,7 @@ const handleRequest = async (req, res) => {
         res.writeHead(200,{'Content-Type':record.kind==='image'?'image/png':'application/octet-stream','Content-Disposition':(record.kind==='image'?'inline':'attachment')+"; filename*=UTF-8''"+encodeURIComponent(record.name).replaceAll("'",'%27'),'X-Content-Type-Options':'nosniff','Content-Security-Policy':"sandbox; default-src 'none'",'Cache-Control':'private, no-store'});res.end(bytes);return;
       }
       if(req.method==='POST'&&pathname==='/api/attachments'){
-        const chunks=[];for await(const chunk of req)chunks.push(chunk);
-        return json(res,201,await attachments.save(Buffer.concat(chunks),new URL(req.url,'http://localhost').searchParams.get('name'),req.headers['content-type']));
+        return receiveUpload(req,res,bytes=>attachments.save(bytes,new URL(req.url,'http://localhost').searchParams.get('name'),req.headers['content-type']));
       }
       const imageRoute = pathname.match(/^\/api\/images\/([0-9a-f-]{36})$/);
       if (req.method === 'GET' && imageRoute) {
@@ -138,10 +138,8 @@ const handleRequest = async (req, res) => {
       }
       if (req.method === 'POST' && pathname === '/api/images') {
         if (!['image/png','image/jpeg','image/webp'].includes(req.headers['content-type'])) return json(res,415,{error:'PNG・JPEG・WebPを選んでください。'});
-        const chunks=[];
-        for await (const chunk of req) chunks.push(chunk);
         const name = new URL(req.url,'http://localhost').searchParams.get('name') || '画像';
-        return json(res,201,await images.save(Buffer.concat(chunks),name));
+        return receiveUpload(req,res,bytes=>images.save(bytes,name));
       }
       if (req.method === 'POST' && pathname === '/api/village') {
         if (!req.headers['content-type']?.startsWith('application/json')) return json(res,415,{error:'JSON required'});
