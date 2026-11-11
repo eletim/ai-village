@@ -71,6 +71,16 @@ PR #58をbaseにした積み重ねdraft。マージ・本番反映は担当秘�
 祖先を保持できる。squashの場合はstage2を新mainへrebaseして差分・テストを再確認する。
 このPRのbaseをmainへ変更しdraftを解除、レビュー結果を確認してから統合する。
 
+レビュー後の統合コマンド（merge commitを使う場合）:
+
+```bash
+gh pr ready 58 --repo eletim/ai-village
+gh pr merge 58 --merge --repo eletim/ai-village
+gh pr edit 59 --base main --repo eletim/ai-village
+gh pr ready 59 --repo eletim/ai-village
+gh pr merge 59 --merge --repo eletim/ai-village
+```
+
 本番フォルダに未コミット変更がないことを確認して実行する。
 
 ```bash

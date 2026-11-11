@@ -82,7 +82,7 @@ test('failure, retry, interrupted finalization and cancellation do not consume a
  const q=s.flow.root(r.humanRequestId);assert.equal(q.works[1].state,'failed');assert.equal(q.inbox[0].outcome,'failed');assert.equal(q.ticket.state,'available');
  await s.flow.acknowledge({humanRequestId:q.id,workId:r.workId,actorRunId:r.id,resultIds:[q.inbox[0].id]});await assert.rejects(f.finish(r),/未完了/);
  const retry=await s.flow.continue({humanRequestId:q.id,workId:child.id,actorRunId:r.id,revision:q.revision,operationId:'retry-child-one',instruction:'Try again'},true);await s.tick();await f.submit(retry);await f.finish(retry);await f.complete(retry);
- const event=q.inbox.find(e=>e.resultRunId===retry.id);assert(event);assert.equal(q.inbox[0].superseded,true);await s.flow.acknowledge({humanRequestId:q.id,workId:r.workId,actorRunId:r.id,resultIds:[event.id]});
+ assert.equal(retry.runModel.createdBy,'agent');assert.equal(retry.runModel.decisions[0].actor,'agent');const event=q.inbox.find(e=>e.resultRunId===retry.id);assert(event);assert.equal(q.inbox[0].superseded,true);await s.flow.acknowledge({humanRequestId:q.id,workId:r.workId,actorRunId:r.id,resultIds:[event.id]});
  await f.finish(r);await f.complete(r,'interrupted');assert.equal(q.status,'active');assert.equal(q.ticket.state,'available');assert.equal(f.notifications.length,0);
  await s.flow.cancel({humanRequestId:q.id,revision:q.revision});await s.tick();assert.equal(q.ticket.state,'cancelled');assert.equal(f.notifications.length,0);
  await assert.rejects(s.flow.delegate({humanRequestId:q.id,parentWorkId:r.workId,actorRunId:r.id,agentId:f.agents[3].id,instruction:'no',operationId:'after-cancel'}),/受付中では/);
@@ -183,7 +183,7 @@ test('finish then overloaded failure never notifies; bounded durable retry sends
  assert.equal(r.recovery.status,'scheduled');assert(r.recovery.nextAt>Date.now());assert.equal(f.sent.length,1);
  r.recovery.nextAt=0;await s.save();s=await f.restart();await Promise.all([s.tick(),s.tick()]);
  q=s.flow.root(r.humanRequestId);w=q.works[0];let retry=s.flow.run(w.currentRunId);
- assert.notEqual(retry.id,r.id);assert.equal(retry.workId,r.workId);assert.equal(retry.origin,'retry');assert.equal(w.autoRetry.attempts,1);assert.equal(w.finish,undefined);assert.equal(f.sent.length,2);
+ assert.equal(retry.runModel.createdBy,'program');assert.notEqual(retry.id,r.id);assert.equal(retry.workId,r.workId);assert.equal(retry.origin,'retry');assert.equal(w.autoRetry.attempts,1);assert.equal(w.finish,undefined);assert.equal(f.sent.length,2);
  assert.match(retry.instruction,/既存変更/);assert.match(retry.instruction,/再委任せず/);
  await s.tick();await s.tick();assert.equal(f.sent.length,2);assert.equal(retry.state,'awaiting_input');
  s=await f.restart();await s.tick();retry=s.flow.run(retry.id);assert.equal(retry.state,'awaiting_input');assert.equal(f.sent.length,2);

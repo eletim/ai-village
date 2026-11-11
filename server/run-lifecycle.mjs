@@ -41,8 +41,8 @@ export function projectObservation(r,status){
  if(['sent','running'].includes(modelOf(r).state.kind))r.state=status;
 }
 
-export function initializeRetry(r,previous,{actor,at=Date.now(),leafRoot=false,boundaryConfirmed=false,agentIdle=false}){
- const result=retryRun(modelOf(previous),{type:'retry',actor,id:r.id,at,leafRoot,boundaryConfirmed,agentIdle});
+export function initializeRetry(r,previous,{actor,at=Date.now(),leafRoot=false,boundaryConfirmed=false,agentIdle=false,legacyAgentRunId}){
+ const result=retryRun(modelOf(previous),{type:'retry',actor,id:r.id,at,leafRoot,boundaryConfirmed,agentIdle},{legacyAgentRunId});
  if(!result.ok)throw Error('run retry rejected: '+result.reason);
  return commit(r,result.value);
 }

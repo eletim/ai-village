@@ -49,8 +49,8 @@ export class RequestFlow {
  enqueue(q,w,text,op,origin,extra={}){
   const previous=this.run(w.currentRunId)||(w.parentWorkId?this.run(this.work(q,w.parentWorkId).currentRunId):null);
   const r={id:randomUUID(),requestId:runKey(q.id,op),agentId:w.agentId,humanRequestId:q.id,workId:w.id,origin,instruction:text,travelContexts:structuredClone(previous?.contextTravelContexts||previous?.travelContexts||q.travelContexts||[]),attachments:structuredClone(previous?.contextAttachments||previous?.attachments||q.attachments||[]),acceptance:'queued',blocksInput:false,dispatchConfirmed:false,createdAt:now(),achievement:'unverified',recoveryPolicy:1,...extra};
-  if(extra.retryFrom)initializeRetry(r,this.run(extra.retryFrom),{actor:extra.autoRecoveryFrom?'program':'human',leafRoot:!w.parentWorkId&&!q.works.some(c=>c.parentWorkId===w.id),boundaryConfirmed:!!extra.autoRecoveryFrom,agentIdle:!!extra.autoRecoveryFrom});
-  else initializeRun(r,{actor:r.phase==='report'||origin==='result'?'program':origin==='delegation'||origin==='agent'?'agent':'human',parentRunId:w.parentWorkId?this.work(q,w.parentWorkId).currentRunId:null,resultOf:extra.resultId||null,recipientRunId:previous?.id||null});
+  if(extra.retryFrom)initializeRetry(r,this.run(extra.retryFrom),{actor:extra.autoRecoveryFrom?'program':extra.legacyAgentRunId?'agent':'human',legacyAgentRunId:extra.legacyAgentRunId,leafRoot:!w.parentWorkId&&!q.works.some(c=>c.parentWorkId===w.id),boundaryConfirmed:!!extra.autoRecoveryFrom,agentIdle:!!extra.autoRecoveryFrom});
+  else initializeRun(r,{actor:r.phase==='report'||origin==='result'?'program':origin==='delegation'||origin==='agent'||extra.legacyAgentRunId?'agent':'human',parentRunId:w.parentWorkId?this.work(q,w.parentWorkId).currentRunId:null,resultOf:extra.resultId||null,recipientRunId:previous?.id||null});
   this.d.data.runs.push(r);w.runIds.push(r.id);w.currentRunId=r.id;w.state='active';return r;
  }
  context(r){
@@ -195,7 +195,7 @@ export class RequestFlow {
   this.d.writableAgent(this.d.agent(w.agentId));
   for(const e of q.inbox.filter(e=>e.workId===w.id))e.superseded=true;
   delete w.finish;delete w.latestResultId;
-  const r=this.enqueue(q,w,q.report&&!w.parentWorkId?this.reportPrompt(q):x.instruction,(retry?'retry:':'resume:')+x.operationId,retry?'retry':'continuation',{...extra,...(retry?{retryFrom:last.id}:{}),...(q.report&&!w.parentWorkId?{phase:'report',retryInstruction:x.instruction}:{} )});q.revision++;await this.d.save();return r;
+  const r=this.enqueue(q,w,q.report&&!w.parentWorkId?this.reportPrompt(q):x.instruction,(retry?'retry:':'resume:')+x.operationId,retry?'retry':'continuation',{...extra,...(w.parentWorkId?{legacyAgentRunId:x.actorRunId}:{}),...(retry?{retryFrom:last.id}:{}),...(q.report&&!w.parentWorkId?{phase:'report',retryInstruction:x.instruction}:{} )});q.revision++;await this.d.save();return r;
  }
  async cancelQueued(x){return this.d.locked('request-graph',async()=>{
   const r=this.run(x.runId);if(!r||r.agentId!==x.agentId||r.humanRequestId!==x.humanRequestId)fail('対象Agent・依頼・runが一致しません',404);

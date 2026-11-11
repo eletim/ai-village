@@ -298,6 +298,8 @@ stateモジュール参照がないことも再確認した。
 補足の送信開始または失敗で元の追跡を③の判断として閉じる。元の結果を正常と推定しない。
 補足がまだqueuedなら元の追跡を復帰できるが、終端になった送信は復帰しない。
 現行CLIの独立Agent依頼は `allowAgentRoot` の明示互換オプションで判定者agentを記録する。
+既存の子作業retry/resumeは、親のnative受付をactor()で検証済みの場合だけ
+legacyAgentRunIdを渡し、判定者agentを記録する。純粋retryは互換指定なしのagent操作を拒否する。
 Agent操作の削減・認可の変更は段階3で行い、段階2でhumanと偽装しない。
 
 起動時の `migrateDirect(..., {resumeInFlight:true})` は段階1の保守的な解析とは異なり、

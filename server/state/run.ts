@@ -62,11 +62,11 @@ export function transitionRun(r:Run,e:RunEvent):Result<Run> {
   default:return unreachable(e);
  }
 }
-export type RetryEvent = Command<'retry','human',{id:string; at:number}>
+export type RetryEvent = Command<'retry','human'|'agent',{id:string; at:number}>
  | Command<'retry','program',{id:string; at:number; boundaryConfirmed:boolean; agentIdle:boolean; leafRoot:boolean}>;
 /** Returns a NEW run; the old outcome/facts are never overwritten. */
-export function retryRun(r:Run,e:RetryEvent):Result<Run> {
- if(e.actor!=='human'&&e.actor!=='program')return reject('actor-forbidden');
+export function retryRun(r:Run,e:RetryEvent,compatibility:{legacyAgentRunId?:string}={}):Result<Run> {
+ if(e.actor!=='human'&&e.actor!=='program'&&!(e.actor==='agent'&&compatibility.legacyAgentRunId))return reject('actor-forbidden');
  if(r.state.kind!=='ended'||r.state.outcome==='normal'||!e.id||e.id===r.id)return reject('not-retryable');
  if(e.actor==='program') {
   const first=r.retryBudget.firstFailureAt;
