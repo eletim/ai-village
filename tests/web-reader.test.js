@@ -19,8 +19,8 @@ test('issues/PR return real body/comments/diff provenance and authentication err
 });
 test('ordinary web text omits scripts; bounded reading and failures do not invent text',async()=>{
   assert.equal(htmlText('<h1>Title</h1><script>secret()</script><p>A &amp; B</p>').includes('secret'),false);
-  const reader=new WebReader({fetcher:async()=>new Response('<h1>Hello</h1><p>本文</p>',{headers:{'Content-Type':'text/html'}})});assert.match((await reader.read('https://example.test')).content,/本文/);
-  const failed=new WebReader({fetcher:async()=>new Response('private',{status:403})});await assert.rejects(failed.read('https://example.test'),/未取得/);
+  const reader=new WebReader({resolver:async()=>[{address:'93.184.216.34',family:4}],fetcher:async()=>new Response('<h1>Hello</h1><p>本文</p>',{headers:{'Content-Type':'text/html'}})});assert.match((await reader.read('https://example.test')).content,/本文/);
+  const failed=new WebReader({resolver:async()=>[{address:'93.184.216.34',family:4}],fetcher:async()=>new Response('private',{status:403})});await assert.rejects(failed.read('https://example.test'),/未取得/);
   await assert.rejects(reader.read('file:///etc/passwd'),/HTTP/);
 });
 function packet(branch){const line='0'.repeat(40)+' '+sha+' refs/heads/'+branch+'\0report-status\n';return Buffer.from((Buffer.byteLength(line)+4).toString(16).padStart(4,'0')+line+'0000PACK');}

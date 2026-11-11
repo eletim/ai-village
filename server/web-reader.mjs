@@ -1,9 +1,10 @@
+import {publicTarget,pinnedFetch} from './public-web.mjs';
 import { githubApi } from './github.mjs';
 const enc=encodeURIComponent;
 const entities=text=>text.replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos|nbsp);/gi,(_,s)=>s[0]==='#'?String.fromCodePoint(Math.min(0x10ffff,parseInt(s.slice(s[1]?.toLowerCase()==='x'?2:1),s[1]?.toLowerCase()==='x'?16:10))):({amp:'&',lt:'<',gt:'>',quot:'"',apos:"'",nbsp:' '})[s.toLowerCase()]);
 export function htmlText(html){return entities(html.replace(/<(script|style|noscript|svg|nav|header|footer)\b[^>]*>[\s\S]*?<\/\1\s*>/gi,' ').replace(/<!--[^]*?-->/g,' ').replace(/<\/?(?:p|div|h[1-6]|li|br|article|section|pre|tr)\b[^>]*>/gi,'\n').replace(/<[^>]+>/g,' ')).replace(/[ \t]+/g,' ').replace(/\n\s*\n/g,'\n\n').trim();}
 export class WebReader {
-  constructor({api=githubApi,fetcher=fetch}={}){this.api=api;this.fetch=fetcher;}
+  constructor({api,fetcher=pinnedFetch,resolver}={}){this.api=api||(path=>githubApi(path,{fetcher:async(input,options)=>{const url=new URL(input);return pinnedFetch(url,{...options,target:await publicTarget(url,resolver)});}}));this.fetch=fetcher;this.resolver=resolver;}
   async read(input){
     const url=new URL(input);
     if(!['https:','http:'].includes(url.protocol)||url.username||url.password||url.search.match(/(?:token|access_token|auth|password|secret)=/i))throw new Error('認証情報を含まないHTTP(S) URLを指定してください。');
@@ -41,10 +42,11 @@ export class WebReader {
     let current=url;
     for(let hop=0;hop<6;hop++){
       if(!['http:','https:'].includes(current.protocol)||current.username||current.password)throw new Error('転送先URLが不正です。');
-      const r=await this.fetch(current,{redirect:'manual',signal:AbortSignal.timeout(15000),headers:{'User-Agent':'ai-village-reader','Accept':'text/html,text/plain,application/json'}});
-      if([301,302,303,307,308].includes(r.status)){current=new URL(r.headers.get('location'),current);continue;}
-      if(!r.ok)throw new Error(`Web HTTP ${r.status}。本文は未取得です。`);
-      const type=r.headers.get('content-type')||'';if(!/(text\/|json|xml)/i.test(type))throw new Error('テキスト以外の応答は取得しません。');
+      const target=await publicTarget(current,this.resolver);
+      const r=await this.fetch(current,{target,redirect:'manual',signal:AbortSignal.timeout(15000),headers:{'User-Agent':'ai-village-reader','Accept':'text/html,text/plain,application/json'}});
+      if([301,302,303,307,308].includes(r.status)){r.body?.destroy?.();await r.body?.cancel?.();current=new URL(r.headers.get('location'),current);continue;}
+      if(!r.ok){r.body?.destroy?.();await r.body?.cancel?.();throw new Error(`Web HTTP ${r.status}。本文は未取得です。`);}
+      const type=r.headers.get('content-type')||'';if(!/(text\/|json|xml)/i.test(type)){r.body?.destroy?.();await r.body?.cancel?.();throw new Error('テキスト以外の応答は取得しません。');}
       const chunks=[];let size=0;for await(const chunk of r.body){size+=chunk.length;if(size>1000000)throw new Error('Web本文が1MBの上限を超えました。');chunks.push(chunk);}
       const body=Buffer.concat(chunks).toString('utf8');return {provider:'web',sourceUrl:current.href,contentType:type,content:type.includes('html')?htmlText(body):body};
     }throw new Error('Webの転送回数が上限を超えました。');

@@ -1,3 +1,4 @@
+import {humanUI} from '../server/human-ui.mjs';
 import {receiveUpload} from '../server/upload-limits.mjs';
 import {apiValue} from '../server/state-projection.mjs';
 import {workspaceSnapshot,historyPage} from '../server/conversation-pages.mjs';
@@ -27,6 +28,7 @@ const args = process.argv.slice(2);
 const value = (name, fallback) => { const i = args.indexOf(name); return i < 0 ? fallback : args[i + 1]; };
 const port = Number(value('--port', 5173)), host = value('--host', '127.0.0.1'), root = resolve('.');
 const addresses = listenAddresses({host});
+const humanIntent=humanUI();
 const allowRequest = await accessPolicy({host:addresses[0],port,vpnAddress:addresses.find(address=>address.startsWith('100.'))});
 const library = new VillageLibrary();
 const dir=stateDirectory();
@@ -48,6 +50,7 @@ const handleRequest = async (req, res) => {
   try {
     if(!allowRequest(req,res))return;
     const pathname = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
+    if(pathname.startsWith('/api/direct/human/')&&!humanIntent.allow(req))return json(res,403,{error:'人間専用の操作です。村の画面を再読み込みして操作してください。'});
     if (pathname.startsWith('/api/')) {
       if (pathname.startsWith('/api/direct')) {
         if(req.method==='GET' && pathname==='/api/direct/usage')return json(res,200,await weeklyUsage.get());
@@ -153,6 +156,7 @@ const handleRequest = async (req, res) => {
     if (req.method !== 'GET' || !(pathname === '/agents' || pathname === '/agents/' || pathname === '/agents.html' || pathname === '/' || pathname === '/index.html' || /^\/src\/[a-z-]+\.(js|css)$/.test(pathname) || /^\/src\/vendor\/(?:[a-zA-Z0-9_.-]+\/)*[a-zA-Z0-9_-]+\.mjs$/.test(pathname)&&!pathname.split('/').some(p=>p==='..'||p==='.'))) { res.writeHead(404); res.end('Not found'); return; }
     const file = resolve(root, ['/agents','/agents/'].includes(pathname) ? 'agents.html' : pathname === '/' ? 'index.html' : '.' + pathname);
     const content = await readFile(file);
+    if(extname(file)==='.html')humanIntent.issue(req,res);
     res.writeHead(200, { 'Content-Type': mime[extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-store' }); res.end(content);
   } catch (error) {
     if (error.code === 'ENOENT') { res.writeHead(404); res.end('Not found'); }
