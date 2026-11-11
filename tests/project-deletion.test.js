@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
+import {bindAgent} from '../server/agent-lifecycle.mjs';
 import {DirectAgents} from '../server/direct.mjs';
 async function fixture(t){
  const dir=await mkdtemp(join(tmpdir(),'delete-project-'));t.after(()=>rm(dir,{recursive:true,force:true}));
@@ -16,6 +17,7 @@ async function fixture(t){
  const opts={dir,remote,notifier:{status:()=>({}),enqueue:()=>{throw Error('No notification allowed');}}};const d=new DirectAgents(opts);await d.init({watch:false});
  const p=await d.putProject({name:'Project',requestId:'project-create'});
  d.data.agents=['a','b'].map(id=>({id,name:'Agent '+id,projectId:p.id,metadataRevision:0,connection:{connectionType:'ssh',sshHost:'fixture'},tabId:id,workspaceId:'workspace-'+id,sessionName:'session-'+id,cwd:'/tmp',state:'busy',canSend:true}));
+ d.data.agents.forEach(bindAgent);
  d.data.runs=[{id:'history',agentId:'a',state:'completed',output:'保持する履歴',notificationPolicy:'legacy-untracked'}];delete d.data.runStateVersion;await d.save();
  const input=()=>{const plan=d.projectDeletePlan(p.id);return {operationId:'delete-operation',revision:plan.revision,members:plan.members};};
  return {d,p,opts,input,closed,calls,present,offline:id=>offline=id};
@@ -41,9 +43,9 @@ test('confirmation rejects renamed project, membership changes and reused operat
  const z=f.input();await f.d.deleteProject(f.p.id,z);await assert.rejects(f.d.deleteProject(f.p.id,{...z,operationId:'different-operation'}),/更新/);assert.deepEqual(f.closed,['a']);
 });
 test('absent tab without captured processes never proves cleanup; close response loss safely reconciles',async t=>{
- const f=await fixture(t);f.present.delete('a');let result=await f.d.deleteProject(f.p.id,f.input());assert.equal(result.status,'partial');assert.match(result.remaining[0].error,/手動確認/);assert.equal(f.d.agent('a').state,'stop_unknown');
+ const f=await fixture(t);f.present.delete('a');let result=await f.d.deleteProject(f.p.id,f.input());assert.equal(result.status,'partial');assert.match(result.remaining[0].error,/手動確認/);assert.equal(f.d.agent('a').state,'unknown');
  const g=await fixture(t),original=g.d.remote;let lost=false;g.d.remote=async(...args)=>{const result=await original(...args);if(args[0][2]==='close'&&!lost){lost=true;throw Error('response lost');}return result;};
- const x=g.input();result=await g.d.deleteProject(g.p.id,x);assert.equal(result.status,'partial');assert.equal(g.d.agent('a').state,'stop_unknown');result=await g.d.deleteProject(g.p.id,x);assert.equal(result.status,'deleted');assert.deepEqual(g.closed,['a','b']);
+ const x=g.input();result=await g.d.deleteProject(g.p.id,x);assert.equal(result.status,'partial');assert.equal(g.d.agent('a').state,'unknown');result=await g.d.deleteProject(g.p.id,x);assert.equal(result.status,'deleted');assert.deepEqual(g.closed,['a','b']);
 });
 test('deletion intent suppresses pending finish success and retains formal request graph',async t=>{
  const f=await fixture(t),q={id:'q',status:'finalizing',revision:0,ticket:{state:'available'},works:[{id:'work',agentId:'a',state:'active',currentRunId:'history',runIds:['history'],finish:{status:'pending',runId:'history'}}],inbox:[]};f.d.data.requests.push(q);f.d.data.runs[0].acceptance='accepted';f.d.data.runs[0].humanRequestId='q';
@@ -51,7 +53,7 @@ test('deletion intent suppresses pending finish success and retains formal reque
 });
 test('intent blocks dispatch already waiting for observation and survives interrupted deletion restart',async t=>{
  const f=await fixture(t);let observed;const observing=new Promise(r=>observed=r);let release;const gate=new Promise(r=>release=r);
- f.d.observe=async a=>{observed();await gate;a.canSend=true;return {sessionId:'s',cursor:0};};
+ f.d.observe=async a=>{observed();await gate;a.agentModel.observation={connected:true,process:'alive',activity:'idle',canSteer:false};return {sessionId:'s',cursor:0};};
  const r={id:'queued',agentId:'a',state:'queued',instruction:'must not send',attachments:[]};f.d.data.runs.push(r);
  const sending=f.d.attemptRun(r);await observing;const deletion=f.d.deleteProject(f.p.id,f.input());
  await new Promise(r=>setImmediate(r));release();await sending;await deletion;assert(!f.calls.some(c=>c[2]==='send'));

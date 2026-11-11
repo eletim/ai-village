@@ -193,7 +193,7 @@ function renderBoard(){
   travelEditors.get(a.id).lock(card.dataset.pending==='true'||pending.has(a.id));
   send.disabled=!connected||(a.canSend!==true&&a.canSteer!==true&&a.canQueue!==true)||card.dataset.pending==='true'||pending.has(a.id);
   card.querySelector('[data-reconcile]').hidden=!pending.has(a.id)||card.dataset.pending==='true';
-  send.textContent=a.reportPending?'次の依頼を待機キューへ':a.canSteer?'実行中に補足':a.canQueue&&!a.canSend?'待機キューへ':'送信';
+  send.textContent=a.canSteer?'実行中に補足':a.canQueue&&!a.canSend?'待機キューへ':'送信';
   send.title=pending.has(a.id)?'送信結果を確認中です。自動再送しません。':a.canSteer?'実行中の同じ依頼に補足します。native受付を照合し、通知は依頼全体で1回です。':a.canQueue&&!a.canSend?'別の依頼として保存し、現在の応答が終わったら渡します。':a.sendReason||'';
 
   card.hidden=!ids.has(a.id);card.style.order=list.findIndex(x=>x.id===a.id);

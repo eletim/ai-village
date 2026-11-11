@@ -89,7 +89,7 @@ test('failure, retry, interrupted finalization and cancellation do not consume a
 });
 test('an acknowledged child terminated before dispatch (its agent was stopped) never blocks parent finish once a successor child completes',async t=>{
  const f=await fixture(t),s=f.service,r=await s.send(f.agents[0].id,{instruction:'work',requestId:'human-terminated-child'});await f.submit(r);
- const stale=await f.delegate(r,f.agents[2]);f.agents[2].state='terminated';await s.tick();await s.tick();
+ const stale=await f.delegate(r,f.agents[2]);f.agents[2].agentModel={...f.agents[2].agentModel,intent:'stop',observation:{connected:true,process:'absent',activity:'unknown',canSteer:false}};await s.tick();await s.tick();
  const q=s.flow.root(r.humanRequestId),staleRun=s.flow.run(stale.currentRunId);
  assert.equal(staleRun.state,'terminated');assert.equal(staleRun.error,'target-unavailable-before-dispatch');
  assert.equal(q.works.find(w=>w.id===stale.id).state,'terminated');assert.equal(q.inbox[0].outcome,'terminated');
@@ -309,7 +309,7 @@ test('two-stage report replaces visible work after completion, waits for accepta
  const count=f.sent.length;await s.tick();await s.tick();assert.equal(f.sent.length,count);
  s=await f.restart();await s.tick();assert.equal(f.sent.length,count);
  report=s.flow.run(report.id);await f.finish(report);
- await f.submit(report);assert.equal(s.agent(report.agentId).canSteer,false);
+ await f.submit(report);assert.equal(s.agent(report.agentId).canSteer,true);
  await assert.rejects(f.delegate(report,f.agents[2]),/報告工程/);
  await f.finish(report);assert.equal(f.notifications.length,0);await f.complete(report);
  assert.equal(f.notifications.length,1);assert.match(f.notifications[0].content,new RegExp('Final '+report.id));
@@ -348,11 +348,11 @@ test('report snapshot is pinned, supplements stay same work until report, new re
  await s.flow.configureReport(false);
  await f.finish(r);await f.complete(r);const q=s.flow.root(r.humanRequestId),report=s.flow.run(q.works[0].currentRunId);
  await f.submit(report);
- await assert.rejects(s.send(r.agentId,{requestId:'report-invalid-steer',instruction:'補足',steerTarget:{runId:report.id,sessionId:report.sessionId,turnId:report.turnId}}),/補足対象/);
+ const supplement=await s.send(r.agentId,{requestId:'report-valid-steer',instruction:'補足',steerTarget:{runId:report.id,sessionId:report.sessionId,turnId:report.turnId}});assert.equal(supplement.phase,'report');await acceptSteer(f,supplement);
  const later=await s.send(r.agentId,{requestId:'report-next-request',instruction:'次の独立依頼'});
  assert.equal(later.state,'queued');assert.notEqual(later.humanRequestId,q.id);assert.equal(s.flow.root(later.humanRequestId).reportMode,false);
  const count=f.sent.length;await s.tick();assert.equal(f.sent.length,count);
- await f.finish(report);await f.complete(report);assert.equal(f.notifications.length,1);assert.equal(later.state,'awaiting_input');
+ await f.complete(supplement);assert.equal(f.notifications.length,1);assert.equal(later.state,'awaiting_input');
  assert.equal(s.flow.root(q.id).reportMode,true);
 });
 test('cancel before source completion or queued report prevents creation/dispatch and final attention',async t=>{
@@ -413,9 +413,9 @@ test('unsent input cancellation validates identity, survives restart and never d
 test('cancellation serializes against dispatch and cannot claim a send that already started',async t=>{
  const f=await fixture(t),s=f.service,r=await s.send(f.agents[0].id,{requestId:randomUUID(),instruction:'sent'});
  // Recreate a queued boundary with deterministic fake transport; no real Agent.
- r.runModel={...r.runModel,state:{kind:'queued'}};r.state='queued';r.acceptance='queued';delete r.dispatchAttemptedAt;r.dispatchConfirmed=false;
+ r.runModel={...r.runModel,state:{kind:'queued'}};r.state='queued';r.runModel.facts=[];delete r.dispatchAttemptedAt;
  let enter,release;const entered=new Promise(r=>enter=r),gate=new Promise(r=>release=r),observe=s.observe.bind(s);
- s.observe=async a=>{enter();await gate;await observe(a);a.canSend=true;return {sessionId:'session-'+a.id,cursor:0};};
+ s.observe=async a=>{enter();await gate;await observe(a);a.agentModel.observation={connected:true,process:'alive',activity:'idle',canSteer:false,inputPending:false};return {sessionId:'session-'+a.id,cursor:0};};
  const dispatch=s.attemptRun(r);await entered;const cancel=s.flow.cancelQueued({humanRequestId:r.humanRequestId,agentId:r.agentId,runId:r.id});release();await dispatch;
  await assert.rejects(cancel,/未送信/);assert.equal(r.state,'awaiting_input');
 });
@@ -545,4 +545,11 @@ test('human can retry failed result delivery without creating another child resu
  const q=s.flow.root(r.humanRequestId),delivery=s.flow.run(q.inbox[0].deliveryRunId);await f.submit(delivery);await f.complete(delivery,'failed');
  const retry=await s.flow.continue({humanRequestId:q.id,workId:r.workId,revision:q.revision,operationId:randomUUID(),instruction:'human-reviewed result'},true);await s.tick();await f.submit(retry);await f.finish(retry);await f.complete(retry);
  assert.equal(q.status,'completed');assert.equal(q.inbox.length,1);assert.equal(delivery.state,'failed');assert.equal(retry.runModel.phase,'result');
+});
+
+test('human completion never hides a physically valid supplement; terminal requests stay terminal',async t=>{
+ const f=await fixture(t),s=f.service,root=await s.send(f.agents[0].id,{requestId:randomUUID(),instruction:'Original'});await f.submit(root);
+ const q=s.flow.root(root.humanRequestId);await s.flow.complete({humanRequestId:q.id,revision:q.revision});
+ assert.equal(q.status,'completed');assert.equal(s.agent(root.agentId).canSteer,true);
+ const r=await steer(f,root);assert.notEqual(r.humanRequestId,q.id);assert.equal(q.status,'completed');await acceptSteer(f,r);await f.complete(r);assert.equal(s.flow.root(r.humanRequestId).status,'completed');
 });

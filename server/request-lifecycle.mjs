@@ -9,11 +9,14 @@ export function bindRequest(data,q){
   q.requestModel={...imported,runs:data.runs.filter(r=>r.humanRequestId===q.id).map(modelOf)};
  }
  Object.defineProperty(q,'toJSON',{configurable:true,enumerable:false,value(){
-  const {status,needsReview,...saved}=this;
-  return {...saved,works:this.works.map(({state,...work})=>work)};
+  const {status,needsReview,ticket,...saved}=this;
+  return {...saved,works:this.works.map(({state,...work})=>work),inbox:this.inbox.map(({state,acceptedAt,...entry})=>entry)};
  }});
  Object.defineProperty(q,'status',{configurable:true,enumerable:true,get(){return ({active:'active',completed:'completed',withdrawn:'cancelled'})[this.requestModel.state.kind];}});
  Object.defineProperty(q,'needsReview',{configurable:true,enumerable:true,get(){return this.requestModel.state.kind==='active'&&this.requestModel.state.review.length>0;}});
+ q.ticketId ||= q.ticket?.id;
+ Object.defineProperty(q,'ticket',{configurable:true,enumerable:true,get(){return {id:this.ticketId,state:this.status==='completed'?'consumed':this.status==='cancelled'?'cancelled':'available',...(this.completedAt?{consumedAt:this.completedAt}:{})};}});
+ for(const e of q.inbox)bindInbox(data,e);
  for(const w of q.works)bindWork(data,q,w);
  return q;
 }
@@ -35,3 +38,5 @@ export function observeRequest(data,q){
  if(!q.requestModel)bindRequest(data,q);
  return requestChange(q,{type:'observe-runs',actor:'program',runs:q.requestModel.runs.map(m=>modelOf(data.runs.find(r=>r.id===m.id)))});
 }
+
+export function bindInbox(data,e){for(const [key,get] of Object.entries({state:()=>data.runs.find(r=>r.id===e.deliveryRunId)?.acceptance==='accepted'?'accepted':e.deliveryRunId?'dispatching':'queued',acceptedAt:()=>data.runs.find(r=>r.id===e.deliveryRunId)?.acceptedAt}))Object.defineProperty(e,key,{configurable:true,enumerable:true,get});return e;}

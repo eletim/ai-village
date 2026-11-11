@@ -2,6 +2,10 @@ import {open,rename} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {createHash} from 'node:crypto';
 
+export function durableData(data){
+ const omit=(value,keys)=>Object.fromEntries(Object.entries(value).filter(([key])=>!keys.includes(key)));
+ return {...data,agents:data.agents.map(a=>!a.agentModel?a:omit(a,['state','lifecycle','activityState','connectionState','canSend','canQueue','canSteer','sendReason'])),runs:data.runs?.map(r=>!r.runModel?r:omit(r,['acceptance','blocksInput','dispatchConfirmed','needsReview']))};
+}
 export function durableFingerprint(data){
  // Observation timestamps and live transport snapshots are revalidated at startup.
  const agents=data.agents.map(({lastCheckedAt,runtime,...agent})=>agent);
@@ -24,7 +28,7 @@ export class DirectStore {
   while(this.pending.length){
    const batch=this.pending.splice(0);
    try{
-    const data=this.capture(),fingerprint=durableFingerprint(data);
+    const data=durableData(this.capture()),fingerprint=durableFingerprint(data);
     if(fingerprint!==this.fingerprint){
      // Capture before yielding. Every caller in this batch is covered by this fsync.
      const value=JSON.stringify(data,null,2);await this.write(value);this.fingerprint=fingerprint;
