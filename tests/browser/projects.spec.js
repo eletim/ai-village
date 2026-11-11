@@ -2,6 +2,7 @@ import {test,expect} from '@playwright/test';
 function fixture(){return {projects:[{id:'p',name:'Village',revision:0},{id:'q',name:'Other',revision:0}],workshops:[{id:'local',name:'Local',connectionType:'local',workplaces:['/tmp']},{id:'remote',name:'Remote',connectionType:'ssh',workplaces:['/remote']}],agents:Array.from({length:12},(_,i)=>({id:'a'+i,name:'Agent '+i,createdAt:String(i).padStart(2,'0'),location:i===0?'mayor':'workshop',workshopId:i%2?'remote':'local',connection:{name:i%2?'Remote':'Local'},projectId:i<11?'p':'q',metadataRevision:0,state:'idle',tabId:'tab'+i})),runs:[],notification:{}};}
 async function mock(page,state){const writes=[];await page.route('**/api/direct**',async r=>{if(r.request().method()==='GET')return r.fulfill({json:state});const body=r.request().postDataJSON(),path=new URL(r.request().url()).pathname;writes.push({path,body});if(path.startsWith('/api/direct/agents/')){const a=state.agents.find(a=>a.id===path.split('/')[4]);if(path.endsWith('/stop'))a.state='terminated';else{if(body.revision!==a.metadataRevision)return r.fulfill({status:409,json:{error:'Agentが更新されています。再読込してください'}});Object.assign(a,body,{metadataRevision:a.metadataRevision+1});}return r.fulfill({json:a});}if(path==='/api/direct/projects'){state.projects.push({...body,id:'new',revision:0});return r.fulfill({json:state.projects.at(-1)});}return r.fulfill({json:state});});await page.goto('/agents');return writes;}
 test('Project spans places with nine-card groups, zoom restore, dots and explicit membership',async({page})=>{
+ await page.addInitScript(()=>localStorage.setItem('village-display',JSON.stringify({projectView:'split'})));
  const state=fixture();await mock(page,state);
  await expect(page.locator('[data-place="project:p"]')).toHaveCount(2);
  await page.locator('[data-place="project:p"][data-page="0"]').click();await expect(page.locator('.agent-panel:visible')).toHaveCount(9);
@@ -24,6 +25,7 @@ test('human management survives absent secretary, requires stop confirmation and
  await page.locator('#manage').click();await page.getByRole('button',{name:'Project管理',exact:true}).click();await page.locator('#project-form [name=name]').fill('New Project');await page.locator('#project-form button').click();await expect(page.locator('[data-place="project:new"]')).toContainText('New Project');
 });
 test('sidebar modes persist their own group, restore drafts and reach unassigned Agents without auto-view',async({page})=>{
+ await page.addInitScript(()=>localStorage.setItem('village-display',JSON.stringify({projectView:'split'})));
  const state=fixture();state.agents[11].projectId=null;const writes=await mock(page,state);
  await expect(page.locator('[data-mode=projects]')).toHaveAttribute('aria-pressed','true');await expect(page.locator('[data-place=remote]')).toHaveCount(0);await expect(page.locator('[data-place=all]')).toHaveCount(1);
  await page.locator('[data-place="project:p"][data-page="1"]').click();await page.locator('#agent-a9 textarea').fill('preserved across modes');await page.locator('#agent-a9 [data-zoom]').click();

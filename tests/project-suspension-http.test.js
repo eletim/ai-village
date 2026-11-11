@@ -1,3 +1,4 @@
+import {serverReady} from './helpers/server-ready.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,writeFile,readFile,rm} from 'node:fs/promises';
@@ -7,10 +8,10 @@ import {spawn} from 'node:child_process';
 import {once} from 'node:events';
 import {createServer} from 'node:net';
 test('official HTTP/CLI suspension persists across server restart, rejects invalid/stale writes and preserves rename/delete',async t=>{
- const dir=await mkdtemp(join(tmpdir(),'suspend-http-'));t.after(()=>rm(dir,{recursive:true,force:true}));const bin=join(dir,'pmux');await writeFile(bin,'#!/bin/sh\nexit 1\n',{mode:0o700});
+ const dir=await mkdtemp(join(tmpdir(),'suspend-http-'));const bin=join(dir,'pmux');await writeFile(bin,'#!/bin/sh\nexit 1\n',{mode:0o700});
  const socket=createServer();socket.listen(0,'127.0.0.1');await once(socket,'listening');const port=socket.address().port;await new Promise(r=>socket.close(r));let child;
- const stop=async()=>{if(child?.exitCode===null){const done=once(child,'exit');child.kill();await done;}};t.after(stop);
- const start=async()=>{child=spawn(process.execPath,['scripts/dev.mjs','--port',String(port)],{env:{...process.env,HOME:dir,VILLAGE_STATE_DIR:dir,VILLAGE_PMUX_BIN:bin,VILLAGE_NOTIFICATIONS:'false',VILLAGE_AUTH_FILE:'',VILLAGE_PUBLIC_ORIGIN:'',VILLAGE_VPN_ADDRESS:'',CODEX_HOME:dir},stdio:['ignore','pipe','pipe']});await new Promise((ok,no)=>{const timer=setTimeout(()=>no(Error('timeout')),10000);child.once('exit',()=>{clearTimeout(timer);no(Error('exit'));});child.stdout.on('data',b=>{if(b.toString().includes('AI村 →')){clearTimeout(timer);ok();}});});};
+ const stop=async()=>{if(child?.exitCode===null){const done=once(child,'exit');child.kill();await done;}};t.after(async()=>{await stop();await rm(dir,{recursive:true,force:true});});
+ const start=async()=>{child=spawn(process.execPath,['scripts/dev.mjs','--port',String(port)],{env:{...process.env,HOME:dir,VILLAGE_STATE_DIR:dir,VILLAGE_PMUX_BIN:bin,VILLAGE_NOTIFICATIONS:'false',VILLAGE_AUTH_FILE:'',VILLAGE_PUBLIC_ORIGIN:'',VILLAGE_VPN_ADDRESS:'',CODEX_HOME:dir},stdio:['ignore','pipe','pipe']});await serverReady(child);};
  const request=async(path,data,method='POST')=>{const r=await fetch(`http://127.0.0.1:${port}`+path,{method,headers:{'Content-Type':'application/json'},...(data?{body:JSON.stringify(data)}:{})});return {status:r.status,data:await r.json()};};const cli=argv=>request('/api/village',{argv});
  await start();const {data:p}=await request('/api/direct/projects',{name:'Sample',requestId:'create-example'});assert.notEqual(p.suspended,true);
  assert.equal((await request('/api/direct/projects/'+p.id,{revision:0,suspended:1},'PUT')).status,400);
