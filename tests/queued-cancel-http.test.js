@@ -8,7 +8,7 @@ import {spawn} from 'node:child_process';
 import {once} from 'node:events';
 import {createServer} from 'node:net';
 import {randomUUID} from 'node:crypto';
-test('HTTP and CLI operation cancel only the addressed unsent input, durable across restart',async t=>{
+test('Human UI HTTP operation cancels only the addressed unsent input, durable across restart',async t=>{
  const dir=await mkdtemp(join(tmpdir(),'cancel-queue-http-'));t.after(()=>rm(dir,{recursive:true,force:true}));
  const agentId=randomUUID(),id=randomUUID(),workId=randomUUID(),runId=randomUUID();
  const run={id:runId,agentId,humanRequestId:id,workId,state:'queued',acceptance:'queued',origin:'human',instruction:'never send',dispatchConfirmed:false};
@@ -19,7 +19,7 @@ test('HTTP and CLI operation cancel only the addressed unsent input, durable acr
  const socket=createServer();socket.listen(0,'127.0.0.1');await once(socket,'listening');const port=socket.address().port;await new Promise(r=>socket.close(r));let child;
  const stop=async()=>{if(child?.exitCode===null){const done=once(child,'exit');child.kill();await done;}};t.after(stop);
  const start=async()=>{child=spawn(process.execPath,['scripts/dev.mjs','--port',String(port)],{env:{...process.env,VILLAGE_STATE_DIR:dir,VILLAGE_PMUX_BIN:bin,VILLAGE_NOTIFICATIONS:'false',VILLAGE_AUTH_FILE:'',VILLAGE_PUBLIC_ORIGIN:'',VILLAGE_VPN_ADDRESS:'',CODEX_HOME:dir},stdio:['ignore','pipe','pipe']});await new Promise((ok,no)=>{const timer=setTimeout(()=>no(Error('timeout')),10000);child.once('exit',()=>{clearTimeout(timer);no(Error('exit'));});child.stdout.on('data',b=>{if(b.toString().includes('AI村 →')){clearTimeout(timer);ok();}});});};
- const post=async(path,data)=>{const r=await fetch(`http://127.0.0.1:${port}`+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});return {status:r.status,data:await r.json()};};
+ const post=async(path,data)=>{const base=`http://127.0.0.1:${port}`,ui=path.includes('/human/')?{Origin:base,'X-Village-Human-UI':'1',Cookie:(await fetch(base+'/agents')).headers.get('set-cookie').split(';')[0]}:{};const r=await fetch(`http://127.0.0.1:${port}`+path,{method:'POST',headers:{'Content-Type':'application/json',...ui},body:JSON.stringify(data)});return {status:r.status,data:await r.json()};};
  await start();const x={humanRequestId:id,agentId,runId};
  assert.equal((await post('/api/direct/human/requests/cancel-queued',{...x,agentId:'request-graph'})).status,404);
  let response=await post('/api/direct/human/requests/cancel-queued',x);assert.equal(response.status,200);assert.equal(receipt(response.data).acceptance,'cancelled');
