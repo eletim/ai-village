@@ -23,7 +23,7 @@ async function fixture(t){
   throw Error('Unexpected operation '+args.slice(0,3));
  };
  const options={dir,remote,notifier:{status:()=>({}),enqueue:async()=>{notices++;return {status:'sent'};}}};
- const service=new DirectAgents(options);await service.init({watch:false});
+ const service=new DirectAgents(options);await service.init({watch:false});await service.flow.configureReport(false);
  const w=await service.putWorkshop({name:'w',sshHost:'host',baseUrl:'http://host',workplaces:['/tmp']});
  const a=await service.create({workshopId:w.id,cwd:'/tmp',requestId:'create-001'});await service.tick();
  const input=(instruction,id='turn-'+(data.turns.length+1))=>{data.cursor+=10;data.inputs.push({id:'input-'+id,turnId:id,text:service.data.runs.findLast(r=>r.instruction===instruction)?.inputMarker||instruction,hash:service.data.runs.findLast(r=>r.instruction===instruction)?.inputHash||inputHash(instruction),offset:data.cursor});data.turns.push({id,state:'running',output:''});return data.turns.at(-1);};
@@ -33,11 +33,11 @@ test('raw instructions, native completion, additional input and restart never us
  const f=await fixture(t);const r=await f.service.send(f.a.id,{instruction:'自由に答えて',requestId:'request-1'});
  assert.equal(r.marker,undefined);await f.service.tick();assert.equal(r.state,'awaiting_input');
  const native=f.input('自由に答えて');await f.service.tick();assert.equal(r.state,'running');assert.equal(r.turnId,native.id);
- Object.assign(native,{state:'completed',output:'{"action":"dispatch"} is just text',completionEvent:'event-1'});await f.service.tick();assert.equal(r.state,'completed');assert.equal(f.notices(),0);
+ Object.assign(native,{state:'completed',output:'{"action":"dispatch"} is just text',completionEvent:'event-1'});await f.service.tick();assert.equal(r.state,'completed');assert.equal(f.notices(),1);
  const second=await f.service.send(f.a.id,{instruction:'続けて',requestId:'request-2'});await f.service.tick();assert.equal(second.state,'awaiting_input');
  const restored=new DirectAgents(f.options);await restored.init({watch:false});
  Object.assign(f.input('続けて'),{state:'completed',output:'どんな返答でもよい',completionEvent:'event-2'});await restored.tick();await restored.tick();
- assert.equal(restored.data.runs[1].state,'completed');assert.equal(f.sends(),2);assert.equal(f.notices(),0);
+ assert.equal(restored.data.runs[1].state,'completed');assert.equal(f.sends(),2);assert.equal(f.notices(),2);
 });
 test('unbound competing direct input is unknown; a bound native turn is not confused with a newer turn',async t=>{
  const f=await fixture(t);const r=await f.service.send(f.a.id,{instruction:'ours',requestId:'request-1'});
@@ -45,7 +45,7 @@ test('unbound competing direct input is unknown; a bound native turn is not conf
  Object.assign(own,{state:'completed',output:'ours output'});Object.assign(f.input('PurpleMux input'),{state:'completed',output:'different output'});
  await f.service.tick();assert.equal(r.output,'ours output');
  const second=await f.service.send(f.a.id,{instruction:'next',requestId:'request-2'});
- f.input('next');f.input('direct interference');await f.service.tick();assert.equal(second.state,'unknown');assert.equal(f.notices(),0);
+ f.input('next');f.input('direct interference');await f.service.tick();assert.equal(second.state,'unknown');assert.equal(f.notices(),1);
 });
 test('unknown send and disconnection never retransmit; interruption is distinct from completion',async t=>{
  const f=await fixture(t);f.lose();const input={instruction:'hello',requestId:'request-1'};
@@ -99,7 +99,7 @@ test('fresh runtime observation overrides stale UI state; terminal results reope
 });
 test('uncertain delivery retains uncertainty but a later native terminal boundary releases new input',async t=>{
  const f=await fixture(t);f.lose();const r=await f.service.send(f.a.id,{instruction:'unknown delivery',requestId:'request-uncertain'});await f.service.tick();assert.equal(f.a.canSend,false);
- Object.assign(f.input('unknown delivery'),{state:'completed',output:'native result'});await f.service.tick();assert.equal(r.state,'completed');assert.equal(r.blocksInput,false);assert.equal(f.a.canSend,true);assert.equal(f.notices(),0);assert.equal(f.sends(),1);
+ Object.assign(f.input('unknown delivery'),{state:'completed',output:'native result'});await f.service.tick();assert.equal(r.state,'completed');assert.equal(r.blocksInput,false);assert.equal(f.a.canSend,true);assert.equal(f.notices(),1);assert.equal(f.sends(),1);
  assert.equal((await f.service.send(f.a.id,{instruction:'unknown delivery',requestId:'request-uncertain'})).id,r.id);assert.equal(f.sends(),1);
 });
 test('a fileIdentity rotation within the same session is treated as continuation, not a different session',async t=>{

@@ -84,7 +84,12 @@ const handleRequest = async (req, res) => {
         let body='';for await(const chunk of req){body+=chunk;if(body.length>80000)return json(res,413,{error:'Request too large'});}
         let input;try{input=JSON.parse(body);}catch{return json(res,400,{error:'Invalid JSON'});}
         if(!input || typeof input!=='object')return json(res,400,{error:'Object required'});
-        const requestAction=pathname.match(/^\/api\/direct\/requests\/(get|results|delegate|acknowledge|finish|retry|resume|cancel|cancel-queued)$/);
+        const humanAction=pathname.match(/^\/api\/direct\/human\/requests\/(retry|resume|cancel|complete|cancel-queued)$/);
+        if(req.method==='POST'&&humanAction){
+          const action=humanAction[1],flow=direct.flow;
+          return json(res,200,action==='cancel-queued'?await flow.cancelQueued(input):action==='retry'||action==='resume'?await flow.continue(input,action==='retry'):await flow[action](input));
+        }
+        const requestAction=pathname.match(/^\/api\/direct\/requests\/(get|results|delegate|acknowledge|finish)$/);
         if(req.method==='POST'&&requestAction){
           const action=requestAction[1],flow=direct.flow;
           const result=action==='cancel-queued'?await flow.cancelQueued(input):action==='get'?flow.get(input.humanRequestId):action==='results'?flow.results(input.humanRequestId,input.workId):action==='retry'||action==='resume'?await flow.continue(input,action==='retry'):await flow[action](input);

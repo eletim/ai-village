@@ -20,8 +20,8 @@ test('HTTP and CLI operation cancel only the addressed unsent input, durable acr
  const start=async()=>{child=spawn(process.execPath,['scripts/dev.mjs','--port',String(port)],{env:{...process.env,VILLAGE_STATE_DIR:dir,VILLAGE_PMUX_BIN:bin,VILLAGE_NOTIFICATIONS:'false',VILLAGE_AUTH_FILE:'',VILLAGE_PUBLIC_ORIGIN:'',VILLAGE_VPN_ADDRESS:'',CODEX_HOME:dir},stdio:['ignore','pipe','pipe']});await new Promise((ok,no)=>{const timer=setTimeout(()=>no(Error('timeout')),10000);child.once('exit',()=>{clearTimeout(timer);no(Error('exit'));});child.stdout.on('data',b=>{if(b.toString().includes('AI村 →')){clearTimeout(timer);ok();}});});};
  const post=async(path,data)=>{const r=await fetch(`http://127.0.0.1:${port}`+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});return {status:r.status,data:await r.json()};};
  await start();const x={humanRequestId:id,agentId,runId};
- assert.equal((await post('/api/direct/requests/cancel-queued',{...x,agentId:'request-graph'})).status,404);
- let response=await post('/api/direct/requests/cancel-queued',x);assert.equal(response.status,200);assert.equal(response.data.acceptance,'cancelled');
- await stop();await start();response=await post('/api/village',{argv:['requests','cancel-queued',JSON.stringify(x)]});assert.equal(response.data.ok,true);assert.equal(response.data.result.state,'terminated');
+ assert.equal((await post('/api/direct/human/requests/cancel-queued',{...x,agentId:'request-graph'})).status,404);
+ let response=await post('/api/direct/human/requests/cancel-queued',x);assert.equal(response.status,200);assert.equal(response.data.acceptance,'cancelled');
+ await stop();await start();response=await post('/api/direct/human/requests/cancel-queued',x);assert.equal(response.status,200);assert.equal(response.data.state,'terminated');
  const saved=(await post('/api/direct/requests/get',{humanRequestId:id})).data;assert.equal(saved.ticket.state,'cancelled');assert.equal(saved.runs[0].dispatchAttemptedAt,undefined);
 });

@@ -39,7 +39,7 @@ export function humanProjection(data){
   r.reportStatus=q.status==='cancelled'?'依頼キャンセル':q.status==='completed'&&!show?'作業完了（報告に統合済み）':show?'報告完了':r.phase==='report'?
    ['failed','interrupted','terminated'].includes(r.state)?'報告生成に失敗しました。元回答を引き続き表示しています。':
    ['unknown','send_unknown','awaiting_input','waiting_input'].includes(r.state)?'報告の受付・実行状態を確認中です。再送せず接続先を確認してください。':
-   r.state==='completed'?'報告の完了登録が必要です。確認して報告のみ再開できます。':'人間向けの報告を作成中…':
+   r.state==='completed'?'報告の正常終了を確認しています。':'人間向けの報告を作成中…':
    current&&['failed','interrupted','terminated'].includes(r.state)?'作業が停止しました（元回答は非表示）':
    current&&['unknown','send_unknown','waiting_input'].includes(r.state)?'作業の受付・実行状態を確認中（元回答は非表示）':
    current?'作業中（完成した報告を表示します）':'元作業完了（報告待ち）';

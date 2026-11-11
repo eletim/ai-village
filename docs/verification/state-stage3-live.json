@@ -1,0 +1,211 @@
+{
+  "at": "2026-11-11T04:25:46.375Z",
+  "requests": [
+    {
+      "id": "80f00a90-e17a-4a28-8de6-2bbb8f2f7d33",
+      "state": {
+        "kind": "completed",
+        "by": "program",
+        "reason": "normal-work"
+      },
+      "declarations": 0,
+      "runs": [
+        {
+          "id": "a2e63d5d-a38d-44b3-9a1e-1eb717afdd08",
+          "state": "completed",
+          "origin": "human",
+          "phase": "work"
+        }
+      ]
+    },
+    {
+      "id": "d685bf9d-f887-438e-9641-d567f3bd7673",
+      "state": {
+        "kind": "completed",
+        "by": "program",
+        "reason": "normal-work"
+      },
+      "declarations": 0,
+      "runs": [
+        {
+          "id": "8b2f0d6c-61de-4e43-be4b-82d9e17100b9",
+          "state": "completed",
+          "origin": "human",
+          "phase": "work"
+        }
+      ]
+    },
+    {
+      "id": "51e11a03-1f94-4090-85d2-799ff86f437b",
+      "state": {
+        "kind": "completed",
+        "by": "program",
+        "reason": "normal-report"
+      },
+      "declarations": 0,
+      "runs": [
+        {
+          "id": "98ff60eb-a20b-4967-ad8c-696201693a49",
+          "state": "completed",
+          "origin": "human",
+          "phase": "work"
+        },
+        {
+          "id": "b0ab28a2-6750-45c5-82b4-8e9a8fbbaf8b",
+          "state": "completed",
+          "origin": "report",
+          "phase": "report"
+        }
+      ]
+    },
+    {
+      "id": "5ed156c7-d38b-49d4-9b94-421d426496b1",
+      "state": {
+        "kind": "completed",
+        "by": "program",
+        "reason": "normal-report"
+      },
+      "declarations": 0,
+      "runs": [
+        {
+          "id": "76d330c6-328f-463d-aba6-710517505835",
+          "state": "completed",
+          "origin": "human",
+          "phase": "work"
+        },
+        {
+          "id": "529cf1ba-1ca5-426b-9b84-cde010285a2a",
+          "state": "completed",
+          "origin": "report",
+          "phase": "report"
+        }
+      ]
+    },
+    {
+      "id": "e1da0b7f-2756-4fd2-9253-1b07d9878d8d",
+      "state": {
+        "kind": "completed",
+        "by": "program",
+        "reason": "normal-work"
+      },
+      "declarations": 1,
+      "runs": [
+        {
+          "id": "8172b4af-3214-4344-b271-ea7459a05979",
+          "state": "completed",
+          "origin": "human",
+          "phase": "work"
+        },
+        {
+          "id": "44fc95de-3001-45b1-bd10-6d83645db7d6",
+          "state": "completed",
+          "origin": "delegation",
+          "phase": "work"
+        },
+        {
+          "id": "ffc9ec89-c510-41ce-bc64-eee0f446d041",
+          "state": "completed",
+          "origin": "result",
+          "phase": "work"
+        }
+      ]
+    },
+    {
+      "id": "929ff018-b8a9-44b1-ac09-b480a745107e",
+      "state": {
+        "kind": "completed",
+        "by": "program",
+        "reason": "normal-work"
+      },
+      "declarations": 0,
+      "runs": [
+        {
+          "id": "1852b9fd-80c2-4274-846f-066d137b96cc",
+          "state": "completed",
+          "origin": "human",
+          "phase": "work"
+        }
+      ]
+    },
+    {
+      "id": "d704ba8c-b905-4e34-a487-1fc934970876",
+      "state": {
+        "kind": "completed",
+        "by": "human",
+        "reason": "人間が成果を確認して完了扱い"
+      },
+      "declarations": 0,
+      "runs": [
+        {
+          "id": "d78350c4-6ea2-4683-9d68-a06fd90fdda7",
+          "state": "completed",
+          "origin": "human",
+          "phase": "work"
+        },
+        {
+          "id": "8b0a6811-2409-4da2-ab24-2a50c06afb84",
+          "state": "interrupted",
+          "origin": "delegation",
+          "phase": "work"
+        },
+        {
+          "id": "b73875f6-5de7-4958-b213-eb502ced3823",
+          "state": "completed",
+          "origin": "result",
+          "phase": "work"
+        }
+      ]
+    },
+    {
+      "id": "e68dd9d8-8b7f-448f-8473-4c8541c7cedd",
+      "state": {
+        "kind": "completed",
+        "by": "program",
+        "reason": "normal-work"
+      },
+      "declarations": 0,
+      "runs": [
+        {
+          "id": "5bad21bb-ffae-4e1b-b46f-ef423882d830",
+          "state": "interrupted",
+          "origin": "human",
+          "phase": "work"
+        },
+        {
+          "id": "51820f80-bc6f-40f2-9648-d77ea3b54d78",
+          "state": "completed",
+          "origin": "retry",
+          "phase": "work"
+        }
+      ]
+    },
+    {
+      "id": "ae930f18-db0b-4156-8864-2519e13fb29f",
+      "state": {
+        "kind": "withdrawn",
+        "reason": "人間が取り下げ"
+      },
+      "declarations": 0,
+      "runs": [
+        {
+          "id": "75f3e5c9-8805-4767-b2d9-56c0fe4210b7",
+          "state": "interrupted",
+          "origin": "human",
+          "phase": "work"
+        }
+      ]
+    }
+  ],
+  "restart": {
+    "sameInput": true,
+    "sameTurn": true,
+    "sameSession": true,
+    "sameDispatch": true,
+    "state": {
+      "kind": "ended",
+      "outcome": "normal",
+      "reason": "native-terminal"
+    }
+  },
+  "notifications": false
+}

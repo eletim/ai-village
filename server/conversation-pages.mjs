@@ -43,7 +43,7 @@ export function workspaceSnapshot(view,ranges={},focus=null){
  const runs=view.runs.filter(r=>included.has(r.id));
  const agents=view.agents.map(a=>{const {nativeTurns,runtime,creationInput,ownedProcesses,processVerification,initialTabId,sessionName,...rest}=a;return {...rest,nativeTurns:(nativeTurns||[]).slice(-1).map(t=>({id:t.id,sessionId:t.sessionId,state:t.state}))};});
  const ids=new Set(runs.map(r=>r.humanRequestId));
- const requests=(view.requests||[]).filter(q=>ids.has(q.id)).map(q=>({id:q.id,status:q.status,revision:q.revision,works:q.works.map(w=>({id:w.id,currentRunId:w.currentRunId,parentWorkId:w.parentWorkId,finish:w.finish?{status:w.finish.status}:null}))}));
+ const requests=(view.requests||[]).filter(q=>ids.has(q.id)).map(q=>({id:q.id,status:q.status,revision:q.revision,requestModel:q.requestModel?{state:q.requestModel.state}:undefined,works:q.works.map(w=>({id:w.id,currentRunId:w.currentRunId,parentWorkId:w.parentWorkId,finish:w.finish?{status:w.finish.status}:null}))}));
  // runs are referenced by controls, but their bodies are carried only once in conversations.
  const controlFields='id requestId agentId humanRequestId workId phase state turnId sessionId agentSessionId createdAt hiddenCompletion'.split(' ');
  const controls=runs.map(r=>Object.fromEntries(controlFields.filter(k=>r[k]!==undefined).map(k=>[k,r[k]])));

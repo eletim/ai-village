@@ -37,7 +37,6 @@ test('real HTTP + native JSONL + durable inbox + isolated notify CLI: 0 interim,
   assert.deepEqual(root.travelContexts,travelContexts);assert.equal(root.attachments[0].id,file.id);assert.equal(await readFile(root.attachmentFiles[0].path,'utf8'),'{"hello":"world"}');assert((await lines(capture))[0].text.includes('出張先添付'));
   assert.equal((await post('/agents/'+agents[0].id+'/runs',{instruction:'Human collaboration request',requestId:'http-human-request',travelContexts:[{...travelContexts[0],cwd:'/different'}]})).status,409);
   assert.equal(root.state,'awaiting_input');assert.equal(root.acceptance,'pending');assert.equal((await lines(notices)).length,0);
-  assert.equal((await post('/requests/finish',{humanRequestId:root.humanRequestId,workId:root.workId,runId:root.id,revision:0,operationId:'too-early-finish'})).status,409);
   const r=await submit(root);const delegated=await post('/requests/delegate',{humanRequestId:r.humanRequestId,parentWorkId:r.workId,actorRunId:r.id,agentId:agents[1].id,operationId:'http-delegation',instruction:'Child task'});assert.equal(delegated.status,200);
   await complete(r,'工房に依頼しました（途中）');assert.equal((await lines(notices)).length,0);
   const queued=await until(async()=>{const childRun=await run(delegated.body.currentRunId);return childRun?.state==='awaiting_input'&&childRun;});assert.deepEqual(queued.travelContexts,travelContexts);assert.equal(queued.attachments[0].id,file.id);assert.notEqual(queued.attachmentFiles[0].path,root.attachmentFiles[0].path);assert.equal(await readFile(queued.attachmentFiles[0].path,'utf8'),'{"hello":"world"}');const cr=await submit(queued);await finish(cr,'http-child-finish');await complete(cr,'Child result');assert.equal((await lines(notices)).length,0);
@@ -71,15 +70,15 @@ test('real HTTP + native JSONL + durable inbox + isolated notify CLI: 0 interim,
   await native(agents[1],[{type:'event_msg',payload:{type:'task_complete',turn_id:failed.turnId,last_agent_message:null,error:{message:'Selected model is at capacity. Please try a different model.',codex_error_info:'server_overloaded'}}}]);
   await until(async()=>{const current=await run(failed.id);return current.state==='failed'&&current.recovery?.status==='scheduled';});
   const failedState=await get(),failedRequest=await request(failed.humanRequestId);
-  assert.equal(failedRequest.works[0].finish.status,'failed');assert.equal(failedRequest.ticket.state,'available');assert.equal((await run(failed.id)).errorCode,'server_overloaded');
+  assert.equal(failedRequest.works[0].finish.status,'recorded');assert.equal(failedRequest.ticket.state,'available');assert.equal((await run(failed.id)).errorCode,'server_overloaded');
   assert.equal(failedState.agents.find(a=>a.id===agents[1].id).canSend,true);assert.equal(failedState.reviews[agents[1].id].attention,false);assert.equal((await lines(notices)).length,1);
   await stop();await start();assert.equal((await run(failed.id)).recovery.status,'scheduled');
   const retryPayload={humanRequestId:failed.humanRequestId,workId:failed.workId,revision:(await request(failed.humanRequestId)).revision,operationId:'http-manual-retry',instruction:'Check existing effects and resume only unfinished work'};
-  const retried=await post('/requests/retry',retryPayload);assert.equal(retried.status,200);assert.equal((await post('/requests/retry',retryPayload)).body.id,retried.body.id);
+  const retried=await post('/human/requests/retry',retryPayload);assert.equal(retried.status,200);assert.equal((await post('/human/requests/retry',retryPayload)).body.id,retried.body.id);
   await until(async()=>(await run(retried.body.id)).state==='awaiting_input');
-  assert.equal((await post('/requests/retry',{...retryPayload,revision:(await request(failed.humanRequestId)).revision,operationId:'http-uncertain-retry'})).status,409);
+  assert.equal((await post('/human/requests/retry',{...retryPayload,revision:(await request(failed.humanRequestId)).revision,operationId:'http-uncertain-retry'})).status,409);
   const count=(await lines(capture)).length;const fq=await request(failed.humanRequestId);
-  assert.equal((await post('/requests/cancel',{humanRequestId:fq.id,revision:fq.revision})).status,200);
+  assert.equal((await post('/human/requests/cancel',{humanRequestId:fq.id,revision:fq.revision})).status,200);
   await stop();await start();assert.equal((await lines(capture)).length,count);assert.equal((await lines(notices)).length,1);
 
  }finally{await stop();await rm(dir,{recursive:true,force:true});}
