@@ -1,0 +1,25 @@
+import {test,expect} from '@playwright/test';
+for(const theme of ['light','dark'])for(const width of [1440,390])test.describe(`${theme} ${width}`,()=>{
+ test.use({viewport:{width,height:width===390?844:1050},hasTouch:width===390,isMobile:width===390});
+ test('one-line composer grows, restores, sends and keeps attachments and unread selection',async({page},info)=>{
+  const state={agents:[{id:'a',name:'秘書１',location:'mayor',state:'idle',connection:{},canSend:true}],projects:[],workshops:[],runs:[],reviews:{a:{revision:'r1',hasCompleted:true,unreviewed:true}},capabilities:{attachments:true,travelContexts:true},notification:{enabled:false}};
+  await page.addInitScript(theme=>localStorage.setItem('village-display',JSON.stringify({theme})),theme);
+  await page.route('**/api/**',r=>{if(r.request().url().endsWith('/view')){state.reviews.a.unreviewed=false;return r.fulfill({json:state.reviews.a});}if(r.request().url().endsWith('/runs')&&r.request().method()==='POST'){const run={...r.request().postDataJSON(),id:'sent',agentId:'a',state:'completed',runModel:{state:{kind:'ended',outcome:'normal'}}};state.runs.push(run);return r.fulfill({json:run});}return r.fulfill({json:state});});
+  await page.goto('/agents');const card=page.locator('#agent-a'),input=card.locator('textarea[name=instruction]'),form=card.locator('form[data-send]'),send=form.locator('[type=submit]'),add=form.locator('.travel-add');
+  await expect(input).toHaveAttribute('rows','1');await expect(card.locator('.unread-badge')).toHaveText('更新あり');await expect(card.locator('.selection-label')).toHaveCount(0);
+  const height=()=>input.evaluate(el=>el.getBoundingClientRect().height);
+  const min=await input.evaluate(el=>{const s=getComputedStyle(el);return Math.ceil(parseFloat(s.lineHeight)+parseFloat(s.paddingTop)+parseFloat(s.paddingBottom)+parseFloat(s.borderTopWidth)+parseFloat(s.borderBottomWidth));});
+  await expect.poll(height).toBe(min);const small=await height();
+  const rects=await Promise.all([input,send,add].map(e=>e.boundingBox()));expect(rects[2].x+rects[2].width).toBeLessThanOrEqual(rects[0].x);expect(rects[0].x+rects[0].width).toBeLessThanOrEqual(rects[1].x);expect(Math.max(...rects.map(r=>r.y+r.height))-Math.min(...rects.map(r=>r.y))).toBeLessThanOrEqual(Math.max(...rects.map(r=>r.height))+1);
+  expect((await form.boundingBox()).height).toBeLessThanOrEqual(56);await expect(input).toHaveAttribute('placeholder','秘書１に聞く');
+  if(width===390)expect(await input.evaluate(el=>parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(16);
+  await page.screenshot({path:info.outputPath('empty-unread.png'),fullPage:true});
+  await input.fill('短文');await expect.poll(height).toBe(small);await expect(card).toHaveAttribute('aria-current','true');await expect(card.locator('.unread-badge')).toBeEmpty();await expect(card.locator('.panel-heading')).not.toHaveCSS('box-shadow','none');
+  const long='改行\n'.repeat(60);await input.fill(long);await expect.poll(height).toBeGreaterThan(small);expect(await height()).toBeLessThanOrEqual(await card.evaluate(el=>el.clientHeight*.4+1));await expect(input).toHaveCSS('overflow-y','auto');await page.reload();await expect(input).toHaveValue(long);await expect.poll(height).toBeGreaterThan(small);
+  state.agents[0].name='秘書２';await expect(input).toHaveAttribute('placeholder','秘書２に聞く');await expect(input).toHaveValue(long);
+  await input.fill('短文');await send.click();await expect(input).toHaveValue('');await expect.poll(height).toBe(small);await page.screenshot({path:info.outputPath('empty-selected.png'),fullPage:true});
+  await add.click();await expect(form.getByRole('button',{name:'出張先を追加',exact:true})).toBeVisible();await page.keyboard.press('Escape');await expect(add).toHaveAttribute('aria-expanded','false');
+  await form.locator('input[data-file]').setInputFiles({name:'note.txt',mimeType:'text/plain',buffer:Buffer.from('note')});await expect(form.locator('.file-previews')).toContainText('note.txt');expect((await form.boundingBox()).height).toBeGreaterThan(56);await form.getByRole('button',{name:'note.txtを削除',exact:true}).click();await expect(form.locator('.file-previews')).toBeEmpty();await expect.poll(async()=>(await form.boundingBox()).height).toBeLessThanOrEqual(56);
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ });
+});

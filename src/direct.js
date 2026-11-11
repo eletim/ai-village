@@ -158,7 +158,7 @@ function renderBoard(){
   profileViewer.update(a);
   let card=cards.get(a.id);
   if(!card){card=document.createElement('article');card.className='agent-panel';card.id='agent-'+a.id;card.setAttribute('aria-labelledby','heading-'+a.id);card.tabIndex=0;card.hidden=true;
-   card.innerHTML=`<div class="panel-heading"><span class="dot"></span><h2></h2><span class="request-attention"></span><span class="selection-label"></span><span class="unread-badge"></span><button data-zoom="${esc(a.id)}" title="このAgentを拡大" aria-label="このAgentを拡大">⤢</button><button data-manage-agent="${esc(a.id)}" title="Agentの操作" aria-label="Agentの操作">…</button></div><div class="panel-info"></div><p class="current-action"></p><div class="runs" tabindex="0" aria-label="会話履歴"></div><form data-send="${esc(a.id)}"><textarea name="instruction" aria-label="このAgentに直接指示" placeholder="" maxlength="16000" rows="2"></textarea><button type="submit">送信</button><button type="button" data-reconcile="${esc(a.id)}" hidden>送信結果を確認</button><div class="travel-slot"></div></form>`;
+   card.innerHTML=`<div class="panel-heading"><span class="dot"></span><h2></h2><span class="request-attention"></span><span class="unread-badge"></span><button data-zoom="${esc(a.id)}" title="このAgentを拡大" aria-label="このAgentを拡大">⤢</button><button data-manage-agent="${esc(a.id)}" title="Agentの操作" aria-label="Agentの操作">…</button></div><div class="panel-info"></div><p class="current-action"></p><div class="runs" tabindex="0" aria-label="会話履歴"></div><form data-send="${esc(a.id)}"><textarea name="instruction" aria-label="このAgentに直接指示" placeholder="" maxlength="16000" rows="1"></textarea><button type="submit">送信</button><button type="button" data-reconcile="${esc(a.id)}" hidden>送信結果を確認</button><div class="travel-slot"></div></form>`;
    const input=card.querySelector('textarea');input.value=drafts.get(a.id)||'';card.autogrow=autogrowInput(input,{panel:card});
    travelEditors.set(a.id,travelComposer(card.querySelector('.travel-slot'),travelDrafts.get(a.id)||[],value=>{travelDrafts.set(a.id,value);storeDrafts();}));
    fileEditors.set(a.id,attachmentComposer({host:card.querySelector('.travel-slot'),key:'agent:'+a.id,supported:()=>!!state?.capabilities?.attachments}));
@@ -174,7 +174,7 @@ function renderBoard(){
   card.dataset.unread=String(!!unread.get(a.id));
   card.dataset.attention=String(!!state.reviews?.[a.id]?.attention);
   card.querySelector('.request-attention').textContent=state.reviews?.[a.id]?.attention?'依頼完了・要確認':'';
-  card.querySelector('.unread-badge').textContent=unread.get(a.id)?'更新あり':state.reviews?.[a.id]?.hasCompleted?'確認済み':'';
+  card.querySelector('.unread-badge').textContent=unread.get(a.id)?'更新あり':'';
   const zoom=card.querySelector('[data-zoom]'),expanded=zoomId===a.id;
   zoom.textContent=expanded?'⤡':'⤢';zoom.title=expanded?'一覧に戻る':'このAgentを拡大';zoom.setAttribute('aria-label',zoom.title);zoom.setAttribute('aria-expanded',String(expanded));
   card.querySelector('h2').id='heading-'+a.id;
@@ -250,7 +250,7 @@ function activeView(){
 }
 function syncSelection(){
  const active=activeView();
- for(const [id,card] of cards){const selected=id===selectedAgent;card.dataset.selected=String(selected);if(selected)card.setAttribute('aria-current','true');else card.removeAttribute('aria-current');card.dataset.active=String(selected&&active);card.querySelector('.selection-label').textContent=selected?'選択中':'';}
+ for(const [id,card] of cards){const selected=id===selectedAgent;card.dataset.selected=String(selected);if(selected)card.setAttribute('aria-current','true');else card.removeAttribute('aria-current');card.dataset.active=String(selected&&active);}
  cancelAnimationFrame(viewFrame);
  // Acknowledge only a revision rendered in the selected, visible window.
  viewFrame=requestAnimationFrame(()=>{void acknowledgeSelection();});
