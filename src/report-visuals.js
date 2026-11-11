@@ -7,7 +7,12 @@ async function renderDiagram(source){
  });
  const {mermaid,purify}=await renderer;
  const id='village-diagram-'+(++counter);let svg;
- try{({svg}=await mermaid.render(id,source));}finally{document.getElementById('d'+id)?.remove();}
+ // Mermaid measures inside a temporary element. Keep it out of the page flow: appended to
+ // <body> it took layout space in the 100dvh flex column and briefly shrank the screen.
+ const sandbox=document.createElement('div');sandbox.setAttribute('aria-hidden','true');
+ sandbox.style.cssText='position:fixed;left:-10000px;top:0;width:1000px;visibility:hidden;pointer-events:none;contain:layout';
+ document.body.append(sandbox);
+ try{({svg}=await mermaid.render(id,source,sandbox));}finally{sandbox.remove();document.getElementById('d'+id)?.remove();}
  const clean=purify.sanitize(svg,{USE_PROFILES:{svg:true,svgFilters:true},FORBID_TAGS:['foreignObject','script','image','a','animate','set'],FORBID_ATTR:['href','xlink:href']});
  // Display as an image document: no SVG scripting/links or external resource loading.
  const svgDocument=new DOMParser().parseFromString(clean,'image/svg+xml'),root=svgDocument.documentElement;
