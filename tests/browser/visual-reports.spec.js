@@ -19,7 +19,5 @@ test('local upload CLI, real Mermaid, inline image zoom, safe fallback and poll 
  let externalImages=0;await page.route('https://evil.test/**',r=>{externalImages++;return r.abort();});
  state.runs[0].output+='\n![unsafe](https://evil.test/x.png)\n```mermaid\nnot a diagram\n```\n```mermaid\nflowchart LR\n A[<img src=x onerror=alert(1)>]\n```\n```mermaid\nflowchart LR\n A-->';
  await expect(page.locator('.runs')).toContainText('not a diagram');await expect(page.locator('.runs script')).toHaveCount(0);await expect(page.locator('[data-visual=mermaid]')).toHaveCount(2);expect(externalImages).toBe(0);await expect(diagram).toHaveCount(1);
- // Same assistant body rendering is used in the office.
- await page.route('**/api/state',r=>r.fulfill({json:{jobs:[],secretary:{status:'idle',messages:[{id:'office-reply',role:'assistant',content:output,at:new Date().toISOString()}]}}}));
- await page.goto('/office');await expect(page.locator('#conversation-log [data-visual=mermaid] img')).toBeVisible();await page.locator('#conversation-log [data-visual=image] img').click();await expect(page.getByRole('dialog')).toBeVisible();
+
 });

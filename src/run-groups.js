@@ -14,7 +14,7 @@ export function rootRunIds(requests){
 // at all (never fold what we can't classify). Everything else — steering, delegation,
 // retries/resumes, the report-only prompt, a child task's result delivery, and an independent
 // new request one Agent sent another directly via the CLI/API 'requests start' path ('agent',
-// as opposed to the browser's own route or the office chat relay, both still 'human') — is the
+// as opposed to the browser's own route which remains 'human') — is the
 // village talking to itself, and stays folded by default, unless it is still the live head above.
 export const isAlwaysVisible=(r,current)=>!!r.external||r.origin==null||r.origin==='human'||!!current?.has(r.id);
 const originLabel={steering:'補足',delegation:'委任',retry:'再試行',continuation:'再開',report:'報告指示',result:'子作業結果',agent:'他Agentからの依頼'};

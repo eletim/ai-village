@@ -1,12 +1,12 @@
 import {test,expect} from '@playwright/test';
 const output='# 見出し\n\n本文 **強調**\n\n```js\nconst x = 1;\n```\n\n'+Array.from({length:70},(_,i)=>`段落${i} 読み返す文章です。`).join('\n\n');
-async function setup(page,office=false){
+async function setup(page){
  await page.route('**/api/**',r=>r.fulfill({json:r.request().url().endsWith('/api/village')?{ok:true,result:{enabled:false}}:{agents:[{id:'a',name:'Agent',state:'idle',connection:{},canSend:true}],workshops:[],runs:[{id:'r',agentId:'a',instruction:'人間の入力',output,state:'completed'}],reviews:{},notification:{enabled:false}}}));
- await page.goto(office?'/office':'/agents');await expect(page.locator('.markdown-report h1')).toBeVisible();if(office)await expect(page).toHaveURL(/\/agents/);
+ await page.goto('/agents');await expect(page.locator('.markdown-report h1')).toBeVisible();
 }
 const px=el=>el.evaluate(e=>parseFloat(getComputedStyle(e).fontSize));
-for(const office of [false,true])test(`${office?'office':'Direct'} font sizes, reflow, caret, follow and read position`,async({page})=>{
- await setup(page,office);const input=page.locator('#agent-a textarea'),log=page.locator('.runs'),body=page.locator('.markdown-report'),code=body.locator('pre'),heading=body.locator('h1');
+test('Direct font sizes, reflow, caret, follow and read position',async({page})=>{
+ await setup(page);const input=page.locator('#agent-a textarea'),log=page.locator('.runs'),body=page.locator('.markdown-report'),code=body.locator('pre'),heading=body.locator('h1');
  const medium=await px(body),baseInput=await px(input),ratio=await px(heading)/medium,baseCode=await px(code);
  await input.fill('折り返し確認 '.repeat(22));await input.evaluate(e=>{e.focus();e.setSelectionRange(2,6);window.kept=e;});
  // Programmatic preference updates exercise focus/caret without the dialog taking focus.

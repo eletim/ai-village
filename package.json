@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "AI village with a core Codex secretary and a live PurpleMux workshop",
+  "description": "AI village with secretary and workshop Agents managed through PurpleMux",
   "scripts": {
     "dev": "node scripts/supervise.mjs",
     "check": "node scripts/check.mjs",

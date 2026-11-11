@@ -93,8 +93,8 @@ export class RequestFlow {
  startupInstructions(){return '毎ターンの ai-village-request は依頼の識別情報。HUMAN_REQUEST_ID はその humanRequestId に置き換える。人間の本文と村の規則を区別する。\n通常作業:\n'+this.workRules('HUMAN_REQUEST_ID')+'\nphase=report の場合だけ適用:\n'+this.reportRules('HUMAN_REQUEST_ID')+this.reportInstructions();}
 
  // originKind tags who actually dispatched this independent new request. The browser's own
- // /api/direct/agents/:id/runs route and the office chat relay (Secretariat.send()) never pass
- // a third argument, so they keep the default 'human'; the generic CLI/API 'requests start'
+ // /api/direct/agents/:id/runs route does not pass
+ // a third argument, so it keeps the default 'human'; the generic CLI/API 'requests start'
  // operation is the one path an Agent can also reach directly (bypassing requests delegate), so
  // it is the only caller that overrides this to 'agent'. Steering already tags its own origin
  // regardless of this value, since who may supplement an active turn is unrelated to who may

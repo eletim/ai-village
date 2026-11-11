@@ -49,7 +49,7 @@ test('real HTTP + native JSONL + durable inbox + isolated notify CLI: 0 interim,
   await complete(received,'SECRET original final report');assert.equal((await lines(notices)).length,0);
   const report=await until(async()=>{const q=await request(r.humanRequestId);return q.runs.find(r=>r.phase==='report'&&r.state==='awaiting_input');});
   assert(JSON.stringify(await get()).includes('SECRET original final report'));
-  const officeBefore=await (await fetch(base+'/api/state')).json();assert(JSON.stringify(officeBefore).includes('SECRET original final report'));
+  const officeBefore=await (await fetch(base+'/api/direct')).json();assert(JSON.stringify(officeBefore).includes('SECRET original final report'));
   await stop();await start();assert.equal((await lines(capture)).length,4);
   const reportAccepted=await submit(report);await finish(reportAccepted,'http-rewrite-finish');
   await complete(reportAccepted,'Integrated final report');await until(async()=>(await lines(notices)).length===1);
@@ -60,9 +60,8 @@ test('real HTTP + native JSONL + durable inbox + isolated notify CLI: 0 interim,
   assert.deepEqual((await request(r.humanRequestId)).travelContexts,travelContexts);assert.deepEqual(received.travelContexts,travelContexts);
   assert.equal((await get()).reviews[r.agentId].attention,false);assert.equal((await lines(capture)).length,4);assert.equal((await lines(notices)).length,1);
   const args=(await lines(notices))[0];assert(args.includes('AI村 · 依頼全体の完了'));assert(args.some(s=>s.includes('Integrated final report')));
-  const office=await fetch(base+'/api/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:'',requestId:'office-travel-001',agentId:agents[0].id,travelContexts,attachments})});assert.equal(office.status,202);
-  const officeState=await office.json();assert.deepEqual(officeState.secretary.messages.find(m=>m.content==='').travelContexts,travelContexts);
-  assert.deepEqual((await get()).requests.find(q=>q.clientRequestId==='office-travel-001').travelContexts,travelContexts);
+  const attachmentOnly=(await post('/agents/'+agents[0].id+'/runs',{instruction:'',requestId:'attachment-travel-001',travelContexts,attachments}));assert.equal(attachmentOnly.status,200);assert.deepEqual(attachmentOnly.body.travelContexts,travelContexts);
+
   // Exact structured Codex overload after finish, with PurpleMux stuck at busy.
   const failedInput=(await post('/agents/'+agents[1].id+'/runs',{instruction:'Recover this task',requestId:'http-overload'})).body;
   const failed=await submit(failedInput);await finish(failed,'http-overload-finish');

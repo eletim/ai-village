@@ -13,7 +13,6 @@
 .message.user>pre,.chat-message>pre{font-family:var(--reply-font,system-ui,sans-serif);font-size:calc(var(--body-base,13px) * var(--text-scale,1))}
 .chat-message{--body-base:15px}.report-prose{--body-base:13px}.report-agent{--body-base:11px}
 #request{font-family:var(--reply-font,system-ui,sans-serif);font-size:calc(12px * var(--text-scale,1))}
-.office-conversation #request{font-size:calc(16px * var(--text-scale,1))}
 .agent-panel textarea{font-family:var(--reply-font,system-ui,sans-serif);font-size:calc(12px * var(--text-scale,1))}
 @media(max-width:700px){.agent-panel textarea{font-size:calc(11px * var(--text-scale,1))}}
 @media(max-width:680px){.chat-message{--body-base:14px}}

@@ -16,7 +16,7 @@ import {completedEntries} from '../src/completions.js';
 import {agentIdentity,agentPlaceName} from '../src/agent-identity.js';
 import {RuntimeReader} from './runtime-reader.mjs';
 import {inputHash,inputMatches,resolveInputPosition,correlate,terminalBoundary,outputBetween} from './runtime-events.mjs';
-import { run } from './bridge.mjs';
+import { run } from './execution.mjs';
 import { captureProcessesScript, stopProcessesScript } from './processes.mjs';
 import { createServer } from 'node:net';
 import { createHash, randomUUID } from 'node:crypto';
