@@ -88,7 +88,7 @@ test('native API failure is recorded without a completion notification',async t=
  await f.service.tick();assert.equal(r.state,'failed');assert.equal(r.error,'authentication_failed');assert.equal(r.output,'Login expired');assert.equal(f.notices(),0);
 });
 test('fresh runtime observation overrides stale UI state; terminal results reopen the input gate',async t=>{
- const f=await fixture(t);f.a.state='waiting_input';f.a.canSend=false;
+ const f=await fixture(t);f.a.agentModel.observation={connected:true,process:'alive',activity:'input-needed',canSteer:false};
  for(const end of ['completed','failed','interrupted']){
   const r=await f.service.send(f.a.id,{instruction:end,requestId:'request-'+end});assert.equal(f.a.canSend,false);
   Object.assign(f.input(end),{state:end,output:'plain text'});await f.service.tick();assert.equal(r.state,end);assert.equal(f.a.canSend,true);assert.equal(f.a.lifecycle,'alive');assert.equal(f.a.activityState,'idle');
@@ -168,8 +168,8 @@ test('discovery joins saved placement to exact PurpleMux identities, including l
  delete f.a.location;
  f.a.workspaceId='ws-ofmWJg';f.a.tabId='tab-jPTCpo';f.a.name='村実装';
  await f.service.putWorkshop({...f.w,name:'renamed',sshHost:'elsewhere'},f.w.id);
- const secretary={...f.a,id:'secretary',name:'秘書',location:'mayor',workspaceId:'ws-UDCjmq',tabId:'secretary-tab'};
- f.service.data.agents.push(secretary,{...f.a,id:'ended',state:'terminated'});
+ const secretary={...f.a,id:'secretary',agentModel:{...f.a.agentModel,id:'secretary'},name:'秘書',location:'mayor',workspaceId:'ws-UDCjmq',tabId:'secretary-tab'};
+ f.service.data.agents.push(secretary,{...f.a,id:'ended',agentModel:{id:'ended',intent:'stop',observation:{connected:true,process:'absent',activity:'unknown',canSteer:false}},state:'terminated'});
  const rows=f.service.discovery().agents;
  assert.equal(rows[0].location,'workshop');assert.equal(rows[0].role,'worker');assert.equal(rows[0].placeName,'w');assert.equal(rows[0].sshHost,'host');
  assert.equal(rows[0].workspaceId,'ws-ofmWJg');assert.equal(rows[0].tabId,'tab-jPTCpo');

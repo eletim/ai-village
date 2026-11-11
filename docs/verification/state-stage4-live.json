@@ -1,0 +1,36 @@
+{
+  "normalWithoutFinish": [
+    "Claude",
+    "Codex"
+  ],
+  "reportWithoutFinish": [
+    "Claude",
+    "Codex"
+  ],
+  "inputWait": "Claude AskUserQuestion -> cliState=needs-input -> waiting_input; answered A -> completed",
+  "restart": {
+    "provider": "Codex",
+    "runId": "c75f0263-3f09-46d5-bfdb-64db909494a9",
+    "before": "running",
+    "after": "completed",
+    "sameInputTurnSessionDispatch": true
+  },
+  "steering": "Codex running supplement completed",
+  "delegation": "Claude -> Codex -> result -> Claude finish; completed",
+  "oldAcknowledge": "accepted compatibility no-op",
+  "childInterrupted": "result delivered; request active + review",
+  "humanActions": {
+    "complete": "completed",
+    "retry": "completed",
+    "cancel": "cancelled"
+  },
+  "disconnect": "isolated transport wrapper blocked purplemux calls, both unreachable and send/queue/steer false; restored idle/send",
+  "stop": "both terminated, remainingOwned=0",
+  "notifications": false,
+  "requests": {
+    "active": 0,
+    "completed": 10,
+    "cancelled": 1
+  },
+  "cleanup": "dedicated Agents stopped, remaining initial tabs closed, both workspaces deleted; server and temporary state removed"
+}

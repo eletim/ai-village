@@ -16,9 +16,7 @@ export function humanProjection(data){
    const b=r.baselineRuntime;
    return b&&(!b.sessionId||b.sessionId===session)&&(!Number.isFinite(t.offset)||t.offset>b.cursor);
   }));
-  if(hidden.length){delete a.runtime;delete a.currentAction;}
-  const pending=owned.findLast(r=>r.phase==='report'&&!['completed','failed','interrupted','terminated'].includes(r.state)&&protectedRequests.get(r.humanRequestId).status!=='completed'&&protectedRequests.get(r.humanRequestId).status!=='cancelled');
-  if(pending){a.reportPending=true;a.canSteer=false;delete a.steerTarget;}
+
  }
  for(const r of view.runs){
   const q=protectedRequests.get(r.humanRequestId);if(!q)continue;

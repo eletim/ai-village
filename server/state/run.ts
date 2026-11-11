@@ -13,13 +13,14 @@ export type Run = Readonly<{
 }>;
 export type RunEvent =
  | Command<'dispatch','program',{at:number; sessionId:string|null; agentIdle:boolean}>
+ | Command<'transport-ack','program',{at:number}>
  | Command<'input','program',{at:number; sessionId:string; turnId:string; inputId:string; text:string; competing:boolean; legacyHash?:{expected:string; observed:string}}>
  | Command<'terminal','program',{at:number; sessionId:string; turnId:string; outcome:'normal'|'failed'|'interrupted'; errorCode?:string}>
  | Command<'lost','program',{at:number; reason:'session-changed'|'turn-ended-without-marker'|'timeout'|'agent-stopped'}>
  | Command<'dispatch-blocked','program',{at:number; reason:string}>
  | Command<'supersede','human',{successorId:string}> | Command<'restore','human',{successorId:string}>
  | Command<'cancel','human'> | Command<'close-tracking','human',{reason:string}>;
-export const runAuthorities = {dispatch:['program'],input:['program'],terminal:['program'],lost:['program'],'dispatch-blocked':['program'],supersede:['human'],restore:['human'],cancel:['human'],'close-tracking':['human']} as const;
+export const runAuthorities = {dispatch:['program'],'transport-ack':['program'],input:['program'],terminal:['program'],lost:['program'],'dispatch-blocked':['program'],supersede:['human'],restore:['human'],cancel:['human'],'close-tracking':['human']} as const;
 export type RunKind = {phase:'work'} | {phase:'report'} | {phase:'result'; resultOf:string; recipientRunId:string};
 export const creationAuthorities = {work:['human','agent'],report:['program'],result:['program']} as const;
 export function newRun(id:string, requestId:string, actor:Actor, parentRunId:string|null=null, kind:RunKind={phase:'work'}, compatibility:{allowAgentRoot?:boolean}={}): Result<Run> {
@@ -36,6 +37,7 @@ export function transitionRun(r:Run,e:RunEvent):Result<Run> {
  switch(e.type) {
   case 'dispatch': return r.state.kind==='queued'&&e.agentIdle&&Number.isFinite(e.at)
    ? record({kind:'sent',sessionId:e.sessionId,sentAt:e.at}) : reject('dispatch-requires-idle-and-queued');
+  case 'transport-ack': return r.state.kind==='sent'?record(r.state):reject('not-sent');
   case 'input': {
    if(r.state.kind!=='sent')return reject('input-requires-sent');
    if(e.competing||!e.sessionId||!e.turnId||!e.inputId||(!e.text.split(/[^A-Za-z0-9-]+/).includes('ai-village-run-'+r.id)&&!(e.legacyHash?.expected&&e.legacyHash.expected===e.legacyHash.observed)))return reject('unmatched-or-competing-input');
@@ -74,4 +76,12 @@ export function retryRun(r:Run,e:RetryEvent,compatibility:{legacyAgentRunId?:str
   if(first===null||!Number.isFinite(e.at)||e.at<first||e.at-first>=600000||r.retryBudget.count>=2)return reject('retry-budget-exhausted');
  }
  return accept({...r,createdBy:e.actor,id:e.id,retryOf:r.id,state:{kind:'queued'},facts:[],decisions:[{actor:e.actor,reason:'retry'}],retryBudget:e.actor==='program'?{...r.retryBudget,count:r.retryBudget.count+1}:{count:0,firstFailureAt:null}});
+}
+
+/** A human supplements an observed running turn, including a report turn. */
+export function supplementRun(r:Run,id:string,actor:Actor):Result<Run>{
+ if(actor!=='human')return reject('actor-forbidden');
+ if(r.state.kind!=='running'||!id||id===r.id)return reject('not-running');
+ const {supersededBy,...base}=r;
+ return accept({...base,id,createdBy:'human',retryOf:r.id,state:{kind:'queued'},facts:[],decisions:[{actor:'human',reason:'supplement'}]});
 }

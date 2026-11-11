@@ -71,8 +71,9 @@ export function transitionRequest(q:Request,e:RequestEvent):Result<Request> {
    const r=e.run;
    if(r.requestId!==q.id||q.runs.some(old=>old.id===r.id)||r.state.kind!=='queued'||r.createdBy!==e.actor)return reject('invalid-new-run');
    const previous=r.retryOf?q.runs.find(old=>old.id===r.retryOf):null;
+   const supplement=e.actor==='human'&&previous?.state.kind==='running'&&previous.phase===r.phase&&r.decisions.some(d=>d.reason==='supplement');
    const retry=previous&&previous.phase===r.phase&&previous.state.kind==='ended'&&previous.state.outcome!=='normal';
-   if(r.phase!=='work'&&e.actor!=='program'&&!(e.actor==='human'&&retry))return reject('actor-forbidden');
+   if(r.phase!=='work'&&e.actor!=='program'&&!(e.actor==='human'&&(retry||supplement)))return reject('actor-forbidden');
    if(e.actor==='program'&&r.phase==='work'&&!r.retryOf)return reject('actor-forbidden');
    if(r.phase==='report'&&!nextSteps(q).some(s=>s.type==='prepare-report')&&!r.retryOf)return reject('report-not-ready');
    if(r.phase==='result'&&!retry&&(!pendingResults(q).some(c=>c.id===r.resultOf)||!q.runs.some(p=>p.id===r.recipientRunId)))return reject('result-not-ready-or-already-delivered');

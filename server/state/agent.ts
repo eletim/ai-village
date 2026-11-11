@@ -5,6 +5,7 @@ export type AgentState =
  | { kind: 'input-needed' } | { kind: 'unreachable' } | { kind: 'stopping' } | { kind: 'ended' };
 export type Observation = Readonly<{
  connected: boolean; process: 'alive' | 'absent' | 'unknown';
+ inputPending?: boolean;
  activity: 'idle' | 'running' | 'input-needed' | 'unknown'; canSteer: boolean;
 }>;
 export type Agent = Readonly<{ id: string; intent: 'start' | 'stop' | null; observation: Observation | null }>;
@@ -22,7 +23,7 @@ export function deriveAgent(a: Agent): AgentState {
   case 'idle': return {kind:'idle'};
   case 'running': return {kind:'running',canSteer:o.canSteer};
   case 'input-needed': return {kind:'input-needed'};
-  case 'unknown': return {kind:'unreachable'};
+  case 'unknown': return a.intent==='start'?{kind:'starting'}:{kind:'unreachable'};
   default: return unreachable(o.activity);
  }
 }
@@ -32,12 +33,12 @@ export function transitionAgent(a: Agent, e: AgentEvent): Result<Agent> {
   case 'start': return deriveAgent(a).kind === 'ended' || (!a.observation && a.intent===null)
    ? accept({...a,intent:'start',observation:null}) : reject('agent-already-present');
   case 'stop': return deriveAgent(a).kind === 'ended' ? reject('agent-ended') : accept({...a,intent:'stop'});
-  case 'observe': return accept({...a,observation:{...e.observation}});
+  case 'observe': return accept({...a,intent:a.intent==='start'&&e.observation.connected&&e.observation.process==='alive'&&e.observation.activity!=='unknown'?null:a.intent,observation:{...e.observation}});
   default: return unreachable(e);
  }
 }
 /** Request/report state deliberately cannot be passed here. */
 export function sendControls(a: Agent): { send: boolean; queue: boolean; steer: boolean } {
  const state=deriveAgent(a);
- return {send:state.kind==='idle',queue:state.kind==='starting'||state.kind==='running'||state.kind==='input-needed',steer:state.kind==='running'&&state.canSteer};
+ return {send:state.kind==='idle'&&!a.observation?.inputPending,queue:['idle','starting','running','input-needed'].includes(state.kind),steer:state.kind==='running'&&state.canSteer};
 }

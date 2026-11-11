@@ -69,7 +69,7 @@ test('Agent facts alone determine controls; observations and human stop have sep
  for(const activity of ['idle','running','input-needed','unknown']){
   const observation={connected:true,process:'alive',activity,canSteer:true};
   const value=ok(transitionAgent(a,{type:'observe',actor:'program',observation}));
-  assert.equal(deriveAgent(value).kind,activity==='unknown'?'unreachable':activity);
+  assert.equal(deriveAgent(value).kind,activity==='unknown'?'starting':activity);
   assert.equal(sendControls(value).send,activity==='idle');assert.equal(sendControls(value).steer,activity==='running');
   const stopping=ok(transitionAgent(value,{type:'stop',actor:'human'}));assert.equal(deriveAgent(stopping).kind,'stopping');
   const ended=ok(transitionAgent(stopping,{type:'observe',actor:'program',observation:{...observation,process:'absent'}}));assert.equal(deriveAgent(ended).kind,'ended');
