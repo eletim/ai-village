@@ -133,5 +133,11 @@ test('run marker survives Claude paste escaping and whitespace while ownership a
  assert.equal(correlate(run,{...snapshot,inputs:[{...snapshot.inputs[0],text:marker+'-suffix'}]}).state,'unknown');
  assert.equal(correlate(run,{...snapshot,inputs:[...snapshot.inputs,{...snapshot.inputs[0],id:'duplicate',offset:snapshot.cursor+1}]}).state,'unknown');
  assert.equal(correlate(owned,{...snapshot,inputs:[...snapshot.inputs,{...stranger,turnId:'u'}]}).reason,'additional-input-in-owned-turn');
- assert.equal(correlate({...run,steerTarget:{sessionId:sid,turnId:'u'}},snapshot).reason,'steering-turn-attribution-missing');
+ assert.equal(correlate({...run,steerTarget:{sessionId:sid,turnId:'wrong'}},snapshot).reason,'steering-target-changed');
+});
+test('Claude next-turn steering needs adjacent completed target, native user identity and one matching marker',()=>{
+ const r={id:'supp',inputMarker:'ai-village-run-supp',steeringProvider:'claude',steerTarget:{sessionId:'s',turnId:'old'},dispatchAttemptedAt:'now',baselineRuntime:{sessionId:'s',cursor:10,fileIdentity:'file'},priorInputs:[{id:'initial',offset:5}]};
+ const s={available:true,sessionId:'s',fileIdentity:'file',cursor:40,turns:[{id:'old',state:'completed',completionOffset:20},{id:'next',state:'running',messages:[],messageOffsets:true}],inputs:[{id:'initial',offset:5,turnId:'old',text:'initial'},{id:'supp-input',offset:30,turnId:'next',text:'ai-village-run-supp',explicitTurn:true,source:'claude-user'}]};
+ assert.equal(correlate(r,s).state,'running');assert.equal(correlate({...r,steeringProvider:'codex'},s).reason,'steering-target-changed');
+ for(const alter of [x=>x.turns[0].state='running',x=>x.turns[0].completionOffset=35,x=>x.turns.splice(1,0,{id:'foreign',state:'completed'}),x=>x.inputs[1].source='claude-queued',x=>x.inputs[1].explicitTurn=false,x=>x.inputs.push({...x.inputs[1],id:'duplicate',offset:31}),x=>x.inputs.push({id:'external',turnId:'next',text:'other',offset:32}),x=>x.sessionId='other',x=>x.fileIdentity='replaced']){const changed=structuredClone(s);alter(changed);assert.equal(correlate(r,changed).state,'unknown');}
 });

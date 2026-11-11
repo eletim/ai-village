@@ -248,7 +248,7 @@ test('unsafe steering targets reject without dispatch; cancellation never turns 
  const f=await fixture(t),s=f.service,root=await s.send(f.agents[0].id,{requestId:randomUUID(),instruction:'Original'});await f.submit(root);
  const target=structuredClone(s.agent(root.agentId).steerTarget),input={requestId:randomUUID(),instruction:'More',steerTarget:target};
  await assert.rejects(s.send(root.agentId,{...input,steerTarget:{...target,turnId:'wrong'}}),/補足対象/);f.offline(true);await assert.rejects(s.send(root.agentId,input),/補足対象/);f.offline(false);await s.tick();
- s.agent(root.agentId).provider='claude';await assert.rejects(s.send(root.agentId,input),/補足対象/);s.agent(root.agentId).provider='codex';await s.tick();
+ s.agent(root.agentId).provider='unsupported';await assert.rejects(s.send(root.agentId,input),/補足対象/);s.agent(root.agentId).provider='codex';await s.tick();
  const q=s.flow.root(root.humanRequestId);await s.flow.cancel({humanRequestId:q.id,revision:q.revision});await assert.rejects(s.send(root.agentId,input),/補足対象/);assert.equal(f.sent.length,1);assert.equal(f.notifications.length,0);
 });
 test('unattributed supplement or external same-turn input prevents finish and further steering',async t=>{
@@ -556,4 +556,18 @@ test('human completion never hides a physically valid supplement; terminal reque
  const q=s.flow.root(root.humanRequestId);await s.flow.complete({humanRequestId:q.id,revision:q.revision});
  assert.equal(testView(q).status,'completed');assert.equal(testView(s.agent(root.agentId)).canSteer,true);
  const r=await steer(f,root);assert.notEqual(r.humanRequestId,q.id);assert.equal(testView(q).status,'completed');await acceptSteer(f,r);await f.complete(r);assert.equal(testView(s.flow.root(r.humanRequestId)).status,'completed');
+});
+
+for(const nextTurn of [false,true])test('Claude steering keeps request, finish and report across '+(nextTurn?'next user turn':'queued command'),async t=>{
+ const f=await fixture(t,{reportMode:true}),s=f.service;s.agent(f.agents[0].id).provider='claude';
+ const root=await s.send(f.agents[0].id,{requestId:randomUUID(),instruction:'Original'});await f.submit(root);
+ const r=await steer(f,root);assert.equal(r.humanRequestId,root.humanRequestId);assert.equal(r.steeringProvider,'claude');assert.equal(testView(s.agent(root.agentId)).canSteer,false);
+ const n=f.runtimes.get(root.agentId);const prior=n.turns[0];
+ if(nextTurn){n.cursor+=1;Object.assign(prior,{state:'completed',completionOffset:n.cursor,output:'original final'});}
+ n.cursor+=10;const tid=nextTurn?'next-claude-turn':prior.id;
+ if(nextTurn)n.turns.push({id:tid,state:'running',output:'',messageOffsets:true,messages:[]});
+ n.inputs.push({id:'supplement-input',turnId:tid,offset:n.cursor,text:f.sent.at(-1).text,explicitTurn:true,source:nextTurn?'claude-user':'claude-queued'});
+ await s.tick();assert.equal(receipt(r).acceptance,'accepted');assert.equal(r.turnId,tid);await f.finish(r);n.cursor+=10;n.turns.find(t=>t.id===tid).completionOffset=n.cursor;await f.complete(r);await s.tick();
+ const q=s.flow.root(root.humanRequestId),report=s.flow.run(q.works[0].currentRunId);assert.equal(report.phase,'report');await f.submit(report);assert.equal(testView(s.agent(root.agentId)).canSteer,false);await f.complete(report);await s.tick();
+ assert.equal(testView(q).status,'completed');assert.equal(s.data.requests.length,1);assert.equal(f.notifications.length,1);
 });
