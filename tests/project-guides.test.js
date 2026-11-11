@@ -1,3 +1,5 @@
+import {fixtureModels} from './model-fixtures.mjs';
+import {testView} from './model-fixtures.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,writeFile,rm,symlink} from 'node:fs/promises';
@@ -31,8 +33,8 @@ test('dispatch attaches guide only to registered secretary normal runs',async t=
  let sent;d.pmux=async(...args)=>{sent=args.at(-1);};
  for(const [location,project,phase,expected] of [['mayor',projectId,undefined,true],['mayor','other',undefined,false],['workshop',projectId,undefined,false],['mayor',projectId,'report',false]]){
   const a={id:'agent',location,projectId:project,tabId:'tab',workspaceId:'ws',state:'idle'};d.data.agents=[a];
-  const r={id:'run',agentId:a.id,state:'queued',instruction:'human instruction',phase};d.data.runs=[r];
-  await d.attemptRun(r);assert.equal(r.state,'awaiting_input');assert.equal(sent.includes('<ai-village-project-guide>'),expected);
+  const r={id:'run',agentId:a.id,state:'queued',instruction:'human instruction',phase};d.data.runs=[r];fixtureModels(d.data);
+  await d.attemptRun(r);assert.equal(testView(r).state,'awaiting_input');assert.equal(sent.includes('<ai-village-project-guide>'),expected);
   assert(!sent.includes('まとまった実装・検証'));
  }
 });
@@ -43,10 +45,10 @@ test('HTTP official operation returns latest guide; retired office is unavailabl
  t.after(async()=>{if(child.exitCode===null){const done=once(child,'exit');child.kill();await done;}});
  await new Promise((ok,no)=>{const timer=setTimeout(()=>no(Error('startup timeout')),15000);child.once('exit',()=>{clearTimeout(timer);no(Error('server exited'));});child.stdout.on('data',b=>{if(b.toString().includes('AI村 →')){clearTimeout(timer);ok();}});});
  const base=`http://127.0.0.1:${port}`;
- const op=async argv=>{const res=await fetch(base+'/api/village',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({argv})});assert.equal(res.status,200);return res.json();};
+ const op=async argv=>{const res=await fetch(base+'/api/village',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({argv})});assert.equal(testView(res).status,200);return res.json();};
  const result=await op(['projects','guide',projectId]);assert.equal(result.result.available,true);assert.match(result.result.content,/同じProject/);
  assert.equal((await op(['projects','guide','other'])).result.available,false);
  assert.equal((await op(['projects','guide','../../etc/passwd'])).result.available,false);
- const office=await fetch(base+'/office',{redirect:'manual'});assert.equal(office.status,404);
+ const office=await fetch(base+'/office',{redirect:'manual'});assert.equal(testView(office).status,404);
  const docs=await (await fetch(base+'/api/documents')).json();assert(!docs.documents.some(d=>d.path.startsWith('compat/')));
 });

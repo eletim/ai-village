@@ -1,3 +1,4 @@
+import {receipt} from './model-fixtures.mjs';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,writeFile,appendFile,readFile,rm,mkdir} from 'node:fs/promises';
@@ -28,7 +29,7 @@ test('real HTTP + native JSONL + durable inbox + isolated notify CLI: 0 interim,
  const request=async id=>(await post('/requests/get',{humanRequestId:id})).body;
  const run=async id=>{const r=(await get()).runs.find(r=>r.id===id);return r?.humanRequestId?(await request(r.humanRequestId)).runs.find(r=>r.id===id):r;};
  const native=async(a,rows)=>appendFile(join(nativeDir,a.nativeSession+'.jsonl'),rows.map(row=>JSON.stringify({timestamp:new Date().toISOString(),...row})).join('\n')+'\n');
- const submit=async r=>{const a=agents.find(a=>a.id===r.agentId),text=(await lines(capture)).findLast(e=>e.agentId===a.id).text,turnId=randomUUID();await native(a,[{type:'event_msg',payload:{type:'task_started',turn_id:turnId}},{type:'event_msg',payload:{type:'user_message',turn_id:turnId,message:text}}]);return until(async()=>{const current=await run(r.id);return current.acceptance==='accepted'&&current;});};
+ const submit=async r=>{const a=agents.find(a=>a.id===r.agentId),text=(await lines(capture)).findLast(e=>e.agentId===a.id).text,turnId=randomUUID();await native(a,[{type:'event_msg',payload:{type:'task_started',turn_id:turnId}},{type:'event_msg',payload:{type:'user_message',turn_id:turnId,message:text}}]);return until(async()=>{const current=await run(r.id);return receipt(current).acceptance==='accepted'&&current;});};
  const complete=async(r,text)=>{await native(agents.find(a=>a.id===r.agentId),[{type:'event_msg',payload:{type:'task_complete',turn_id:r.turnId,last_agent_message:text}}]);return until(async()=>{const current=await run(r.id);return current.state==='completed'&&current;});};
  const finish=async(r,op)=>{const q=await request(r.humanRequestId);const body={humanRequestId:q.id,workId:r.workId,runId:r.id,revision:q.revision,operationId:op};const receipt=await post('/requests/finish',body);assert.equal(receipt.status,200);return body;};
  try{
@@ -36,15 +37,15 @@ test('real HTTP + native JSONL + durable inbox + isolated notify CLI: 0 interim,
   const travelContexts=[{name:'出張先',sshHost:'dev@travel-pc',cwd:'/tmp/work with spaces; $(noop)',notes:'参照情報のみ'}];const root=(await post('/agents/'+agents[0].id+'/runs',{instruction:'Human collaboration request',requestId:'http-human-request',travelContexts,attachments})).body;
   assert.deepEqual(root.travelContexts,travelContexts);assert.equal(root.attachments[0].id,file.id);assert.equal(await readFile(root.attachmentFiles[0].path,'utf8'),'{"hello":"world"}');assert((await lines(capture))[0].text.includes('出張先添付'));
   assert.equal((await post('/agents/'+agents[0].id+'/runs',{instruction:'Human collaboration request',requestId:'http-human-request',travelContexts:[{...travelContexts[0],cwd:'/different'}]})).status,409);
-  assert.equal(root.state,'awaiting_input');assert.equal(root.acceptance,'pending');assert.equal((await lines(notices)).length,0);
+  assert.equal(root.state,'awaiting_input');assert.equal(receipt(root).acceptance,'pending');assert.equal((await lines(notices)).length,0);
   const r=await submit(root);const delegated=await post('/requests/delegate',{humanRequestId:r.humanRequestId,parentWorkId:r.workId,actorRunId:r.id,agentId:agents[1].id,operationId:'http-delegation',instruction:'Child task'});assert.equal(delegated.status,200);
   await complete(r,'工房に依頼しました（途中）');assert.equal((await lines(notices)).length,0);
   const queued=await until(async()=>{const childRun=await run(delegated.body.currentRunId);return childRun?.state==='awaiting_input'&&childRun;});assert.deepEqual(queued.travelContexts,travelContexts);assert.equal(queued.attachments[0].id,file.id);assert.notEqual(queued.attachmentFiles[0].path,root.attachmentFiles[0].path);assert.equal(await readFile(queued.attachmentFiles[0].path,'utf8'),'{"hello":"world"}');const cr=await submit(queued);await finish(cr,'http-child-finish');await complete(cr,'Child result');assert.equal((await lines(notices)).length,0);
-  const result=await until(async()=>{const q=await request(r.humanRequestId);return q.inbox[0]?.deliveryRunId&&q.inbox[0];});
+  const result=await until(async()=>{const q=await request(r.humanRequestId);return q.results[0]?.deliveryRunId&&q.results[0];});
   const delivery=await until(async()=>{const d=await run(result.deliveryRunId);return d?.state==='awaiting_input'&&d;});
-  assert.equal((await request(r.humanRequestId)).inbox[0].state,'dispatching');assert.equal((await lines(capture)).length,3);
-  await stop();await start();assert.equal((await lines(notices)).length,0);assert.equal((await request(r.humanRequestId)).ticket.state,'available');
-  const received=await submit(delivery);const ack=await post('/requests/acknowledge',{humanRequestId:r.humanRequestId,workId:r.workId,actorRunId:received.id,resultIds:[result.id]});assert.equal(ack.status,200);assert.equal((await lines(capture)).length,3);
+  assert.equal((await request(r.humanRequestId)).runs.find(x=>x.id===delivery.id).runModel.state.kind,'sent');assert.equal((await lines(capture)).length,3);
+  await stop();await start();assert.equal((await lines(notices)).length,0);assert.equal((await request(r.humanRequestId)).status,'active');
+  const received=await submit(delivery);const ack=await post('/requests/acknowledge',{humanRequestId:r.humanRequestId,workId:r.workId,actorRunId:received.id,resultIds:[result.id]});assert.equal(ack.status,404);assert.equal((await lines(capture)).length,3);
   const staleRevision=(await get()).reviews[r.agentId].revision;const intent=await finish(received,'http-final-report');assert.equal((await lines(notices)).length,0);
   await complete(received,'SECRET original final report');assert.equal((await lines(notices)).length,0);
   const report=await until(async()=>{const q=await request(r.humanRequestId);return q.runs.find(r=>r.phase==='report'&&r.state==='awaiting_input');});
@@ -54,7 +55,7 @@ test('real HTTP + native JSONL + durable inbox + isolated notify CLI: 0 interim,
   const reportAccepted=await submit(report);await finish(reportAccepted,'http-rewrite-finish');
   await complete(reportAccepted,'Integrated final report');await until(async()=>(await lines(notices)).length===1);
   assert.equal((await post('/requests/finish',intent)).status,200);await stop();await start();
-  const state=await get();assert.equal(state.reviews[r.agentId].attention,true);assert.equal(state.requests.length,1);assert.equal(state.requests[0].ticket.state,'consumed');assert.equal((await lines(notices)).length,1);
+  const state=await get();assert.equal(state.reviews[r.agentId].attention,true);assert.equal(state.requests.length,1);assert.equal(state.requests[0].status,'completed');assert.equal((await lines(notices)).length,1);
   assert.equal((await post('/agents/'+r.agentId+'/view',{revision:staleRevision})).status,409);
   assert.equal((await post('/agents/'+r.agentId+'/view',{revision:state.reviews[r.agentId].revision})).status,200);
   assert.deepEqual((await request(r.humanRequestId)).travelContexts,travelContexts);assert.deepEqual(received.travelContexts,travelContexts);
@@ -69,7 +70,7 @@ test('real HTTP + native JSONL + durable inbox + isolated notify CLI: 0 interim,
   await native(agents[1],[{type:'event_msg',payload:{type:'task_complete',turn_id:failed.turnId,last_agent_message:null,error:{message:'Selected model is at capacity. Please try a different model.',codex_error_info:'server_overloaded'}}}]);
   await until(async()=>{const current=await run(failed.id);return current.state==='failed'&&current.recovery?.status==='scheduled';});
   const failedState=await get(),failedRequest=await request(failed.humanRequestId);
-  assert.equal(failedRequest.works[0].finish.status,'recorded');assert.equal(failedRequest.ticket.state,'available');assert.equal((await run(failed.id)).errorCode,'server_overloaded');
+  assert(failedRequest.requestModel.declarations.some(d=>d.runId===failed.id));assert.equal(failedRequest.status,'active');assert.equal((await run(failed.id)).errorCode,'server_overloaded');
   assert.equal(failedState.agents.find(a=>a.id===agents[1].id).canSend,true);assert.equal(failedState.reviews[agents[1].id].attention,false);assert.equal((await lines(notices)).length,1);
   await stop();await start();assert.equal((await run(failed.id)).recovery.status,'scheduled');
   const retryPayload={humanRequestId:failed.humanRequestId,workId:failed.workId,revision:(await request(failed.humanRequestId)).revision,operationId:'http-manual-retry',instruction:'Check existing effects and resume only unfinished work'};

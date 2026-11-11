@@ -1,0 +1,92 @@
+{
+  "requests": [
+    {
+      "id": "9611a11c-5d8a-47c5-a5ca-b77fddf2b436",
+      "state": {
+        "kind": "completed",
+        "by": "program",
+        "reason": "normal-report"
+      },
+      "delegated": false,
+      "declarations": 0
+    },
+    {
+      "id": "4b0266af-2405-4c7e-920b-2b191d3622f2",
+      "state": {
+        "kind": "completed",
+        "by": "program",
+        "reason": "normal-report"
+      },
+      "delegated": false,
+      "declarations": 0
+    },
+    {
+      "id": "fe799207-c41c-4b46-836d-ee999d952ffd",
+      "state": {
+        "kind": "completed",
+        "by": "program",
+        "reason": "normal-report"
+      },
+      "delegated": true,
+      "declarations": 1
+    }
+  ],
+  "runs": [
+    {
+      "id": "f96ee4ed-9294-4147-aff4-d0a2069be711",
+      "state": "completed",
+      "origin": "human",
+      "phase": "work"
+    },
+    {
+      "id": "0823b0c3-5352-4771-bd72-082c34ed7748",
+      "state": "completed",
+      "origin": "human",
+      "phase": "work"
+    },
+    {
+      "id": "cd3feee9-cdbc-4321-a772-e11674e2f4b3",
+      "state": "completed",
+      "origin": "report",
+      "phase": "report"
+    },
+    {
+      "id": "49ada58b-7209-4ba3-aec7-72f9239ea1e9",
+      "state": "completed",
+      "origin": "report",
+      "phase": "report"
+    },
+    {
+      "id": "9c03c288-be36-4b91-8578-41410724d031",
+      "state": "completed",
+      "origin": "human",
+      "phase": "work"
+    },
+    {
+      "id": "3a0bf5b2-8cf1-4a28-9cfd-d4446fbafe37",
+      "state": "completed",
+      "origin": "delegation",
+      "phase": "work"
+    },
+    {
+      "id": "ce2d0b95-01b9-439a-b789-98686817a402",
+      "state": "completed",
+      "origin": "result",
+      "phase": "work"
+    },
+    {
+      "id": "97cbc887-cc13-49b7-a5a1-1fcbb995962c",
+      "state": "completed",
+      "origin": "report",
+      "phase": "report"
+    }
+  ],
+  "restart": {
+    "tracked": [
+      "ce2d0b95-01b9-439a-b789-98686817a402"
+    ],
+    "completedAfterRestart": true,
+    "duplicates": false
+  },
+  "notifications": false
+}

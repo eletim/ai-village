@@ -2,10 +2,7 @@ import {open,rename} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {createHash} from 'node:crypto';
 
-export function durableData(data){
- const omit=(value,keys)=>Object.fromEntries(Object.entries(value).filter(([key])=>!keys.includes(key)));
- return {...data,agents:data.agents.map(a=>!a.agentModel?a:omit(a,['state','lifecycle','activityState','connectionState','canSend','canQueue','canSteer','sendReason'])),runs:data.runs?.map(r=>!r.runModel?r:omit(r,['acceptance','blocksInput','dispatchConfirmed','needsReview']))};
-}
+export function durableData(data){return data;}
 export function durableFingerprint(data){
  // Observation timestamps and live transport snapshots are revalidated at startup.
  const agents=data.agents.map(({lastCheckedAt,runtime,...agent})=>agent);
