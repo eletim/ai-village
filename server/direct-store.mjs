@@ -12,7 +12,8 @@ export async function writeSnapshot(dir,value){
  const file=await open(resolve(dir,'direct.tmp'),'w',0o600);
  try{await file.writeFile(value);await file.sync();}finally{await file.close();}
  await rename(resolve(dir,'direct.tmp'),resolve(dir,'direct.json'));
- const directory=await open(dir,'r');try{await directory.sync();}finally{await directory.close();}
+ try{const directory=await open(dir,'r');try{await directory.sync();}finally{await directory.close();}}
+ catch(error){error.persistenceUncertain=true;throw error;}
 }
 export class DirectStore {
  constructor({capture,write}){Object.assign(this,{capture,write});this.pending=[];this.running=false;this.fingerprint=null;}

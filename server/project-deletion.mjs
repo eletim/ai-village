@@ -17,28 +17,29 @@ export async function deleteProject(d,id,input){return d.locked('projects',async
  }else{
   const plan=deletionPlan(d,id);
   if(p.revision!==input.revision||key(plan.members)!==key(input.members))fail('Projectまたは所属が更新されています。削除予定を再取得して確認してください');
+  await d.persist(async()=>{
   p.deletion={operationId:input.operationId,revision:input.revision,members:plan.members,status:'running',startedAt:now(),remaining:plan.members.map(m=>({id:m.id,name:m.name,error:'終了未確認'}))};
   for(const m of plan.members)d.updateAvailability(d.agent(m.id));
   // Durable intent before stopping anything. No rollback after a remote side effect.
-  try{await d.save();}catch(e){delete p.deletion;throw e;}
- }
- p.deletion.status='running';await d.save();
- for(const member of p.deletion.members){
-  const a=d.agent(member.id);d.updateAvailability(a);
-  try{
-   await d.stop(a.id,{requireProcessEvidence:true});
-   if(agentControls(a).state!=='terminated')throw Error(a.error||'終了を確認できません');
-   a.deletedAt ||= now();a.deletedByProject=id;
-   p.deletion.remaining=p.deletion.remaining.filter(m=>m.id!==a.id);
-  }catch(e){
-   p.deletion.remaining=p.deletion.remaining.filter(m=>m.id!==a.id);
-   p.deletion.remaining.push({id:a.id,name:a.name,error:e.message||'接続・終了結果不明'});
-  }
   await d.save();
+  });
  }
+ await d.persist(async()=>{p.deletion.status='running';await d.save();});
+ for(const member of p.deletion.members){
+  const a=d.agent(member.id);let error=null;
+  try{await d.stop(a.id,{requireProcessEvidence:true});if(agentControls(a).state!=='terminated')throw Error(a.error||'終了を確認できません');}
+  catch(e){if(e.persistenceFailure)throw e;error=e.message||'接続・終了結果不明';}
+  await d.persist(async()=>{
+   p.deletion.remaining=p.deletion.remaining.filter(m=>m.id!==a.id);
+   if(error)p.deletion.remaining.push({id:a.id,name:a.name,error});
+   else{a.deletedAt ||= now();a.deletedByProject=id;}
+   await d.save();
+  });
+ }
+ return d.persist(async()=>{
  p.deletion.status=p.deletion.remaining.length?'partial':'deleted';p.deletion.updatedAt=now();
- const revision=p.revision;
  if(p.deletion.status==='deleted'){p.deletedAt=now();p.revision++;}
- try{await d.save();}catch(e){p.deletion.status='partial';delete p.deletedAt;p.revision=revision;throw e;}
+ await d.save();
  return structuredClone(p.deletion);
+ });
 });}
