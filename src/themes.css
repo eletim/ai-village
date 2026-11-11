@@ -34,17 +34,17 @@ html:not([data-theme=dark]) :is(.danger,.dialog-error,.file-error,.travel-error,
 html:not([data-theme=dark]) #completion-count{color:#19653b}
 html:not([data-theme=dark]) #connection{color:#37634c}
 html:not([data-theme=dark]) a{color:var(--link)}
-/* Office/village surfaces: scenery and state indicators retain their meaning. */
+/* Village surfaces: scenery and state indicators retain their meaning. */
 html[data-theme=sepia] body:not(:has(.workspace)){background:var(--canvas);color:var(--ink)}
-html[data-theme=sepia] :is(header,.side,.office-conversation,.office-inbox,.report-card,.village-library,.document-paper,.memo-panel,.todo-panel,.detail,.bubble,.pill){background:var(--surface);color:var(--ink);border-color:var(--line)}
+html[data-theme=sepia] :is(header,.side,.report-card,.village-library,.document-paper,.memo-panel,.todo-panel,.detail,.bubble,.pill){background:var(--surface);color:var(--ink);border-color:var(--line)}
 html[data-theme=sepia] :is(.chat-message,.chat-user,.chat-assistant,.artifact-section,.empty-inbox,.document-toolbar){background:var(--reply);color:var(--ink);border-color:var(--line)}
 html[data-theme=sepia] :is(input,textarea,select,button){background:var(--field);color:var(--ink);border-color:var(--line)}
-html[data-theme=sepia] :is(.report-prose,.report-request,.report-meta,.chat-meta,.office-nav,.office-title p,.office-date,.office-section-heading span,.report-agent,.report-heading small,.saved-location,.report-review>small,.approval-control,.top,.hint,.compose-meta){color:var(--muted)}
-html[data-theme=sepia] :is(.office-title h1,.office-section-heading h2,.document-toolbar b,#document-content){color:var(--ink)}
+html[data-theme=sepia] :is(.report-prose,.report-request,.report-meta,.chat-meta,.report-agent,.report-heading small,.saved-location,.report-review>small,.approval-control,.top,.hint,.compose-meta){color:var(--muted)}
+html[data-theme=sepia] :is(.document-toolbar b,#document-content){color:var(--ink)}
 html:not([data-theme=dark]) :is(input,textarea)::placeholder{color:var(--muted)}
 html .markdown-report pre,html .markdown-report code{color:inherit;background:var(--code);border-color:var(--line)}
 html .markdown-report pre code{background:transparent}
 html .markdown-report :is(th,td){border-color:var(--line)}html .markdown-report th{background:var(--code)}
 html .report-lightbox{background:var(--surface);color:var(--ink)}
 
-html[data-theme=sepia] :is(.secretary,.report-card pre,#todo-text){background:var(--field);color:var(--ink);border-color:var(--line)}
+html[data-theme=sepia] :is(.report-card pre,#todo-text){background:var(--field);color:var(--ink);border-color:var(--line)}

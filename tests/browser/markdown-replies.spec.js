@@ -10,17 +10,6 @@ test('Direct Markdown, inert code/HTML/URLs, user text, streaming and unchanged 
  // Same renderer is used for retained Agent history.
  state.agents[0].state='terminated';await expect(page.locator('.agent-panel')).toHaveCount(0);await page.locator('#manage').click();await page.getByRole('button',{name:'終了Agentの履歴',exact:true}).click();await expect(page.locator('#history-content h1')).toHaveText('報告見出し');
 });
-test('office multiple replies, diagrams in Markdown and existing visual nodes survive append polls',async({page})=>{
- const diagram='```mermaid\nflowchart LR\nA[入力] --> B[報告]\n```';
- const state={jobs:[],workshops:[],secretary:{status:'idle',messages:[{id:'u',role:'user',content:'# 入力',at:new Date().toISOString()},{id:'one',role:'assistant',content:markdown+'\n\n'+diagram,at:new Date().toISOString()},{id:'two',role:'assistant',content:'## 二つ目\n\n'+diagram,at:new Date().toISOString()}]}};
- await page.route('**/api/state',r=>r.fulfill({json:state}));await page.goto('/office');const log=page.locator('#conversation-log');await expect(log.locator('.chat-assistant .markdown-report')).toHaveCount(2);await expect(log.locator('[data-visual=mermaid] img')).toHaveCount(2);await expect(log.locator('[data-visual=mermaid] img').last()).toBeVisible();
- await log.locator('[data-visual=mermaid] img').evaluateAll(els=>window.diagrams=els);state.secretary.messages[1].content+='\n\n新しい段落';await expect(log).toContainText('新しい段落');expect(await log.locator('[data-visual=mermaid] img').evaluateAll(els=>els.every((el,i)=>el===window.diagrams[i]))).toBe(true);
- await expect(log.locator('.chat-user')).toContainText('# 入力');await expect(log.locator('.chat-user h1')).toHaveCount(0);await log.locator('[data-visual=mermaid] button').last().click();await expect(page.getByRole('dialog',{name:'図・画像の拡大表示'})).toBeVisible();await page.keyboard.press('Escape');await page.screenshot({path:'/tmp/village-markdown-office.png'});
-});
-test('office report body and worker output use Markdown; instructions stay literal',async({page})=>{
- const state={workshops:[],jobs:[{id:'job',request:'報告テスト',phase:'awaiting_review',report:'# 報告書\n\n**要点**',output:'## 工房の返信\n\n|検証|結果|\n|---|---|\n|単体|成功|',instruction:'# 指示は文字のまま',releaseState:'held'}],secretary:{status:'idle',messages:[]}};
- await page.route('**/api/state',r=>r.fulfill({json:state}));await page.goto('/office');const inbox=page.locator('#report-inbox');await expect(inbox.locator('.report-prose h1')).toHaveText('報告書');await inbox.locator('.report-agent summary').click();await expect(inbox.locator('.report-agent h2')).toHaveText('工房の返信');await expect(inbox.locator('.report-agent td')).toHaveCount(2);await expect(inbox.locator('.report-agent>pre')).toHaveText('# 指示は文字のまま');
-});
 test('narrow Markdown code and tables remain within the card; HTML/URL attack cases stay inert',async({page})=>{
  await page.setViewportSize({width:390,height:844});const state=fixture();state.runs[0].output='```txt\n'+('long-code-'.repeat(120))+'\n```\n\n|'+Array(12).fill('long column').join('|')+'|\n|'+Array(12).fill('---').join('|')+'|\n|'+Array(12).fill('data').join('|')+'|';
  await page.route('**/api/direct**',r=>r.fulfill({json:state}));await page.goto('/agents');await expect(page.locator('.markdown-report table')).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);const report=page.locator('.markdown-report');expect(await report.evaluate(el=>el.scrollWidth<=el.clientWidth+1)).toBe(true);await page.screenshot({path:'/tmp/village-markdown-mobile.png'});

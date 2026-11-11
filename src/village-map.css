@@ -10,7 +10,7 @@
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 .village-garden{display:grid;place-items:center;min-height:240px}.village-garden svg{width:80%;max-width:300px}.village-plaza:after{content:'';position:absolute;bottom:-16px;right:0;width:40px;height:22px;border-top:3px solid var(--timber);border-bottom:3px solid var(--timber);background:repeating-linear-gradient(90deg,var(--wood) 0 7px,var(--timber) 7px 8px)}
 @media(max-width:480px){.village-garden{display:none}}
-/* Override shared office button surfaces without turning the landscape into cards. */
+/* Override shared button surfaces without turning the landscape into cards. */
 html[data-theme] .village-map-page .building-choice,html[data-theme] .village-map-page .building-choice:hover{background:transparent;color:var(--terrain-ink)}
 html[data-theme] .village-map-page .villager{background:color-mix(in srgb,var(--meadow) 80%,var(--surface));color:var(--terrain-ink)}
 .building-count{font-size:11px}.villager>span:last-child{min-width:0}
