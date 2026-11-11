@@ -114,6 +114,23 @@ test('a Claude compaction boundary appended mid-session never rotates fileIdenti
  const baseline2={runModel:{facts:[{type:'transport-ack',at:0}]},baselineRuntime:{cursor:secondCursor,sessionId:sid,fileIdentity:identity},id:'next',inputMarker:'ai-village-run-next'};
  const accepted2=correlate(baseline2,s);assert.equal(accepted2.state,'completed');assert.notEqual(accepted2.turnId,accepted1.turnId);
 });
+test('a real Claude Code compaction summary (isMeta false) never opens a running turn, idle or mid-turn',async t=>{
+ // Claude Code 2.1.322 writes the summary as {type:'user',isMeta:false,isCompactSummary:true,isVisibleInTranscriptOnly:true}.
+ // Treating it as a human input left an idle Agent "running" until the next real input and queued new requests.
+ const f=await setup(t),root=join(f.dir,'.claude','projects','test');await mkdir(root,{recursive:true});const file=join(root,sid+'.jsonl');
+ const execute=async(a,args)=>execFileSync(args[0],args.slice(1),{env:{...f.env,HOME:f.dir},maxBuffer:15e6}).toString(),a={...f.a,provider:'claude'};
+ const summary=(uuid,parentUuid=null)=>({type:'user',isMeta:false,isCompactSummary:true,isVisibleInTranscriptOnly:true,uuid,parentUuid,message:{role:'user',content:'This session is being continued from a previous conversation...'}});
+ const boundary=uuid=>({type:'system',subtype:'compact_boundary',isMeta:false,uuid,parentUuid:null});
+ await writeFile(file,lines([{type:'user',uuid:'u1',message:{content:'hello ai-village-run-hello'}},{type:'assistant',uuid:'a1',parentUuid:'u1',message:{stop_reason:'end_turn',content:[{type:'text',text:'first answer'}]}},boundary('b1'),summary('s1','b1')]));
+ let s=await f.reader.read(a,f.status,execute);
+ assert.equal(s.turns.length,1);assert.equal(s.turns.at(-1).state,'completed');assert.equal(s.inputs.length,1);const cursor=s.cursor;
+ // Mid-turn: the turn started before compaction continues through the summary and completes after it.
+ await appendFile(file,lines([{type:'user',uuid:'u2',parentUuid:'s1',message:{content:'next ai-village-run-next'}},{type:'assistant',uuid:'tool',parentUuid:'u2',message:{stop_reason:'tool_use',content:[{type:'text',text:'working'}]}},boundary('b2'),summary('s2','b2'),{type:'assistant',uuid:'a2',parentUuid:'s2',message:{stop_reason:'end_turn',content:[{type:'text',text:'second answer'}]}}]));
+ f.reader=new RuntimeReader(f.dir);s=await f.reader.read(a,f.status,execute);
+ assert.equal(s.turns.length,2);assert.equal(s.turns.at(-1).id,'u2');assert.equal(s.turns.at(-1).state,'completed');assert.equal(s.inputs.length,2);
+ const baseline={runModel:{facts:[{type:'transport-ack',at:0}]},baselineRuntime:{cursor,sessionId:sid},id:'next',inputMarker:'ai-village-run-next'};
+ assert.equal(correlate(baseline,s).state,'completed');
+});
 test('incremental snapshots match the frozen pre-index parser for both providers at every append boundary',async t=>{
  const f=await setup(t),reference=new URL('./fixtures/runtime-events-reference.py',import.meta.url).pathname;
  const codex=[start,{type:'turn_context',payload:{model:'model',service_tier:'fast'}},{type:'event_msg',payload:{type:'user_message',turn_id:'t',message:'hello ai-village-run-hello'}},input,answer('same'),answer('same'),done,{type:'response_item',payload:{role:'user',id:'u2',turn_id:'t',content:[{type:'input_text',text:'supplement ai-village-run-supplement'}]}},answer('after'),{type:'event_msg',payload:{type:'task_complete',turn_id:'t',error:{message:'capacity',codex_error_info:'server_overloaded'}}}];
