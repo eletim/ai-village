@@ -13,14 +13,24 @@ for(const theme of ['light','dark'])for(const width of [1440,390])test.describe(
   const rects=await Promise.all([input,send,add].map(e=>e.boundingBox()));expect(rects[2].x+rects[2].width).toBeLessThanOrEqual(rects[0].x);expect(rects[0].x+rects[0].width).toBeLessThanOrEqual(rects[1].x);expect(Math.max(...rects.map(r=>r.y+r.height))-Math.min(...rects.map(r=>r.y))).toBeLessThanOrEqual(Math.max(...rects.map(r=>r.height))+1);
   expect((await form.boundingBox()).height).toBeLessThanOrEqual(56);await expect(input).toHaveAttribute('placeholder','秘書１に聞く');
   if(width===390)expect(await input.evaluate(el=>parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(16);
+  await expect(add).toHaveAttribute('title','添付を追加');await expect(add).toHaveAccessibleName('添付を追加');
+  await expect(add).toHaveCSS('background-color','rgba(0, 0, 0, 0)');await expect(add).toHaveCSS('border-top-width','0px');
+  expect((await add.boundingBox()).width).toBe(36);expect((await add.boundingBox()).height).toBe(36);
+  expect(await add.locator('svg').evaluate(el=>parseFloat(getComputedStyle(el).strokeWidth))).toBe(1.4);
+  expect(await add.locator('svg').evaluate(el=>getComputedStyle(el).stroke===getComputedStyle(el).color)).toBe(true);
+  const outerBorder=await form.evaluate(el=>getComputedStyle(el).borderTopColor);
   await page.screenshot({path:info.outputPath('empty-unread.png'),fullPage:true});
   if(width===390)await input.tap();else await input.click();
   await expect(form).toHaveAttribute('data-expanded','true');
+  expect(await input.evaluate(el=>parseFloat(getComputedStyle(el).outlineWidth))).toBe(0);
+  await expect(input).toHaveCSS('-webkit-tap-highlight-color','rgba(0, 0, 0, 0)');
+  await expect(form).toHaveCSS('border-top-color','rgb(125, 143, 165)');expect(outerBorder).not.toBe('rgb(125, 143, 165)');
   await expect.poll(()=>form.evaluate(el=>el.getAnimations().length)).toBe(0);
   const expanded=await input.boundingBox(),buttons=await Promise.all([add,send].map(el=>el.boundingBox()));
   expect(expanded.width).toBeGreaterThan(rects[0].width+50);expect(expanded.x).toBeLessThanOrEqual(buttons[0].x);expect(expanded.x+expanded.width).toBeGreaterThanOrEqual(buttons[1].x+buttons[1].width);expect(buttons[0].y).toBeGreaterThanOrEqual(expanded.y+expanded.height);
   await page.screenshot({path:info.outputPath('expanded-empty.png'),fullPage:true});
-  await add.click();await expect(add).toHaveAttribute('aria-expanded','true');await expect(form).toHaveAttribute('data-expanded','true');await page.keyboard.press('Escape');
+  if(width===1440){await add.hover();await expect(add).not.toHaveCSS('background-color','rgba(0, 0, 0, 0)');}
+  await add.click();await expect(add).toHaveAttribute('aria-expanded','true');await expect(add).not.toHaveCSS('background-color','rgba(0, 0, 0, 0)');await expect(form).toHaveAttribute('data-expanded','true');await page.keyboard.press('Escape');
   await card.locator('h2').click();await expect(form).toHaveAttribute('data-expanded','false');await expect.poll(async()=>(await form.boundingBox()).height).toBeLessThanOrEqual(56);
   await input.fill('短文');await card.locator('h2').click();await expect(form).toHaveAttribute('data-expanded','true');await expect(input).toHaveValue('短文');await expect.poll(height).toBe(small);await expect(card).toHaveAttribute('aria-current','true');await expect(card.locator('.unread-badge')).toBeEmpty();await expect(card.locator('.panel-heading')).not.toHaveCSS('box-shadow','none');
   const long='改行\n'.repeat(60);await input.fill(long);await expect.poll(height).toBeGreaterThan(small);expect(await height()).toBeLessThanOrEqual(await card.evaluate(el=>el.clientHeight*.4+1));await expect(input).toHaveCSS('overflow-y','auto');await page.reload();await expect(input).toHaveValue(long);await expect.poll(height).toBeGreaterThan(small);
@@ -30,6 +40,7 @@ for(const theme of ['light','dark'])for(const width of [1440,390])test.describe(
   await add.click();await expect(form.getByRole('button',{name:'出張先を追加',exact:true})).toBeVisible();await page.keyboard.press('Escape');await expect(add).toHaveAttribute('aria-expanded','false');
   await form.locator('input[data-file]').setInputFiles({name:'note.txt',mimeType:'text/plain',buffer:Buffer.from('note')});await expect(form.locator('.file-previews')).toContainText('note.txt');expect((await form.boundingBox()).height).toBeGreaterThan(56);await form.getByRole('button',{name:'note.txtを削除',exact:true}).click();await expect(form.locator('.file-previews')).toBeEmpty();await card.locator('h2').click();await expect.poll(async()=>(await form.boundingBox()).height).toBeLessThanOrEqual(56);
   await page.emulateMedia({reducedMotion:'reduce'});await input.click();await expect(form).toHaveAttribute('data-expanded','true');expect(await form.evaluate(el=>el.getAnimations().length)).toBe(0);await expect(form).toHaveCSS('transition-duration','0s');
+  await input.press('Tab');await expect(send).toBeFocused();expect(await send.evaluate(el=>parseFloat(getComputedStyle(el).outlineWidth))).toBe(2);await send.press('Shift+Tab');await expect(input).toBeFocused();expect(await input.evaluate(el=>parseFloat(getComputedStyle(el).outlineWidth))).toBe(0);
   await input.fill('キーボード送信');await input.press('Control+Enter');await expect(input).toHaveValue('');
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  });

@@ -4,7 +4,7 @@ export function travelComposer(host,initial=[],onChange=()=>{}) {
  let value;try{value=normalizeTravelContexts(initial);}catch{value=[];}
  let locked=false;
  host.classList.add('travel-composer');
- host.innerHTML='<button type="button" class="travel-add" aria-label="添付を追加" aria-expanded="false">＋</button><div class="travel-menu" hidden><button type="button">出張先を追加</button></div><span class="travel-chip" hidden><button type="button" class="travel-edit"></button><button type="button" class="travel-remove" aria-label="出張先を削除">×</button></span>';
+ host.innerHTML='<button type="button" class="travel-add" title="添付を追加" aria-label="添付を追加" aria-expanded="false"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14"/></svg></button><div class="travel-menu" hidden><button type="button">出張先を追加</button></div><span class="travel-chip" hidden><button type="button" class="travel-edit"></button><button type="button" class="travel-remove" aria-label="出張先を削除">×</button></span>';
  const add=host.querySelector('.travel-add'),menu=host.querySelector('.travel-menu'),chip=host.querySelector('.travel-chip'),edit=host.querySelector('.travel-edit'),remove=host.querySelector('.travel-remove');
  const closeMenu=()=>{menu.hidden=true;add.setAttribute('aria-expanded','false');};
  const render=()=>{chip.hidden=!value.length;edit.textContent=value.length?'出張先：'+value[0].name:'';for(const b of host.querySelectorAll('button'))b.disabled=locked;};

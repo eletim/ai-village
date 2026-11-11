@@ -6,11 +6,11 @@
 .travel-dialog select{display:block;width:100%;box-sizing:border-box;padding:8px;margin-top:4px;color:inherit;background:transparent;border:1px solid #60758d;border-radius:5px;font:inherit}.travel-dialog option{color:#182335;background:#fff}.travel-dialog fieldset{border:0;padding:0;margin:0;min-width:0}.travel-dialog [hidden]{display:none!important}.travel-dialog [data-manager] form{border-bottom:1px solid #60758d;padding:8px 0 16px;margin-bottom:12px}.travel-dialog [data-preview]{white-space:pre-wrap;overflow-wrap:anywhere}.travel-dialog h3{font-size:14px}
 
 /* Empty composer is a single row; attachment content adds rows only when present. */
-.agent-panel form[data-send]{display:grid;grid-template-columns:32px minmax(0,1fr) auto;align-items:end}
+.agent-panel form[data-send]{display:grid;grid-template-columns:36px minmax(0,1fr) auto;align-items:end}
 .agent-panel form[data-send]>textarea{grid-column:2;grid-row:1;width:100%}
 .agent-panel form[data-send]>button[type=submit]{grid-column:3;grid-row:1;min-width:32px;min-height:32px;padding:6px}
 .agent-panel form[data-send] .travel-composer,.agent-panel form[data-send] .file-composer{display:contents}
-.agent-panel form[data-send] .travel-add{grid-column:1;grid-row:1;width:32px;height:32px;padding:4px}
+.agent-panel form[data-send] .travel-add{grid-column:1;grid-row:1;width:36px;height:36px;padding:7px}
 .agent-panel form[data-send] :is(.travel-menu,.travel-chip,.file-previews,.file-error,[data-reconcile]){grid-column:1/-1;min-width:0}
 
 /* One shared shell; focusing the text moves the controls below its full width. */
@@ -21,3 +21,10 @@ html:not([data-theme=dark]) .agent-panel form[data-send]>textarea{background:tra
 .agent-panel form[data-send][data-expanded=true]>textarea{grid-column:1/-1;grid-row:1}
 .agent-panel form[data-send][data-expanded=true]>button[type=submit],.agent-panel form[data-send][data-expanded=true] .travel-add{grid-row:2}
 @media(prefers-reduced-motion:reduce){.agent-panel form[data-send]{transition:none}}
+
+/* The shared shell carries input focus; only this composer loses the inner ring. */
+.agent-panel form[data-send]>textarea{outline:0;-webkit-tap-highlight-color:transparent}
+.agent-panel form[data-send] .travel-add{display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:50%;background:transparent;color:var(--muted,#a9b8ce)}
+.agent-panel form[data-send] .travel-add svg{display:block;pointer-events:none;flex-shrink:0}
+@media(hover:hover){.agent-panel form[data-send] .travel-add:hover{background:color-mix(in srgb,currentColor 8%,transparent)}}
+.agent-panel form[data-send] .travel-add:is(:active,[aria-expanded=true]){background:color-mix(in srgb,currentColor 12%,transparent)}
