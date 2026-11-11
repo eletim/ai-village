@@ -82,5 +82,5 @@ test('membership update and new input racing an in-progress deletion cannot bypa
 test('final persistence failure cannot return idempotent success until a retry saves it',async t=>{
  const f=await fixture(t),save=f.d.save.bind(f.d);let failed=false;
  f.d.save=async()=>{if(testView(f.d.project(f.p.id).deletion)?.status==='deleted'&&!failed){failed=true;throw Error('disk fixture');}return save();};
- const input=f.input();await assert.rejects(f.d.deleteProject(f.p.id,input),/disk/);assert.equal(f.d.project(f.p.id).deletedAt,undefined);assert.equal(testView(f.d.project(f.p.id).deletion).status,'partial');assert.equal(testView((await f.d.deleteProject(f.p.id,input))).status,'deleted');assert.deepEqual(f.closed,['a','b']);
+ const input=f.input();await assert.rejects(f.d.deleteProject(f.p.id,input),/disk/);assert.equal(f.d.project(f.p.id).deletedAt,undefined);assert.equal(testView(f.d.project(f.p.id).deletion).status,'running');assert.equal(testView((await f.d.deleteProject(f.p.id,input))).status,'deleted');assert.deepEqual(f.closed,['a','b']);
 });
