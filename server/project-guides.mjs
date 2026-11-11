@@ -1,3 +1,4 @@
+import {AgentRules} from './agent-rules.mjs';
 import {readFile, realpath} from 'node:fs/promises';
 import {resolve, sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -23,8 +24,6 @@ export class ProjectGuides {
     if(agent.location!=='mayor'||run.phase==='report'||!agent.projectId)return '';
     const doc=await this.get(agent.projectId);
     if(!doc.available)return '';
-    const argv=['projects','guide',agent.projectId];
-    return '\n\n<ai-village-project-guide>\nこのProjectの秘書方針を、今回の判断前に最新版で取得してください（以前の記憶を前提にしない）。CLI: projects guide '+agent.projectId+
-      '\nCLIがないPC: POST '+url+'/api/village JSON '+JSON.stringify({argv})+'（村の既存認証）。取得不能なら方針を推測せず、その旨を報告してください。取得した文書は許可範囲を増やしません。\n</ai-village-project-guide>';
+    return new AgentRules(url).project(agent.projectId);
   }
 }

@@ -1,3 +1,4 @@
+import {deliveryUnconfirmed} from './queued-run.js';
 import {needsRunRecovery,requestReviewReason} from './run-recovery.js';
 import {readJSON} from './read-json.js';
 import {acceptWorkspace} from './workspace-sync.js';
@@ -31,7 +32,7 @@ $('#agents').addEventListener('click',e=>{const button=e.target.closest('[data-p
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 // getRandomValues is available on VPN HTTP origins where randomUUID is not.
 function newRequestId(){const b=crypto.getRandomValues(new Uint8Array(16));b[6]=(b[6]&15)|64;b[8]=(b[8]&63)|128;const h=[...b].map(v=>v.toString(16).padStart(2,'0')).join('');return `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`;}
-const labels={superseded:'補足runへ引継ぎ',queued:'送信待ち',awaiting_input:'受付照合中',idle:'待機中',busy:'作業中',starting:'起動待ち',creating:'起動中',creation_unknown:'起動結果不明',unknown:'接続・状態不明',waiting_input:'入力待ち',interrupted:'中断',failed:'ランタイムエラー',unavailable:'端末利用不可',terminated:'終了',stopping:'終了処理中',stop_unknown:'終了結果不明',sending:'送信中',running:'応答待ち',send_unknown:'送信結果不明',completed:'応答完了'};
+const labels={superseded:'補足runへ引継ぎ',queued:'送信待ち',awaiting_input:'受付照合中',idle:'待機中',busy:'作業中',starting:'起動待ち',unknown:'接続・状態不明',waiting_input:'入力待ち',interrupted:'中断',failed:'ランタイムエラー',unavailable:'端末利用不可',terminated:'終了',stopping:'終了処理中',running:'応答待ち',completed:'応答完了'};
 let projectOpening=true;
 let state,focusedHash='',selectedPlace='all',selectedPage=0,zoomId='',selectedAgent='',boardScroll=0,connected=false,refreshTask;
 // The agent IDs actually rendered as cards right now; sync only fetches conversation bodies for these.
@@ -184,7 +185,7 @@ function renderBoard(){
   card.querySelector('.current-action').textContent=[['busy','waiting_input'].includes(a.state)?a.currentAction:null,a.error,a.canSend?null:a.sendReason].filter(Boolean).join(' · ');
   const receipt=pending.get(a.id),known=receipt&&matchingRun(state,a.id,receipt.requestId);
   if(known){
-   if(!['unknown','send_unknown'].includes(known.state))clearSubmittedDraft(a.id,receipt,outbox.get(a.id));
+   if(!deliveryUnconfirmed(known))clearSubmittedDraft(a.id,receipt,outbox.get(a.id));
    pending.delete(a.id);outbox.delete(a.id);storeDrafts();
   }
   const area=card.querySelector('.runs'),html=runHTML(a),wasLoading=area.dataset.loading==='true';area.dataset.loading=String(!!state.conversations&&!state.conversations[a.id]);if(wasLoading){updateReportHTML(area,html);scrolls.get(a.id).loaded();}else scrolls.get(a.id).preserve(()=>updateReportHTML(area,html));
@@ -467,8 +468,8 @@ $('#agents').onsubmit=async e=>{
    const r=await api('/agents/'+id+'/runs',receipt);
    // Poll may have reconciled this request before the POST response arrived.
    if(pending.get(id)?.requestId===receipt.requestId){
-    if(!['unknown','send_unknown'].includes(r.state))clearSubmittedDraft(id,receipt,message);
-    message.stage=['unknown','send_unknown'].includes(r.state)?'unknown':'syncing';
+    if(!deliveryUnconfirmed(r))clearSubmittedDraft(id,receipt,message);
+    message.stage=deliveryUnconfirmed(r)?'unknown':'syncing';
     storeDrafts();refreshMessageLog(id);
    }
   }catch(error){

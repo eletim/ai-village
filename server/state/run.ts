@@ -14,7 +14,7 @@ export type Run = Readonly<{
 export type RunEvent =
  | Command<'dispatch','program',{at:number; sessionId:string|null; agentIdle:boolean}>
  | Command<'transport-ack','program',{at:number}>
- | Command<'input','program',{at:number; sessionId:string; turnId:string; inputId:string; text:string; competing:boolean; legacyHash?:{expected:string; observed:string}}>
+ | Command<'input','program',{at:number; sessionId:string; turnId:string; inputId:string; text:string; competing:boolean}>
  | Command<'terminal','program',{at:number; sessionId:string; turnId:string; outcome:'normal'|'failed'|'interrupted'; errorCode?:string}>
  | Command<'lost','program',{at:number; reason:'session-changed'|'turn-ended-without-marker'|'timeout'|'agent-stopped'}>
  | Command<'dispatch-blocked','program',{at:number; reason:string}>
@@ -40,7 +40,7 @@ export function transitionRun(r:Run,e:RunEvent):Result<Run> {
   case 'transport-ack': return r.state.kind==='sent'?record(r.state):reject('not-sent');
   case 'input': {
    if(r.state.kind!=='sent')return reject('input-requires-sent');
-   if(e.competing||!e.sessionId||!e.turnId||!e.inputId||(!e.text.split(/[^A-Za-z0-9-]+/).includes('ai-village-run-'+r.id)&&!(e.legacyHash?.expected&&e.legacyHash.expected===e.legacyHash.observed)))return reject('unmatched-or-competing-input');
+   if(e.competing||!e.sessionId||!e.turnId||!e.inputId||(!e.text.split(/[^A-Za-z0-9-]+/).includes('ai-village-run-'+r.id)))return reject('unmatched-or-competing-input');
    if(r.state.sessionId&&r.state.sessionId!==e.sessionId)return reject('session-mismatch');
    return record({kind:'running',sessionId:e.sessionId,turnId:e.turnId,inputId:e.inputId});
   }

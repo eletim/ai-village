@@ -1,3 +1,4 @@
+import {inputHash} from './model-fixtures.mjs';
 import {resultEntries} from '../server/request-lifecycle.mjs';
 import {receipt} from './model-fixtures.mjs';
 import {testView} from './model-fixtures.mjs';
@@ -9,7 +10,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {DirectAgents} from '../server/direct.mjs';
-import {inputHash} from '../server/runtime-events.mjs';
+import {} from '../server/runtime-events.mjs';
 import {VillageOperations} from '../server/operations.mjs';
 async function fixture(t,{reportMode=false}={}){
  const dir=await mkdtemp(join(tmpdir(),'request-flow-'));t.after(()=>rm(dir,{recursive:true,force:true}));
@@ -31,7 +32,7 @@ async function fixture(t,{reportMode=false}={}){
  await service.save();await service.tick();
  const submit=async(r,transform=x=>x)=>{
   const native=runtimes.get(r.agentId),text=sent.findLast(s=>s.agentId===r.agentId)?.text;
-  assert.equal(inputHash(text),r.inputHash);const tid=randomUUID();native.cursor+=10;
+  assert(text.includes(r.inputMarker));const tid=randomUUID();native.cursor+=10;
   native.inputs.push({id:'input-'+tid,turnId:tid,hash:inputHash(transform(text)),offset:native.cursor,text:transform(text)});
   native.turns.push({id:tid,state:'running',output:''});await service.tick();assert.equal(receipt(r).acceptance,'accepted');return tid;
  };
@@ -174,7 +175,7 @@ test('finish then overloaded failure never notifies; bounded durable retry sends
  r.recovery.nextAt=0;await s.save();s=await f.restart();await Promise.all([s.tick(),s.tick()]);
  q=s.flow.root(r.humanRequestId);w=q.works[0];let retry=s.flow.run(w.currentRunId);
  assert.equal(retry.runModel.createdBy,'program');assert.notEqual(retry.id,r.id);assert.equal(retry.workId,r.workId);assert.equal(retry.origin,'retry');assert.equal(w.autoRetry.attempts,1);assert.equal(w.finish,undefined);assert.equal(f.sent.length,2);
- assert.match(retry.instruction,/既存変更/);assert.match(retry.instruction,/再委任せず/);
+ assert.match(retry.instruction,/既存変更/);assert.match(retry.instruction,/再委任を避け/);
  await s.tick();await s.tick();assert.equal(f.sent.length,2);assert.equal(testView(retry).state,'awaiting_input');
  s=await f.restart();await s.tick();retry=s.flow.run(retry.id);assert.equal(testView(retry).state,'awaiting_input');assert.equal(f.sent.length,2);
  // A late old terminal is not the retry's native acknowledgement.
@@ -301,11 +302,11 @@ test('two-stage report replaces visible work after completion, waits for accepta
  await f.finish(source);await f.complete(source);
  assert.equal(testView(q).status,'active');assert.equal(testView(q).status,'active');assert.equal(f.notifications.length,0);
  let report=s.flow.run(q.works[0].currentRunId);assert.equal(report.phase,'report');assert.equal(report.workId,source.workId);
- assert.match(report.instruction,/元の質問/);assert.match(report.instruction,/追加作業/);
+ assert.match(report.instruction,/元の質問/);assert.match(s.flow.context(report),/追加作業/);
  // finish must come before the report body is written, so a trailing habitual remark can
  // never become the run's last message and clobber the report in finalOutput.
- assert.match(report.instruction,/finishは不要/);
- assert.match(report.instruction,/本文の後には（finish登録済みの確認や一言なども含め）何も書き加えないで/);
+ assert.match(s.flow.context(report),/finishは不要/);
+ assert.match(s.flow.context(report),/その後は何も書き加えないで/);
  assert(JSON.stringify(s.snapshot()).includes('Output '+source.id));
  assert(!JSON.stringify(s.snapshot()).includes('人間向けの報告だけを作成'));
  assert.equal(s.snapshot().reviews[source.agentId].attention,false);
@@ -329,7 +330,7 @@ test('report failure retries only report; cancelled or unknown reports never red
  assert.equal(testView(q).status,'active');assert.equal(testView(q).status,'active');assert.equal(f.notifications.length,0);
  assert(JSON.stringify(s.snapshot()).includes('Output '+source.id));
  const x={humanRequestId:q.id,workId:report.workId,revision:q.revision,operationId:'report-retry-operation',instruction:'Do work again'};
- const retry=await s.flow.continue(x,true);assert.equal(retry.phase,'report');assert.match(retry.instruction,/再実行は禁止/);assert.equal(await s.flow.continue(x,true),retry);
+ const retry=await s.flow.continue(x,true);assert.equal(retry.phase,'report');assert.match(s.flow.context(retry),/再実行は禁止/);assert.equal(await s.flow.continue(x,true),retry);
  f.lose(true);await s.tick();assert.equal(testView(retry).state,'awaiting_input');const count=f.sent.length;
  await s.tick();await f.restart();await f.service.tick();assert.equal(f.sent.length,count);
  const restored=f.service.flow.root(q.id);await f.service.flow.cancel({humanRequestId:q.id,revision:restored.revision});await f.service.tick();
@@ -475,7 +476,7 @@ test('startup envelope uses latest metadata and retains attachments/travel; chan
  await s.tick();assert.equal(a.inputEnvelope.mode,'legacy');assert.equal(a.inputEnvelope.reason,'native-session-changed');
  a.inputEnvelope={mode:'startup-v1'};a.projectId='current-project';a.metadataRevision=42;
  const context=s.secretaryContext(a,true);assert(context.includes('current-project'));assert(context.includes('42'));assert(!context.includes('所属は'));
- assert(s.flow.dynamicContext({attachmentFiles:[{path:'/attachment',sha256:'verified'}],travelContexts:[]}).includes('/attachment'));
+ assert(s.rules.dynamic({attachmentFiles:[{path:'/attachment',sha256:'verified'}],travelContexts:[]}).includes('/attachment'));
  await s.save();await f.restart();assert.equal(f.service.agent(a.id).inputEnvelope.mode,'startup-v1');
 });
 

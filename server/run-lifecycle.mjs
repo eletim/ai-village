@@ -1,9 +1,7 @@
 import {runView} from './state/projection.ts';
-// Stage 2 boundary: runModel is authoritative; state is the legacy UI/request projection.
-// Only this adapter writes that projection. No provider output prose enters transitions.
+// Model transitions only. Display labels are generated separately, never saved.
 import {transitionRun,newRun,retryRun,supplementRun} from './state/run.ts';
-import {migrateDirect} from './state/migrate.ts';
-import {inputHash,resolveInputPosition} from './runtime-events.mjs';
+import {resolveInputPosition} from './runtime-events.mjs';
 
 function commit(r,model){r.runModel=model;return r;}
 export const runState=r=>runView(modelOf(r)).state;
@@ -15,7 +13,7 @@ export function initializeRun(r,{actor='human',parentRunId=null,resultOf=null,re
  return commit(r,result.value);
 }
 export function importRun(r,model){return commit(r,model);}
-// Legacy in-memory fixtures/embedders use the same pure importer as persisted records.
+// Missing models are invalid; legacy data is handled only by the explicit migration.
 export function modelOf(r){if(!r?.runModel)throw Error('Missing run model: '+r?.id);return r.runModel;}
 export function changeRun(r,event){
  const result=transitionRun(modelOf(r),event);
@@ -27,7 +25,7 @@ export function observeRun(r,observation,snapshot){
  if(modelOf(r).state.kind==='sent'){
   const input=resolveInputPosition(snapshot.inputs,observation.inputId||r.inputId,observation.turnId);
   if(!input)throw Error('correlated native input missing');
-  changeRun(r,{type:'input',actor:'program',at:Date.now(),sessionId:observation.sessionId,turnId:observation.turnId,inputId:input.id,text:input.text||'',competing:false,...(!r.inputMarker?{legacyHash:{expected:r.inputHash,observed:input.hash||inputHash(input.text||'')}}:{})});
+  changeRun(r,{type:'input',actor:'program',at:Date.now(),sessionId:observation.sessionId,turnId:observation.turnId,inputId:input.id,text:input.text||'',competing:false});
  }
  if(['completed','failed','interrupted'].includes(observation.state))changeRun(r,{type:'terminal',actor:'program',at:Date.now(),sessionId:observation.sessionId,turnId:observation.turnId,outcome:observation.state==='completed'?'normal':observation.state,...(observation.errorCode?{errorCode:observation.errorCode}:{})});
 }

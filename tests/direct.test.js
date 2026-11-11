@@ -1,3 +1,4 @@
+import {inputHash} from './model-fixtures.mjs';
 import {receipt} from './model-fixtures.mjs';
 import {testView} from './model-fixtures.mjs';
 import {test} from 'node:test';
@@ -6,7 +7,7 @@ import {mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {DirectAgents} from '../server/direct.mjs';
-import {inputHash} from '../server/runtime-events.mjs';
+import {} from '../server/runtime-events.mjs';
 async function fixture(t){
  const dir=await mkdtemp(join(tmpdir(),'direct-native-'));t.after(()=>rm(dir,{recursive:true,force:true}));
  const data={available:true,sessionId:'session',cursor:0,inputs:[],turns:[]};let sends=0,notices=0,disconnected=false,loseSend=false,present=true;
@@ -189,8 +190,8 @@ test('secretary receives discovery without losing native input correlation or re
  const remote=f.service.remote;f.service.remote=async args=>{if(args[2]==='send')delivered=args.at(-1);return remote(args);};
  const payload={instruction:'工房を確認して',requestId:'secretary-discovery'};
  const r=await f.service.send(f.a.id,payload);
- assert.equal(r.instruction,payload.instruction);assert(delivered.includes('agents list'));assert(delivered.includes('/api/direct/agents'));
- assert.equal(r.inputHash,inputHash(delivered));
+ assert.equal(r.instruction,payload.instruction);assert(delivered.includes('最新名簿'));assert(delivered.includes('/api/direct/agents'));
+ assert(delivered.includes(r.inputMarker));assert.equal(r.inputHash,undefined);
  Object.assign(f.input(delivered),{state:'completed',output:'confirmed'});await f.service.tick();assert.equal(testView(r).state,'completed');
  await f.service.send(f.a.id,payload);assert.equal(f.sends(),1);
 });
@@ -314,7 +315,7 @@ test('stale busy releases only matching native terminal without later input or n
 test('discovery prompt carries only recipient identity and stays fixed as the village grows',async t=>{
  const f=await fixture(t);f.a.location='mayor';f.a.projectId='project-one';
  const before=f.service.secretaryContext(f.a);
- const own=JSON.parse(before.split('自分の登録（送信時点のデータ）: ')[1].split('\n')[0]);
+ const own=JSON.parse(before.split('<ai-village-discovery>')[1].split('</ai-village-discovery>')[0]);
  assert.equal(own.agentId,f.a.id);assert.equal(own.projectId,'project-one');assert.equal(own.role,'secretary');
  assert(!before.includes('nativeTurns'));assert(!before.includes('lastCheckedAt'));
  for(let i=0;i<100;i++)f.service.data.agents.push({...f.a,id:'other-'+i,name:'OTHER-PRIVATE-NAME-'+i,projectId:'different-project'});
@@ -323,5 +324,5 @@ test('discovery prompt carries only recipient identity and stays fixed as the vi
  f.a.projectId='project-two';f.a.metadataRevision=2;
  assert(f.service.secretaryContext(f.a).includes('project-two'));assert(!f.service.secretaryContext(f.a).includes('project-one'));
  f.service.villageUrl='http://core.example:5173';
- assert(f.service.secretaryContext(f.a).includes('GET http://core.example:5173/api/direct/agents'));
+ assert(f.service.rules.work('q').includes('GET http://core.example:5173/api/direct/agents'));assert(!f.service.secretaryContext(f.a).includes('GET '));
 });
