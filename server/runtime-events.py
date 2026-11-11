@@ -45,6 +45,10 @@ def parse_event(db,provider,x,offset):
  elif provider=='claude':
   if x.get('isSidechain'):return
   uid=x.get('uuid');parent=x.get('parentUuid');m=x.get('message',{});content=m.get('content',[])
+  # Compaction summaries are written as plain user lines (isMeta false in Claude Code 2.1.3xx); they continue the current turn, never start one.
+  if x.get('type')=='user' and (x.get('isCompactSummary') or x.get('isVisibleInTranscriptOnly')):
+   if uid and db.current:db.parent(uid,db.parent(db.current) or db.current)
+   return
   if x.get('type')=='user' and not x.get('isMeta') and not (isinstance(content,list) and any(b.get('type')=='tool_result' for b in content)):
    if not uid:return
    db.current=uid;turn(uid);db.parent(uid,uid)
