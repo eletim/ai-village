@@ -5,7 +5,7 @@ export function autogrowInput(input,{panel}={}){
  function update(){
   frame=0;if(!input.isConnected||!input.getClientRects().length||!input.clientWidth)return;
   const style=getComputedStyle(input),padding=parseFloat(style.paddingTop)+parseFloat(style.paddingBottom),border=parseFloat(style.borderTopWidth)+parseFloat(style.borderBottomWidth);
-  const min=Math.ceil(parseFloat(style.lineHeight)*2+padding+border);
+  const min=Math.ceil(parseFloat(style.lineHeight)+padding+border);
   const viewport=window.visualViewport?.height||window.innerHeight;
   const max=Math.max(min,Math.floor(Math.min(viewport*.4,panel?panel.clientHeight*.4:Infinity)));
   const next=JSON.stringify([input.value,input.clientWidth,min,max,style.fontFamily,style.fontSize,style.letterSpacing]);if(next===signature)return;signature=next;

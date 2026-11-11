@@ -4,3 +4,11 @@
 .runs .file-previews,#conversation-log .file-previews{max-height:none;overflow:visible}.runs .file-previews img,#conversation-log .file-previews img{max-width:100%;max-height:240px}
 
 .travel-dialog select{display:block;width:100%;box-sizing:border-box;padding:8px;margin-top:4px;color:inherit;background:transparent;border:1px solid #60758d;border-radius:5px;font:inherit}.travel-dialog option{color:#182335;background:#fff}.travel-dialog fieldset{border:0;padding:0;margin:0;min-width:0}.travel-dialog [hidden]{display:none!important}.travel-dialog [data-manager] form{border-bottom:1px solid #60758d;padding:8px 0 16px;margin-bottom:12px}.travel-dialog [data-preview]{white-space:pre-wrap;overflow-wrap:anywhere}.travel-dialog h3{font-size:14px}
+
+/* Empty composer is a single row; attachment content adds rows only when present. */
+.agent-panel form[data-send]{display:grid;grid-template-columns:32px minmax(0,1fr) auto;align-items:end}
+.agent-panel form[data-send]>textarea{grid-column:2;grid-row:1;width:100%}
+.agent-panel form[data-send]>button[type=submit]{grid-column:3;grid-row:1;min-width:32px;min-height:32px;padding:6px}
+.agent-panel form[data-send] .travel-composer,.agent-panel form[data-send] .file-composer{display:contents}
+.agent-panel form[data-send] .travel-add{grid-column:1;grid-row:1;width:32px;height:32px;padding:4px}
+.agent-panel form[data-send] :is(.travel-menu,.travel-chip,.file-previews,.file-error,[data-reconcile]){grid-column:1/-1;min-width:0}

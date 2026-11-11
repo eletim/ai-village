@@ -23,8 +23,7 @@
 .agent-panel[data-state=completed][data-unread=true]{box-shadow:0 0 0 2px color-mix(in srgb,var(--state-color) 40%,transparent)}
 .agent-panel[data-state=completed][data-unread=true] .panel-heading{background:color-mix(in srgb,var(--state-color) 20%,#1d2d47)}
 .agent-dot[data-state=completed][data-unread=true]{box-shadow:0 0 0 2px color-mix(in srgb,var(--state-color) 40%,transparent)}
-.agent-panel[data-selected=true] .panel-heading{border-bottom-color:#7d8fa580}
-.selection-label{font-size:10px;font-weight:400;color:#a9b8ce;white-space:nowrap}.selection-label:empty{display:none}
+.agent-panel[data-selected=true] .panel-heading{box-shadow:inset 3px 0 0 #7d8fa5}
 .agent-panel:focus:not(:focus-visible){outline:none}
 .agent-panel:focus-visible{outline:2px dashed #99adcf;outline-offset:-5px}
 

@@ -21,7 +21,7 @@ html:not([data-theme=dark]) .agent-panel :is(input,textarea,select,button){backg
 html:not([data-theme=dark]) .agent-panel form{border-color:var(--line)}
 html:not([data-theme=dark]) .message.assistant{background:var(--reply)}
 html:not([data-theme=dark]) .message.user{background:var(--user)}
-html:not([data-theme=dark]) :is(.panel-info,.meta,.message time,.run-status,.unread-badge,.selection-label,.board-heading span,.sidebar h3,header h1 small,#metadata-id){color:var(--muted)}
+html:not([data-theme=dark]) :is(.panel-info,.meta,.message time,.run-status,.unread-badge,.board-heading span,.sidebar h3,header h1 small,#metadata-id){color:var(--muted)}
 html:not([data-theme=dark]) .runs{scrollbar-color:var(--line) var(--surface)}
 html:not([data-theme=dark]) .place-row [aria-current],html:not([data-theme=dark]) #sidebar-mode button[aria-pressed=true]{background:var(--user);color:var(--ink)}
 html:not([data-theme=dark]) :is(.place-row [data-place]:hover,button:hover){background:var(--heading)}
