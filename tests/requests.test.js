@@ -120,7 +120,7 @@ test('final attention uses request completion revision, not prior viewed native 
 });
 test('historical runs never acquire tickets or trigger a wave of notifications; uncertain outbox is not replayed',async t=>{
  const f=await fixture(t);f.service.data.runs.push({id:'legacy',agentId:f.agents[0].id,requestId:'legacy-key',instruction:'old',state:'completed',output:'old'});
- await f.service.save();let s=await f.restart();await s.tick();assert.equal(f.notifications.length,0);assert.equal(s.data.requests.length,0);assert.equal(s.flow.run('legacy').notificationPolicy,'legacy-untracked');
+ delete f.service.data.runStateVersion;await f.service.save();let s=await f.restart();await s.tick();assert.equal(f.notifications.length,0);assert.equal(s.data.requests.length,0);assert.equal(s.flow.run('legacy').notificationPolicy,'legacy-untracked');
  const r=await s.send(f.agents[0].id,{instruction:'new',requestId:'request-new-one'});await f.submit(r);await f.complete(r);await f.finish(r);
  const q=s.flow.root(r.humanRequestId);q.notification.status='attempting';await s.save();s=await f.restart();await s.tick();assert.equal(f.notifications.length,0);assert.equal(s.flow.root(q.id).notification.status,'delivery_unknown');
 });
@@ -427,7 +427,7 @@ test('unsent input cancellation validates identity, survives restart and never d
 test('cancellation serializes against dispatch and cannot claim a send that already started',async t=>{
  const f=await fixture(t),s=f.service,r=await s.send(f.agents[0].id,{requestId:randomUUID(),instruction:'sent'});
  // Recreate a queued boundary with deterministic fake transport; no real Agent.
- r.state='queued';r.acceptance='queued';delete r.dispatchAttemptedAt;r.dispatchConfirmed=false;
+ r.runModel={...r.runModel,state:{kind:'queued'}};r.state='queued';r.acceptance='queued';delete r.dispatchAttemptedAt;r.dispatchConfirmed=false;
  let enter,release;const entered=new Promise(r=>enter=r),gate=new Promise(r=>release=r),observe=s.observe.bind(s);
  s.observe=async a=>{enter();await gate;await observe(a);a.canSend=true;return {sessionId:'session-'+a.id,cursor:0};};
  const dispatch=s.attemptRun(r);await entered;const cancel=s.flow.cancelQueued({humanRequestId:r.humanRequestId,agentId:r.agentId,runId:r.id});release();await dispatch;

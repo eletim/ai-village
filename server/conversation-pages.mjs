@@ -1,7 +1,7 @@
 import {agentEntries} from '../src/completions.js';
 const terminal=new Set(['completed','failed','interrupted','superseded','terminated']);
 export const entryKey=r=>JSON.stringify([r.createdAt||'',r.external?'native':'run',r.external?(r.sessionId||r.agentSessionId||''):'',r.id]);
-const fields='id requestId agentId humanRequestId workId origin phase state acceptance createdAt completedAt turnId sessionId agentSessionId instruction travelContexts attachments output finalOutput error errorCode attachmentError recovery notification queueCancelledAt dispatchAttemptedAt dispatchConfirmed inputId suppressUser hideEntry reportStatus hiddenCompletion collapsedHistory external'.split(' ');
+const fields='id requestId agentId humanRequestId workId origin phase state needsReview acceptance createdAt completedAt turnId sessionId agentSessionId instruction travelContexts attachments output finalOutput error errorCode attachmentError recovery notification queueCancelledAt dispatchAttemptedAt dispatchConfirmed inputId suppressUser hideEntry reportStatus hiddenCompletion collapsedHistory external'.split(' ');
 const present=r=>Object.fromEntries(fields.filter(k=>r[k]!==undefined).map(k=>[k,r[k]]));
 const ordered=(view,a)=>agentEntries(view,a).sort((a,b)=>entryKey(a)<entryKey(b)?-1:entryKey(a)>entryKey(b)?1:0);
 const cursor=(agentId,key)=>Buffer.from(JSON.stringify([agentId,key])).toString('base64url');
@@ -45,7 +45,7 @@ export function workspaceSnapshot(view,ranges={},focus=null){
  const ids=new Set(runs.map(r=>r.humanRequestId));
  const requests=(view.requests||[]).filter(q=>ids.has(q.id)).map(q=>({id:q.id,status:q.status,revision:q.revision,works:q.works.map(w=>({id:w.id,currentRunId:w.currentRunId,parentWorkId:w.parentWorkId,finish:w.finish?{status:w.finish.status}:null}))}));
  // runs are referenced by controls, but their bodies are carried only once in conversations.
- const controlFields='id requestId agentId humanRequestId state turnId sessionId agentSessionId createdAt hiddenCompletion'.split(' ');
+ const controlFields='id requestId agentId humanRequestId workId phase state turnId sessionId agentSessionId createdAt hiddenCompletion'.split(' ');
  const controls=runs.map(r=>Object.fromEntries(controlFields.filter(k=>r[k]!==undefined).map(k=>[k,r[k]])));
- return {version:view.version,agents,workshops:view.workshops,projects:view.projects,capabilities:view.capabilities,reviews:view.reviews,notification:view.notification,requests,runs:controls,conversations};
+ return {version:view.version,recoveryRequests:view.recoveryRequests||[],agents,workshops:view.workshops,projects:view.projects,capabilities:view.capabilities,reviews:view.reviews,notification:view.notification,requests,runs:controls,conversations};
 }

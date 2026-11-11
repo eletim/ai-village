@@ -1,3 +1,4 @@
+import {needsRunRecovery} from './run-recovery.js';
 import {readJSON} from './read-json.js';
 import {acceptWorkspace} from './workspace-sync.js';
 import {restorePendingMessage,matchingRun,unchangedDraft,pendingMessageStatus} from './pending-message.js';
@@ -96,8 +97,8 @@ function timeHTML(value){if(!value)return '';const date=new Date(value);return N
 function bubble(side,text,at,extra=''){return `<div class="message ${side}">${text?(side==='assistant'?reportHTML(text):`<pre>${linkedText(text)}</pre>`):''}${extra}${timeHTML(at)}</div>`;}
 function recoveryHTML(r){
  const q=state.requests?.find(q=>q.id===r.humanRequestId),w=q?.works.find(w=>w.currentRunId===r.id);
- if(!q||q.status!=='active'||!w||!(['failed','interrupted'].includes(r.state)||(r.phase==='report'&&r.state==='completed'&&!w.finish)))return '';
- const reason=r.recovery?.status==='scheduled'?'自動再試行予定: '+new Date(r.recovery.nextAt).toLocaleTimeString():r.recovery?.reason||'停止理由を確認し、未完了の作業を再開できます。';
+ if(!needsRunRecovery(q,r,w))return '';
+ const reason=r.recovery?.status==='scheduled'?'自動再試行予定: '+new Date(r.recovery.nextAt).toLocaleTimeString():r.recovery?.reason||(r.needsReview?'要確認: 実行結果を確認できません。副作用を確認してから再試行してください。':null)||'停止理由を確認し、未完了の作業を再開できます。';
  return `<div class="recovery"><p>${esc(reason)}</p>${!w.parentWorkId?`<button data-retry-run="${esc(r.id)}">確認して再試行</button>`:'<p>委任元でrequests get/resultsを確認し、requests retryで復旧してください。</p>'}<button data-cancel-request="${esc(q.id)}">依頼をキャンセル</button></div>`;
 }
 function entryHTML(a,r,divider){
@@ -388,6 +389,22 @@ async function api(path,body,method='POST'){
 async function action(form,fn){const buttons=[...form.querySelectorAll('button')],card=form.closest('.agent-panel');if(card)card.dataset.pending='true';buttons.forEach(b=>b.disabled=true);$('#error').textContent='';document.querySelectorAll('.dialog-error').forEach(el=>el.textContent='');try{await fn();await refresh(true);}catch(e){const target=document.querySelector('dialog[open] .dialog-error')||$('#error');target.textContent=e.message;}finally{if(card)card.dataset.pending='false';buttons.forEach(b=>b.disabled=false);if(state)renderBoard();}}
 function places(){const w=state?.workshops.find(w=>w.id===$('#agent-form [name=workshopId]').value);options($('#agent-form [name=cwd]'),(w?.workplaces||[]).map(p=>({id:p,name:p})));}
 function render(){
+ let inbox=$('#run-recovery-inbox');
+ if(!inbox){inbox=document.createElement('details');inbox.id='run-recovery-inbox';$('#agents').before(inbox);}
+ const recovery=state.recoveryRequests||[];
+ inbox.hidden=!recovery.length;
+ inbox.innerHTML='<summary>要確認の依頼（'+recovery.length+'件）</summary>'+recovery.map(q=>`<article><strong>${esc(q.agentName)} · ${esc((q.instruction||'依頼').slice(0,100))}</strong><p>要確認: ${esc(q.reason)}</p>${q.canRetry?`<button data-recovery-retry="${esc(q.id)}">確認して再試行</button>`:'<p>再試行先がありません。依頼をキャンセルできます。</p>'}<button data-recovery-cancel="${esc(q.id)}">依頼をキャンセル</button></article>`).join('');
+ inbox.onclick=async e=>{
+  const button=e.target.closest('[data-recovery-retry],[data-recovery-cancel]');if(!button)return;
+  const id=button.dataset.recoveryRetry||button.dataset.recoveryCancel,q=recovery.find(q=>q.id===id);
+  if(!q||!confirm(button.dataset.recoveryRetry?'既存変更・外部操作・子結果を確認してから再試行しますか？':'依頼をキャンセルしますか？ 実行中のAgentは停止しません。'))return;
+  await action(button.closest('article'),async()=>{
+   const full=await api('/requests/get',{humanRequestId:id});
+   if(button.dataset.recoveryCancel)await api('/requests/cancel',{humanRequestId:id,revision:full.revision});
+   else await api(q.phase==='report'&&q.state==='completed'?'/requests/resume':'/requests/retry',{humanRequestId:id,workId:q.workId,revision:full.revision,operationId:newRequestId(),instruction:'実行結果を人間が確認した後の復旧です。既存変更・外部操作・子作業を確認し、未完了部分だけ進めてください。重複操作・再委任を避けてください。\n元の依頼:\n'+(full.instruction||'').slice(0,12000)});
+  });
+ };
+
  $('#workshops').innerHTML=state.workshops.map(w=>`<div class="workshop"><strong>${esc(w.name)}</strong><div class="meta">${w.connectionType==='local'?'ローカル（村長PC）':'SSH · '+esc(w.sshHost)}</div><button class="secondary" data-edit="${esc(w.id)}">編集</button></div>`).join('')||'<p>工房を登録してください。</p>';
  options($('#agent-form [name=workshopId]'),state.workshops);if(!$('#agent-dialog').open)projectOptions($('#agent-form [name=projectId]'));places();
  $('#notifications').textContent=`Notify: ${state.notification.enabled===false?'OFF':state.notification.latest?.status||(state.notification.destinationConfigured?'設定済み':'未設定')}`;

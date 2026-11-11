@@ -16,7 +16,7 @@ async function fixture(t){
  const opts={dir,remote,notifier:{status:()=>({}),enqueue:()=>{throw Error('No notification allowed');}}};const d=new DirectAgents(opts);await d.init({watch:false});
  const p=await d.putProject({name:'Project',requestId:'project-create'});
  d.data.agents=['a','b'].map(id=>({id,name:'Agent '+id,projectId:p.id,metadataRevision:0,connection:{connectionType:'ssh',sshHost:'fixture'},tabId:id,workspaceId:'workspace-'+id,sessionName:'session-'+id,cwd:'/tmp',state:'busy',canSend:true}));
- d.data.runs=[{id:'history',agentId:'a',state:'completed',output:'保持する履歴',notificationPolicy:'legacy-untracked'}];await d.save();
+ d.data.runs=[{id:'history',agentId:'a',state:'completed',output:'保持する履歴',notificationPolicy:'legacy-untracked'}];delete d.data.runStateVersion;await d.save();
  const input=()=>{const plan=d.projectDeletePlan(p.id);return {operationId:'delete-operation',revision:plan.revision,members:plan.members};};
  return {d,p,opts,input,closed,calls,present,offline:id=>offline=id};
 }

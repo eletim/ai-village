@@ -1,3 +1,4 @@
+import {recoveryRequests} from '../src/run-recovery.js';
 // Human-facing projection only. requests get/results retain the immutable source.
 // Work stays visible until the final report commits. Internal report turns are
 // always withheld; afterwards original work is available as collapsed history.
@@ -16,7 +17,7 @@ export function humanProjection(data){
    return b&&(!b.sessionId||b.sessionId===session)&&(!Number.isFinite(t.offset)||t.offset>b.cursor);
   }));
   if(hidden.length){delete a.runtime;delete a.currentAction;}
-  const pending=owned.findLast(r=>r.phase==='report'&&protectedRequests.get(r.humanRequestId).status!=='completed'&&protectedRequests.get(r.humanRequestId).status!=='cancelled');
+  const pending=owned.findLast(r=>r.phase==='report'&&!['completed','failed','interrupted','terminated'].includes(r.state)&&protectedRequests.get(r.humanRequestId).status!=='completed'&&protectedRequests.get(r.humanRequestId).status!=='cancelled');
   if(pending){a.reportPending=true;a.canSteer=false;delete a.steerTarget;}
  }
  for(const r of view.runs){
@@ -26,7 +27,7 @@ export function humanProjection(data){
   const show=q.status==='completed'&&q.finalRunId===r.id&&r.phase==='report';
   // Whitelist the presentation fields: hashes/checkpoints/retry prompts must not
   // inadvertently expose internal instructions or intermediate answers.
-  for(const key of Object.keys(r))if(!['id','requestId','agentId','humanRequestId','workId','origin','phase','state','acceptance','createdAt','completedAt','turnId','sessionId','agentSessionId','instruction','travelContexts','attachments','output','error','errorCode','recovery'].includes(key))delete r[key];
+  for(const key of Object.keys(r))if(!['id','requestId','agentId','humanRequestId','workId','origin','phase','state','needsReview','acceptance','createdAt','completedAt','turnId','sessionId','agentSessionId','instruction','travelContexts','attachments','output','error','errorCode','recovery'].includes(key))delete r[key];
   const archive=q.status==='completed'&&r.phase!=='report';
   r.output=show?(original.finalOutput||original.output||''):archive?(original.output||original.finalOutput||''):'';
   if(show)r.finalOutput=r.output;
@@ -47,5 +48,6 @@ export function humanProjection(data){
   if(r.error)r.error='受付・停止理由をrequests getで確認してください';
   if(r.recovery)r.recovery={status:r.recovery.status,reason:r.phase==='report'?'報告のみ再試行できます。元作業は再実行しません。':'停止理由を確認して復旧してください'};
  }
+ view.recoveryRequests=recoveryRequests(data);
  return view;
 }
