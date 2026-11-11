@@ -41,3 +41,11 @@ test('explicit pins precede other projects without name special cases or changin
  assert.deepEqual(projects.map(p=>p.id),['a','b','c']);
  assert.deepEqual(orderedProjects(projects.filter(p=>p.id!=='b')).map(p=>p.id),['a','c']);
 });
+test('visualState: a finished Agent whose native turns are all withheld (report mode) shows completed, not idle',async()=>{
+ const {visualState}=await import('../src/completions.js');
+ const agent={id:'a',state:'idle',observedSessionId:'s',nativeTurns:[]};
+ assert.equal(visualState(agent,[{id:'w',state:'completed',sessionId:'s'},{id:'r',phase:'report',state:'completed',agentSessionId:'s'}]),'completed');
+ // A completed run from an older session must not turn a fresh session green.
+ assert.equal(visualState(agent,[{id:'old',state:'completed',sessionId:'old-session'}]),'idle');
+ assert.equal(visualState(agent,[{id:'f',state:'failed',sessionId:'s'}]),'idle');
+});

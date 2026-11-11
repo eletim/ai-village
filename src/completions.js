@@ -25,7 +25,9 @@ export function visualState(agent,entries=[]){
  if(agent.state!=='idle')return agent.state;
  // A previous completed turn cannot make a newer failed/interrupted session green.
  const current=agent.observedSessionId?(agent.nativeTurns||[]).filter(t=>(t.sessionId||agent.observedSessionId)===agent.observedSessionId):null;
- const latest=current?current.at(-1):entries.at(-1);
+ // Report-mode requests withhold their native turns from the human view; then the
+ // current session's own run records decide, so a finished Agent is not shown as plain idle.
+ const latest=current?.length?current.at(-1):current?entries.filter(e=>(e.sessionId||e.agentSessionId)===agent.observedSessionId).at(-1):entries.at(-1);
  return latest?.state==='completed'?'completed':agent.state;
 }
 export function faviconHref(unread){

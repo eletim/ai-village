@@ -3,6 +3,7 @@ import {recoveryRequests} from '../src/run-recovery.js';
 // Human-facing projection only. requests get/results retain the immutable source.
 // Work stays visible until the final report commits. Internal report turns are
 // always withheld; afterwards original work is available as collapsed history.
+const firstAfter=(a,session,cursor)=>(a.nativeTurns||[]).filter(t=>(t.sessionId||a.observedSessionId)===session&&Number.isFinite(t.offset)&&t.offset>cursor).sort((x,y)=>x.offset-y.offset)[0];
 export function humanProjection(data){
  data=projectState(data);
  const view=structuredClone(data),protectedRequests=new Map((data.requests||[]).filter(q=>q.reportMode===true).map(q=>[q.id,q]));
@@ -16,7 +17,11 @@ export function humanProjection(data){
    if(r.turnId===t.id&&(r.sessionId||r.agentSessionId)===session)return true;
    if(r.turnId&&['completed','failed','interrupted','superseded','terminated'].includes(r.state))return false;
    const b=r.baselineRuntime;
-   return b&&(!b.sessionId||b.sessionId===session)&&(!Number.isFinite(t.offset)||t.offset>b.cursor);
+   if(!b||(b.sessionId&&b.sessionId!==session))return false;
+   // An ended run that was never matched to a turn owns at most the first turn after its
+   // baseline. Hiding every later turn would blank the Agent's history (and its colour) forever.
+   if(['completed','failed','interrupted','superseded','terminated'].includes(r.state))return t.id===firstAfter(a,session,b.cursor)?.id;
+   return !Number.isFinite(t.offset)||t.offset>b.cursor;
   }));
 
  }

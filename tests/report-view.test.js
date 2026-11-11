@@ -16,3 +16,11 @@ test('shows work until report commits, hides internal report streams, preserves 
  delete data.requests[0].reportMode;
  assert(humanProjection(fixtureModels(data,{refresh:true})).runs[0].output.includes('secret draft'));
 });
+test('an ended report run never matched to a turn hides only the first turn after its baseline, not all later history',()=>{
+ const data={agents:[{id:'a',location:'mayor',observedSessionId:'s',nativeTurns:[{id:'before',sessionId:'s',offset:5,state:'completed',output:'before'},{id:'report-turn',sessionId:'s',offset:15,state:'completed',output:'internal report turn'},{id:'later',sessionId:'s',offset:25,state:'completed',output:'later work'}]}],
+  runs:[{id:'w',humanRequestId:'q',agentId:'a',origin:'human',instruction:'question',state:'completed',turnId:'before',sessionId:'s',output:'work'},
+   {id:'report',humanRequestId:'q',agentId:'a',phase:'report',origin:'report',instruction:'secret prompt',state:'terminated',dispatchAttemptedAt:'2026-11-11T00:00:00Z',baselineRuntime:{sessionId:'s',cursor:10}}],
+  requests:[{id:'q',reportMode:true,status:'completed',finalRunId:'report',works:[{id:'w',agentId:'a',runIds:['w','report']}]}]};
+ const ids=humanProjection(fixtureModels(data,{refresh:true})).agents[0].nativeTurns.map(t=>t.id);
+ assert(!ids.includes('report-turn'));assert(ids.includes('later'));
+});
