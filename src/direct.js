@@ -1,3 +1,4 @@
+import {boardProjectTitle,mobileWorkspace} from './mobile-workspace.js';
 import {compactStatusPair,compactStatus,actionSVG,connectionStatus} from './compact-status.js';
 import {deliveryUnconfirmed} from './queued-run.js';
 import {needsRunRecovery,requestReviewReason} from './run-recovery.js';
@@ -88,6 +89,8 @@ function sidebarState(collapsed){
  button.setAttribute('aria-expanded',String(!collapsed));button.setAttribute('aria-label',label);button.title=label;
 }
 sidebarState(document.documentElement.dataset.sidebarCollapsed==='true');
+mobileWorkspace();
+$('#next-agent').onclick=()=>{const list=filtered();const index=list.findIndex(a=>a.id===zoomId);if(index>=0&&list.length>1)toggleZoom(list[(index+1)%list.length].id);};
 $('#sidebar-toggle').onclick=()=>{
  capturePositions();
  const collapsed=document.documentElement.dataset.sidebarCollapsed!=='true';
@@ -148,7 +151,8 @@ function renderBoard(){
  if(restoreScroll!==null)zoomId='';
  const shown=zoomId?list.filter(a=>a.id===zoomId):list.slice(selectedPage*PAGE_SIZE,(selectedPage+1)*PAGE_SIZE),ids=new Set(shown.map(a=>a.id));
  focusIds=ids;
- $('#board-title').textContent=(zoomId?shown[0].name:groupTitle(selectedPlace,selectedPage))+(isProject(selectedPlace)&&(state.projects||[]).find(p=>p.id===selectedPlace.slice(8))?.suspended?' · 休止中（表示整理のみ）':'');
+ $('#board-title').textContent=boardProjectTitle(shown,state.projects,groupTitle(selectedPlace,selectedPage))+(isProject(selectedPlace)&&(state.projects||[]).find(p=>p.id===selectedPlace.slice(8))?.suspended?' · 休止中（表示整理のみ）':'');
+ $('#next-agent').hidden=!zoomId||list.length<2;
  $('#agent-count').textContent=`${shown.length} / ${list.length} Agent`;
  $('#pages').hidden=selectedPlace!=='all'||!!zoomId||pageCount===1;
  $('#page-number').textContent=`${selectedPage+1} / ${pageCount}`;
