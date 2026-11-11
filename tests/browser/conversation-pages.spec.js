@@ -21,7 +21,7 @@ test('immediate upload and POST progress, no duplicate send, failure keeps draft
  await page.goto('/agents');await page.locator('textarea[name=instruction]').fill('keep this');
  await page.locator('input[data-file]').setInputFiles({name:'note.txt',mimeType:'text/plain',buffer:Buffer.from('note')});
  await page.getByRole('button',{name:'送信',exact:true}).click();await expect(page.getByRole('status').filter({hasText:'添付を準備'})).toBeVisible();expect(posts).toBe(0);releaseUpload();
- await expect(page.getByRole('status').filter({hasText:'サーバーへ送信中'})).toBeVisible();await page.screenshot({path:'/tmp/paged-sending.png'});await expect(page.getByRole('button',{name:'送信',exact:true})).toBeDisabled();await page.locator('textarea[name=instruction]').press('Control+Enter');expect(posts).toBe(1);releaseSend();
+ await expect(page.getByRole('status').filter({hasText:'サーバーへ送信中'})).toBeVisible();await page.screenshot({path:'/tmp/paged-sending.png'});await expect(page.getByRole('button',{name:'送信中…',exact:true})).toBeDisabled();await page.locator('textarea[name=instruction]').press('Control+Enter');expect(posts).toBe(1);releaseSend();
  await expect(page.locator('#error')).toContainText('connection uncertain');await expect(page.locator('textarea[name=instruction]')).toHaveValue('keep this');await expect(page.getByRole('button',{name:'送信結果を確認',exact:true})).toBeVisible();await expect(page.getByRole('status').filter({hasText:'自動再送しません'})).toBeVisible();expect(posts).toBe(1);
 });
 test('successful delayed submit shows acceptance status then clears draft, icons accessible and details preserved',async({page})=>{

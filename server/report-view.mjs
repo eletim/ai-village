@@ -1,8 +1,11 @@
+import {projectState} from './state-projection.mjs';
 import {recoveryRequests} from '../src/run-recovery.js';
 // Human-facing projection only. requests get/results retain the immutable source.
 // Work stays visible until the final report commits. Internal report turns are
 // always withheld; afterwards original work is available as collapsed history.
+const firstAfter=(a,session,cursor)=>(a.nativeTurns||[]).filter(t=>(t.sessionId||a.observedSessionId)===session&&Number.isFinite(t.offset)&&t.offset>cursor).sort((x,y)=>x.offset-y.offset)[0];
 export function humanProjection(data){
+ data=projectState(data);
  const view=structuredClone(data),protectedRequests=new Map((data.requests||[]).filter(q=>q.reportMode===true).map(q=>[q.id,q]));
  const protectedRuns=data.runs.filter(r=>protectedRequests.has(r.humanRequestId));
  for(const a of view.agents){
@@ -14,7 +17,11 @@ export function humanProjection(data){
    if(r.turnId===t.id&&(r.sessionId||r.agentSessionId)===session)return true;
    if(r.turnId&&['completed','failed','interrupted','superseded','terminated'].includes(r.state))return false;
    const b=r.baselineRuntime;
-   return b&&(!b.sessionId||b.sessionId===session)&&(!Number.isFinite(t.offset)||t.offset>b.cursor);
+   if(!b||(b.sessionId&&b.sessionId!==session))return false;
+   // An ended run that was never matched to a turn owns at most the first turn after its
+   // baseline. Hiding every later turn would blank the Agent's history (and its colour) forever.
+   if(['completed','failed','interrupted','superseded','terminated'].includes(r.state))return t.id===firstAfter(a,session,b.cursor)?.id;
+   return !Number.isFinite(t.offset)||t.offset>b.cursor;
   }));
 
  }
@@ -25,7 +32,7 @@ export function humanProjection(data){
   const show=q.status==='completed'&&q.finalRunId===r.id&&r.phase==='report';
   // Whitelist the presentation fields: hashes/checkpoints/retry prompts must not
   // inadvertently expose internal instructions or intermediate answers.
-  for(const key of Object.keys(r))if(!['id','requestId','agentId','humanRequestId','workId','origin','phase','state','needsReview','acceptance','createdAt','completedAt','turnId','sessionId','agentSessionId','instruction','travelContexts','attachments','output','error','errorCode','recovery'].includes(key))delete r[key];
+  for(const key of Object.keys(r))if(!['id','requestId','agentId','humanRequestId','workId','origin','phase','state','needsReview','runModel','createdAt','completedAt','turnId','sessionId','agentSessionId','instruction','travelContexts','attachments','output','error','errorCode','recovery'].includes(key))delete r[key];
   const archive=q.status==='completed'&&r.phase!=='report';
   r.output=show?(original.finalOutput||original.output||''):archive?(original.output||original.finalOutput||''):'';
   if(show)r.finalOutput=r.output;
@@ -36,10 +43,10 @@ export function humanProjection(data){
   r.hideEntry=r.suppressUser&&!current&&!show&&!r.collapsedHistory;
   r.reportStatus=q.status==='cancelled'?'依頼キャンセル':q.status==='completed'&&!show?'作業完了（報告に統合済み）':show?'報告完了':r.phase==='report'?
    ['failed','interrupted','terminated'].includes(r.state)?'報告生成に失敗しました。元回答を引き続き表示しています。':
-   ['unknown','send_unknown','awaiting_input','waiting_input'].includes(r.state)?'報告の受付・実行状態を確認中です。再送せず接続先を確認してください。':
+   r.runModel?.state.kind==='sent'?'報告の受付・実行状態を確認中です。再送せず接続先を確認してください。':
    r.state==='completed'?'報告の正常終了を確認しています。':'人間向けの報告を作成中…':
    current&&['failed','interrupted','terminated'].includes(r.state)?'作業が停止しました（元回答は非表示）':
-   current&&['unknown','send_unknown','waiting_input'].includes(r.state)?'作業の受付・実行状態を確認中（元回答は非表示）':
+   current&&r.runModel?.state.kind==='sent'?'作業の受付・実行状態を確認中（元回答は非表示）':
    current?'作業中（完成した報告を表示します）':'元作業完了（報告待ち）';
   r.hiddenCompletion=!show;
   // Runtime error text can contain output snippets. Show only structured code.

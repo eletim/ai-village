@@ -10,12 +10,8 @@
 - HTTP: `POST /api/village` に `{"argv":["projects","guide","PROJECT_ID"]}`（既存認証）。CLIのないSSH側でも村の接続可能なURLを使えます。
 - 毎回ファイルを読み直し、本文とhashを返します。未設定・欠落・取得不能は `available:false`。文書変更でruntime登録を書き換えません。案内は本文を埋め込まず、今回の判断前に取得するよう求めます。
 
-## 互換実装の境界
+## 文書と旧データ
 
-`compat/` は旧jobs/旧秘書の互換情報です。通常の書棚一覧から除外しています。旧「工房1つ・Agent1人」「ミク/レン固定」の運用メモは廃止しました。
-
-- `compat/manual.md`: 旧Secretariatの操作前hash検証が必要な操作仕様。
-- `compat/development.md` と `compat/workshops/`: 旧Development/WorkshopBridgeが読む設定と手順。Direct登録とは別系統で、現行の接続先の原本ではありません。
-- `compat/session-continuity.md`: 旧秘書の継続・診断の説明。
-
-旧API・保存済みjobs・互換設定の読み取りは維持します。古い文書パスは互換読み取りへ解決します。旧執務室URLはWorkspaceへ転送します。旧会話やjobsをDirectの記録に変換する処理はありません。新規の仕事はWorkspaceで扱ってください。
+[設計基準](../docs/architecture.md)と[対象リポジトリ](repository.md)を参照してください。
+工房の接続先はDirectの登録が正本です。旧jobs用の工房文書は使いません。
+旧API・執務室画面は廃止。旧state.json/conversation.jsonは読み書きせず、そのまま残します。

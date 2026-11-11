@@ -1,0 +1,73 @@
+{
+  "before": {
+    "agents": 33,
+    "runs": 628,
+    "requests": 248,
+    "runStates": {
+      "ended/unconfirmed": 92,
+      "ended/interrupted": 2,
+      "ended/failed": 6,
+      "ended/normal": 523,
+      "cancelled": 4,
+      "running": 1
+    },
+    "requestStates": {
+      "completed": 212,
+      "withdrawn": 10,
+      "active/review": 25,
+      "active": 1
+    },
+    "stalled": 0
+  },
+  "after": {
+    "agents": 33,
+    "runs": 628,
+    "requests": 248,
+    "runStates": {
+      "ended/unconfirmed": 92,
+      "ended/interrupted": 2,
+      "ended/failed": 6,
+      "ended/normal": 523,
+      "cancelled": 4,
+      "running": 1
+    },
+    "requestStates": {
+      "completed": 212,
+      "withdrawn": 10,
+      "active/review": 25,
+      "active": 1
+    },
+    "stalled": 0
+  },
+  "afterStartup": {
+    "agents": 33,
+    "runs": 628,
+    "requests": 248,
+    "runStates": {
+      "ended/unconfirmed": 92,
+      "ended/interrupted": 2,
+      "ended/failed": 6,
+      "ended/normal": 523,
+      "cancelled": 4,
+      "running": 1
+    },
+    "requestStates": {
+      "completed": 212,
+      "withdrawn": 10,
+      "active/review": 25,
+      "active": 1
+    },
+    "stalled": 0
+  },
+  "inFlightPreserved": 1,
+  "idempotent": true,
+  "backup": true,
+  "health": {
+    "commit": "0e64438540d60234fdbe91701590d0520fa584b7",
+    "instanceId": "c7f1e267-8eb1-45b7-a7c3-9f3f7cd5460b",
+    "supervised": false
+  },
+  "pageErrors": [],
+  "productionConnections": "blocked via /bin/false PurpleMux and failing SSH executable",
+  "notifications": false
+}

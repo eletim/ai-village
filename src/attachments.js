@@ -1,4 +1,4 @@
-import {escape} from './office.js';
+import {escape} from './html.js';
 const valid=id=>/^[0-9a-f-]{36}$/.test(id);
 export function attachmentHTML(records=[]){return `<div class="file-previews">${records.filter(r=>valid(r.id)).map(r=>`<a href="/api/${r.kind==='image'||r.mime==='image/png'?'images':'attachments'}/${r.id}" ${r.kind==='image'||r.mime==='image/png'?'target="_blank" rel="noopener"':'download'}>${r.kind==='image'||r.mime==='image/png'?`<img src="/api/images/${r.id}" alt="${escape(r.name)}">`:''}<span>${escape(r.name)} · ${Math.ceil(r.size/1024)} KiB</span></a>`).join('')}</div>`;}
 let database;

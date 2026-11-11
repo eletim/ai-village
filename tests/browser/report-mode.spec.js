@@ -1,3 +1,4 @@
+import {fixtureModels} from '../model-fixtures.mjs';
 import {test,expect} from '@playwright/test';
 import {humanProjection} from '../../server/report-view.mjs';
 function fixture(){
@@ -12,7 +13,7 @@ test('Direct preserves original work until report commits; failure keeps origina
    if(argv[0]==='reports'){if(argv[1]==='configure'){if(failSave)return r.fulfill({status:503,json:{error:'保存できません'}});enabled=JSON.parse(argv[2]);}return r.fulfill({json:{ok:true,result:{enabled}}});}
    return r.fulfill({json:{ok:true,result:{enabled:false}}});
   }
-  return r.fulfill({json:humanProjection(raw)});
+  return r.fulfill({json:humanProjection(fixtureModels(raw,{refresh:true}))});
  });
  await page.goto('/agents');const log=page.locator('#agent-a .runs');
  await expect(log).toContainText('人間向けの報告を作成中');
@@ -34,11 +35,6 @@ test('Direct preserves original work until report commits; failure keeps origina
  await expect(page.locator('textarea[name=instruction]')).toHaveValue('次の質問');
  await page.screenshot({path:'/tmp/village-report-mode.png'});
 });
-test('office status and common settings do not show internal prompt or work draft',async({page})=>{
- await page.route('**/api/**',r=>r.fulfill({json:r.request().url().endsWith('/api/village')?{ok:true,result:{enabled:true}}:{items:[],jobs:[],workshops:[],secretary:{status:'thinking',reportPending:true,reportStatus:'人間向けの報告を作成中…',messages:[{id:'question',role:'user',content:'元質問',at:new Date().toISOString()}]}}}));
- await page.goto('/office');await expect(page.locator('#status')).toContainText('報告を作成中');await expect(page.locator('#conversation-log')).toContainText('元質問');
- await page.getByRole('button',{name:'設定',exact:true}).click();await expect(page.getByLabel('人間向け報告モード')).toBeChecked();await page.screenshot({path:'/tmp/village-report-settings.png'});
-});
 test('official HTTP report setting validates and remains independent of notifications',async({request})=>{
  const op=async argv=>(await request.post('/api/village',{data:{argv}})).json();
  expect((await op(['reports','status'])).result.enabled).toBe(true);
@@ -50,11 +46,9 @@ test('official HTTP report setting validates and remains independent of notifica
  expect((await op(['reports','configure','true'])).result.enabled).toBe(true);
 });
 
-test('report mode off separates progress and final in Direct and office',async({page})=>{
+test('report mode off separates progress and final in Direct',async({page})=>{
  const raw=fixture();raw.requests[0].reportMode=false;raw.agents[0].nativeTurns=[];raw.runs=raw.runs.slice(0,1);Object.assign(raw.runs[0],{output:'調査しています\n\n**修正できました**',finalOutput:'**修正できました**'});
- await page.route('**/api/**',r=>r.fulfill({json:r.request().url().endsWith('/api/village')?{ok:true,result:{enabled:false}}:humanProjection(raw)}));
+ await page.route('**/api/**',r=>r.fulfill({json:r.request().url().endsWith('/api/village')?{ok:true,result:{enabled:false}}:humanProjection(fixtureModels(raw,{refresh:true}))}));
  await page.goto('/agents');await expect(page.locator('.response-progress')).toContainText('調査しています');await expect(page.locator('.response-final')).toContainText('修正できました');await expect(page.locator('details.response-history')).toHaveCount(0);
- await page.unroute('**/api/**');
- await page.route('**/api/**',r=>r.fulfill({json:{items:[],jobs:[],workshops:[],secretary:{status:'idle',messages:[{id:'reply',role:'assistant',content:raw.runs[0].output,finalOutput:raw.runs[0].finalOutput,state:'completed',collapsedHistory:true}]}}}));
- await page.goto('/office');const history=page.locator('#conversation-log details');await expect(history).not.toHaveAttribute('open','');await history.locator('summary').focus();await page.keyboard.press('Enter');await expect(history.locator('.response-progress')).toBeVisible();await expect(history.locator('.response-final')).toContainText('修正できました');
+
 });

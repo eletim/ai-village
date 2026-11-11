@@ -9,10 +9,6 @@ test('settings preserve display, safe plain text, visuals, draft and quiet compl
  await page.screenshot({path:'/tmp/village-display-settings.png'});await page.keyboard.press('Escape');await expect(card.locator('textarea')).toHaveValue('下書き\n'.repeat(8));await page.reload();await expect(card.locator('.plain-report')).toBeVisible();await expect(card.locator('.plain-report')).toHaveCSS('font-family',/Yu Mincho/);
  await page.getByRole('button',{name:'設定',exact:true}).click();await page.getByLabel('ビューワー').selectOption('markdown');await page.keyboard.press('Escape');await expect(card.locator('[data-visual=mermaid] img')).toBeVisible();await page.screenshot({path:'/tmp/village-completion-colors.png'});
 });
-test('office shares stored viewer and font; server setting errors stay visible',async({page})=>{
- await page.addInitScript(()=>localStorage.setItem('village-display',JSON.stringify({viewer:'plain',font:'mono'})));
- await page.route('**/api/**',r=>r.request().url().endsWith('/api/village')?r.fulfill({status:503,json:{error:'設定接続失敗'}}):r.fulfill({json:{items:[],jobs:[],workshops:[],secretary:{status:'idle',messages:[{id:'m',role:'assistant',content:report,at:new Date().toISOString()}]}}}));await page.goto('/office');await expect(page.locator('.plain-report')).toContainText('# 報告');await expect(page.locator('.plain-report')).toHaveCSS('font-family',/monospace/);await page.getByRole('button',{name:'設定',exact:true}).click();await expect(page.getByText('設定接続失敗')).toBeVisible();await expect(page.getByLabel('完了通知を有効にする')).toBeDisabled();await page.screenshot({path:'/tmp/village-office-settings.png'});
-});
 test('HTTP notification status/configure validates and persists without sending test',async({request})=>{
  const op=async(argv)=>(await request.post('/api/village',{data:{argv}})).json();
  expect((await op(['notifications','configure','false'])).ok).toBe(true);expect((await op(['notifications','status'])).result.enabled).toBe(false);expect((await op(['notifications','configure','invalid'])).ok).toBe(false);expect((await op(['notifications','status'])).result.enabled).toBe(false);

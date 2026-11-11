@@ -11,7 +11,7 @@ export async function migrateRunStore(dir,data){
   const seen=new Set();for(const item of items){if(!item||typeof item.id!=='string'||!item.id||seen.has(item.id))throw Error('Invalid or duplicate '+kind+' id');seen.add(item.id);}
  }
  for(const q of data.requests||[]){
-  if(!Array.isArray(q.works)||!Array.isArray(q.inbox))throw Error('Invalid request graph: '+q.id);
+  if(!Array.isArray(q.works)||q.inbox!==undefined&&!Array.isArray(q.inbox))throw Error('Invalid request graph: '+q.id);
   const ids=new Set();for(const w of q.works){
    if(!w.id||ids.has(w.id)||!Array.isArray(w.runIds)||!data.runs.some(r=>r.id===w.currentRunId&&r.humanRequestId===q.id))throw Error('Invalid work reference: '+q.id+':'+w.id);
    ids.add(w.id);

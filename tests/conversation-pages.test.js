@@ -1,3 +1,4 @@
+import {fixtureModels} from './model-fixtures.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {workspaceSnapshot,historyPage} from '../server/conversation-pages.mjs';
@@ -18,8 +19,8 @@ test('active old inputs stay controllable; full request records excluded and sou
 });
 test('projection applied before paging: report instructions hidden, completed work collapsed, updates retained',()=>{
  const v=fixture(2);v.runs[0].humanRequestId='q';Object.assign(v.runs[1],{humanRequestId:'q',phase:'report',origin:'report',instruction:'PRIVATE REPORT',output:'PRIVATE DRAFT',workId:'w'});v.requests=[{id:'q',reportMode:true,status:'active',works:[{id:'w',currentRunId:'r1'}]}];
- let s=workspaceSnapshot(humanProjection(v));assert(!JSON.stringify(s).includes('PRIVATE'));const cursor=s.conversations.a.cursor;
- v.requests[0].status='completed';v.requests[0].finalRunId='r1';v.runs[1].finalOutput='public final';s=workspaceSnapshot(humanProjection(v),{a:cursor});assert(s.conversations.a.entries[0].collapsedHistory);assert.equal(s.conversations.a.entries[1].output,'public final');assert(!JSON.stringify(s).includes('PRIVATE REPORT'));
+ let s=workspaceSnapshot(humanProjection(fixtureModels(v,{refresh:true})));assert(!JSON.stringify(s).includes('PRIVATE'));const cursor=s.conversations.a.cursor;
+ v.requests[0].status='completed';v.requests[0].finalRunId='r1';v.runs[1].finalOutput='public final';s=workspaceSnapshot(humanProjection(fixtureModels(v,{refresh:true})),{a:cursor});assert(s.conversations.a.entries[0].collapsedHistory);assert.equal(s.conversations.a.entries[1].output,'public final');assert(!JSON.stringify(s).includes('PRIVATE REPORT'));
 });
 test('cursor unaffected by managed run acceptance and external sessions remain distinct',()=>{
  const v=fixture(1);const p=historyPage(v,'a');v.runs[0].sessionId='new';assert.equal(workspaceSnapshot(v,{a:p.cursor}).conversations.a.entries.length,1);

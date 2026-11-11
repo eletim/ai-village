@@ -2,9 +2,7 @@
 // It is an ownership correlation key, not authentication or permission to execute.
 export const runMarker=id=>'ai-village-run-'+id;
 export const markerContext=id=>'\n<ai-village-input>'+runMarker(id)+'</ai-village-input>';
-export const matchesRunInput=(run,input)=>run.inputMarker
- ? typeof input.text==='string'&&input.text.split(/[^A-Za-z0-9-]+/).includes(run.inputMarker)
- : input.hash===run.inputHash;
+export const matchesRunInput=(run,input)=>run.inputMarker===runMarker(run.id)&&typeof input.text==='string'&&input.text.split(/[^A-Za-z0-9-]+/).includes(run.inputMarker);
 
 // PurpleMux creates these private workspace prompts before any Agent is launched.
 // Its Claude launcher uses --append-system-prompt-file; Codex reads the other file

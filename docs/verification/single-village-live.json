@@ -1,0 +1,28 @@
+{
+  "port": 5297,
+  "provider": "codex",
+  "requestStatus": "completed",
+  "reportMode": true,
+  "runs": [
+    {
+      "id": "f98142bd-ad54-48c7-84c2-f9046ed9c42f",
+      "phase": "work",
+      "state": "completed",
+      "output": "単一村の通常回答成功"
+    },
+    {
+      "id": "803f6573-07fc-4623-a3e8-957a48290a1d",
+      "phase": "report",
+      "state": "completed",
+      "output": "何も変更せず「単一村の通常回答成功」と返答しました。"
+    }
+  ],
+  "screens": [
+    "/",
+    "/agents"
+  ],
+  "pageErrors": [],
+  "legacyStateFilesCreated": false,
+  "notifications": false,
+  "cleanup": "Agent stopped (remainingOwned=0), tabs/workspace deleted, isolated server stopped and state removed"
+}

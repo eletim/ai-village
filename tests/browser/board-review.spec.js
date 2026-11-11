@@ -50,10 +50,10 @@ test('selection acknowledges only the Agent, supports keyboard and never turns n
  const requests=await mock(page,state);await page.waitForTimeout(2200);expect(requests).toHaveLength(0);
  await expect(page.locator('[data-review],.reviewed-label,.review-completion')).toHaveCount(0);
  await expect(page.locator('#village-favicon')).toHaveAttribute('data-unread','false');await expect(page.locator('#completion-count')).toBeEmpty();
- await page.locator('#agent-a0 h2').click();await expect.poll(()=>state.reviews.a0.unreviewed).toBe(false);await expect(page.locator('#agent-a0')).toHaveAttribute('data-active','true');await expect(page.locator('#agent-a0 .selection-label')).toHaveText('選択中');expect(state.reviews.a1.unreviewed).toBe(true);
+ await page.locator('#agent-a0 h2').click();await expect.poll(()=>state.reviews.a0.unreviewed).toBe(false);await expect(page.locator('#agent-a0')).toHaveAttribute('data-active','true');await expect(page.locator('#agent-a0')).toHaveAttribute('aria-current','true');expect(state.reviews.a1.unreviewed).toBe(true);
  // Tab from the prior card's last visible attachment control enters the next card.
  await page.locator('#agent-a0 .travel-add').focus();await page.keyboard.press('Tab');await expect(page.locator('#agent-a1')).toHaveAttribute('data-selected','true');await expect.poll(()=>state.reviews.a1.unreviewed).toBe(false);
- state.reviews.a1={revision:'r2',hasCompleted:true,unreviewed:true};await expect.poll(()=>requests.some(r=>r.revision==='r2')).toBe(true);await expect(page.locator('#agent-a1 .unread-badge')).toHaveText('確認済み');
+ state.reviews.a1={revision:'r2',hasCompleted:true,unreviewed:true};await expect.poll(()=>requests.some(r=>r.revision==='r2')).toBe(true);await expect(page.locator('#agent-a1 .unread-badge')).toBeEmpty();
  await page.locator('[data-place=w]').click();await expect(page.locator('.agent-panel[data-selected=true]')).toHaveCount(0);state.reviews.a1={revision:'r3',hasCompleted:true,unreviewed:true};await page.waitForTimeout(2300);expect(state.reviews.a1.unreviewed).toBe(true);
  await expect(page.locator('#village-favicon')).toHaveAttribute('data-unread','false');await expect(page.locator('#agent-a0')).toHaveAttribute('data-state','idle');
  await page.screenshot({path:'/tmp/ai-village-agent-selection.png'});
@@ -89,7 +89,7 @@ test('quiet selection preserves blue and muted green; unread turns alone have no
  await mock(page,state);
  const style=id=>page.locator('#agent-'+id).evaluate(el=>({border:getComputedStyle(el).borderTopColor,ring:getComputedStyle(el).boxShadow,outline:getComputedStyle(el).outlineStyle,header:getComputedStyle(el.querySelector('.panel-heading')).backgroundColor,dot:getComputedStyle(el.querySelector('.dot')).backgroundColor}));
  const unread=await style('a0'),read=await style('a2'),busy=await style('a1');expect(unread.border).toBe('rgb(139, 167, 152)');expect(read.border).toBe(unread.border);expect(unread.ring).toBe('none');expect(read.ring).toBe('none');expect(unread.header).toBe(read.header);expect(busy.border).toBe('rgb(102, 158, 255)');
- await page.locator('#agent-a1 h2').click();expect(await style('a1')).toEqual(busy);await expect(page.locator('#agent-a1 .selection-label')).toHaveText('選択中');
+ await page.locator('#agent-a1 h2').click();expect(await style('a1')).toEqual(busy);await expect(page.locator('#agent-a1')).toHaveAttribute('aria-current','true');
  for(const id of ['a0','a1','a2','a3'])expect(await page.locator('[data-place=w] [data-agent-dot='+id+']').evaluate(el=>getComputedStyle(el).backgroundColor)).toBe(['a0','a2'].includes(id)?'rgb(119, 155, 136)':(await style(id)).dot);
  await page.screenshot({path:'/tmp/ai-village-quiet-states.png'});
  await page.locator('#agent-a0 h2').click();await expect.poll(()=>state.reviews.a0.unreviewed).toBe(false);await expect.poll(async()=>(await style('a0')).ring).toBe('none');expect((await style('a0')).border).toBe(unread.border);expect((await style('a0')).header).toBe(read.header);

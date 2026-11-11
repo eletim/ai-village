@@ -14,7 +14,7 @@ export function villageModel(snapshot={},online=true){
   if(!place&&!places.some(p=>p.id==='unassigned'))places.push({id:'unassigned',name:'所属確認の広場',kind:'unknown',residents:[]});
   places.find(p=>p.id===r.placeId).residents.push(r);return r;
  });
- const count=list=>({total:list.length,busy:list.filter(r=>['busy','running'].includes(r.status)).length,attention:list.filter(r=>r.attention).length,unknown:list.filter(r=>['unknown','unavailable','stop_unknown'].includes(r.status)).length});
+ const count=list=>({total:list.length,busy:list.filter(r=>['busy','running'].includes(r.status)).length,attention:list.filter(r=>r.attention).length,unknown:list.filter(r=>['unknown','unavailable'].includes(r.status)).length});
  const resting=residents.filter(r=>isSuspended(projects,r.source)),active=residents.filter(r=>!isSuspended(projects,r.source));
  for(const p of places){p.residents=p.residents.filter(r=>!isSuspended(projects,r.source));p.count=count(p.residents);}
  const suspendedProjects=orderedProjects(projects.filter(p=>p.suspended===true)).map(p=>({...p,residents:resting.filter(r=>r.source.projectId===p.id)}));

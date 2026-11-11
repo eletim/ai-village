@@ -34,7 +34,7 @@ export class PullRequests {
     if(action==='merge'&&(!/^[a-f0-9]{40}$/.test(p.sha)||!['merge','squash','rebase'].includes(p.method)))throw fail('explicit_sha_and_method_required');
     if(action==='comment-edit'&&p.kind!=='issue')throw fail('review_comments_unsupported');
     if(action==='edit'&&p.title===undefined&&p.body===undefined)throw fail('missing_edit');
-    const doc=await this.library.read('development.md');
+    const doc=await this.library.read('repository.md');
     if(!/^repository: https:\/\/github\.com\/eletim\/ai-village(?:\.git)?\s*$/m.test(doc.content.match(/^---\n([\s\S]*?)\n---/)?.[1]||''))throw fail('repository_mismatch');
     const api=this.api, get=()=>api(`${repo}/pulls/${p.number}`);
     if(action==='list'){if(p.state&&!['open','closed','all'].includes(p.state))throw fail('invalid_state');return {untrusted:true,items:await api(`${repo}/pulls?state=${p.state||'open'}&per_page=100&page=${p.page||1}`),pagination:'100/page; full page requires next page'};}

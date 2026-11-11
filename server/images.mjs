@@ -1,4 +1,4 @@
-import { mkdir, writeFile, readFile, rename, readdir, open } from 'node:fs/promises';
+import { mkdir, writeFile, rename, readdir, open } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { resolve, basename } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -46,12 +46,4 @@ export class ImageStore {
     return Promise.all(ids.map(id=>this.get(id)));
   }
   async list() { await this.init(); const files=await readdir(this.root); return Promise.all(files.filter(name=>uuid.test(name.slice(0,-5))&&name.endsWith('.json')).map(name=>this.get(name.slice(0,-5)))); }
-  async importArtifact(bridge, jobId, path) {
-    if (typeof path !== 'string' || !path || path.startsWith('/') || path.includes('\\') || path.split('/').some(part=>!part||part==='.'||part==='..') || !/\.(png|jpe?g|webp)$/i.test(path)) throw fail('仕事内のPNG・JPEG・WebPの相対パスを指定してください。');
-    const job = bridge.jobById(jobId);
-    if (!job.artifacts) await bridge.update({artifacts:await bridge.listArtifacts(job)},job);
-    const file = job.artifacts.find(file=>file.path===path);
-    if (!file) throw fail('許可された画像成果物が見つかりません。');
-    return this.save(await bridge.artifact(jobId,path),basename(path),{kind:'artifact',jobId,path});
-  }
 }

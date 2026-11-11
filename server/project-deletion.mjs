@@ -1,8 +1,9 @@
+import {agentControls} from './agent-lifecycle.mjs';
 const fail=(message,status=409)=>{throw Object.assign(Error(message),{status});};
 const now=()=>new Date().toISOString();
 const key=members=>JSON.stringify(members.map(m=>({id:m.id,revision:m.revision})).sort((a,b)=>a.id.localeCompare(b.id)));
 export function deletionPlan(d,id){
- const p=d.project(id),members=d.data.agents.filter(a=>a.projectId===id).map(a=>({id:a.id,revision:a.metadataRevision||0,name:a.name,state:a.state}));
+ const p=d.project(id),members=d.data.agents.filter(a=>a.projectId===id).map(a=>({id:a.id,revision:a.metadataRevision||0,name:a.name,state:agentControls(a).state}));
  return structuredClone({projectId:id,name:p.name,revision:p.deletion?.revision??p.revision,members:p.deletion?.members||members,deletion:p.deletion||null});
 }
 export async function deleteProject(d,id,input){return d.locked('projects',async()=>{
@@ -26,7 +27,7 @@ export async function deleteProject(d,id,input){return d.locked('projects',async
   const a=d.agent(member.id);d.updateAvailability(a);
   try{
    await d.stop(a.id,{requireProcessEvidence:true});
-   if(a.state!=='terminated')throw Error(a.error||'終了を確認できません');
+   if(agentControls(a).state!=='terminated')throw Error(a.error||'終了を確認できません');
    a.deletedAt ||= now();a.deletedByProject=id;
    p.deletion.remaining=p.deletion.remaining.filter(m=>m.id!==a.id);
   }catch(e){

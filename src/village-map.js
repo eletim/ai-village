@@ -1,3 +1,4 @@
+import {compactStatus,connectionStatus} from './compact-status.js';
 import {villageModel,reconcileSelection,workspaceLink} from './village-model.js';
 import {faviconHref} from './completions.js';
 import {houseArt,gardenArt} from './village-art.js';
@@ -9,7 +10,7 @@ let snapshot={},online=false,hasSnapshot=false,model=villageModel({},false),sele
 function readHash(){try{const hash=decodeURIComponent(location.hash.slice(1));selection=hash.startsWith('resident-')?{resident:hash.slice(9),place:null}:hash.startsWith('place-')?{place:hash.slice(6),resident:null}:{place:null,resident:null};}catch{selection={place:null,resident:null};}}
 readHash();
 function stateLabel(r){return r.label+(r.attention?' · 要確認':'');}
-function residentButton(r){return `<button class="villager" data-resident="${esc(r.id)}" data-status="${esc(r.status)}" data-attention="${r.attention}" aria-pressed="${selection.resident===r.id}" title="${esc([r.name,r.role,r.project,stateLabel(r)].join(' · '))}"><span class="villager-portrait" aria-hidden="true"><i></i></span><span><b>${esc(r.name)}</b><small>${esc(stateLabel(r))}</small></span></button>`;}
+function residentButton(r){return `<button class="villager" data-resident="${esc(r.id)}" data-status="${esc(r.status)}" data-attention="${r.attention}" aria-pressed="${selection.resident===r.id}" title="${esc([r.name,r.role,r.project,stateLabel(r)].join(' · '))}"><span class="villager-portrait" aria-hidden="true"><i></i></span><span><b>${esc(r.name)}</b><small>${compactStatus(stateLabel(r),!r.attention)}</small></span></button>`;}
 function totals(c){return `${c.total}人 · 作業中 ${c.busy} · 要確認 ${c.attention} · 不明/接続不可 ${c.unknown}`;}
 function replace(selector,html){const el=$(selector);if(el.innerHTML!==html)el.innerHTML=html;}
 function render(){
@@ -38,8 +39,8 @@ $('#map-return').onclick=()=>{ $('.map-heading').scrollIntoView({block:'start',b
 $('#map-home').onclick=()=>choose({place:null,resident:null});
 window.addEventListener('hashchange',()=>{readHash();render();});
 async function poll(){
- try{const response=await fetch('/api/direct',{signal:AbortSignal.timeout(10000)});if(!response.ok)throw Error('offline');const data=await response.json();if(!Array.isArray(data.agents)||!Array.isArray(data.workshops))throw Error('invalid snapshot');snapshot=data;hasSnapshot=true;online=true;$('#map-connection').textContent='接続中 · 登録情報から表示';}
- catch{online=false;$('#map-connection').textContent='接続未確認 · 再接続を待っています';}
+ try{const response=await fetch('/api/direct',{signal:AbortSignal.timeout(10000)});if(!response.ok)throw Error('offline');const data=await response.json();if(!Array.isArray(data.agents)||!Array.isArray(data.workshops))throw Error('invalid snapshot');snapshot=data;hasSnapshot=true;online=true;connectionStatus($('#map-connection'),new Date().toLocaleTimeString(),{normal:true,label:'接続中 · 登録情報から表示'});}
+ catch{online=false;connectionStatus($('#map-connection'),'接続未確認 · 再接続を待っています');}
  render();setTimeout(poll,3000);
 }
 initTheme();initDisplaySettings($('#map-settings'));poll();

@@ -5,7 +5,7 @@ export function recoveryReason(r){
  if(reason?.startsWith('legacy-'))return '旧データに完了を確認できない送信が残っています。既存の成果・副作用を確認してください。';
  return '実行が停止したか、完了登録を確認できません。既存の成果・副作用を確認してください。';
 }
-export const needsRunRecovery=(q,r,w)=>!!q&&(q.requestModel? q.requestModel.state.kind==='active'&&q.requestModel.state.review.length>0 : ['active','finalizing'].includes(q.status)&&!!w&&(['failed','interrupted','terminated'].includes(r.state)||(r.phase==='report'&&r.state==='completed'&&!w.finish)))&&!!w;
+export const needsRunRecovery=(q,r,w)=>!!w&&q?.requestModel?.state.kind==='active'&&q.requestModel.state.review.length>0;
 export function requestReviewReason(q,r){
  const reasons=q.requestModel?.state.kind==='active'?q.requestModel.state.review:[];
  return reasons.map(reason=>reason.startsWith('run-needs-review:')?'送信が失敗・中断・確認できずで終了しました。既存の成果・副作用を確認してください。':reason.startsWith('declaration-conflict:')?'完了申告と観察した事実が一致しません。':reason==='needs-decision'||reason==='legacy-needs-decision'?'送信が終了しています。成果を確認し、次の扱いを決めてください。':reason).join(' / ')||recoveryReason(r);
@@ -15,6 +15,6 @@ export function recoveryRequests(data){
   const w=q.works.find(w=>w.id===q.rootWorkId)||q.works.find(w=>!w.parentWorkId);
   const r=data.runs.find(r=>r.id===w?.currentRunId);if(!r||!needsRunRecovery(q,r,w))return [];
   const a=data.agents.find(a=>a.id===w.agentId);
-  return [{id:q.id,revision:q.revision,runId:r.id,workId:w.id,agentId:w.agentId,agentName:a?.name||'削除済みAgent',instruction:q.instruction,phase:r.phase||'work',state:r.state,reason:requestReviewReason(q,r),canRetry:!!a&&!a.deletedAt&&!['terminated','stopping','stop_unknown'].includes(a.state)&&!!a.tabId&&['completed','failed','interrupted','terminated'].includes(r.state)}];
+  return [{id:q.id,revision:q.revision,runId:r.id,workId:w.id,agentId:w.agentId,agentName:a?.name||'削除済みAgent',instruction:q.instruction,phase:r.phase||'work',state:r.state,reason:requestReviewReason(q,r),canRetry:!!a&&!a.deletedAt&&!['terminated','stopping'].includes(a.state)&&!!a.tabId&&['completed','failed','interrupted','terminated'].includes(r.state)}];
  });
 }

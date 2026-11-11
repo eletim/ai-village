@@ -1,0 +1,182 @@
+{
+  "requests": [
+    {
+      "id": "e2bfeab7-e193-42b5-8682-f22165b43ef5",
+      "status": "completed",
+      "delegated": false,
+      "declarations": 0
+    },
+    {
+      "id": "9c23d0ad-b265-40a6-897d-3f37ba97e891",
+      "status": "completed",
+      "delegated": false,
+      "declarations": 0
+    },
+    {
+      "id": "5c774441-ceb7-48e7-a22e-1be83550ecbb",
+      "status": "completed",
+      "delegated": true,
+      "declarations": 1
+    },
+    {
+      "id": "1071ac9b-b50f-4e1a-b085-e29f6aec075d",
+      "status": "completed",
+      "delegated": false,
+      "declarations": 0
+    }
+  ],
+  "runs": [
+    {
+      "id": "b0aca8ae-8885-4825-b5dd-1eb9955cbd23",
+      "origin": "human",
+      "state": {
+        "kind": "ended",
+        "outcome": "normal",
+        "reason": "native-terminal"
+      },
+      "mode": "legacy"
+    },
+    {
+      "id": "445902dd-4788-4e7d-a9f6-df41a65d399d",
+      "origin": "human",
+      "state": {
+        "kind": "ended",
+        "outcome": "normal",
+        "reason": "native-terminal"
+      },
+      "mode": "legacy"
+    },
+    {
+      "id": "1b5a2822-1d2e-44a1-849c-36859772b832",
+      "origin": "report",
+      "state": {
+        "kind": "ended",
+        "outcome": "normal",
+        "reason": "native-terminal"
+      },
+      "mode": "legacy"
+    },
+    {
+      "id": "221dc25b-df9d-4c41-b958-e112d63719fe",
+      "origin": "report",
+      "state": {
+        "kind": "ended",
+        "outcome": "normal",
+        "reason": "native-terminal"
+      },
+      "mode": "legacy"
+    },
+    {
+      "id": "3e4a7269-214d-4209-9df1-20c919977f67",
+      "origin": "human",
+      "state": {
+        "kind": "ended",
+        "outcome": "normal",
+        "reason": "native-terminal"
+      },
+      "mode": "legacy"
+    },
+    {
+      "id": "e42a6e3f-27ec-4081-baa7-6704f46278e0",
+      "origin": "delegation",
+      "state": {
+        "kind": "ended",
+        "outcome": "normal",
+        "reason": "native-terminal"
+      },
+      "mode": "legacy"
+    },
+    {
+      "id": "75f76aad-b898-4c4f-91f9-fe67b7fd4af2",
+      "origin": "result",
+      "state": {
+        "kind": "ended",
+        "outcome": "normal",
+        "reason": "native-terminal"
+      },
+      "mode": "legacy"
+    },
+    {
+      "id": "1697a695-3e7d-497a-9083-308b4cf06130",
+      "origin": "report",
+      "state": {
+        "kind": "ended",
+        "outcome": "normal",
+        "reason": "native-terminal"
+      },
+      "mode": "legacy"
+    },
+    {
+      "id": "ec006074-7ff9-4a21-b00d-e1a143b81508",
+      "origin": "human",
+      "state": {
+        "kind": "ended",
+        "outcome": "normal",
+        "reason": "native-terminal"
+      },
+      "mode": "startup-v1"
+    },
+    {
+      "id": "279248e9-d5ec-4e36-85f8-dd2376c22957",
+      "origin": "report",
+      "state": {
+        "kind": "ended",
+        "outcome": "normal",
+        "reason": "native-terminal"
+      },
+      "mode": "startup-v1"
+    }
+  ],
+  "native": [
+    {
+      "mode": "legacy",
+      "runId": "b0aca8ae-8885-4825-b5dd-1eb9955cbd23",
+      "normal": true,
+      "inputLength": 2395,
+      "wrapper": true,
+      "escaped": true,
+      "hasMarker": true
+    },
+    {
+      "mode": "startup-v1",
+      "runId": "ec006074-7ff9-4a21-b00d-e1a143b81508",
+      "normal": true,
+      "inputLength": 824,
+      "wrapper": true,
+      "escaped": true,
+      "hasMarker": true
+    }
+  ],
+  "legacyCLIProcessesRestarted": false,
+  "notifications": false,
+  "latestCodeReportCompleted": true,
+  "cleanup": {
+    "agents": [
+      {
+        "provider": "claude",
+        "stopped": true,
+        "remainingOwned": 0,
+        "workspaceDeleted": true
+      },
+      {
+        "provider": "codex",
+        "stopped": true,
+        "remainingOwned": 0,
+        "workspaceDeleted": true
+      },
+      {
+        "provider": "claude",
+        "stopped": true,
+        "remainingOwned": 0,
+        "workspaceDeleted": true
+      },
+      {
+        "provider": "claude",
+        "stopped": true,
+        "remainingOwned": 0,
+        "workspaceDeleted": true
+      }
+    ],
+    "temporaryData": "removed"
+  }
+}
