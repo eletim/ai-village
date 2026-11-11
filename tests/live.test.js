@@ -21,13 +21,13 @@ class FakeWorkshop extends WorkshopBridge {
     return kind === 'instruction' ? '自然文の制作指示' : '制作物と検証結果の人間向け報告';
   }
   async listArtifacts() { return [{ path: 'hello.html', size: 12 }]; }
-  async remote(args) { this.calls.push(args); if(args[0]==='python3'&&args[2].includes('def digest'))return JSON.stringify({available:true,sessionId:'session-id',cursor:this.sent?10:0,inputs:this.sent?[{id:'input',turnId:'turn',hash:inputHash('自然文の制作指示'),offset:10}]:[],turns:this.sent?[{id:'turn',state:this.interrupted?'interrupted':'completed',output:'成果は /work/hello.html。確認済み。'}]:[]});return ''; }
+  async remote(args) { this.calls.push(args); if(args[0]==='python3'&&args[2].includes('def digest'))return JSON.stringify({available:true,sessionId:'session-id',cursor:this.sent?10:0,inputs:this.sent?[{id:'input',turnId:'turn',text:this.sentText||'自然文の制作指示',hash:inputHash(this.sentText||'自然文の制作指示'),offset:10}]:[],turns:this.sent?[{id:'turn',state:this.interrupted?'interrupted':'completed',output:'成果は /work/hello.html。確認済み。'}]:[]});return ''; }
   async pmux(...args) {
     this.calls.push(args);
     const key = args.slice(0, 2).join(' ');
     if (key === 'workspace create') return { id: 'ws-1', initialTab: { tabId: 'tab-0' } };
     if (key === 'tab create') return { tabId: 'tab-1', sessionName: 'session-1' };
-    if (key === 'tab send') {this.sent=true;return { status: 'sent' };}
+    if (key === 'tab send') {this.sent=true;this.sentText=args.at(-1);return { status: 'sent' };}
     if (key === 'tab status') return { alive: true, cliState: this.statuses.shift() || 'ready-for-review' };
     if (key === 'tab result') return { status: 'completed', text: '成果は /work/hello.html。確認済み。', agentSessionId: 'session-id', interrupted: false };
     throw new Error(key);
@@ -44,6 +44,8 @@ test('real state flow separates worker completion from secretary report and pers
   assert.ok(bridge.job.reportFinishedAt);
   assert.equal(bridge.job.output, '成果は /work/hello.html。確認済み。');
   assert.equal(bridge.job.instruction, '自然文の制作指示');
+  assert(bridge.sentText.includes(bridge.job.inputMarker));
+  assert.equal(bridge.job.inputHash,inputHash(bridge.sentText));
   const url = new URL(bridge.job.terminalUrl);
   assert.equal(url.searchParams.get('workspace'), 'ws-1');
   assert.equal(url.searchParams.get('tab'), 'tab-1');

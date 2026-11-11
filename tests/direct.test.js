@@ -26,7 +26,7 @@ async function fixture(t){
  const service=new DirectAgents(options);await service.init({watch:false});
  const w=await service.putWorkshop({name:'w',sshHost:'host',baseUrl:'http://host',workplaces:['/tmp']});
  const a=await service.create({workshopId:w.id,cwd:'/tmp',requestId:'create-001'});await service.tick();
- const input=(instruction,id='turn-'+(data.turns.length+1))=>{data.cursor+=10;data.inputs.push({id:'input-'+id,turnId:id,hash:service.data.runs.findLast(r=>r.instruction===instruction)?.inputHash||inputHash(instruction),offset:data.cursor});data.turns.push({id,state:'running',output:''});return data.turns.at(-1);};
+ const input=(instruction,id='turn-'+(data.turns.length+1))=>{data.cursor+=10;data.inputs.push({id:'input-'+id,turnId:id,text:service.data.runs.findLast(r=>r.instruction===instruction)?.inputMarker||instruction,hash:service.data.runs.findLast(r=>r.instruction===instruction)?.inputHash||inputHash(instruction),offset:data.cursor});data.turns.push({id,state:'running',output:''});return data.turns.at(-1);};
  return {service,options,w,a,data,input,sends:()=>sends,notices:()=>notices,disconnect:v=>disconnected=v,lose:()=>loseSend=true};
 }
 test('raw instructions, native completion, additional input and restart never use reply formats',async t=>{

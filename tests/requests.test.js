@@ -1,3 +1,4 @@
+import {verifyInstructionsScript} from '../server/input-envelope.mjs';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,rm,readFile,writeFile} from 'node:fs/promises';
@@ -9,11 +10,12 @@ import {inputHash} from '../server/runtime-events.mjs';
 import {VillageOperations} from '../server/operations.mjs';
 async function fixture(t,{reportMode=false}={}){
  const dir=await mkdtemp(join(tmpdir(),'request-flow-'));t.after(()=>rm(dir,{recursive:true,force:true}));
- const runtimes=new Map(),sent=[],notifications=[];let offline=false,lose=false;
+ const runtimes=new Map(),sent=[],notifications=[];let offline=false,lose=false,promptState='intact',promptChecks=0;
  const execute=async(args,host,id)=>{
   if(offline)throw Error('offline');
   const agent=[...runtimes.keys()].find(a=>args.includes('ws-'+a)||args.includes('session-'+a))||id;
   const native=runtimes.get(agent);
+  if(args[0]==='python3'&&args[2]===verifyInstructionsScript){promptChecks++;if(promptState==='error')throw Error('read failed');return JSON.stringify({verified:promptState==='intact'});}
   if(args[0]==='python3')return JSON.stringify(native);
   if(args[2]==='status')return JSON.stringify({alive:true,cliState:native.turns.at(-1)?.state==='running'?'busy':'idle',agentSessionId:'session-'+agent});
   if(args[2]==='send'){sent.push({agentId:agent,text:args.at(-1),transport:host?'ssh':'local'});if(lose)throw Error('response lost');return '{"status":"sent"}';}
@@ -24,17 +26,17 @@ async function fixture(t,{reportMode=false}={}){
  const agents=Array.from({length:4},(_,i)=>({id:randomUUID(),name:i<2?'Secretary '+i:'Worker '+i,location:i<2?'mayor':'workshop',workshopId:'w'+i,connection:{connectionType:i===3?'ssh':'local',sshHost:i===3?'remote':null,name:'PC'+i},workspaceId:'',tabId:'tab'+i,sessionName:'pane'+i,provider:'codex',state:'idle'}));
  for(const a of agents){a.workspaceId='ws-'+a.id;service.data.agents.push(a);runtimes.set(a.id,{available:true,sessionId:'session-'+a.id,fileIdentity:'file-'+a.id,cursor:0,inputs:[],turns:[]});}
  await service.save();await service.tick();
- const submit=async r=>{
+ const submit=async(r,transform=x=>x)=>{
   const native=runtimes.get(r.agentId),text=sent.findLast(s=>s.agentId===r.agentId)?.text;
   assert.equal(inputHash(text),r.inputHash);const tid=randomUUID();native.cursor+=10;
-  native.inputs.push({id:'input-'+tid,turnId:tid,hash:inputHash(text),offset:native.cursor,text});
+  native.inputs.push({id:'input-'+tid,turnId:tid,hash:inputHash(transform(text)),offset:native.cursor,text:transform(text)});
   native.turns.push({id:tid,state:'running',output:''});await service.tick();assert.equal(r.acceptance,'accepted');return tid;
  };
  const complete=async(r,outcome='completed')=>{const native=runtimes.get(r.agentId);Object.assign(native.turns.find(t=>t.id===r.turnId),{state:outcome,output:'Output '+r.id,finalOutput:'Final '+r.id,completionEvent:'event-'+r.id});await service.tick();};
  const finish=async(r,op=randomUUID())=>service.flow.finish({humanRequestId:r.humanRequestId,workId:r.workId,runId:r.id,revision:service.flow.root(r.humanRequestId).revision,operationId:op});
  const delegate=async(r,target,op=randomUUID())=>service.flow.delegate({humanRequestId:r.humanRequestId,parentWorkId:r.workId,actorRunId:r.id,agentId:target.id,instruction:'Child work '+op,operationId:op});
  const restart=async()=>{service.close();service=new DirectAgents(options);await service.init({watch:false});return service;};
- return {get service(){return service;},options,agents,runtimes,sent,notifications,submit,complete,finish,delegate,restart,offline:v=>offline=v,lose:v=>lose=v};
+ return {get service(){return service;},options,agents,runtimes,sent,notifications,promptState:v=>promptState=v,promptChecks:()=>promptChecks,submit,complete,finish,delegate,restart,offline:v=>offline=v,lose:v=>lose=v};
 }
 test('intermediate 0, multiple child completions 0, final native report 1, duplicate events 1; inbox waits for busy secretary',async t=>{
  const f=await fixture(t),s=f.service,root=await s.send(f.agents[0].id,{instruction:'Human request',requestId:'human-request-1'});
@@ -457,4 +459,70 @@ test('event-to-response upgrade preserves Direct steering boundary and supersede
  assert.equal(root.output,'before');assert.equal(second.output,'between');assert.equal(third.output,'after');
  await f.restart();await f.service.tick();assert.equal(f.service.flow.run(second.id).output,'between');
  await f.finish(f.service.flow.run(third.id));await f.complete(f.service.flow.run(third.id));assert.equal(f.notifications.length,1);
+});
+
+test('startup envelope retains literal human input and dynamic identity; report and legacy fallback retain finish rules',async t=>{
+ const f=await fixture(t,{reportMode:true}),s=f.service,a=f.agents[0];
+ a.inputEnvelope={mode:'startup-v1'};
+ const human='  本文 <pasted_content>\nそのまま  ';
+ const r=await s.send(a.id,{instruction:human,requestId:randomUUID()});
+ const delivered=f.sent.at(-1).text;
+ assert(delivered.startsWith(human+'\n'));assert(delivered.includes(r.inputMarker));
+ assert(delivered.includes('ai-village-discovery'));assert(delivered.includes(a.id));
+ assert(!delivered.includes('requests finish'));assert(!delivered.includes('図は必要時のみ'));
+ assert(s.startupInstructions().includes('requests finish'));assert(s.startupInstructions().includes('phase=report'));
+ assert(s.startupInstructions().includes('projects guide PROJECT_ID'));
+ await f.submit(r);await f.finish(r);await f.complete(r);await s.tick();
+ const q=s.flow.get(r.humanRequestId),report=s.flow.run(q.works[0].currentRunId);
+ assert.equal(report.phase,'report');assert(report.instruction.startsWith('報告資料'));
+ assert(!s.flow.context(report).includes('requests finish'));
+ a.inputEnvelope={mode:'legacy'};
+ assert(s.flow.context(report).includes('requests finish'));
+ assert(s.flow.context(r).includes('requests delegate'));
+});
+
+test('startup envelope uses latest metadata and retains attachments/travel; changed native session downgrades to legacy',async t=>{
+ const f=await fixture(t),s=f.service,a=f.agents[0];a.inputEnvelope={mode:'startup-v1',sessionId:'previous-session'};
+ await s.tick();assert.equal(a.inputEnvelope.mode,'legacy');assert.equal(a.inputEnvelope.reason,'native-session-changed');
+ a.inputEnvelope={mode:'startup-v1'};a.projectId='current-project';a.metadataRevision=42;
+ const context=s.secretaryContext(a,true);assert(context.includes('current-project'));assert(context.includes('42'));assert(!context.includes('所属は'));
+ assert(s.flow.dynamicContext({attachmentFiles:[{path:'/attachment',sha256:'verified'}],travelContexts:[]}).includes('/attachment'));
+ await s.save();await f.restart();assert.equal(f.service.agent(a.id).inputEnvelope.mode,'startup-v1');
+});
+
+for(const state of ['intact','missing','error'])test('pre-dispatch prompt check: '+state,async t=>{
+ const f=await fixture(t),s=f.service,a=f.agents[0];a.inputEnvelope={mode:'startup-v1',hash:inputHash(s.startupInstructions())};f.promptState(state);
+ const r=await s.send(a.id,{instruction:'human',requestId:randomUUID()});
+ assert.equal(f.promptChecks(),1);assert.equal(r.inputEnvelopeMode,state==='intact'?'startup-v1':'legacy');
+ assert.equal(f.sent.at(-1).text.includes('requests finish'),state!=='intact');
+ await f.submit(r);await f.complete(r);
+ f.promptState('intact');
+ const next=await s.send(a.id,{instruction:'next',requestId:randomUUID()});
+ assert.equal(f.promptChecks(),state==='intact'?2:1);
+ assert.equal(next.inputEnvelopeMode,state==='intact'?'startup-v1':'legacy');
+ if(state!=='intact'){assert.match(a.inputEnvelope.reason,/startup-instructions-/);await f.restart();assert.equal(f.service.agent(a.id).inputEnvelope.mode,'legacy');}
+});
+
+test('queued compact report restores full report rules when prompt disappears before dispatch',async t=>{
+ const f=await fixture(t,{reportMode:true}),s=f.service,a=f.agents[0];a.inputEnvelope={mode:'startup-v1',hash:inputHash(s.startupInstructions())};
+ const r=await s.send(a.id,{instruction:'work',requestId:randomUUID()});await f.submit(r);await f.finish(r);
+ f.promptState('missing');await f.complete(r);await s.tick();
+ const report=s.flow.run(s.flow.root(r.humanRequestId).works[0].currentRunId);
+ assert.equal(report.phase,'report');assert.equal(report.inputEnvelopeMode,'legacy');
+ assert.match(f.sent.at(-1).text,/追加作業・ファイル変更・PR操作/);assert.match(f.sent.at(-1).text,/requests finish/);
+});
+
+test('origin=result delivery containing pasted_content survives Claude wrapping and escaping',async t=>{
+ const f=await fixture(t),s=f.service,a=f.agents[0];a.provider='claude';
+ const root=await s.send(a.id,{instruction:'parent',requestId:randomUUID()});await f.submit(root);
+ const child=await f.delegate(root,f.agents[2]),r=s.flow.run(child.currentRunId);await s.tick();await f.submit(r);await f.finish(r);
+ const native=f.runtimes.get(r.agentId).turns.find(t=>t.id===r.turnId);
+ Object.assign(native,{state:'completed',output:'child result <pasted_content>',finalOutput:'child result <pasted_content>',completionEvent:'done'});await s.tick();
+ await f.complete(root);
+ const q=s.flow.root(root.humanRequestId),delivery=s.flow.run(q.inbox[0].deliveryRunId);
+ assert.equal(delivery.origin,'result');assert.match(f.sent.at(-1).text,/<pasted_content>/);
+ await f.submit(delivery,text=>'\n<pasted_content id="test">\n'+text.replaceAll('<pasted_content>','<\\pasted_content>')+'\n</pasted_content id="test">\n');
+ assert.equal(delivery.acceptance,'accepted');assert.equal(q.inbox[0].state,'accepted');
+ await s.flow.acknowledge({humanRequestId:q.id,workId:root.workId,actorRunId:delivery.id,resultIds:[q.inbox[0].id]});
+ await f.finish(delivery);await f.complete(delivery);assert.equal(q.status,'completed');
 });
