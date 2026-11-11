@@ -2,7 +2,7 @@ import {inputHash} from './model-fixtures.mjs';
 import {fixtureModels,testView} from './model-fixtures.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,mkdir,writeFile,appendFile,readFile,rm,readdir,rename,chmod,utimes} from 'node:fs/promises';
+import {mkdtemp,mkdir,writeFile,appendFile,readFile,rm,readdir,rename,chmod,utimes,open} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {execFileSync} from 'node:child_process';
@@ -205,10 +205,33 @@ test('middle equal-length rewrite invalidates host and restarted replica; append
  const rewritten=s.fileIdentity;await appendFile(f.file,lines([padding]));s=await f.reader.read(f.a,f.status,f.execute);assert(s.available);assert.equal(s.fileIdentity,rewritten);assert(s.verifiedBytes>40000);
  await writeFile(f.file,lines([padding,start]));s=await f.reader.read(f.a,f.status,f.execute);assert(s.available);assert.notEqual(s.fileIdentity,rewritten);assert.equal(s.inputs.length,0);
 });
-test('large changed source audits bounded chunks and withholds cached acceptance until verified',async t=>{
+test('large changed source audits bounded chunks without blocking append acceptance',async t=>{
  const f=await setup(t),padding=JSON.stringify({type:'padding',value:'x'.repeat(1024*1024)})+'\n';
  await writeFile(f.file,lines([start,input,done])+padding.repeat(34));let s;
  for(let i=0;i<5;i++){s=await f.reader.read(f.a,f.status,f.execute);if(s.available)break;}assert(s.available);const identity=s.fileIdentity;
- await appendFile(f.file,'{}\n');s=await f.reader.read(f.a,f.status,f.execute);assert(!s.available);assert.equal(s.reason,'source-verification-pending');assert.deepEqual(s.inputs,[]);
+ await appendFile(f.file,'{}\n');s=await f.reader.read(f.a,f.status,f.execute);assert(s.available);assert(s.inputs.length);assert(s.auditNext<=s.auditChunks);
  assert(s.verifiedBytes<=32*1024*1024);s=await f.reader.read(f.a,f.status,f.execute);assert(s.available);assert.equal(s.fileIdentity,identity);
+});
+
+
+test('100 MiB continuously appended history accepts every poll and detects a persistent middle rewrite within one audit round',async t=>{
+ const f=await setup(t),padding=JSON.stringify({type:'padding',value:'x'.repeat(1024*1024)})+'\n';
+ const prefix=padding.repeat(50),middle=lines([start,input,done]);
+ await writeFile(f.file,prefix+middle+padding.repeat(51));let s;
+ for(let i=0;i<10;i++){s=await f.reader.read(f.a,f.status,f.execute);if(s.available)break;}assert(s.available);
+ const identity=s.fileIdentity,timings=[],positions=[];
+ const poll=async n=>{
+  await appendFile(f.file,lines([{type:'event_msg',payload:{type:'task_started',turn_id:'p'+n}},{type:'response_item',payload:{role:'user',id:'u'+n,turn_id:'p'+n,content:[{type:'input_text',text:'ai-village-run-p'+n}]}}]));
+  const began=performance.now();s=await f.reader.read(f.a,f.status,f.execute);timings.push(performance.now()-began);positions.push([s.auditNext,s.auditChunks]);
+ };
+ for(let n=0;n<12;n++){await poll(n);assert(s.available);assert(s.inputs.some(i=>i.text==='ai-village-run-p'+n));assert.equal(s.fileIdentity,identity);}
+ let extra=100;while(s.auditNext<64||s.auditNext>=s.auditChunks){await poll(extra++);assert(s.available);assert(extra<106);}
+ // Change a chunk immediately behind the audit cursor, without changing file size.
+ const file=await open(f.file,'r+');try{await file.write(Buffer.from('other ai-village-run-other'),0,Buffer.byteLength('other ai-village-run-other'),Buffer.byteLength(prefix)+middle.indexOf('hello ai-village-run-hello'));}finally{await file.close();}
+ f.reader=new RuntimeReader(f.dir);let detected=0;
+ for(let n=12;n<18;n++){await poll(n);if(s.fileIdentity!==identity){detected=n-11;break;}}
+ assert(detected>0&&detected<=5);assert(s.available||s.reason==='index-catching-up');
+ for(let n=20;!s.available&&n<30;n++)await poll(n);
+ assert(s.available);assert(!s.inputs.some(i=>i.text.includes('ai-village-run-hello')));assert(s.inputs.some(i=>i.text.includes('ai-village-run-other')),JSON.stringify(s.inputs.map(i=>i.text)));
+ t.diagnostic(JSON.stringify({sourceMiB:101,normalPolls:12,acceptanceDelayPolls:0,auditPositions:positions.slice(0,12),auditRoundCalls:4,auditRoundMs:Math.round(timings.slice(3,7).reduce((a,b)=>a+b)),normalPollTotalMs:Math.round(timings.slice(0,12).reduce((a,b)=>a+b)),normalPollMaxMs:Math.round(Math.max(...timings.slice(0,12))),rewriteDetectedAfterPolls:detected}));
 });

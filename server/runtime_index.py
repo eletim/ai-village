@@ -99,29 +99,32 @@ def index_read(provider,sid,request,parse):
    except (ValueError,OSError):proof_bad=True
    if proof_bad and not cp:return unavailable('source-proof-corrupt')
    proof=proof or cp
-   # A changed stat is a reason to VERIFY bytes, not to rotate identity. Metadata
-   # touches preserve identity. Audit a bounded prefix per call; expose no cached
-   # acceptance while validation is pending. A moving source restarts the audit.
-   verified=0
+   # Acceptance follows the append boundary; an independent rolling audit checks
+   # the interior. Freeze each round's chunk count so an ever-growing tail cannot
+   # starve the next round. Never replace an old partial hash before checking it.
+   verified=0;audit_next=0;audit_limit=0
    def same_source(p):
     return bool(p and p.get('path')==str(path.resolve()) and p['stat'][:2]==now[:2] and now[2]>=p['stat'][2] and edges(f,p['offset'])==p.get('edges'))
    verified_source=same_source(proof)
-   if verified_source and proof.get('chunks') is not None and proof.get('stat')!=now:
+   if verified_source and proof.get('chunks') is not None:
+    hashes=proof['chunks']
+    def matches(i):
+     f.seek(i*HASH_CHUNK);raw=f.read(min(HASH_CHUNK,proof['offset']-i*HASH_CHUNK))
+     return hashlib.sha256(raw).hexdigest()==hashes[i]
+    # The tail may be rehashed when extending it; verify its entire previous
+    # content first, including bytes outside edges()'s 4 KiB sample.
+    if hashes and not matches(len(hashes)-1):verified_source=False
     auditrow=c.execute("select value from meta where key='audit'").fetchone()
     audit=json.loads(auditrow[0]) if auditrow else {}
-    if audit.get('stat')!=now or audit.get('identity')!=proof['fileIdentity'] or audit.get('offset')!=proof['offset']:
-     audit={'stat':now,'identity':proof['fileIdentity'],'offset':proof['offset'],'next':0}
-    hashes=proof['chunks'];i=audit['next']
-    while i<len(hashes) and verified<VERIFY_BYTES:
-     f.seek(i*HASH_CHUNK);raw=f.read(min(HASH_CHUNK,proof['offset']-i*HASH_CHUNK));verified+=len(raw)
-     if hashlib.sha256(raw).hexdigest()!=hashes[i]:verified_source=False;break
+    if audit.get('identity')!=proof['fileIdentity'] or not audit.get('limit') or audit.get('next',0)>=audit.get('limit',0):
+     audit={'identity':proof['fileIdentity'],'limit':len(hashes),'next':0}
+    i=audit['next'];limit=min(audit['limit'],len(hashes))
+    while verified_source and i<limit and verified<VERIFY_BYTES:
+     verified+=min(HASH_CHUNK,proof['offset']-i*HASH_CHUNK)
+     if not matches(i):verified_source=False;break
      i+=1
-    if stamp(os.fstat(f.fileno()))!=now or stamp(path.stat())!=now:
-     c.rollback();return unavailable('source-changed-during-verification',verifiedBytes=verified)
-    if verified_source and i<len(hashes):
-     audit['next']=i;c.execute("insert or replace into meta values('audit',?)",(encode(audit),));c.commit()
-     return unavailable('source-verification-pending',verifiedBytes=verified)
-    c.execute("delete from meta where key='audit'")
+    audit['next']=i;audit_next=i;audit_limit=limit
+    c.execute("insert or replace into meta values('audit',?)",(encode(audit),))
    continuity=verified_source
    source_changed=bool(proof) and not continuity
    reset=not cp or cp.get('version')!=PARSER_VERSION or not continuity or not same_source(cp) or cp.get('chunks') is None
@@ -148,7 +151,7 @@ def index_read(provider,sid,request,parse):
     c.rollback();return unavailable('source-changed-during-read')
    cp.update(offset=offset,current=db.current,stat=now,edges=edges(f,offset),chunks=chunks);c.execute("insert or replace into meta values('checkpoint',?)",(encode(cp),))
   top=c.execute('select coalesce(max(seq),0) from changes').fetchone()[0]
-  result={'version':2,'sessionId':sid,'generation':cp['generation'],'fileIdentity':cp['fileIdentity'],'observedAt':time.time()*1000,'cursor':offset,'sourceSize':after[2],'available':not reason and offset==after[2] and not partial,'incompleteTail':partial,'reason':reason or ('index-catching-up' if offset<after[2] and not partial else 'partial-line' if partial else None),'verifiedBytes':verified,'indexedBytes':offset-start,'indexedEvents':count,'revision':top}
+  result={'version':2,'sessionId':sid,'generation':cp['generation'],'fileIdentity':cp['fileIdentity'],'observedAt':time.time()*1000,'cursor':offset,'sourceSize':after[2],'available':not reason and offset==after[2] and not partial,'incompleteTail':partial,'reason':reason or ('index-catching-up' if offset<after[2] and not partial else 'partial-line' if partial else None),'verifiedBytes':verified,'auditNext':audit_next,'auditChunks':audit_limit,'indexedBytes':offset-start,'indexedEvents':count,'revision':top}
   if request is None:
    # Compatibility/testing path is bounded too; production uses the delta protocol.
    if c.execute('select coalesce(sum(length(value)),0) from records').fetchone()[0]>PAGE_CHARS:
