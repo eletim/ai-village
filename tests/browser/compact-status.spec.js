@@ -4,7 +4,7 @@ for(const theme of ['light','dark'])for(const width of [1440,390])test(`${theme}
  await page.setViewportSize({width,height:844});await page.addInitScript(t=>localStorage.setItem('village-display',JSON.stringify({theme:t})),theme);
  await page.route('**/api/**',r=>r.fulfill({json:fixture()}));await page.goto('/agents');
  const send=page.getByRole('button',{name:'送信',exact:true});await expect(send).toBeEnabled();await expect(send).toHaveAttribute('title',/送信/);await expect(send.locator('svg')).toHaveCount(1);await expect(send).toHaveText('');
- await expect(page.locator('.run-status [aria-label="報告完了"]')).toHaveAttribute('title','報告完了');await expect(page.locator('.run-status [aria-label="依頼全体完了"]')).toBeVisible();await expect(page.locator('.panel-info [aria-label="応答完了"]')).toBeVisible();
+ await expect(page.locator('.run-status .completion-icon')).toHaveCount(1);await expect(page.locator('.run-status .completion-icon')).toHaveAttribute('title','報告完了 · 依頼全体完了');await expect(page.locator('.panel-info [aria-label="応答完了"]')).toBeVisible();
  await expect(page.locator('#connection')).toHaveText(/^● \S/);await expect(page.locator('#connection')).not.toContainText('接続');await expect(page.locator('#connection')).toHaveAttribute('aria-label',/^接続 · /);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  await page.goto('/');await expect(page.locator('#village-lots [aria-label="応答完了"]')).toBeVisible();await expect(page.locator('#map-connection')).toHaveText(/^● \S/);await expect(page.locator('#map-connection')).toHaveAttribute('title',/接続中/);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
@@ -18,10 +18,10 @@ test('sending, queue, steering, failed request and disconnected states retain wo
  offline=true;await expect(page.locator('#connection')).toContainText('接続不明');await expect(page.locator('#connection')).toHaveAttribute('aria-label',/接続不明/);
  await page.goto('/');await expect(page.locator('#map-connection')).toContainText('接続未確認');
 });
-test('review keeps completion wording and recovery actions; merged success becomes a check',async({page})=>{
+test('review keeps completion wording and recovery actions; merged success becomes a check',async({page},info)=>{
  const s=fixture();s.runs[0].reportStatus='作業完了（報告に統合済み）';
- await page.route('**/api/**',r=>r.fulfill({json:s}));await page.goto('/agents');await expect(page.locator('.run-status [aria-label="作業完了（報告に統合済み）"]')).toBeVisible();
+ await page.route('**/api/**',r=>r.fulfill({json:s}));await page.goto('/agents');await expect(page.locator('.run-status [aria-label="作業完了（報告に統合済み） · 依頼全体完了"]')).toBeVisible();
  Object.assign(s.requests[0],{status:'active',rootWorkId:'work',requestModel:{state:{kind:'active',review:['legacy-needs-decision']}},works:[{id:'work',currentRunId:'r',agentId:'a',parentWorkId:null}]});
  await expect(page.locator('.run-status')).toContainText('作業完了（報告に統合済み）');await expect(page.locator('.run-status .completion-icon')).toHaveCount(0);await expect(page.locator('.recovery').getByRole('button',{name:'再試行',exact:true})).toBeVisible();await expect(page.locator('.recovery').getByRole('button',{name:'完了扱い',exact:true})).toBeVisible();await expect(page.locator('.recovery').getByRole('button',{name:'取り下げ',exact:true})).toBeVisible();
- await page.screenshot({path:'docs/verification/ui-icons/review-text.png'});
+ await page.screenshot({path:info.outputPath('review-text.png')});
 });
