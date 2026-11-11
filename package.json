@@ -10,10 +10,12 @@
     "test": "node --test tests/*.test.js",
     "build": "node scripts/vendor.mjs && node scripts/build.mjs",
     "test:ui": "playwright test",
-    "postinstall": "node scripts/vendor.mjs"
+    "postinstall": "node scripts/vendor.mjs",
+    "typecheck": "tsc -p tsconfig.state.json"
   },
   "devDependencies": {
-    "@playwright/test": "^1.64.1"
+    "@playwright/test": "^1.64.1",
+    "typescript": "^5.9.3"
   },
   "dependencies": {
     "dompurify": "^3.4.17",
