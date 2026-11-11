@@ -76,7 +76,10 @@ export class RuntimeReader{
     this.apply(cache,page);
     await mkdir(dir,{recursive:true,mode:0o700});const payload=JSON.stringify(page),name=String(cache.pages+1).padStart(12,'0')+'.json',tmp=resolve(dir,randomUUID()+'.tmp');
     await writeFile(tmp,JSON.stringify({payload,checksum:hash(payload)}),{mode:0o600});await rename(tmp,resolve(dir,name));cache.pages++;
-   }catch(error){this.sessions.delete(key);throw error;}
+   }catch(error){
+    // The replica no longer matches the source index; drop it so the next read replays from the start instead of failing forever.
+    this.sessions.delete(key);await rm(dir,{recursive:true,force:true});throw error;
+   }
   }
   const {pieces,next,...meta}=result;
   // Never expose a partially reconstructed snapshot to native correlation.
