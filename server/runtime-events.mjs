@@ -1,8 +1,6 @@
 import {matchesRunInput} from './input-envelope.mjs';
 import {readFile} from 'node:fs/promises';
-import {createHash} from 'node:crypto';
 export const runtimeScript=(await readFile(new URL('./runtime_index.py',import.meta.url),'utf8'))+'\n'+(await readFile(new URL('./runtime-events.py',import.meta.url),'utf8'));
-export const inputHash=text=>createHash('sha256').update(text).digest('hex');
 // Slice by native event position, never by text equality. Terminal finalOutput
 // is authoritative and remains on the last run even when its words repeat.
 export function outputBetween(turn,start,end=Infinity){
@@ -20,7 +18,7 @@ function ownedTurn(run,turn,input,snapshot){
  return result;
 }
 const positions=i=>[{id:i.id,offset:i.offset},...(i.aliases||[])];
-export const inputMatches=(i,p)=>i.hash===p.hash&&positions(i).some(a=>a.id===p.id&&(p.offset===undefined||a.offset===p.offset));
+export const inputMatches=(i,p)=>positions(i).some(a=>a.id===p.id&&(p.offset===undefined||a.offset===p.offset));
 const byId=(i,id)=>positions(i).some(a=>a.id===id);
 export function resolveInputPosition(inputs,id,turnId){
  const found=inputs.filter(i=>turnId===undefined||i.turnId===turnId).flatMap(i=>positions(i).filter(p=>p.id===id).map(p=>({...i,...p})));
@@ -33,8 +31,9 @@ export function correlate(run,snapshot){
  if(snapshot.cursor< (run.baselineRuntime?.cursor||0))return {state:'unknown',reason:'runtime-truncated'};
  if(run.sessionId&&snapshot.sessionId!==run.sessionId)return {state:'unknown',reason:'session-changed'};
  if(run.priorInputs?.some(p=>snapshot.inputs.filter(i=>inputMatches(i,p)).length!==1))return {state:'unknown',reason:'steering-prior-input-missing'};
+ if(!run.inputMarker)return {state:'unknown',reason:'run-marker-missing'};
  if(run.turnId){
-  if(run.inputId&&(run.inputMarker||run.inputHash)&&!snapshot.inputs.some(i=>byId(i,run.inputId)&&i.turnId===run.turnId&&matchesRunInput(run,i)))return {state:'unknown',reason:'owned-input-mismatch'};
+  if(run.inputId&&!snapshot.inputs.some(i=>byId(i,run.inputId)&&i.turnId===run.turnId&&matchesRunInput(run,i)))return {state:'unknown',reason:'owned-input-mismatch'};
   if(run.inputId&&snapshot.inputs.some(i=>i.turnId===run.turnId&&!byId(i,run.inputId)&&!run.priorInputs?.some(p=>inputMatches(i,p))))return {state:'unknown',reason:'additional-input-in-owned-turn'};
   const turn=snapshot.turns.find(t=>t.id===run.turnId);
   return turn?ownedTurn(run,turn,resolveInputPosition(snapshot.inputs,run.inputId,run.turnId),snapshot):{state:'unknown',reason:'turn-missing'};

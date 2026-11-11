@@ -15,6 +15,6 @@ export function recoveryRequests(data){
   const w=q.works.find(w=>w.id===q.rootWorkId)||q.works.find(w=>!w.parentWorkId);
   const r=data.runs.find(r=>r.id===w?.currentRunId);if(!r||!needsRunRecovery(q,r,w))return [];
   const a=data.agents.find(a=>a.id===w.agentId);
-  return [{id:q.id,revision:q.revision,runId:r.id,workId:w.id,agentId:w.agentId,agentName:a?.name||'削除済みAgent',instruction:q.instruction,phase:r.phase||'work',state:r.state,reason:requestReviewReason(q,r),canRetry:!!a&&!a.deletedAt&&!['terminated','stopping','stop_unknown'].includes(a.state)&&!!a.tabId&&['completed','failed','interrupted','terminated'].includes(r.state)}];
+  return [{id:q.id,revision:q.revision,runId:r.id,workId:w.id,agentId:w.agentId,agentName:a?.name||'削除済みAgent',instruction:q.instruction,phase:r.phase||'work',state:r.state,reason:requestReviewReason(q,r),canRetry:!!a&&!a.deletedAt&&!['terminated','stopping'].includes(a.state)&&!!a.tabId&&['completed','failed','interrupted','terminated'].includes(r.state)}];
  });
 }

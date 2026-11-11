@@ -36,9 +36,9 @@ test('adapter cannot accept wrong actors; terminal uncertainty cannot later beco
  const r={id:'r',humanRequestId:'q'};initializeRun(r);assert.throws(()=>changeRun(r,{type:'dispatch',actor:'agent',at:1,agentIdle:true,sessionId:'s'}),/actor-forbidden/);
  changeRun(r,{type:'dispatch',actor:'program',at:1,agentIdle:true,sessionId:'s'});changeRun(r,{type:'lost',actor:'program',at:2,reason:'timeout'});assert.equal(r.runModel.state.outcome,'unconfirmed');assert.equal(receipt(r).blocksInput,false);assert.throws(()=>changeRun(r,{type:'terminal',actor:'program',at:3,sessionId:'s',turnId:'t',outcome:'normal'}),/run-terminal/);
 });
-test('resumed legacy sent input supports native hash proof without manufacturing a marker',()=>{
- const r={...oldRun('awaiting_input'),acceptance:'pending',inputHash:'hash'};delete r.inputMarker;delete r.inputId;delete r.turnId;delete r.sessionId;
- fixtureModels({runs:[r]});observeRun(r,{state:'completed',sessionId:'s',turnId:'t',inputId:'i'},{inputs:[{id:'i',turnId:'t',offset:20,text:'human',hash:'hash'}]});assert.equal(r.runModel.state.outcome,'normal');
+test('unmarked legacy sent input cannot use a native hash proof',()=>{
+ const r={...oldRun('awaiting_input'),acceptance:'pending',inputHash:'hash'};delete r.inputMarker;delete r.inputId;delete r.turnId;delete r.sessionId;fixtureModels({runs:[r]});
+ assert.throws(()=>observeRun(r,{state:'completed',sessionId:'s',turnId:'t',inputId:'i'},{inputs:[{id:'i',turnId:'t',offset:20,text:'human',hash:'hash'}]}),/unmatched/);
 });
 test('unresolved tracking times out even after blocksInput=false',()=>{
  const d=new DirectAgents({dir:'/unused',notifier:{status:()=>({})}}),r=oldRun('unknown');r.blocksInput=false;

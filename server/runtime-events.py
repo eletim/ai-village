@@ -2,13 +2,6 @@
 import sys,json,os,re,hashlib,time
 
 def digest(s):return hashlib.sha256(s.encode()).hexdigest()
-# Claude Code may record a delivered prompt wrapped as pasted text:
-# '\n\n<pasted_content id="X">\n' + prompt + '\n</pasted_content id="X">\n'. The wrapper is the
-# CLI's own presentation, not input; hash the prompt it carries so correlation still matches.
-PASTED=re.compile(r'\s*<pasted_content id="([^"\n]+)">\n(.*)\n</pasted_content id="\1">\s*',re.S)
-def unpasted(s):
- m=PASTED.fullmatch(s) if isinstance(s,str) else None
- return m.group(2) if m else s
 def text(blocks):
  if isinstance(blocks,str):return blocks
  return '\n'.join(b.get('text','') for b in (blocks or []) if b.get('type') in ('input_text','output_text','text'))
@@ -55,7 +48,7 @@ def parse_event(db,provider,x,offset):
   if x.get('type')=='user' and not x.get('isMeta') and not (isinstance(content,list) and any(b.get('type')=='tool_result' for b in content)):
    if not uid:return
    db.current=uid;turn(uid);db.parent(uid,uid)
-   body=unpasted(text(content))
+   body=text(content)
    db.input({'id':uid,'turnId':uid,'hash':digest(body),'offset':offset,'text':body})
   elif uid and db.parent(parent):
    tid=db.parent(parent);db.parent(uid,tid)

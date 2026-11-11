@@ -18,7 +18,7 @@ test('Project guide scope, fresh reads, missing and unsafe files',async t=>{
  await writeFile(join(root,'index.json'),JSON.stringify({[projectId]:'guide.md'}));await writeFile(join(root,'guide.md'),'first policy');
  const guides=new ProjectGuides(root),agent={location:'mayor',projectId};
  const first=await guides.get(projectId);assert.equal(first.content,'first policy');
- const context=await guides.context(agent,{},'https://village.example');assert.match(context,/projects guide/);assert.match(context,/https:\/\/village.example\/api\/village/);assert(!context.includes(first.content));
+ const context=await guides.context(agent,{},'https://village.example');assert.deepEqual(JSON.parse(context.split('<ai-village-project-guide>')[1].split('</ai-village-project-guide>')[0]).argv,['projects','guide',projectId]);assert(!context.includes(first.content));
  for(const [a,r] of [[{...agent,location:'workshop'},{}],[{...agent,projectId:'other'},{}],[{location:'mayor',name:'村実装',cwd:'村実装'},{}],[agent,{phase:'report'}]])assert.equal(await guides.context(a,r,'url'),'');
  await writeFile(join(root,'guide.md'),'updated');const updated=await guides.get(projectId);assert.equal(updated.content,'updated');assert.notEqual(first.hash,updated.hash);
  await rm(join(root,'guide.md'));assert.deepEqual(await guides.get(projectId),{available:false});assert.equal(await guides.context(agent,{},'url'),'');
@@ -29,7 +29,7 @@ test('dispatch attaches guide only to registered secretary normal runs',async t=
  const dir=await mkdtemp(join(tmpdir(),'guide-dispatch-'));t.after(()=>rm(dir,{recursive:true,force:true}));
  const d=new DirectAgents({dir});await d.init({watch:false});t.after(()=>d.close());
  d.observe=async a=>{a.canSend=true;a.runtime={agentSessionId:'native'};return {sessionId:'native',cursor:0};};
- d.flow.context=()=>'';
+ d.flow.context=()=>'';d.flow.root=()=>({});d.flow.reportPrompt=()=> 'human instruction';
  let sent;d.pmux=async(...args)=>{sent=args.at(-1);};
  for(const [location,project,phase,expected] of [['mayor',projectId,undefined,true],['mayor','other',undefined,false],['workshop',projectId,undefined,false],['mayor',projectId,'report',false]]){
   const a={id:'agent',location,projectId:project,tabId:'tab',workspaceId:'ws',state:'idle'};d.data.agents=[a];

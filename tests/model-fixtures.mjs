@@ -18,3 +18,6 @@ export function fixtureModels(data,{refresh=false}={}){
  for(const q of data.requests||[])q.requestModel ||= migrated.requests.find(m=>m.id===q.id);
  return data;
 }
+import {createHash} from 'node:crypto';
+// Native fixture/content fingerprints, never a run acceptance fallback.
+export const inputHash=text=>createHash('sha256').update(text).digest('hex');

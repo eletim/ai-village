@@ -2,19 +2,20 @@
 
 ## Protocol
 
-New direct runs and bridge jobs append `ai-village-run-<run UUID>` inside a short
+New direct runs append `ai-village-run-<run UUID>` inside a short
 `ai-village-input` tag. Correlation looks for that complete ASCII token in a native
 **user input**, never in assistant output. Markers have no whitespace or markup to
 escape. Input positions, session/file identities, duplicate/competing-input checks,
 owned-input checks and Codex steering boundaries remain mandatory. A run with a
-marker never falls back to its hash when the marker is missing. Historical runs
-without a marker continue to use `inputHash`. Python already returns the native
-input text, so no index schema migration or parser change is needed; `unpasted()`
-remains for historical compatibility.
+marker never falls back to its hash when the marker is missing. Hash matching and Python `unpasted()` have been removed. Native text is read verbatim.
+Historical terminal runs are retained; unmarked sent/running runs become
+unconfirmed with request review in the versioned marker migration. Native index
+digests remain only for event deduplication, never run correlation. See
+[single-rules.md](single-rules.md) for migration and current verification.
 
 This proves correlation, not authenticity or exact body integrity. Someone who can
 copy the entire current token into another input can impersonate it; concurrent
-inputs still fail closed. Removing/truncating/changing the token yields unknown.
+inputs still fail closed. Removing/truncating/changing the token yields unconfirmed when the turn ends or observation expires.
 
 ## Startup instructions
 
@@ -37,14 +38,14 @@ Short turns preserve the human text, then append current identity, request IDs,
 phase and marker. Attachments and travel data remain per turn. Project-guide rules
 fetch the latest document using the current project ID; report and steering rules
 are installed once. Reports still carry the dynamic source question/results.
-The older bridge workflow gains marker correlation and retains its own instruction
-and report generation flow.
+All current policy text and action help are generated from `server/agent-rules.mjs`.
+The old bridge workflow has been removed.
 
 References: [Codex configuration](https://developers.openai.com/codex/config-reference),
 installed Claude CLI help (`--append-system-prompt[-file]`), and the current
 PurpleMux `claude-command.ts` / `providers/codex/index.ts` launchers.
 
-## Isolated verification — 2026-11-11
+## Historical verification — input-envelope PRs (before single-village stages 2/3)
 
 Used a throwaway server on port 5287, a separate state directory and cwd inside the
 feature worktree, notifications disabled. The production server and state were

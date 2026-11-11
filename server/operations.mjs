@@ -1,3 +1,4 @@
+import {agentActions,actionUsage} from './agent-rules.mjs';
 import { appendFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -34,7 +35,7 @@ export class VillageOperations {
         {name:'requests list',usage:'requests list [AGENT_ID]',run:args=>{if(args.length>1)throw Error('Agent IDは1つまで');return direct.flow.list(args[0]);}},
         {name:'requests get',usage:'requests get HUMAN_REQUEST_ID',run:args=>{if(args.length!==1)throw Error('依頼IDを指定');return direct.flow.get(args[0]);}},
         {name:'requests results',usage:'requests results HUMAN_REQUEST_ID WORK_ID',run:args=>{if(args.length!==2)throw Error('依頼IDと作業IDを指定');return direct.flow.results(...args);}},
-        ...['delegate','finish'].map(action=>({name:'requests '+action,usage:'requests '+action+' JSON '+({delegate:'{humanRequestId,parentWorkId,actorRunId,agentId,operationId,instruction}',finish:'{humanRequestId,workId,runId,revision,operationId}',retry:'{humanRequestId,workId,revision,operationId,instruction,actorRunId?}',resume:'{humanRequestId,workId,revision,operationId,instruction,actorRunId?}',cancel:'{humanRequestId,revision}'})[action],mutation:true,run:args=>{if(args.length!==1)throw Error('JSONを1つ指定');const input=JSON.parse(args[0]);return action==='retry'||action==='resume'?direct.flow.continue(input,action==='retry'):direct.flow[action](input);}})),
+        ...Object.keys(agentActions).map(action=>({name:'requests '+action,usage:actionUsage(action),mutation:true,run:args=>{if(args.length!==1)throw Error('JSONを1つ指定');return direct.flow[action](JSON.parse(args[0]));}})),
       ]:[]),
       ...(prs?.commands() || []),
       { name:'todos list', usage:'todos list', run:args=>{if(args.length)throw new Error('usage: todos list');return todos.snapshot();} },

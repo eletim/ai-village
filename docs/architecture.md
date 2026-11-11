@@ -36,7 +36,7 @@ HTTP/CLI → アプリケーション操作 → 依頼の流れ/Agent管理 → 
 | 状態モデル | state/*.ts | Agent7、送信5＋結果4、依頼3＋要確認。唯一の正本 |
 | 依頼の流れ | requests.mjs、request/run-lifecycle | 生成・委任・結果配送・報告・通知をモデル経由で調整 |
 | Agent管理 | direct.mjs、agent-lifecycle | 起動停止意図と観察の統合 |
-| Agent文面 | 現在はdirect/requests/input-envelope等 | 1つの規則定義から起動文・動的入力・helpを生成 |
+| Agent文面 | server/agent-rules.mjs | 1つの規則定義から起動文・動的入力・helpを生成 |
 | HTTP/CLI | scripts/dev.mjs、operations.mjs、scripts/village.mjs | 同じ操作を呼ぶ薄い境界 |
 | 表示 | village-map、direct、report-view | 地図は配置、Workspaceは会話と人間操作 |
 | 横断機能 | library、todos、travel、images/attachments、notifier、pull-requests | 依頼/ジョブ実行を所有しない |
@@ -50,16 +50,16 @@ HTTP/CLI → アプリケーション操作 → 依頼の流れ/Agent管理 → 
    projectObservationによる旧state書込、acceptance/blocksInput、work状態、ticket/inbox/w.finishの
    重複表現を除去。API/UIも型付き投影に切替。acknowledge互換を終了する。
    本番進行中入力を保つ版付き移行と段階2〜4の不変条件をテストする。
-3. **規則文の単一化・照合の一本化**: 規則は1か所に定義し文面とhelpを生成。
+3. **規則文の単一化・照合の一本化（実装済み）**: 規則は1か所に定義し文面とhelpを生成。
    毎回は人間本文＋識別タグ＋必要な動的資料だけ。入力照合はrun目印のみ。
-   inputHash一致とunpasted依存は、旧進行中入力の扱いを明示した移行後に除去する。
+   inputHash一致とunpastedを除去。目印なしの旧進行中入力は確認できず＋要確認として保存する。
 4. **PurpleMux正式機能**: 追加指示用の公式API/起動設定をPurpleMux側に用意し、
    内部promptファイル直接追記を廃止。現行hash確認/legacyフォールバックはその切替まで維持。
 5. **責務分割・docs統合**: direct/requestsから接続、観察、配信、文面を順に分離。
    本文解析・不明入力自動再送・成功推測を入れず、実機の委任/再起動/通知1回を維持する。
    現行仕様をarchitecture/state-modelに集約し、段階別文書は検証履歴と明記する。
 
-第2段階では互換getterと保存された旧項目を除去し、表示ラベルは型付きDTOだけで生成する。詳細・移行・反映手順は[state-completion.md](state-completion.md)。規則文・照合は第3段階、PurpleMux公式機能は第4段階に残る。
+第2段階では互換getterと保存された旧項目を除去し、表示ラベルは型付きDTOだけで生成する。詳細・移行・反映手順は[state-completion.md](state-completion.md)。第3段階の詳細は[single-rules.md](single-rules.md)。第2・3段階ともPR作成までで未反映。PurpleMux公式機能は第4段階に残る。
 
 ## 操作の残す/消す基準
 

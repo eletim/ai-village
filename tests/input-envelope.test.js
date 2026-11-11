@@ -1,3 +1,4 @@
+import {inputHash} from './model-fixtures.mjs';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,mkdir,writeFile,readFile,rm,readdir} from 'node:fs/promises';
@@ -5,7 +6,6 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {execFileSync} from 'node:child_process';
 import {installInstructionsScript,verifyInstructionsScript,runMarker,markerContext,matchesRunInput} from '../server/input-envelope.mjs';
-import {inputHash} from '../server/runtime-events.mjs';
 import {DirectAgents} from '../server/direct.mjs';
 
 test('startup instructions append to owned PurpleMux provider prompts and never write cwd or shell-evaluate content',async t=>{
@@ -37,9 +37,14 @@ test('unavailable startup integration falls back durably; only exact installatio
 });
 
 test('marker is independent of presentation, cannot match a prefix, and never falls back to hash when present',()=>{
- const inputMarker=runMarker('some-run-id'),run={inputMarker,inputHash:'old'};
+ const inputMarker=runMarker('some-run-id'),run={id:'some-run-id',inputMarker,inputHash:'old'};
  assert(matchesRunInput(run,{text:'human'+markerContext('some-run-id')}));
  assert(!matchesRunInput(run,{hash:'old'}));
  assert(!matchesRunInput(run,{text:inputMarker+'-other',hash:'old'}));
- assert(matchesRunInput({inputHash:'old'},{hash:'old'}));
+ assert(!matchesRunInput({inputHash:'old'},{hash:'old'}));
+});
+
+test('generated single-source startup policy passes the installed-block verifier for both providers',async t=>{
+ const {AgentRules}=await import('../server/agent-rules.mjs');const home=await mkdtemp(join(tmpdir(),'generated-rules-'));t.after(()=>rm(home,{recursive:true,force:true}));const root=join(home,'.purplemux/workspaces/ws-test');await mkdir(root,{recursive:true});const body=new AgentRules('http://127.0.0.1:5394').startup();
+ for(const provider of ['claude','codex']){await writeFile(join(root,provider+'-prompt.md'),'# purplemux context\n');execFileSync('python3',['-c',installInstructionsScript,'ws-test',provider,body],{env:{...process.env,HOME:home}});const r=JSON.parse(execFileSync('python3',['-c',verifyInstructionsScript,'ws-test',provider,inputHash(body)],{env:{...process.env,HOME:home}}));assert.equal(r.verified,true);}
 });
