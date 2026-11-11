@@ -12,7 +12,7 @@ export type Migration = Readonly<{
  issues:readonly string[]; legacy:unknown;
 }>;
 /** Pure, conservative import. No production paths, filesystem, clock or mutation. */
-export function migrateDirect(source:unknown):Migration {
+export function migrateDirect(source:unknown, options:{resumeInFlight?:boolean}={}):Migration {
  const data=row(source),issues:string[]=[];
  const unique=(values:Row[],kind:string):Row[]=>{
   const seen=new Set<string>();return values.filter(v=>{
@@ -38,14 +38,22 @@ export function migrateDirect(source:unknown):Migration {
     state={kind:'ended',outcome:'unconfirmed',reason:'legacy-'+str(r.state)};break;
    default: state={kind:'ended',outcome:'unconfirmed',reason:'legacy-unrecognized-state'};issues.push('unrecognized-run-state:'+str(r.id));
   }
+  // Stage 2 restart imports preserve ownership checkpoints and await fresh native evidence.
+  if(options.resumeInFlight&&(['sending','awaiting_input','running','waiting_input'].includes(str(r.state))||(['unknown','send_unknown'].includes(str(r.state))&&r.blocksInput!==false)||(r.state==='superseded'&&oldRuns.some(next=>next.id===r.supersededBy&&next.state==='queued'&&!next.dispatchAttemptedAt&&next.dispatchConfirmed!==true)))){
+   state=r.acceptance==='accepted'&&str(r.sessionId)&&str(r.turnId)&&str(r.inputId)
+    ?{kind:'running',sessionId:str(r.sessionId),turnId:str(r.turnId),inputId:str(r.inputId)}
+    :{kind:'sent',sessionId:str(row(r.baselineRuntime).sessionId)||str(r.agentSessionId)||null,sentAt:Date.parse(str(r.dispatchAttemptedAt)||str(r.createdAt))||0};
+  }
   if(!request)issues.push('orphan-run:'+str(r.id));
   if(work?.parentWorkId&&!parentRunId)issues.push('missing-parent:'+str(r.id));
   const siblings=oldRuns.filter(other=>other.humanRequestId===r.humanRequestId&&other.workId===r.workId&&other.phase!=='report');
   const prior=r.phase==='report'||!work?null:siblings[siblings.indexOf(r)-1];
   const delivery=rows(request?.inbox).find(e=>e.deliveryRunId===r.id||e.id===r.resultId);
+  const budget=row(work?.autoRetry);
+  const retryBudget={count:Number.isInteger(budget.attempts)&&Number(budget.attempts)>=0?Number(budget.attempts):0,firstFailureAt:typeof budget.firstFailureAt==='number'&&Number.isFinite(budget.firstFailureAt)?budget.firstFailureAt:r.errorCode==='server_overloaded'?(Date.parse(str(r.completedAt))||null):null};
   const resultOf=r.origin==='result'?str(delivery?.resultRunId)||null:null;
   if(r.origin==='result'&&!resultOf)issues.push('missing-result-source:'+str(r.id));
-  return {id:str(r.id),requestId:str(r.humanRequestId),parentRunId,retryOf:prior?str(prior.id):null,phase:r.phase==='report'?'report':r.origin==='result'?'result':'work',resultOf,recipientRunId:r.origin==='result'?(prior?str(prior.id):null):null,state,facts:[],decisions:[],retryBudget:{count:0,firstFailureAt:null}};
+  return {...(str(r.supersededBy)?{supersededBy:str(r.supersededBy)}:{}),id:str(r.id),requestId:str(r.humanRequestId),parentRunId,retryOf:prior?str(prior.id):null,phase:r.phase==='report'?'report':r.origin==='result'?'result':'work',resultOf,recipientRunId:r.origin==='result'?(prior?str(prior.id):null):null,state,facts:[],decisions:[],retryBudget};
  });
  for(const r of runs){
   if(r.parentRunId&&!runs.some(parent=>parent.id===r.parentRunId&&parent.requestId===r.requestId))issues.push('invalid-parent-run:'+r.id);

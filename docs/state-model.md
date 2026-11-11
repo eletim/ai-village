@@ -1,13 +1,14 @@
-# 村の状態モデル — 段階0・1
+# 村の状態モデル — 段階0・1と段階2の接続
 
 人間承認済み方針を、事実・申告・判断を混同しない状態処理として整理する。
 基準は `origin/main` の `74dc1f9`（PR #57 マージ済み）と
 [村の思想](concept.md)。Agentを信頼し、出力形式で縛らない。
 **自然言語の出力・達成度を解析して状態を動かすことは禁止する。**
 
-このPRは設計と未接続の純粋関数のみ。既存の direct / requests / report-view、
-API、画面、指示文、通知、保存処理は変更しない。新処理の利用者はテストだけ。
-実データの移行・本番反映は行わない。
+段階0・1（PR #58）は設計と未接続の純粋関数。段階2は送信だけを接続する。
+**以下の依頼・Agentの完成形は段階3・4の設計であり、まだ現行動作ではない。**
+段階2の互換範囲・移行・反映方法は [段階2の運用メモ](state-stage2.md) を参照。
+このブランチからmainへのマージ・本番反映は行っていない。
 
 ## 判定者と保存するもの
 
@@ -283,3 +284,32 @@ enum・namespace・parameter propertyは使わず、ビルド手順や起動コ�
 `todo-http.test.js` / `travel-registry-http.test.js`）。最新の状態モデル31件、
 `npm run typecheck`、`npm run check`、diffチェックは成功。既存実行コードからの
 stateモジュール参照がないことも再確認した。
+
+## 段階2の接続境界
+
+`run.runModel.state` を保存上の正本とし、`run-lifecycle.mjs` から `state/run.ts`
+の生成・遷移・再試行だけを呼ぶ。従来の `run.state` は既存の依頼処理・画面用の
+互換表示。`unknown / send_unknown / waiting_input` は一時的な観察ラベルであり、
+新モデルの状態ではない。終了した確認不能は `ended/unconfirmed`（互換名terminated）
+となり、後から正常終了に書き換えない。段階3・4でこの互換表示を整理する。
+
+追加イベントの判定者: 送信前の宛先消失/境界変化は① `dispatch-blocked`、
+補足の予約と未送信取消による所有権復帰は③ `supersede / restore`。
+補足の送信開始または失敗で元の追跡を③の判断として閉じる。元の結果を正常と推定しない。
+補足がまだqueuedなら元の追跡を復帰できるが、終端になった送信は復帰しない。
+現行CLIの独立Agent依頼は `allowAgentRoot` の明示互換オプションで判定者agentを記録する。
+既存の子作業retry/resumeは、親のnative受付をactor()で検証済みの場合だけ
+legacyAgentRunIdを渡し、判定者agentを記録する。純粋retryは互換指定なしのagent操作を拒否する。
+Agent操作の削減・認可の変更は段階3で行い、段階2でhumanと偽装しない。
+
+起動時の `migrateDirect(..., {resumeInFlight:true})` は段階1の保守的な解析とは異なり、
+旧sending / awaiting_input / running / waiting_input、およびまだブロック中のunknown /
+send_unknownをsentまたはrunningとして保持する。session / turn / input / checkpoint /
+fileIdentity / cursor / marker / hash / finishをそのまま引き継ぐ。旧unknown / send_unknownで
+blocksInput=falseのものは終端の確認不能にする。再観察でsession変更、未照合での回終了、
+照合不能が10分続く場合は①のlostで終了する。正常に照合できる長時間実行は時間切れにしない。
+PR #57以前の目印なし送信だけは、既存native入力のハッシュ照合の根拠を遷移に渡す。
+
+段階2ではfinish・acknowledge・work/request状態を維持する。報告も従来どおりfinishが必要。
+失敗・中断・確認不能の復旧一覧、削除済みAgentのキャンセル、終了済み報告のreportPending解除
+だけを依頼/画面側に追加した。全依頼の進行不変条件への接続は段階3で行う。

@@ -115,3 +115,9 @@
 #suspended-list .place-dots{display:flex;flex-wrap:wrap;gap:3px}
 #suspended-list [aria-current=page]{background:var(--heading)}
 #project-actions-dialog{width:min(440px,94vw);max-height:90dvh;overflow:auto}#project-actions-dialog .dialog-heading{gap:12px}#project-actions-title{overflow-wrap:anywhere}#project-actions-dialog>button{display:block;width:100%;margin-top:8px;text-align:left}#project-rename-form{margin:16px 0}#project-rename-form label{display:block}#project-rename-form input{display:block;width:100%;margin:4px 0 8px}#project-suspension-help{font-size:12px;line-height:1.6;margin:16px 0 8px}
+
+#run-recovery-inbox{flex-shrink:0;max-height:35vh;overflow:auto;border:1px solid currentColor;border-radius:6px;padding:8px}
+#run-recovery-inbox summary{cursor:pointer;font-weight:600}
+#run-recovery-inbox article{padding:10px 0;border-top:1px solid #344361;overflow-wrap:anywhere}
+#run-recovery-inbox article:first-of-type{margin-top:8px}
+#run-recovery-inbox button{margin:3px}

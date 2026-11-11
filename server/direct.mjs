@@ -1,3 +1,5 @@
+import {changeRun,observeRun,tracking,modelOf,projectObservation} from './run-lifecycle.mjs';
+import {migrateRunStore} from './run-migration.mjs';
 import {runMarker,markerContext,installInstructionsScript,verifyInstructionsScript} from './input-envelope.mjs';
 import {sessionModel} from './session-model.mjs';
 import {DirectStore,writeSnapshot} from './direct-store.mjs';
@@ -21,7 +23,7 @@ import { resolve } from 'node:path';
 const fail = (message, status=409) => { throw Object.assign(new Error(message), {status}); };
 const now = () => new Date().toISOString();
 const ready = s => ['idle','ready-for-review'].includes(s.cliState);
-const active = r => ['sending','awaiting_input','running','send_unknown','unknown','waiting_input'].includes(r.state);
+const active = tracking;
 const blocking = r => active(r)&&r.blocksInput!==false;
 // A run whose native correlation stays unresolved must not block an agent forever.
 // canSend still requires a freshly observed idle CLI, so releasing the stale block
@@ -51,6 +53,7 @@ export class DirectAgents {
     }
     try { this.data=JSON.parse(await readFile(resolve(this.dir,'direct.json'),'utf8')); }
     catch(e) { if(e.code!=='ENOENT')throw e; }
+    this.data=await migrateRunStore(this.dir,this.data);
     this.data.projects ||= [];
     for(const p of this.data.projects)if(p.deletion?.status==='running'){p.deletion.status='partial';p.deletion.interruptedAt=now();}
     for(const w of this.data.workshops)w.connectionType ||= 'ssh';
@@ -63,7 +66,6 @@ export class DirectAgents {
       if(a.state==='creating')a.state='creation_unknown';
       if(a.state==='stopping')a.state='stop_unknown';
     }
-    for(const r of this.data.runs)if(r.state==='sending')r.state='send_unknown';
     this.flow.init();
     await this.save();
     if(watch){this.timer=setInterval(()=>this.tick().catch(()=>{}),this.pollMs);this.timer.unref();void this.tick();}
@@ -72,7 +74,7 @@ export class DirectAgents {
   snapshot(){return structuredClone({...humanProjection(this.data),projects:this.data.projects.filter(p=>!p.deletedAt),capabilities:{steering:true,travelContexts:true,attachments:!!this.attachments},reviews:this.reviewStates(),notification:this.notifier.status()});}
   reviewStates(){
     const keys=new Map(this.data.agents.map(a=>[a.id,[]]));
-    for(const entry of completedEntries(humanProjection(this.data)))keys.get(entry.agentId).push(entry.key);
+    for(const entry of completedEntries(humanProjection(this.data)))keys.get(entry.agentId)?.push(entry.key);
     const finalRequests=(this.data.requests||[]).filter(q=>q.status==='completed');
     for(const q of finalRequests)keys.get(q.finalAgentId)?.push('request:'+q.id+':'+q.finalRunId);
     const legacy=new Set(this.data.reviewedCompletions||[]);
@@ -241,29 +243,32 @@ export class DirectAgents {
   async attemptRun(r){return this.locked(r.agentId,async()=>{
     if(r.state!=='queued'||r.nextTransferAt>Date.now())return r;
     const a=this.agent(r.agentId);
-    if(this.agentDeleting(a)||['terminated','stopping','stop_unknown'].includes(a.state)||!a.tabId){r.state='terminated';r.error='target-unavailable-before-dispatch';await this.save();return r;}
+    if(this.agentDeleting(a)||['terminated','stopping','stop_unknown'].includes(a.state)||!a.tabId){changeRun(r,{type:'dispatch-blocked',actor:'program',at:Date.now(),reason:'target-unavailable-before-dispatch'});r.error='target-unavailable-before-dispatch';await this.save();return r;}
     const baseline=await this.observe(a);
-    if(this.agentDeleting(a)){r.state='terminated';r.blocksInput=false;r.error='project-deletion-before-dispatch';await this.save();return r;}
+    if(this.agentDeleting(a)){changeRun(r,{type:modelOf(r).state.kind==='queued'?'dispatch-blocked':'lost',actor:'program',at:Date.now(),reason:modelOf(r).state.kind==='queued'?'project-deletion-before-dispatch':'agent-stopped'});r.blocksInput=false;r.error='project-deletion-before-dispatch';await this.save();return r;}
     const allowed=snapshot=>r.steerTarget?this.steeringBoundary(r,a,snapshot):a.canSend;
-    if(!allowed(baseline)){if(r.steerTarget){r.state='interrupted';r.error='補足対象の実行状態が変わりました。自動送信しません。';await this.save();}else r.queuedReason=a.sendReason;return r;}
+    if(!allowed(baseline)){if(r.steerTarget){changeRun(r,{type:'dispatch-blocked',actor:'program',at:Date.now(),reason:'dispatch-boundary-changed'});r.error='補足対象の実行状態が変わりました。自動送信しません。';await this.save();}else r.queuedReason=a.sendReason;return r;}
     try{
       r.attachmentFiles=[];
       for(const record of r.attachments||[])r.attachmentFiles.push(await this.transferAttachment(a,record,await this.attachments.content(record.id)));
       r.attachmentError=null;
     }catch{r.attachmentError='添付を接続先へ転送できません。送信前に再試行します。';r.nextTransferAt=Date.now()+30000;await this.save();return r;}
-    const confirmed=r.attachments?.length?await this.observe(a):baseline;if(!allowed(confirmed)||this.agentDeleting(a)){if(r.steerTarget){r.state='interrupted';r.error='添付転送中に補足対象が変わりました。自動送信しません。';await this.save();}return r;}
-    if(r.autoRecoveryFrom&&(Date.now()>r.recoveryDeadline||!this.flow.recoveryBoundary(this.flow.run(r.autoRecoveryFrom),confirmed,a.runtime))){r.state='interrupted';r.error='自動再試行前に新しい入力または状態変化を検出しました。requests getで確認し手動で復旧してください。';await this.save();return r;}
+    const confirmed=r.attachments?.length?await this.observe(a):baseline;if(!allowed(confirmed)||this.agentDeleting(a)){if(r.steerTarget){changeRun(r,{type:'dispatch-blocked',actor:'program',at:Date.now(),reason:'dispatch-boundary-changed'});r.error='添付転送中に補足対象が変わりました。自動送信しません。';await this.save();}return r;}
+    if(r.autoRecoveryFrom&&(Date.now()>r.recoveryDeadline||!this.flow.recoveryBoundary(this.flow.run(r.autoRecoveryFrom),confirmed,a.runtime))){changeRun(r,{type:'dispatch-blocked',actor:'program',at:Date.now(),reason:'dispatch-boundary-changed'});r.error='自動再試行前に新しい入力または状態変化を検出しました。requests getで確認し手動で復旧してください。';await this.save();return r;}
     await this.verifyInstructions(a);
     const status=a.runtime;
     const compact=a.inputEnvelope?.mode==='startup-v1';
     // A report may have been queued while startup rules were still available.
     if(r.phase==='report'&&!compact&&r.instruction.startsWith('報告資料（phase=report）:\n'))r.instruction=this.flow.reportPrompt(this.flow.root(r.humanRequestId));
     const deliveredInstruction=(r.steerTarget&&!compact?'実行中の同じ作業への補足です。新しい依頼ではありません。以前のfinishは無効です。既存変更・子作業を保ち、再委任せず補足を反映し、以下の新runで最終finishしてください。\n':'')+r.instruction+((compact||a.location==='mayor')&&r.phase!=='report'?this.secretaryContext(a,compact):'')+(compact?'':await this.projectGuides.context(a,r,this.villageUrl))+this.flow.context(r)+markerContext(r.id);
-    Object.assign(r,{inputMarker:runMarker(r.id),inputEnvelopeMode:compact?'startup-v1':'legacy',state:'sending',acceptance:'pending',blocksInput:true,dispatchAttemptedAt:now(),baselineRuntime:{sessionId:confirmed.sessionId,cursor:confirmed.cursor,fileIdentity:confirmed.fileIdentity},inputHash:inputHash(deliveredInstruction),agentSessionId:status.agentSessionId||null});
+    if(r.steerTarget){const previous=this.flow.run(r.steerTarget.runId);changeRun(previous,{type:'close-tracking',actor:'human',reason:'steering-successor-dispatched'});}
+    changeRun(r,{type:'dispatch',actor:'program',at:Date.now(),sessionId:confirmed.sessionId||null,agentIdle:true});
+    projectObservation(r,'sending');
+    Object.assign(r,{inputMarker:runMarker(r.id),inputEnvelopeMode:compact?'startup-v1':'legacy',acceptance:'pending',blocksInput:true,dispatchAttemptedAt:now(),baselineRuntime:{sessionId:confirmed.sessionId,cursor:confirmed.cursor,fileIdentity:confirmed.fileIdentity},inputHash:inputHash(deliveredInstruction),agentSessionId:status.agentSessionId||null});
     await this.save();
-    if(this.agentDeleting(a)){r.state='terminated';r.blocksInput=false;r.error='project-deletion-before-dispatch';await this.save();return r;}
-    try{await this.pmux(a,'tab','send','-w',a.workspaceId,a.tabId,deliveredInstruction);r.dispatchConfirmed=true;r.state='awaiting_input';}
-    catch{r.state='send_unknown';r.error='送信結果不明。native入力を照合します。自動再送しません。';}
+    if(this.agentDeleting(a)){changeRun(r,{type:modelOf(r).state.kind==='queued'?'dispatch-blocked':'lost',actor:'program',at:Date.now(),reason:modelOf(r).state.kind==='queued'?'project-deletion-before-dispatch':'agent-stopped'});r.blocksInput=false;r.error='project-deletion-before-dispatch';await this.save();return r;}
+    try{await this.pmux(a,'tab','send','-w',a.workspaceId,a.tabId,deliveredInstruction);r.dispatchConfirmed=true;projectObservation(r,'awaiting_input');}
+    catch{projectObservation(r,'send_unknown');r.unknownSince ||= now();r.error='送信結果不明。native入力を照合します。自動再送しません。';}
     a.state='busy';a.activityState='busy';a.canSend=false;a.sendReason='native入力の受付を照合しています。入力欄に残っている場合はPurpleMuxで確認してください。';await this.save();return r;
   });}
   steeringBoundary(r,a,snapshot){
@@ -274,15 +279,15 @@ export class DirectAgents {
     const observed=correlate(previous,snapshot);
     return observed.state==='running'&&observed.turnId===t.turnId&&snapshot.inputs.filter(i=>i.turnId===t.turnId).every(i=>r.priorInputs.some(p=>inputMatches(i,p)));
   }
-  // 'unknown'/'send_unknown' only mean native correlation is currently unresolved,
-  // never that the run finished. After a bounded wait we stop trusting it as a
-  // reason to block new dispatch and let it be retried like any other terminated run.
+  // Unknown labels are compatibility observations, not model states. Unresolved
+  // sent/running records become terminal unconfirmed after a bounded wait, even
+  // if an earlier observation already released the input gate.
   releaseStuckRuns(a){
     for(const r of this.data.runs.filter(r=>r.agentId===a.id)){
-      if((r.state==='unknown'||r.state==='send_unknown')&&r.blocksInput!==false){
+      if(active(r)&&r.error){
         r.unknownSince ||= now();
         if(Date.now()-Date.parse(r.unknownSince)>=STUCK_RUN_TIMEOUT_MS){
-          r.state='terminated';r.blocksInput=false;r.error=r.error||'runtime-correlation-timeout';r.unknownResolvedAt=now();
+          changeRun(r,{type:'lost',actor:'program',at:Date.now(),reason:'timeout'});r.error=r.error||'runtime-correlation-timeout';r.unknownResolvedAt=now();
         }
       }else delete r.unknownSince;
     }
@@ -331,6 +336,7 @@ export class DirectAgents {
       if(snapshot.sessionId)a.observedSessionId=snapshot.sessionId;
       for(const r of this.data.runs.filter(r=>r.agentId===a.id&&active(r))){
         const observation=correlate(r,snapshot);
+        observeRun(r,observation,snapshot);
         if(observation.turnId){r.acceptance='accepted';r.acceptedAt ||= now();r.turnId=observation.turnId;r.sessionId=observation.sessionId;r.inputId ||= observation.inputId;if(typeof observation.output==='string')r.output=observation.output;if(typeof observation.finalOutput==='string')r.finalOutput=observation.finalOutput;}
         if(observation.turnId&&r.steerTarget){
           // Bring the superseded chain up to each confirmed input boundary.
@@ -349,28 +355,23 @@ export class DirectAgents {
           }
         }
         if(['completed','interrupted','failed'].includes(observation.state)){
-          Object.assign(r,{state:observation.state,output:observation.output,completedAt:observation.completedAt||now(),completionEvent:observation.completionEvent,error:observation.error||null,errorCode:observation.errorCode||null,runtimeError:observation.runtimeError||null,completionOffset:observation.completionOffset,blocksInput:false});
+          Object.assign(r,{output:observation.output,completedAt:observation.completedAt||now(),completionEvent:observation.completionEvent,error:observation.error||null,errorCode:observation.errorCode||null,runtimeError:observation.runtimeError||null,completionOffset:observation.completionOffset,blocksInput:false});
         }else{
-          r.state=a.activityState==='waiting_input'?'waiting_input':observation.state==='running'&&s.alive?'running':observation.reason==='input-not-observed'&&r.dispatchAttemptedAt?'awaiting_input':'unknown';r.error=observation.reason||null;
-          // Preserve uncertain attribution, but a later native terminal boundary plus
-          // an idle live CLI can release the input gate. Never resend or infer success.
-          // A fileIdentity rotation (e.g. the host's native-index cache losing its
-          // continuity proof around a log rotation/compaction) does not by itself
-          // mean a different session: sessionId is the stronger, provider-assigned
-          // continuity signal, so it alone gates this release. correlate() above is
-          // unaffected and keeps rejecting fileIdentity mismatches for ownership.
+          projectObservation(r,a.activityState==='waiting_input'?'waiting_input':observation.state==='running'&&s.alive?'running':observation.reason==='input-not-observed'&&r.dispatchAttemptedAt?'awaiting_input':'unknown');
+          r.error=observation.reason||(observation.state==='running'&&!s.alive?'native-process-unavailable':null);
           const checkpoint=r.baselineRuntime;
           const sameStream=checkpoint&&(!checkpoint.sessionId||checkpoint.sessionId===snapshot.sessionId);
           const oldSession=r.sessionId||r.agentSessionId||checkpoint?.sessionId;
           const boundary=latest&&['completed','interrupted','failed'].includes(latest.state)&&(
             (sameStream&&snapshot.inputs.some(i=>i.offset>checkpoint.cursor&&i.turnId===latest.id))||
             (oldSession&&snapshot.sessionId&&oldSession!==snapshot.sessionId));
-          if(r.state==='unknown'&&a.activityState==='idle'&&boundary&&snapshot.available){r.blocksInput=false;r.inputReleasedAt ||= now();}
+          if(observation.state==='unknown'&&snapshot.available&&((oldSession&&snapshot.sessionId&&oldSession!==snapshot.sessionId)||observation.reason==='session-changed'||(boundary&&a.activityState==='idle'))){changeRun(r,{type:'lost',actor:'program',at:Date.now(),reason:oldSession&&snapshot.sessionId&&oldSession!==snapshot.sessionId?'session-changed':'turn-ended-without-marker'});r.inputReleasedAt ||= now();}
         }
       }
       a.state=a.lifecycle==='alive'?a.activityState:a.lifecycle==='unknown'?'unknown':'unavailable';
       this.releaseStuckRuns(a);this.updateAvailability(a);await this.save();return snapshot;
     }catch{
+      for(const r of this.data.runs.filter(r=>r.agentId===a.id&&active(r)))r.error ||= 'runtime-unavailable';
       a.modelInfo={available:false};a.connectionState='unknown';a.lifecycle='unknown';a.activityState='unknown';a.state='unknown';a.error='接続・状態取得ができません。監視を継続します。';this.releaseStuckRuns(a);this.updateAvailability(a);await this.save();return {available:false,turns:[],inputs:[]};
     }
   }
@@ -387,6 +388,17 @@ export class DirectAgents {
       const clear=()=>this.monitors.delete(a.id);task.then(clear,clear);
       return task;
     }));
+    // A queued supplement may fail before sending; its superseded owner must not
+    // remain a dormant nonterminal record forever. Cancellation restores ownership
+    // in cancelQueued; all other settled successors close the old human boundary.
+    let trackingChanged=false;
+    for(const r of this.data.runs){
+      const before=r.runModel;
+      if(r.runModel?.supersededBy&&r.runModel.state.kind==='running'&&this.flow.run(r.runModel.supersededBy)?.state!=='queued')changeRun(r,{type:'close-tracking',actor:'human',reason:'steering-successor-settled'});
+      if(active(r)&&!this.data.agents.some(a=>a.id===r.agentId&&a.tabId&&!['terminated','stopping','stop_unknown'].includes(a.state))){r.error ||= 'agent-unavailable';this.releaseStuckRuns({id:r.agentId});}
+      trackingChanged ||= before!==r.runModel;
+    }
+    if(trackingChanged)await this.save();
     await this.flow.pump();await this.flow.notifications();
   }
   async stop(id,{requireProcessEvidence=false}={}){return this.locked(id,async()=>{
@@ -412,7 +424,7 @@ export class DirectAgents {
       for(const r of this.data.runs)if(r.agentId===id&&active(r)){
        r.blocksInput=false;r.agentTerminatedAt=a.terminatedAt;
        if(['unknown','send_unknown'].includes(r.state)){r.error=r.error||'runtime-correlation-timeout';r.unknownResolvedAt=a.terminatedAt;}
-       r.state='terminated';
+       changeRun(r,{type:'lost',actor:'program',at:Date.now(),reason:'agent-stopped'});
       }
     }catch(e){a.state='stop_unknown';a.lifecycle='unknown';a.canSend=false;a.error='終了結果不明。'+e.message+' 再度終了を選ぶと対象tabの存在を照合します。';}
     await this.save();return a;

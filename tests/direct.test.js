@@ -114,7 +114,7 @@ test('a fileIdentity rotation within the same session is treated as continuation
  f.data.fileIdentity='file-2';
  Object.assign(f.input('rotated'),{state:'completed',output:'native result'});
  await f.service.tick();
- assert.equal(r.state,'unknown');assert.equal(r.error,'runtime-file-replaced');
+ assert.equal(r.state,'terminated');assert.equal(r.runModel.state.outcome,'unconfirmed');assert.equal(r.error,'runtime-file-replaced');
  assert.equal(r.blocksInput,false);assert.equal(f.a.canSend,true);
 });
 test('a run stuck without native correlation times out instead of blocking the agent forever',async t=>{
