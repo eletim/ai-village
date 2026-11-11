@@ -1,8 +1,10 @@
+import {projectState} from './state-projection.mjs';
 import {recoveryRequests} from '../src/run-recovery.js';
 // Human-facing projection only. requests get/results retain the immutable source.
 // Work stays visible until the final report commits. Internal report turns are
 // always withheld; afterwards original work is available as collapsed history.
 export function humanProjection(data){
+ data=projectState(data);
  const view=structuredClone(data),protectedRequests=new Map((data.requests||[]).filter(q=>q.reportMode===true).map(q=>[q.id,q]));
  const protectedRuns=data.runs.filter(r=>protectedRequests.has(r.humanRequestId));
  for(const a of view.agents){
@@ -25,7 +27,7 @@ export function humanProjection(data){
   const show=q.status==='completed'&&q.finalRunId===r.id&&r.phase==='report';
   // Whitelist the presentation fields: hashes/checkpoints/retry prompts must not
   // inadvertently expose internal instructions or intermediate answers.
-  for(const key of Object.keys(r))if(!['id','requestId','agentId','humanRequestId','workId','origin','phase','state','needsReview','acceptance','createdAt','completedAt','turnId','sessionId','agentSessionId','instruction','travelContexts','attachments','output','error','errorCode','recovery'].includes(key))delete r[key];
+  for(const key of Object.keys(r))if(!['id','requestId','agentId','humanRequestId','workId','origin','phase','state','needsReview','runModel','createdAt','completedAt','turnId','sessionId','agentSessionId','instruction','travelContexts','attachments','output','error','errorCode','recovery'].includes(key))delete r[key];
   const archive=q.status==='completed'&&r.phase!=='report';
   r.output=show?(original.finalOutput||original.output||''):archive?(original.output||original.finalOutput||''):'';
   if(show)r.finalOutput=r.output;

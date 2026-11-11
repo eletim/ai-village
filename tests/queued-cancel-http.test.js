@@ -1,3 +1,4 @@
+import {receipt} from './model-fixtures.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,writeFile,rm} from 'node:fs/promises';
@@ -21,7 +22,7 @@ test('HTTP and CLI operation cancel only the addressed unsent input, durable acr
  const post=async(path,data)=>{const r=await fetch(`http://127.0.0.1:${port}`+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});return {status:r.status,data:await r.json()};};
  await start();const x={humanRequestId:id,agentId,runId};
  assert.equal((await post('/api/direct/human/requests/cancel-queued',{...x,agentId:'request-graph'})).status,404);
- let response=await post('/api/direct/human/requests/cancel-queued',x);assert.equal(response.status,200);assert.equal(response.data.acceptance,'cancelled');
+ let response=await post('/api/direct/human/requests/cancel-queued',x);assert.equal(response.status,200);assert.equal(receipt(response.data).acceptance,'cancelled');
  await stop();await start();response=await post('/api/direct/human/requests/cancel-queued',x);assert.equal(response.status,200);assert.equal(response.data.state,'terminated');
- const saved=(await post('/api/direct/requests/get',{humanRequestId:id})).data;assert.equal(saved.ticket.state,'cancelled');assert.equal(saved.runs[0].dispatchAttemptedAt,undefined);
+ const saved=(await post('/api/direct/requests/get',{humanRequestId:id})).data;assert.equal(saved.status,'cancelled');assert.equal(saved.runs[0].dispatchAttemptedAt,undefined);
 });

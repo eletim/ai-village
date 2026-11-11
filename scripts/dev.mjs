@@ -1,3 +1,4 @@
+import {apiValue} from '../server/state-projection.mjs';
 import {workspaceSnapshot,historyPage} from '../server/conversation-pages.mjs';
 import {WorkspaceSync} from '../server/workspace-sync.mjs';
 import {syncResponse} from '../server/sync-response.mjs';
@@ -41,7 +42,7 @@ await images.init();
 const operations = new VillageOperations({dir}, notifier, {web:new WebReader(),images,todos,direct,travelRegistry,prs:new PullRequests(dir,library)});
 const instanceId=randomUUID(), runningCommit=(await run('git',['rev-parse','HEAD'])).trim();
 const mime = { '.html': 'text/html; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };
-const json = (res, status, body) => { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(body)); };
+const json = (res, status, body) => { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(apiValue(body))); };
 const handleRequest = async (req, res) => {
   try {
     if(!allowRequest(req,res))return;
@@ -79,7 +80,7 @@ const handleRequest = async (req, res) => {
           const action=humanAction[1],flow=direct.flow;
           return json(res,200,action==='cancel-queued'?await flow.cancelQueued(input):action==='retry'||action==='resume'?await flow.continue(input,action==='retry'):await flow[action](input));
         }
-        const requestAction=pathname.match(/^\/api\/direct\/requests\/(get|results|delegate|acknowledge|finish)$/);
+        const requestAction=pathname.match(/^\/api\/direct\/requests\/(get|results|delegate|finish)$/);
         if(req.method==='POST'&&requestAction){
           const action=requestAction[1],flow=direct.flow;
           const result=action==='cancel-queued'?await flow.cancelQueued(input):action==='get'?flow.get(input.humanRequestId):action==='results'?flow.results(input.humanRequestId,input.workId):action==='retry'||action==='resume'?await flow.continue(input,action==='retry'):await flow[action](input);

@@ -1,3 +1,4 @@
+import {fixtureModels} from '../model-fixtures.mjs';
 import {test,expect} from '@playwright/test';
 import {humanProjection} from '../../server/report-view.mjs';
 function fixture(){
@@ -12,7 +13,7 @@ test('Direct preserves original work until report commits; failure keeps origina
    if(argv[0]==='reports'){if(argv[1]==='configure'){if(failSave)return r.fulfill({status:503,json:{error:'保存できません'}});enabled=JSON.parse(argv[2]);}return r.fulfill({json:{ok:true,result:{enabled}}});}
    return r.fulfill({json:{ok:true,result:{enabled:false}}});
   }
-  return r.fulfill({json:humanProjection(raw)});
+  return r.fulfill({json:humanProjection(fixtureModels(raw,{refresh:true}))});
  });
  await page.goto('/agents');const log=page.locator('#agent-a .runs');
  await expect(log).toContainText('人間向けの報告を作成中');
@@ -47,7 +48,7 @@ test('official HTTP report setting validates and remains independent of notifica
 
 test('report mode off separates progress and final in Direct',async({page})=>{
  const raw=fixture();raw.requests[0].reportMode=false;raw.agents[0].nativeTurns=[];raw.runs=raw.runs.slice(0,1);Object.assign(raw.runs[0],{output:'調査しています\n\n**修正できました**',finalOutput:'**修正できました**'});
- await page.route('**/api/**',r=>r.fulfill({json:r.request().url().endsWith('/api/village')?{ok:true,result:{enabled:false}}:humanProjection(raw)}));
+ await page.route('**/api/**',r=>r.fulfill({json:r.request().url().endsWith('/api/village')?{ok:true,result:{enabled:false}}:humanProjection(fixtureModels(raw,{refresh:true}))}));
  await page.goto('/agents');await expect(page.locator('.response-progress')).toContainText('調査しています');await expect(page.locator('.response-final')).toContainText('修正できました');await expect(page.locator('details.response-history')).toHaveCount(0);
 
 });

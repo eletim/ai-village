@@ -1,6 +1,8 @@
-import {bindAgent,agentChange,runtimeObservation,projectControls} from './agent-lifecycle.mjs';
+import {migrateCanonicalStore} from './canonical-migration.mjs';
+import {requestStatus} from './request-lifecycle.mjs';
+import {agentControls,bindAgent,agentChange,runtimeObservation,projectControls} from './agent-lifecycle.mjs';
 import {migrateAgentStore} from './agent-migration.mjs';
-import {changeRun,observeRun,tracking,modelOf,projectObservation} from './run-lifecycle.mjs';
+import {changeRun,observeRun,tracking,modelOf,runState} from './run-lifecycle.mjs';
 import {migrateRequestStore} from './request-migration.mjs';
 import {migrateRunStore} from './run-migration.mjs';
 import {runMarker,markerContext,installInstructionsScript,verifyInstructionsScript} from './input-envelope.mjs';
@@ -59,6 +61,7 @@ export class DirectAgents {
     this.data=await migrateRunStore(this.dir,this.data);
     this.data=await migrateRequestStore(this.dir,this.data);
     this.data=await migrateAgentStore(this.dir,this.data);
+    this.data=await migrateCanonicalStore(this.dir,this.data);
     this.data.projects ||= [];
     for(const p of this.data.projects)if(p.deletion?.status==='running'){p.deletion.status='partial';p.deletion.interruptedAt=now();}
     for(const w of this.data.workshops)w.connectionType ||= 'ssh';
@@ -81,7 +84,7 @@ export class DirectAgents {
   reviewStates(){
     const keys=new Map(this.data.agents.map(a=>[a.id,[]]));
     for(const entry of completedEntries(humanProjection(this.data)))keys.get(entry.agentId)?.push(entry.key);
-    const finalRequests=(this.data.requests||[]).filter(q=>q.status==='completed');
+    const finalRequests=(this.data.requests||[]).filter(q=>requestStatus(q)==='completed');
     for(const q of finalRequests)keys.get(q.finalAgentId)?.push('request:'+q.id+':'+q.finalRunId);
     const legacy=new Set(this.data.reviewedCompletions||[]);
     return Object.fromEntries([...keys].map(([id,entries])=>{
@@ -247,13 +250,13 @@ export class DirectAgents {
   }
   async send(id,input,originKind='human'){return this.flow.start(id,input,originKind);}
   async attemptRun(r){return this.locked(r.agentId,async()=>{
-    if(r.state!=='queued'||r.nextTransferAt>Date.now())return r;
+    if(runState(r)!=='queued'||r.nextTransferAt>Date.now())return r;
     const a=this.agent(r.agentId);
-    if(this.agentDeleting(a)||(a.agentModel?.intent==='stop'||a.state==='terminated')||!a.tabId){changeRun(r,{type:'dispatch-blocked',actor:'program',at:Date.now(),reason:'target-unavailable-before-dispatch'});r.error='target-unavailable-before-dispatch';await this.save();return r;}
+    if(this.agentDeleting(a)||(a.agentModel?.intent==='stop'||agentControls(a).state==='terminated')||!a.tabId){changeRun(r,{type:'dispatch-blocked',actor:'program',at:Date.now(),reason:'target-unavailable-before-dispatch'});r.error='target-unavailable-before-dispatch';await this.save();return r;}
     const baseline=await this.observe(a);
     if(this.agentDeleting(a)){changeRun(r,{type:modelOf(r).state.kind==='queued'?'dispatch-blocked':'lost',actor:'program',at:Date.now(),reason:modelOf(r).state.kind==='queued'?'project-deletion-before-dispatch':'agent-stopped'});r.error='project-deletion-before-dispatch';await this.save();return r;}
-    const allowed=snapshot=>r.steerTarget?this.steeringBoundary(r,a,snapshot):a.canSend;
-    if(!allowed(baseline)){if(r.steerTarget){changeRun(r,{type:'dispatch-blocked',actor:'program',at:Date.now(),reason:'dispatch-boundary-changed'});r.error='補足対象の実行状態が変わりました。自動送信しません。';await this.save();}else r.queuedReason=a.sendReason;return r;}
+    const allowed=snapshot=>r.steerTarget?this.steeringBoundary(r,a,snapshot):agentControls(a).canSend;
+    if(!allowed(baseline)){if(r.steerTarget){changeRun(r,{type:'dispatch-blocked',actor:'program',at:Date.now(),reason:'dispatch-boundary-changed'});r.error='補足対象の実行状態が変わりました。自動送信しません。';await this.save();}else r.queuedReason=agentControls(a).sendReason;return r;}
     try{
       r.attachmentFiles=[];
       for(const record of r.attachments||[])r.attachmentFiles.push(await this.transferAttachment(a,record,await this.attachments.content(record.id)));
@@ -269,17 +272,17 @@ export class DirectAgents {
     const deliveredInstruction=(r.steerTarget&&!compact?'実行中の同じ作業への補足です。新しい依頼ではありません。以前のfinishは無効です。既存変更・子作業を保ち、再委任せず補足を反映し、委任ありのまとめ役だけ以下の新runでfinishしてください。\n':'')+r.instruction+((compact||a.location==='mayor')&&r.phase!=='report'?this.secretaryContext(a,compact):'')+(compact?'':await this.projectGuides.context(a,r,this.villageUrl))+this.flow.context(r)+markerContext(r.id);
     if(r.steerTarget){const previous=this.flow.run(r.steerTarget.runId);changeRun(previous,{type:'close-tracking',actor:'human',reason:'steering-successor-dispatched'});}
     changeRun(r,{type:'dispatch',actor:'program',at:Date.now(),sessionId:confirmed.sessionId||null,agentIdle:true});
-    projectObservation(r,'sending');
+
     Object.assign(r,{inputMarker:runMarker(r.id),inputEnvelopeMode:compact?'startup-v1':'legacy',dispatchAttemptedAt:now(),baselineRuntime:{sessionId:confirmed.sessionId,cursor:confirmed.cursor,fileIdentity:confirmed.fileIdentity},inputHash:inputHash(deliveredInstruction),agentSessionId:status.agentSessionId||null});
     await this.save();
     if(this.agentDeleting(a)){changeRun(r,{type:modelOf(r).state.kind==='queued'?'dispatch-blocked':'lost',actor:'program',at:Date.now(),reason:modelOf(r).state.kind==='queued'?'project-deletion-before-dispatch':'agent-stopped'});r.error='project-deletion-before-dispatch';await this.save();return r;}
-    try{await this.pmux(a,'tab','send','-w',a.workspaceId,a.tabId,deliveredInstruction);changeRun(r,{type:'transport-ack',actor:'program',at:Date.now()});projectObservation(r,'awaiting_input');}
-    catch{projectObservation(r,'send_unknown');r.unknownSince ||= now();r.error='送信結果不明。native入力を照合します。自動再送しません。';}
+    try{await this.pmux(a,'tab','send','-w',a.workspaceId,a.tabId,deliveredInstruction);changeRun(r,{type:'transport-ack',actor:'program',at:Date.now()});}
+    catch{r.unknownSince ||= now();r.error='送信結果不明。native入力を照合します。自動再送しません。';}
     this.updateAvailability(a);await this.save();return r;
   });}
   steeringBoundary(r,a,snapshot){
     const t=r.steerTarget,previous=t&&this.flow.run(t.runId);
-    if(!previous||a.provider!=='codex'||a.lifecycle!=='alive'||a.connectionState!=='connected'||a.activityState!=='busy'||a.runtime?.cliState!=='busy'||a.runtime?.permissionRequest||a.setupRequired||snapshot.incompleteTail||!snapshot.available)return false;
+    if(!previous||a.provider!=='codex'||agentControls(a).lifecycle!=='alive'||agentControls(a).connectionState!=='connected'||agentControls(a).activityState!=='busy'||a.runtime?.cliState!=='busy'||a.runtime?.permissionRequest||a.setupRequired||snapshot.incompleteTail||!snapshot.available)return false;
     const q=this.flow.root(r.humanRequestId);
     if(snapshot.sessionId!==t.sessionId||a.runtime.agentSessionId!==t.sessionId||snapshot.turns.at(-1)?.id!==t.turnId)return false;
     const observed=correlate(previous,snapshot);
@@ -327,7 +330,7 @@ export class DirectAgents {
       if(a.agentModel.intent==='stop'&&observation.process==='absent'&&a.processVerification?.remainingOwned!==0)observation.process='unknown';
       agentChange(a,{type:'observe',actor:'program',observation});
       if(a.setupRequired)a.error='作業場所の信頼確認が必要です。PurpleMuxで確認してください。';
-      a.currentAction=a.activityState==='busy'&&s.currentAction?.toolName?s.currentAction.toolName+': '+(s.currentAction.summary||''):null;
+      a.currentAction=agentControls(a).activityState==='busy'&&s.currentAction?.toolName?s.currentAction.toolName+': '+(s.currentAction.summary||''):null;
       if(snapshot.available){
         // Preserve completed output from previous sessions for Agent view revisions.
         // Never relabel an old turn with the newly observed session identity.
@@ -354,7 +357,7 @@ export class DirectAgents {
             const previous=this.data.runs.find(p=>p.id===next.steerTarget.runId);
             const start=previous&&resolveInputPosition(snapshot.inputs,previous.inputId,r.turnId);
             const end=resolveInputPosition(snapshot.inputs,next.inputId,r.turnId);
-            if(!previous||previous.state!=='superseded'||previous.sessionId!==r.sessionId||!start||!end||start.offset>=end.offset)break;
+            if(!previous||runState(previous)!=='superseded'||previous.sessionId!==r.sessionId||!start||!end||start.offset>=end.offset)break;
             previous.output=outputBetween(turn,start.offset,end.offset);
             next=previous;
           }
@@ -362,7 +365,7 @@ export class DirectAgents {
         if(['completed','interrupted','failed'].includes(observation.state)){
           Object.assign(r,{output:observation.output,completedAt:observation.completedAt||now(),completionEvent:observation.completionEvent,error:observation.error||null,errorCode:observation.errorCode||null,runtimeError:observation.runtimeError||null,completionOffset:observation.completionOffset});
         }else{
-          projectObservation(r,a.activityState==='waiting_input'?'waiting_input':observation.state==='running'&&s.alive?'running':observation.reason==='input-not-observed'&&r.dispatchAttemptedAt?'awaiting_input':'unknown');
+
           r.error=observation.reason||(observation.state==='running'&&!s.alive?'native-process-unavailable':null);
           const checkpoint=r.baselineRuntime;
           const sameStream=checkpoint&&(!checkpoint.sessionId||checkpoint.sessionId===snapshot.sessionId);
@@ -370,7 +373,7 @@ export class DirectAgents {
           const boundary=latest&&['completed','interrupted','failed'].includes(latest.state)&&(
             (sameStream&&snapshot.inputs.some(i=>i.offset>checkpoint.cursor&&i.turnId===latest.id))||
             (oldSession&&snapshot.sessionId&&oldSession!==snapshot.sessionId));
-          if(observation.state==='unknown'&&snapshot.available&&((oldSession&&snapshot.sessionId&&oldSession!==snapshot.sessionId)||observation.reason==='session-changed'||(boundary&&a.activityState==='idle'))){changeRun(r,{type:'lost',actor:'program',at:Date.now(),reason:oldSession&&snapshot.sessionId&&oldSession!==snapshot.sessionId?'session-changed':'turn-ended-without-marker'});r.inputReleasedAt ||= now();}
+          if(observation.state==='unknown'&&snapshot.available&&((oldSession&&snapshot.sessionId&&oldSession!==snapshot.sessionId)||observation.reason==='session-changed'||(boundary&&agentControls(a).activityState==='idle'))){changeRun(r,{type:'lost',actor:'program',at:Date.now(),reason:oldSession&&snapshot.sessionId&&oldSession!==snapshot.sessionId?'session-changed':'turn-ended-without-marker'});r.inputReleasedAt ||= now();}
         }
       }
       this.releaseStuckRuns(a);this.updateAvailability(a);await this.save();return snapshot;
@@ -398,15 +401,15 @@ export class DirectAgents {
     let trackingChanged=false;
     for(const r of this.data.runs){
       const before=r.runModel;
-      if(r.runModel?.supersededBy&&r.runModel.state.kind==='running'&&this.flow.run(r.runModel.supersededBy)?.state!=='queued')changeRun(r,{type:'close-tracking',actor:'human',reason:'steering-successor-settled'});
-      if(active(r)&&!this.data.agents.some(a=>a.id===r.agentId&&a.tabId&&!['terminated','stopping','stop_unknown'].includes(a.state))){r.error ||= 'agent-unavailable';this.releaseStuckRuns({id:r.agentId});}
+      if(r.runModel?.supersededBy&&r.runModel.state.kind==='running'&&this.flow.run(r.runModel.supersededBy)?.runModel.state.kind!=='queued')changeRun(r,{type:'close-tracking',actor:'human',reason:'steering-successor-settled'});
+      if(active(r)&&!this.data.agents.some(a=>a.id===r.agentId&&a.tabId&&!['terminated','stopping','stop_unknown'].includes(agentControls(a).state))){r.error ||= 'agent-unavailable';this.releaseStuckRuns({id:r.agentId});}
       trackingChanged ||= before!==r.runModel;
     }
     if(trackingChanged)await this.save();
     await this.flow.pump();await this.flow.notifications();
   }
   async stop(id,{requireProcessEvidence=false}={}){return this.locked(id,async()=>{
-    const a=this.agent(id);if(a.state==='terminated'&&(!requireProcessEvidence||a.processVerification?.remainingOwned===0))return a;
+    const a=this.agent(id);if(agentControls(a).state==='terminated'&&(!requireProcessEvidence||a.processVerification?.remainingOwned===0))return a;
     if(!a.tabId)fail('tab識別情報がないため、PurpleMuxで確認してください');
     const {tabs}=await this.pmux(a,'tab','list','-w',a.workspaceId);
     const target=tabs.find(t=>t.tabId===a.tabId);
@@ -427,7 +430,7 @@ export class DirectAgents {
       // bounded wait's outcome here: resolve the same way, never as a presumed success.
       for(const r of this.data.runs)if(r.agentId===id&&active(r)){
        r.agentTerminatedAt=a.terminatedAt;
-       if(['unknown','send_unknown'].includes(r.state)){r.error=r.error||'runtime-correlation-timeout';r.unknownResolvedAt=a.terminatedAt;}
+
        changeRun(r,{type:'lost',actor:'program',at:Date.now(),reason:'agent-stopped'});
       }
     }catch(e){agentChange(a,{type:'observe',actor:'program',observation:{connected:false,process:'unknown',activity:'unknown',canSteer:false}});a.error='終了結果不明。'+e.message+' 再度終了を選ぶと対象tabの存在を照合します。';}

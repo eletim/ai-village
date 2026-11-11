@@ -17,7 +17,7 @@ with open(sys.argv[1],'wb') as f:
  const env={...process.env,CODEX_HOME:dir,VILLAGE_NATIVE_CACHE_DIR:join(dir,'cache')},a={provider:'codex',connection:{connectionType:'local'}},status={agentSessionId:sid};let last,bytes=0,maxResponse=0,maxCallMs=0,calls=0;
  const execute=async(_,args)=>{const t0=performance.now(),raw=execFileSync(args[0],args.slice(1),{env,maxBuffer:15e6,timeout:60000}).toString();maxCallMs=Math.max(maxCallMs,performance.now()-t0);last=JSON.parse(raw);bytes+=Buffer.byteLength(raw);maxResponse=Math.max(maxResponse,Buffer.byteLength(raw));calls++;return raw;};
  let reader=new RuntimeReader(dir),s;const began=performance.now(),size=(await stat(file)).size;
- const run={dispatchConfirmed:true,baselineRuntime:{sessionId:sid,cursor:0},inputHash:inputHash('hello')};
+ const run={runModel:{facts:[{type:'transport-ack',at:0}]},baselineRuntime:{sessionId:sid,cursor:0},inputHash:inputHash('hello')};
  for(let i=0;i<200;i++){s=await reader.read(a,status,execute);assert(last.indexedBytes<=40*1024*1024);if(s.available)break;assert.equal(correlate(run,s).state,'unknown');}
  assert(s.available);assert.equal(s.cursor,size);assert.equal(correlate(run,s).state,'completed');const initial={size,calls,ms:Math.round(performance.now()-began),wireBytes:bytes,maxResponse,maxCallMs:Math.round(maxCallMs)};
  reader=new RuntimeReader(dir);let t0=performance.now();s=await reader.read(a,status,execute);assert.equal(last.indexedBytes,0);assert.equal(last.pieces.length,0);assert.equal(s.turns[0].output,'done');const unchanged={ms:Math.round(performance.now()-t0),wireBytes:Buffer.byteLength(JSON.stringify(last)),indexedBytes:last.indexedBytes};

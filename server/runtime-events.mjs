@@ -39,7 +39,7 @@ export function correlate(run,snapshot){
   const turn=snapshot.turns.find(t=>t.id===run.turnId);
   return turn?ownedTurn(run,turn,resolveInputPosition(snapshot.inputs,run.inputId,run.turnId),snapshot):{state:'unknown',reason:'turn-missing'};
  }
- if(run.dispatchConfirmed!==true&&!run.dispatchAttemptedAt)return {state:'unknown',reason:'dispatch-not-confirmed'};
+ if(!run.runModel?.facts.some(f=>f.type==='transport-ack')&&!run.dispatchAttemptedAt)return {state:'unknown',reason:'dispatch-not-confirmed'};
  const baseline=run.baselineRuntime;
  if(!baseline)return {state:'unknown',reason:'legacy-run-without-runtime-checkpoint'};
  if(baseline.sessionId&&baseline.sessionId!==snapshot.sessionId)return {state:'unknown',reason:'session-changed'};

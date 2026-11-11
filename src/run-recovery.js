@@ -5,7 +5,7 @@ export function recoveryReason(r){
  if(reason?.startsWith('legacy-'))return '旧データに完了を確認できない送信が残っています。既存の成果・副作用を確認してください。';
  return '実行が停止したか、完了登録を確認できません。既存の成果・副作用を確認してください。';
 }
-export const needsRunRecovery=(q,r,w)=>!!q&&(q.requestModel? q.requestModel.state.kind==='active'&&q.requestModel.state.review.length>0 : ['active','finalizing'].includes(q.status)&&!!w&&(['failed','interrupted','terminated'].includes(r.state)||(r.phase==='report'&&r.state==='completed'&&!w.finish)))&&!!w;
+export const needsRunRecovery=(q,r,w)=>!!w&&q?.requestModel?.state.kind==='active'&&q.requestModel.state.review.length>0;
 export function requestReviewReason(q,r){
  const reasons=q.requestModel?.state.kind==='active'?q.requestModel.state.review:[];
  return reasons.map(reason=>reason.startsWith('run-needs-review:')?'送信が失敗・中断・確認できずで終了しました。既存の成果・副作用を確認してください。':reason.startsWith('declaration-conflict:')?'完了申告と観察した事実が一致しません。':reason==='needs-decision'||reason==='legacy-needs-decision'?'送信が終了しています。成果を確認し、次の扱いを決めてください。':reason).join(' / ')||recoveryReason(r);
