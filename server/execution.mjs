@@ -20,6 +20,8 @@ export function run(command, args, { input, timeout = 60000, signal, maxOutput =
     };
     const abort = () => stop(new Error('処理はキャンセルされました。'));
     const timer = setTimeout(() => stop(new Error(`${command}: timeout`)), timeout);
+    // Decode as a stream: a multi-byte character split across pipe chunks must not become U+FFFD.
+    child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');
     child.stdout.on('data', chunk => { stdout += chunk; if (stdout.length > maxOutput) stop(new Error(`${command}: output too large`)); });
     child.stderr.on('data', chunk => { stderr = (stderr + chunk).slice(-12000); });
     child.on('error', error => finish(error));
