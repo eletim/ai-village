@@ -272,7 +272,7 @@ export class DirectAgents {
   });}
   steeringBoundary(r,a,snapshot){
     const t=r.steerTarget,previous=t&&this.flow.run(t.runId);
-    if(!previous||a.provider!=='codex'||agentControls(a).lifecycle!=='alive'||agentControls(a).connectionState!=='connected'||agentControls(a).activityState!=='busy'||a.runtime?.cliState!=='busy'||a.runtime?.permissionRequest||a.setupRequired||snapshot.incompleteTail||!snapshot.available)return false;
+    if(!previous||!['codex','claude'].includes(a.provider)||(a.provider==='claude'&&previous.phase==='report')||agentControls(a).lifecycle!=='alive'||agentControls(a).connectionState!=='connected'||agentControls(a).activityState!=='busy'||a.runtime?.cliState!=='busy'||a.runtime?.permissionRequest||a.setupRequired||snapshot.incompleteTail||!snapshot.available)return false;
     const q=this.flow.root(r.humanRequestId);
     if(snapshot.sessionId!==t.sessionId||a.runtime.agentSessionId!==t.sessionId||snapshot.turns.at(-1)?.id!==t.turnId)return false;
     const observed=correlate(previous,snapshot);
@@ -340,6 +340,11 @@ export class DirectAgents {
           // Bring the superseded chain up to each confirmed input boundary.
           // This also captures messages emitted between dispatch and acceptance.
           const turn=snapshot.turns.find(t=>t.id===r.turnId);
+          const predecessor=this.flow.run(r.steerTarget.runId);
+          if(r.steeringProvider==='claude'&&predecessor?.turnId!==r.turnId){
+            const priorTurn=snapshot.turns.find(t=>t.id===predecessor?.turnId);
+            if(priorTurn?.state==='completed'&&runState(predecessor)==='superseded')predecessor.output=priorTurn.output;
+          }
           let next=r;
           const visited=new Set();
           while(turn?.messageOffsets===true&&next.steerTarget&&!visited.has(next.id)){

@@ -138,7 +138,8 @@ test('incremental snapshots match the frozen pre-index parser for both providers
  for(const [provider,rows] of [['codex',codex],['claude',claude]]){
   const file=provider==='codex'?f.file:join(f.dir,'.claude','projects','fixture',sid+'.jsonl');await mkdir(join(file,'..'),{recursive:true});await writeFile(file,'');
   const env={...f.env,HOME:f.dir},execute=async(a,args)=>execFileSync(args[0],args.slice(1),{env,maxBuffer:15e6}).toString();
-  for(const row of rows){await appendFile(file,lines([row]));const actual=await f.reader.read({...f.a,provider},f.status,execute),expected=JSON.parse(execFileSync('python3',[reference,provider,sid],{env}));for(const field of ['available','cursor','turns','inputs','modelInfo'])assert.deepEqual(field==='inputs'?actual[field].map(({aliases,...i})=>i):actual[field],expected[field],provider+' '+field);}
+  for(const row of rows){await appendFile(file,lines([row]));const actual=await f.reader.read({...f.a,provider},f.status,execute),expected=JSON.parse(execFileSync('python3',[reference,provider,sid],{env}));if(provider==='claude'){actual.inputs=actual.inputs.map(({explicitTurn,source,...i})=>i);actual.turns=actual.turns.map(({completionOffset,...t})=>t);}
+   for(const field of ['available','cursor','turns','inputs','modelInfo'])assert.deepEqual(field==='inputs'?actual[field].map(({aliases,...i})=>i):actual[field],expected[field],provider+' '+field);}
  }
 });
 test('Direct runtime retains local/SSH routing and does not mix equal session IDs on different hosts',async t=>{
@@ -180,4 +181,17 @@ test('fresh Claude missing session stays unrecorded through the indexed reader, 
  const first=await f.reader.read(a,f.status,execute);assert.equal(first.unrecorded,true);assert.equal(first.available,false);assert.equal(first.sessionId,sid);
  await writeFile(join(root,sid+'.jsonl'),'');await mkdir(join(root,'other'));await writeFile(join(root,'other',sid+'.jsonl'),'');
  const ambiguous=await f.reader.read(a,f.status,execute);assert.equal(ambiguous.available,false);assert.notEqual(ambiguous.unrecorded,true);
+});
+
+test('Claude queued_command continues parent chain and indexed restart matches marker ownership',async t=>{
+ const f=await setup(t),file=join(f.dir,'.claude/projects/test',sid+'.jsonl');await mkdir(join(file,'..'),{recursive:true});
+ const env={...f.env,HOME:f.dir},execute=async(a,args)=>execFileSync(args[0],args.slice(1),{env}).toString(),agent={...f.a,provider:'claude'};
+ await writeFile(file,lines([{type:'user',uuid:'u',message:{content:'initial'}},{type:'assistant',uuid:'tool',parentUuid:'u',message:{stop_reason:'tool_use',content:[]}}]));
+ const baseline=await f.reader.read(agent,f.status,execute);
+ const r={id:'supplement',inputMarker:'ai-village-run-supplement',steeringProvider:'claude',steerTarget:{turnId:'u',sessionId:sid},priorInputs:baseline.inputs.map(({id,offset})=>({id,offset})),baselineRuntime:baseline,dispatchAttemptedAt:'now'};
+ await appendFile(file,lines([{type:'attachment',uuid:'queued',parentUuid:'tool',attachment:{type:'queued_command',prompt:'<pasted_content> ai-village-run-supplement'}},{type:'user',uuid:'result',parentUuid:'queued',message:{content:[{type:'tool_result',content:'done'}]}},{type:'assistant',uuid:'end',parentUuid:'result',message:{stop_reason:'end_turn',content:'KUMQUAT'}}]));
+ f.reader=new RuntimeReader(f.dir);const snapshot=await f.reader.read(agent,f.status,execute);
+ assert.equal(snapshot.turns.length,1);assert.equal(snapshot.inputs.length,2);assert.equal(snapshot.inputs[1].source,'claude-queued');assert.equal(correlate(r,snapshot).state,'completed');assert.equal(correlate(r,snapshot).output,'KUMQUAT');assert(Number.isFinite(snapshot.turns[0].completionOffset));
+ const early=structuredClone(snapshot);early.turns[0].completionOffset=early.inputs[1].offset-1;assert.equal(correlate(r,early).reason,'steering-completion-before-input');
+ const input=snapshot.inputs[1];assert.equal(correlate(r,{...snapshot,inputs:[...snapshot.inputs,{...input,id:'foreign',text:'outside',offset:input.offset+1}]}).state,'unknown');
 });

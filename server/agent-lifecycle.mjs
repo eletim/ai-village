@@ -18,7 +18,7 @@ export function projectControls(a,runs){
  if(!a.agentModel)bindAgent(a);
  const observation=a.agentModel.observation;if(!observation)return;
  const owned=runs.filter(r=>r.agentId===a.id&&['sent','running'].includes(r.runModel?.state.kind)&&!r.runModel.supersededBy),owner=owned.length===1?owned[0]:null;
- const canSteer=a.provider==='codex'&&observation.connected&&observation.process==='alive'&&observation.activity==='running'&&a.runtime?.cliState==='busy'&&!a.runtime?.permissionRequest&&!a.setupRequired&&owner?.runModel.state.kind==='running'&&!owner.error&&owner.sessionId===a.runtime.agentSessionId;
+ const canSteer=['codex','claude'].includes(a.provider)&&(a.provider!=='claude'||owner?.phase!=='report')&&observation.connected&&observation.process==='alive'&&observation.activity==='running'&&a.runtime?.cliState==='busy'&&!a.runtime?.permissionRequest&&!a.setupRequired&&owner?.runModel.state.kind==='running'&&!owner.error&&owner.sessionId===a.runtime.agentSessionId;
  delete a.steerTarget;if(canSteer)a.steerTarget={runId:owner.id,sessionId:owner.sessionId,turnId:owner.turnId};
  agentChange(a,{type:'observe',actor:'program',observation:{...observation,canSteer:!!canSteer,inputPending:owned.length>0}});
 }

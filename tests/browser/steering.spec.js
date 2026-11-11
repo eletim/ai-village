@@ -18,3 +18,10 @@ test('accepted supplement displays its segment, not the cumulative native turn',
  await page.route('**/api/**',r=>r.fulfill({json:s}));await page.goto('/agents');const messages=page.locator('.message.assistant');await expect(messages).toHaveCount(1);await expect(messages).toContainText('以前の途中報告');
  s.runs[1].output='以前の途中報告';native.output+='\n\n以前の途中報告';await expect(messages).toHaveCount(2);await expect(messages.nth(1)).toContainText('以前の途中報告');
 });
+
+test('Claude steering labels uncertain timing without changing Codex label',async({page})=>{
+ const a={id:'c',name:'Claude',provider:'claude',state:'busy',canSteer:true,canQueue:true,connection:{},steerTarget:{runId:'r',turnId:'t',sessionId:'s'}};
+ await page.route('**/api/**',r=>r.fulfill({json:{agents:[a],workshops:[],projects:[],runs:[],reviews:{},notification:{enabled:false}}}));
+ await page.goto('/agents');const button=page.locator('form[data-send]>button[type=submit]');await expect(button).toHaveText('実行中に補足');await expect(button).toHaveAttribute('title',/保証されません/);await expect(button).toHaveAttribute('aria-label',/保証されません/);
+ a.provider='codex';await expect(button).toHaveAttribute('aria-label','実行中に補足');await expect(button).not.toHaveAttribute('title',/保証されません/);
+});

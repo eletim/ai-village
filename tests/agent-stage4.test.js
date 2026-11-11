@@ -49,3 +49,10 @@ test('agent migration backs up once, distrusts saved idle flags, preserves activ
  await assert.rejects(migrateAgentStore(dir,{...migrated,agentStateVersion:2}),/Unsupported/);
  await assert.rejects(migrateAgentStore(dir,{...migrated,agents:[{id:'a',agentModel:{id:'wrong'}}]}),/Invalid/);
 });
+test('Claude steering requires the same observed running owner boundaries and excludes report',()=>{
+ const initial={id:'a',provider:'claude',runtime:{cliState:'busy',agentSessionId:'s'}};
+ const run={id:'r',agentId:'a',sessionId:'s',turnId:'t',runModel:{state:{kind:'running'}}};
+ const verify=(alter=()=>{})=>{const a=bindAgent(structuredClone(initial)),runs=[structuredClone(run)];agentChange(a,{type:'observe',actor:'program',observation:{connected:true,process:'alive',activity:'running',canSteer:false}});alter(a,runs);projectControls(a,runs);return a;};
+ assert.equal(testView(verify()).canSteer,true);
+ for(const alter of [(a)=>a.agentModel.observation.connected=false,(a)=>a.agentModel.observation.process='unknown',(a)=>a.agentModel.observation.activity='input-needed',(a)=>a.runtime.cliState='idle',(a)=>a.runtime.permissionRequest=true,(a)=>a.setupRequired=true,(a,r)=>r[0].error='uncertain',(a,r)=>r[0].phase='report',(a,r)=>r[0].sessionId='other',(a,r)=>r[0].runModel.state.kind='sent',(a,r)=>r.push(structuredClone(r[0]))])assert.equal(testView(verify(alter)).canSteer,false);
+});

@@ -205,7 +205,9 @@ function renderBoard(){
   const sendLabel=send.form.dataset.sending==='true'?'送信中…':pending.has(a.id)?'送信結果を確認中':a.canSteer?'実行中に補足':a.canQueue&&!a.canSend?'待機キューへ':'送信';
   send.innerHTML=sendLabel==='送信'?actionSVG('send'):esc(sendLabel);
   send.classList.toggle('icon-send',sendLabel==='送信');send.setAttribute('aria-label',sendLabel);
-  send.title=sendLabel+' · '+(pending.has(a.id)?'送信結果を確認中です。自動再送しません。':a.canSteer?'実行中の同じ依頼に補足します。native受付を照合し、通知は依頼全体で1回です。':a.canQueue&&!a.canSend?'別の依頼として保存し、現在の応答が終わったら渡します。':a.sendReason||'指示を送信します。');
+  const claudeSteering=a.canSteer&&a.provider==='claude'?'作業中か終了直後のどちらに反映されるかは保証されません。':'';
+  if(claudeSteering)send.setAttribute('aria-label',sendLabel+' · '+claudeSteering);
+  send.title=claudeSteering+sendLabel+' · '+(pending.has(a.id)?'送信結果を確認中です。自動再送しません。':a.canSteer?'実行中の同じ依頼に補足します。native受付を照合し、通知は依頼全体で1回です。':a.canQueue&&!a.canSend?'別の依頼として保存し、現在の応答が終わったら渡します。':a.sendReason||'指示を送信します。');
 
   card.hidden=!ids.has(a.id);card.style.order=list.findIndex(x=>x.id===a.id);
   if(!card.hidden){card.autogrow.update();scrolls.get(a.id).restore();}

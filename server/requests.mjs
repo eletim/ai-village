@@ -85,6 +85,7 @@ export class RequestFlow {
     if(this.d.data.runs.some(r=>r.requestId===input.requestId)||this.requests.some(q=>q.clientRequestId===input.requestId))fail('requestIdの再利用です');
     const previous=this.run(a.steerTarget.runId);let q=this.root(previous.humanRequestId),w=this.work(q,previous.workId);
     if(requestStatus(q)!=='active'){
+     if(a.provider==='claude')fail('補足対象の依頼は受付中ではありません');
      q={reportMode:this.reportStatus().enabled,id:randomUUID(),clientRequestId:input.requestId,instruction:input.instruction,travelContexts,attachments,originAgentId:agentId,finalAgentId:agentId,revision:0,createdAt:now(),works:[]};
      w={id:randomUUID(),parentWorkId:null,agentId,runIds:[]};q.rootWorkId=w.id;q.works.push(w);this.requests.push(q);
     }
@@ -92,7 +93,7 @@ export class RequestFlow {
     // A successor keeps the one human request/ticket and invalidates any old finish.
     if(q.requestModel)this.active(q);q.revision++;
 
-    const r=this.enqueue(q,w,input.instruction,'steer:'+input.requestId,'steering',{...(q.report&&previous.phase==='report'?{phase:'report'}:{}),requestId:input.requestId,steerTarget:structuredClone(a.steerTarget),priorInputs:snapshot.inputs.filter(i=>i.turnId===previous.turnId).map(({id,offset})=>({id,offset})),travelContexts,attachments,contextAttachments:[...new Map([...(previous.contextAttachments||previous.attachments||[]),...attachments].map(a=>[a.id,a])).values()],contextTravelContexts:structuredClone(travelContexts.length?travelContexts:previous.contextTravelContexts||previous.travelContexts||[])});
+    const r=this.enqueue(q,w,input.instruction,'steer:'+input.requestId,'steering',{...(q.report&&previous.phase==='report'?{phase:'report'}:{}),requestId:input.requestId,steeringProvider:a.provider,steerTarget:structuredClone(a.steerTarget),priorInputs:snapshot.inputs.filter(i=>i.turnId===previous.turnId).map(({id,offset})=>({id,offset})),travelContexts,attachments,contextAttachments:[...new Map([...(previous.contextAttachments||previous.attachments||[]),...attachments].map(a=>[a.id,a])).values()],contextTravelContexts:structuredClone(travelContexts.length?travelContexts:previous.contextTravelContexts||previous.travelContexts||[])});
     q.initialRunId ||= r.id;changeRun(previous,{type:'supersede',actor:'human',successorId:r.id});
     await this.d.save();await this.d.attemptRun(r);return r;
    }

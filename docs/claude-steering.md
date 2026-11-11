@@ -1,36 +1,37 @@
-# 実行中Claude Agentへの補足（調査結果：未実装）
+# 実行中Claude Agentへの補足（実装済み・反映タイミング保証なし）
 
-`canSteer`はCodexのみ対象（`server/direct.mjs` `updateAvailability()`、`a.provider==='codex'`が前提）。Claude Agentでは常に`canSteer`が立たず、追加メッセージは常に新規独立依頼として待機キューに積まれる。この節は「Claude Code CLIに実行中turnへの安全な補足手段があるか」の実機調査結果であり、**実装はしていない**（下記の理由による）。
+Claudeでも「実行中に補足」を送れる。作業中に即時反映されるか、現在の作業が終わった直後に反映されるかは保証しない。この制約をボタンのtitleとaria-labelに表示する。以前のv2.1.272の調査ではこのタイミング差を理由に見送ったが、村長の決定により両経路を同じ依頼への補足として扱う。
 
-## 調査した実装と境界
+## 送信条件と依頼の扱い
 
-Claude Code CLIはクローズドソースであり、Codex調査（`docs/codex-steering.md`）のようにRustプロトコル定義を直接読むことはできない。公開APIにもsteering/interrupt/queue相当のCLIフラグは存在しない（`claude --help`に該当するオプションなし）。そのため、隔離サンドボックス（`/tmp`配下、村・本番サーバーとは無関係のtmuxセッションで`claude`を直接起動。村のAgentとして登録せず、`direct.mjs`は一切経由していない）で、tab送信（`tab-input-runtime.ts`の`submitTabInput`と同じ手順: literal text → 250ms → Enter 1回）を busy 中に送った場合の挙動をJSONLレベルで直接観測した。
+接続済み・process alive・activity running・CLI busy・権限確認やsetup待ちでない・エラーのない所有runが1つだけrunning・session一致、という既存のCodex条件を共有する。Claudeの報告phase、照合待ち、送信結果確認中は補足不可。Codexの既存の条件・文言・同一ターン照合は変更しない。
 
-### 実機検証で確認した挙動（v2.1.272）
+既存のタブ入力でrun目印付きの封筒を送る。origin=steeringの送信を同じ依頼・作業に追加し、以前の送信をsupersededにする。新しい依頼や通知権は作らない。委任ありのまとめ役の以前の完了申告は無効になり、新しい補足の回で申告する。規則の定義元は`server/agent-rules.mjs`であり、別のnativeターンで届いても同じ作業・再委任不要と伝える。
 
-送信タイミングによって挙動が分岐することを確認した:
+## ネイティブ照合
 
-1. **ターンが既にidle（前のターンが完了済み）のときに送信**: 通常の新規独立`type:'user'`ターンとして記録される。既存のClaude分岐（`server/runtime-events.py`）の解析と完全に一致する、現在の挙動そのもの。
-2. **ツール呼び出し（Bashコマンド等）がブロッキングで実行中のときに送信**: TUI上は「queued」と表示されるが、JSONLには新しい`type:'user'`ターンは**作成されない**。代わりに`type:'attachment'`（`attachment.type:'queued_command'`、`attachment.prompt`に全文）としてuuid鎖が**同じターンの継続**として記録され、次のtool_resultに続くモデルへの入力に、以下のsystem-reminderとして埋め込まれて配送される:
-   > "This is how Claude Code surfaces messages the user sends mid-turn — within the running turn, often alongside the next tool result, rather than as a separate conversation turn. Address the message above as you continue this turn."
-   
-   実際に、busy中に送った補足（"also say the word KUMQUAT"）は、元のタスク完了と**同じ応答**の中でモデルに反映された。これは単純な「次ターンへのキュー」ではなく、**現在のターンへの実配送**であり、Codexのsteeringに機能的に近い。
-3. **ツール呼び出しが無く、純粋な思考（テキスト生成）中のときに送信**: ケース2と見た目は似ているが、JSONL上は**通常の新規独立`type:'user'`ターン**として記録され（attachmentではない）、現在のターンがend_turnで完結した**後**に別の応答として処理された。つまりケース1と同じ「次ターンへのキュー」挙動になる。
+受付は全文一致ではなくrun目印のみ。パーサー版は6。
 
-### 実装しない理由
+- **queued_command**: Claude JSONLの`type: attachment`、`attachment.type: queued_command`、文字列`attachment.prompt`を入力として索引化する。既知のparentUuid鎖でターンを特定できた場合だけ受け付ける。新規ターンを作らず、親ターンの実行・終了状態を変えない。
+- **次のuserターン**: サーバーがClaude補足として記録した送信に限り、対象ターンが正常終了し、そのcompletionOffsetより後の入力で、直後のターンが`claude-user`として記録された場合だけ対応付ける。間に別ターンがある・元ターン未終了・出所不明なら拒否する。元ターンの出力は元の送信に保持する。
+- 補足の終了は入力位置より後のnative終了記録で確認する。入力以前の終了を流用しない。同じターン内の補足出力もイベント位置で分離する。
 
-ケース2の発見自体は「Claudeには補足手段が全くない」という前提を覆すものだが、Codexの`turn/steer`（`protocol/src/turn_input.rs`の明示的プロトコル）と比較して、以下の点で**村のUIが「補足は現在の作業に反映される」と約束できるレベルの安定性・検証可能性を欠く**と判断した:
+fileIdentity、cursor、session、既知入力の連続性、重複・競合入力、所有入力の一致を引き続き検査する。受付不明は従来どおり確認できずとし、自動再送しない。Agentの出力文から受付・成功を推測しない。
 
-- **送信した瞬間にケース2とケース3のどちらになるかは、村側から事前に判定できない。** 村は`tab status`のポーリング（数秒間隔）でしか内部状態を観測できず、「ツール呼び出しが現在進行中か」をリアルタイムに保証する手段がない。Codexは`steerTarget`に紐づく`turnId`/`sessionId`をnative受付と照合して確定できるが、Claudeの`attachment`配送はタイミング依存で、村が送信ボタンを押した時点でどちらに転ぶか制御できない。
-- **ケース2の配送形式（`type:'attachment'`、`attachment.prompt`）は、`server/runtime-events.py`のClaude分岐が現在一切認識していない新しいイベント種別。** これをCodexのsteering同様に「native受付の正式な確認」として使うには、`parse_event`に新しい解析ロジック（`attachment.prompt`のハッシュ化・turn所有権への統合）を追加する必要があり、既存のCodex steeringが頼っている「`response_item`/`user_message`の明示的turn_id」のような安定した一次情報とは異質。
-- **これはClaude Code（クローズドソース、頻繁に更新される）の非公開UI挙動の観測結果であり、公開・安定が保証されたプロトコルではない。** Codex調査はオープンソースのRustプロトコル定義（`turn_input.rs`のSteer/StartOrSteer）を直接確認した上で実装したのに対し、ここではv2.1.272一バージョンの黒箱観測のみ。将来のバージョンで挙動が変わらない保証はない。
+## 隔離実機検証（2026-11-11）
 
-以上より、「本当に実行中turnへ安全に割り込める」とUIで約束するための十分な検証可能性・安定性が無いと判断し、`canSteer`をClaudeへ拡張する実装は見送った。
+本番データを使わず、別ポート・別状態・通知オフの村でClaude Code v2.1.322を起動した。
 
-## UI側の緩和策（提案のみ、未実装）
+| 場面 | 実際の記録 | 結果 |
+| --- | --- | --- |
+| Bashで35秒待機中に補足 | 同じターンのqueued_command。promptにはpasted_content包装も存在 | 同じ応答にKUMQUAT_Aが反映され、同じ依頼で完了・報告まで成功 |
+| ツールを使わない長文生成中に補足 | 元ターン正常終了後、直後のuserターン | KUMQUAT_Bが次の応答に反映され、同じ依頼で完了・報告まで成功 |
+| Codex CLI 0.163.0でツール実行中に補足 | 従来どおり同じターン | KUMQUAT_CODEXが反映され、完了・報告まで成功 |
 
-依頼範囲外だが参考として: 「待機キューへ」の説明文に、Claudeの場合は「ツール実行中に送ると稀に現在の作業へ即時反映されることがあるが、村はそれを保証・検知できない」旨を注記する、程度の期待値調整は検討の余地がある。実装はしていない。
+完了通知に相当するdisabled記録は各依頼1件。最終コードで3件のネイティブ記録を再照合して正常終了も確認した。Codexの最初の試行は起動直後で送信前にtarget-unavailable-before-dispatchとなったため、自動再送せず、待機を確認して別の検証依頼を作成した。
 
-## 実機検証
+単体テスト321成功・1スキップ。型・構文・ビルド成功。Playwrightは125成功・15失敗で、基準8059616の124成功・15失敗と失敗ケースが完全一致。追加したClaudeの説明文とCodexの文言維持のテストは成功。
 
-隔離tmuxセッション（`/tmp`配下の使い捨てディレクトリ、村・本番サーバーとは無関係、村のAgentとしては未登録）で`claude`を直接起動し、foregroundでブロックするPythonのsleepコマンドを実行させ、busy中に2回・idle中に1回・純粋thinking中に1回の補足を送信して上記3パターンを確認した。検証後、`claude-steering-experiment`ディレクトリと対応するセッションJSONL・村のnative-indexキャッシュ（該当sidは村に一度も登録されていないため元から存在せず）を削除済み。既存Agent・稼働checkout・稼働サービスは変更していない。
+## 限界
+
+Claudeのqueued_commandは観察したCLI記録形式で、将来の互換性や反映時刻を保証する公開プロトコルではない。送信時点では2経路のどちらになるか選べない。途中に外部入力、別セッションや別ターンが入り、所有を確定できない場合は安全側に受付不明とする。実機検証は各経路1回であり、あらゆるタイミング競合やCLI版を網羅しない。通知オフで記録の一意性を確認しており、外部通知の実配送は検証対象外。
