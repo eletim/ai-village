@@ -4,7 +4,7 @@ import {mkdtemp,mkdir,writeFile,readFile,rm,readdir} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {execFileSync} from 'node:child_process';
-import {installInstructionsScript,runMarker,markerContext,matchesRunInput} from '../server/input-envelope.mjs';
+import {installInstructionsScript,verifyInstructionsScript,runMarker,markerContext,matchesRunInput} from '../server/input-envelope.mjs';
 import {inputHash} from '../server/runtime-events.mjs';
 import {DirectAgents} from '../server/direct.mjs';
 
@@ -17,6 +17,12 @@ test('startup instructions append to owned PurpleMux provider prompts and never 
   const result=JSON.parse(execFileSync('python3',['-c',installInstructionsScript,'ws-test',provider,body],{cwd,env:{...process.env,HOME:home}}));
   assert.deepEqual(result,{installed:true,hash:inputHash(body)});
   assert.equal(await readFile(path,'utf8'),'# purplemux context\noriginal\n\n'+body);
+  const verify=()=>JSON.parse(execFileSync('python3',['-c',verifyInstructionsScript,'ws-test',provider,inputHash(body)],{cwd,env:{...process.env,HOME:home}}));
+  assert.equal(verify().verified,true);
+  await writeFile(path,'# purplemux context\nrewritten');assert.equal(verify().verified,false);
+  await writeFile(path,body.replace('日本語','changed'));assert.equal(verify().verified,false);
+  await rm(path);assert.throws(verify);
+
  }
  assert.deepEqual(await readdir(cwd),[]);
  assert.throws(()=>execFileSync('python3',['-c',installInstructionsScript,'../elsewhere','codex',body],{env:{...process.env,HOME:home},stdio:'pipe'}));

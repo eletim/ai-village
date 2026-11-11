@@ -82,3 +82,45 @@ receiving 302. These are pre-existing failures, not regressions. Targeted suites
 Cleanup: both Agents terminated with zero remaining owned processes; all four
 PurpleMux tabs and both workspaces were removed. The isolated server was stopped,
 and its scratch state, native session logs/cache and workspace prompts removed.
+
+## Defense against PurpleMux prompt rewrites
+
+PurpleMux regenerates the entire provider prompt on server startup
+(`writeAllWorkspacePrompts`), workspace rename and directory updates. A persisted
+`startup-v1` flag or unchanged session ID is insufficient: resuming the same
+session can load a prompt from which the village rules have disappeared.
+
+Immediately before every short dispatch, the village now reads the prompt on the
+Agent's connection host and hashes the complete installed
+`ai-village-instructions` block. It compares against the **installation** hash,
+not a newly generated version of today's rules. A missing/changed block or any
+read/validation failure durably downgrades the Agent to `legacy`, recording the
+reason and time. The current dispatch uses full context, including full report
+instructions if a compact report was already queued. Subsequent dispatches stay
+legacy even if someone restores the file; this check never reinstalls rules.
+
+This is a conservative defense, not proof of the live CLI's memory: file checking
+and dispatch are not atomic, and external rewrites/restores or a CLI restart can
+race the check. Long term, PurpleMux should expose an official additional-prompt
+facility that survives its own regeneration and has a verifiable launch identity.
+The village should use that facility rather than append to generated files.
+
+Follow-up verification (2026-11-11): a separate throwaway village on port 5288,
+separate state/cwd, notifications off, and a real Claude Agent. With the block
+intact, work and report used `startup-v1`. Then the **owned test workspace's**
+Claude prompt was replaced with its original PurpleMux-only content. Without
+changing the native session ID, the next work and report both used `legacy`,
+contained full finish instructions in native JSONL, and reached accepted /
+completed after the Agent's own get/finish calls. Native input lengths were
+840/768 characters before and 2,467/1,518 after (work/report, including CLI
+presentation). Both human requests completed. No production workspace was changed.
+
+The test Agent was stopped with zero remaining owned processes, both tabs and its
+workspace deleted, the isolated server stopped and temporary state/native cache
+removed. This follow-up did not restart/resume the actual CLI or test an SSH host;
+the same-session downgrade and successful full-context dispatch were exercised.
+Automated coverage adds missing/changed blocks, read failure, repeated intact
+checks, persistent downgrade even after restoration, queued report recovery, and
+`origin=result` delivery containing `<pasted_content>` transformed by Claude-style
+wrapping/escaping. Final `npm test`: 277 passed, the same 2 pre-existing HTTP 302
+failures; the five related suites: 94/94 passed. Syntax and diff checks passed.

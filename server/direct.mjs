@@ -1,4 +1,4 @@
-import {runMarker,markerContext,installInstructionsScript} from './input-envelope.mjs';
+import {runMarker,markerContext,installInstructionsScript,verifyInstructionsScript} from './input-envelope.mjs';
 import {sessionModel} from './session-model.mjs';
 import {DirectStore,writeSnapshot} from './direct-store.mjs';
 import {ProjectGuides} from './project-guides.mjs';
@@ -160,6 +160,16 @@ export class DirectAgents {
     }catch{a.inputEnvelope={mode:'legacy',reason:'startup-instructions-unavailable'};}
     await this.save();
   }
+  async verifyInstructions(a){
+    if(a.inputEnvelope?.mode!=='startup-v1')return;
+    let reason='startup-instructions-missing-or-changed';
+    try{
+      const result=JSON.parse(await this.execute(a,['python3','-c',verifyInstructionsScript,a.workspaceId,a.provider,a.inputEnvelope.hash||'']));
+      if(result.verified===true)return;
+    }catch{reason='startup-instructions-check-failed';}
+    a.inputEnvelope={...a.inputEnvelope,mode:'legacy',reason,downgradedAt:now()};
+    await this.save();
+  }
   async save(){
     const task=this.store.save();this.queue=task;await task;
   }
@@ -243,8 +253,11 @@ export class DirectAgents {
     }catch{r.attachmentError='添付を接続先へ転送できません。送信前に再試行します。';r.nextTransferAt=Date.now()+30000;await this.save();return r;}
     const confirmed=r.attachments?.length?await this.observe(a):baseline;if(!allowed(confirmed)||this.agentDeleting(a)){if(r.steerTarget){r.state='interrupted';r.error='添付転送中に補足対象が変わりました。自動送信しません。';await this.save();}return r;}
     if(r.autoRecoveryFrom&&(Date.now()>r.recoveryDeadline||!this.flow.recoveryBoundary(this.flow.run(r.autoRecoveryFrom),confirmed,a.runtime))){r.state='interrupted';r.error='自動再試行前に新しい入力または状態変化を検出しました。requests getで確認し手動で復旧してください。';await this.save();return r;}
+    await this.verifyInstructions(a);
     const status=a.runtime;
     const compact=a.inputEnvelope?.mode==='startup-v1';
+    // A report may have been queued while startup rules were still available.
+    if(r.phase==='report'&&!compact&&r.instruction.startsWith('報告資料（phase=report）:\n'))r.instruction=this.flow.reportPrompt(this.flow.root(r.humanRequestId));
     const deliveredInstruction=(r.steerTarget&&!compact?'実行中の同じ作業への補足です。新しい依頼ではありません。以前のfinishは無効です。既存変更・子作業を保ち、再委任せず補足を反映し、以下の新runで最終finishしてください。\n':'')+r.instruction+((compact||a.location==='mayor')&&r.phase!=='report'?this.secretaryContext(a,compact):'')+(compact?'':await this.projectGuides.context(a,r,this.villageUrl))+this.flow.context(r)+markerContext(r.id);
     Object.assign(r,{inputMarker:runMarker(r.id),inputEnvelopeMode:compact?'startup-v1':'legacy',state:'sending',acceptance:'pending',blocksInput:true,dispatchAttemptedAt:now(),baselineRuntime:{sessionId:confirmed.sessionId,cursor:confirmed.cursor,fileIdentity:confirmed.fileIdentity},inputHash:inputHash(deliveredInstruction),agentSessionId:status.agentSessionId||null});
     await this.save();
