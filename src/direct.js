@@ -1,4 +1,4 @@
-import {needsRunRecovery} from './run-recovery.js';
+import {needsRunRecovery,requestReviewReason} from './run-recovery.js';
 import {readJSON} from './read-json.js';
 import {acceptWorkspace} from './workspace-sync.js';
 import {restorePendingMessage,matchingRun,unchangedDraft,pendingMessageStatus} from './pending-message.js';
@@ -98,8 +98,8 @@ function bubble(side,text,at,extra=''){return `<div class="message ${side}">${te
 function recoveryHTML(r){
  const q=state.requests?.find(q=>q.id===r.humanRequestId),w=q?.works.find(w=>w.currentRunId===r.id);
  if(!needsRunRecovery(q,r,w))return '';
- const reason=r.recovery?.status==='scheduled'?'自動再試行予定: '+new Date(r.recovery.nextAt).toLocaleTimeString():r.recovery?.reason||(r.needsReview?'要確認: 実行結果を確認できません。副作用を確認してから再試行してください。':null)||'停止理由を確認し、未完了の作業を再開できます。';
- return `<div class="recovery"><p>${esc(reason)}</p>${!w.parentWorkId?`<button data-retry-run="${esc(r.id)}">確認して再試行</button>`:'<p>委任元でrequests get/resultsを確認し、requests retryで復旧してください。</p>'}<button data-cancel-request="${esc(q.id)}">依頼をキャンセル</button></div>`;
+ const reason=q.requestModel?requestReviewReason(q,r):r.recovery?.status==='scheduled'?'自動再試行予定: '+new Date(r.recovery.nextAt).toLocaleTimeString():r.recovery?.reason||(r.needsReview?'要確認: 実行結果を確認できません。副作用を確認してから再試行してください。':null)||'停止理由を確認し、未完了の作業を再開できます。';
+ return `<div class="recovery"><p>${esc(reason)}</p>${!w.parentWorkId?`<button data-retry-run="${esc(r.id)}">再試行</button>`:'<p>要確認の依頼一覧で人間が次の扱いを選べます。</p>'}<button data-complete-request="${esc(q.id)}">完了扱い</button><button data-cancel-request="${esc(q.id)}">取り下げ</button></div>`;
 }
 function entryHTML(a,r,divider){
  return `${divider(r.createdAt||r.completedAt)}<div class="run" data-entry="${esc(JSON.stringify([r.external?'native':'run',r.external?(r.sessionId||r.agentSessionId||''):'',r.id]))}">${r.suppressUser?'':bubble('user',r.instruction,r.createdAt,travelSummary(r.travelContexts)+attachmentHTML(r.attachments))}${r.output||r.finalOutput?'<div class="message assistant">'+responseHTML(r)+timeHTML(r.completedAt)+'</div>':''}<p class="run-status"><span class="badge">${r.external?'PurpleMuxからの入力 · ':r.origin==='result'?'子作業結果の配送 · ':r.origin==='steering'?'実行中への補足 · ':''}${esc(r.queueCancelledAt?'送信取消済み':r.reportStatus||labels[r.state]||r.state)}</span> · ${r.humanRequestId?esc(({active:'依頼継続中',finalizing:'最終報告の完了待ち',completed:'依頼全体完了',cancelled:'依頼キャンセル'})[state.requests?.find(q=>q.id===r.humanRequestId)?.status]||'依頼照合中'):'達成状況: 未判定'} ${esc(r.errorCode||'')} ${esc(r.attachmentError||r.error||'')} ${r.notification?' · 通知: '+esc(r.notification.status)+(r.notification.reason?' / '+esc(r.notification.reason):''):''}</p>${canCancelQueued(r)?`<button type="button" data-cancel-queued="${esc(r.id)}" data-queue-agent="${esc(a.id)}">送信待ちを取り消す</button>`:''}${r.queueCancelledAt?'':recoveryHTML(r)}</div>`;
@@ -393,15 +393,16 @@ function render(){
  if(!inbox){inbox=document.createElement('details');inbox.id='run-recovery-inbox';$('#agents').before(inbox);}
  const recovery=state.recoveryRequests||[];
  inbox.hidden=!recovery.length;
- inbox.innerHTML='<summary>要確認の依頼（'+recovery.length+'件）</summary>'+recovery.map(q=>`<article><strong>${esc(q.agentName)} · ${esc((q.instruction||'依頼').slice(0,100))}</strong><p>要確認: ${esc(q.reason)}</p>${q.canRetry?`<button data-recovery-retry="${esc(q.id)}">確認して再試行</button>`:'<p>再試行先がありません。依頼をキャンセルできます。</p>'}<button data-recovery-cancel="${esc(q.id)}">依頼をキャンセル</button></article>`).join('');
+ inbox.innerHTML='<summary>要確認の依頼（'+recovery.length+'件）</summary>'+recovery.map(q=>`<article><strong>${esc(q.agentName)} · ${esc((q.instruction||'依頼').slice(0,100))}</strong><p>要確認: ${esc(q.reason)}</p>${q.canRetry?`<button data-recovery-retry="${esc(q.id)}">再試行</button>`:'<button disabled>再試行</button><p>実行中、または再試行先がありません。</p>'}<button data-recovery-complete="${esc(q.id)}">完了扱い</button><button data-recovery-cancel="${esc(q.id)}">取り下げ</button></article>`).join('');
  inbox.onclick=async e=>{
-  const button=e.target.closest('[data-recovery-retry],[data-recovery-cancel]');if(!button)return;
-  const id=button.dataset.recoveryRetry||button.dataset.recoveryCancel,q=recovery.find(q=>q.id===id);
-  if(!q||!confirm(button.dataset.recoveryRetry?'既存変更・外部操作・子結果を確認してから再試行しますか？':'依頼をキャンセルしますか？ 実行中のAgentは停止しません。'))return;
+  const button=e.target.closest('[data-recovery-retry],[data-recovery-cancel],[data-recovery-complete]');if(!button)return;
+  const id=button.dataset.recoveryRetry||button.dataset.recoveryCancel||button.dataset.recoveryComplete,q=recovery.find(q=>q.id===id);
+  if(!q||!confirm(button.dataset.recoveryRetry?'既存変更・外部操作・子結果を確認してから再試行しますか？':button.dataset.recoveryComplete?'成果を確認して完了扱いにしますか？':'依頼をキャンセルしますか？ 実行中のAgentは停止しません。'))return;
   await action(button.closest('article'),async()=>{
    const full=await api('/requests/get',{humanRequestId:id});
-   if(button.dataset.recoveryCancel)await api('/requests/cancel',{humanRequestId:id,revision:full.revision});
-   else await api(q.phase==='report'&&q.state==='completed'?'/requests/resume':'/requests/retry',{humanRequestId:id,workId:q.workId,revision:full.revision,operationId:newRequestId(),instruction:'実行結果を人間が確認した後の復旧です。既存変更・外部操作・子作業を確認し、未完了部分だけ進めてください。重複操作・再委任を避けてください。\n元の依頼:\n'+(full.instruction||'').slice(0,12000)});
+   if(button.dataset.recoveryComplete)await api('/human/requests/complete',{humanRequestId:id,revision:full.revision});
+   else if(button.dataset.recoveryCancel)await api('/human/requests/cancel',{humanRequestId:id,revision:full.revision});
+   else await api(q.state==='completed'?'/human/requests/resume':'/human/requests/retry',{humanRequestId:id,workId:q.workId,revision:full.revision,operationId:newRequestId(),instruction:'実行結果を人間が確認した後の復旧です。既存変更・外部操作・子作業を確認し、未完了部分だけ進めてください。重複操作・再委任を避けてください。\n元の依頼:\n'+(full.instruction||'').slice(0,12000)});
   });
  };
 
@@ -483,16 +484,17 @@ $('#agents').onsubmit=async e=>{
 $('#agents').onclick=e=>{
  const queued=e.target.closest('[data-cancel-queued]');if(queued){
   const r=state.runs.find(r=>r.id===queued.dataset.cancelQueued&&r.agentId===queued.dataset.queueAgent);if(!r)return;
-  action(queued.closest('article'),async()=>{await api('/requests/cancel-queued',{humanRequestId:r.humanRequestId,agentId:r.agentId,runId:r.id});});return;
+  action(queued.closest('article'),async()=>{await api('/human/requests/cancel-queued',{humanRequestId:r.humanRequestId,agentId:r.agentId,runId:r.id});});return;
  }
 
- const retry=e.target.closest('[data-retry-run]'),cancel=e.target.closest('[data-cancel-request]');
- if(retry||cancel){
-  const r=retry&&state.runs.find(r=>r.id===retry.dataset.retryRun),q=state.requests.find(q=>q.id===(r?.humanRequestId||cancel?.dataset.cancelRequest));
-  if(!q||!confirm(retry?r.phase==='report'?'元作業を再実行せず、報告だけを作り直しますか？':'既存変更・PR・委任結果を確認し、未完了部分だけ再開しますか？':'この依頼全体をキャンセルしますか？ 実行中のAgentは停止しません。'))return;
-  action((retry||cancel).closest('article'),async()=>{
-   if(cancel)await api('/requests/cancel',{humanRequestId:q.id,revision:q.revision});
-   else {const full=await api('/requests/get',{humanRequestId:q.id});await api(r.phase==='report'&&r.state==='completed'?'/requests/resume':'/requests/retry',{humanRequestId:q.id,workId:r.workId,revision:full.revision,operationId:newRequestId(),instruction:'失敗・中断からの復旧です。既存変更・PR・外部操作・requests get/resultsの子作業を確認し、未完了部分だけ進めてください。子作業の再委任や二重操作を避け、モデルは変更しないでください。今回のrunでfinishを登録してください。\n元の指示（全文はrequests getで確認）:\n'+(full.instruction||'').slice(0,12000)});}
+ const retry=e.target.closest('[data-retry-run]'),cancel=e.target.closest('[data-cancel-request]'),complete=e.target.closest('[data-complete-request]');
+ if(retry||cancel||complete){
+  const r=retry&&state.runs.find(r=>r.id===retry.dataset.retryRun),q=state.requests.find(q=>q.id===(r?.humanRequestId||cancel?.dataset.cancelRequest||complete?.dataset.completeRequest));
+  if(!q||!confirm(retry?r.phase==='report'?'元作業を再実行せず、報告だけを作り直しますか？':'既存変更・PR・委任結果を確認し、未完了部分だけ再開しますか？':complete?'成果を確認して完了扱いにしますか？':'この依頼全体を取り下げますか？ 実行中のAgentは停止しません。'))return;
+  action((retry||cancel||complete).closest('article'),async()=>{
+   if(complete)await api('/human/requests/complete',{humanRequestId:q.id,revision:q.revision});
+   else if(cancel)await api('/human/requests/cancel',{humanRequestId:q.id,revision:q.revision});
+   else {const full=await api('/requests/get',{humanRequestId:q.id});await api(r.state==='completed'?'/human/requests/resume':'/human/requests/retry',{humanRequestId:q.id,workId:r.workId,revision:full.revision,operationId:newRequestId(),instruction:'失敗・中断からの復旧です。既存変更・PR・外部操作・requests get/resultsの子作業を確認し、未完了部分だけ進めてください。子作業の再委任や二重操作を避け、モデルは変更しないでください。委任ありのまとめ役だけfinishで申告してください。\n元の指示（全文はrequests getで確認）:\n'+(full.instruction||'').slice(0,12000)});}
   });return;
  }
  const reconcile=e.target.closest('[data-reconcile]');if(reconcile){const id=reconcile.dataset.reconcile,receipt=pending.get(id);if(receipt)action(reconcile.closest('article'),async()=>{await api('/agents/'+id+'/runs',receipt);await refresh();});return;}const manage=e.target.closest('[data-manage-agent]'),zoom=e.target.closest('[data-zoom]');if(manage)openMetadata(manage.dataset.manageAgent);if(zoom){toggleZoom(zoom.dataset.zoom);void refresh(true);}};

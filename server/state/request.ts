@@ -20,8 +20,12 @@ export type RequestEvent =
  | Command<'prepare-report','program',{id:string}>
  | Command<'deliver-result','program',{id:string; childRunId:string}>
  | Command<'complete-as-human','human',{reason:string}>
- | Command<'withdraw','human',{reason:string}>;
-export const requestAuthorities = {delegate:['agent'],'declare-complete':['agent'],'run-event':['program'],'run-action':['human'],retry:['human','program'],'deliver-result':['program'],'prepare-report':['program'],'complete-as-human':['human'],withdraw:['human']} as const;
+ | Command<'withdraw','human',{reason:string}>
+ | Command<'review','program',{reason:string}>
+ | Command<'restore-root','human',{id:string}>
+ | Command<'observe-runs','program',{runs:readonly Run[]}>
+ | Command<'append-run','human'|'agent'|'program',{run:Run; resolveReview?:boolean}>;
+export const requestAuthorities = {delegate:['agent'],'declare-complete':['agent'],'run-event':['program'],'run-action':['human'],retry:['human','program'],'deliver-result':['program'],'prepare-report':['program'],'complete-as-human':['human'],withdraw:['human'],review:['program'],'restore-root':['human'],'observe-runs':['program'],'append-run':['human','agent','program']} as const;
 export function newRequest(id:string, runId:string, actor:Actor, reportMode=false):Result<Request> {
  if(actor!=='human')return reject('actor-forbidden');
  const run=newRun(runId,id,actor);if(!run.ok)return run;
@@ -31,18 +35,18 @@ export function newRequest(id:string, runId:string, actor:Actor, reportMode=fals
 export function reconcile(q:Request):Request {
  if(q.state.kind!=='active')return q;
  const superseded=new Set(q.runs.flatMap(r=>r.retryOf?[r.retryOf]:[]));
- const relevant=q.runs.filter(r=>!superseded.has(r.id));
- const review=q.state.review.filter(reason=>reason!=='needs-decision');
- for(const r of relevant)if(r.state.kind==='ended'&&r.state.outcome!=='normal')review.push('run-needs-review:'+r.id);
+ const relevant=q.runs.filter(r=>!superseded.has(r.id)&&!r.supersededBy);
+ const review=q.state.review.filter(reason=>reason!=='needs-decision'&&!([...superseded].some(id=>reason==='run-needs-review:'+id||q.declarations.some(d=>d.runId===id&&reason==='declaration-conflict:'+d.id))));
+ for(const r of relevant)if(!q.decisions.some(d=>d.reason==='reviewed-run:'+r.id)&&r.state.kind==='ended'&&r.state.outcome!=='normal')review.push('run-needs-review:'+r.id);
  for(const d of q.declarations){
   if(superseded.has(d.runId))continue;
   const r=q.runs.find(r=>r.id===d.runId);
-  if(!r||r.parentRunId!==null||r.phase==='report'||(r.state.kind==='ended'&&r.state.outcome!=='normal')||r.state.kind==='cancelled')review.push('declaration-conflict:'+d.id);
+  if(!r||(r.state.kind==='ended'&&r.state.outcome!=='normal')||r.state.kind==='cancelled')review.push('declaration-conflict:'+d.id);
  }
  // A normal report needs no declaration. Failure marks are sticky until a human decision.
- if(q.delegated&&workReady(q)&&q.runs.some(r=>r.parentRunId!==null&&!isTerminal(r)))review.push('declaration-conflict:unfinished-child');
+ if(q.delegated&&workReady(q)&&q.runs.some(r=>r.parentRunId!==null&&!isTerminal(r)&&!r.supersededBy))review.push('declaration-conflict:unfinished-child');
  const ready=q.reportMode?normal(q.runs.find(r=>r.id===q.reportRunId)):workReady(q);
- if(ready&&review.length===0&&!pendingResults(q).length&&!q.runs.some(r=>!isTerminal(r)))return {...q,state:{kind:'completed',by:'program',reason:q.reportMode?'normal-report':'normal-work'}};
+ if(ready&&review.length===0&&!pendingResults(q).length&&!q.runs.some(r=>!isTerminal(r)&&!r.supersededBy))return {...q,state:{kind:'completed',by:'program',reason:q.reportMode?'normal-report':'normal-work'}};
  return ensureProgress({...q,state:{kind:'active',review:[...new Set(review)]}});
 }
 export function transitionRequest(q:Request,e:RequestEvent):Result<Request> {
@@ -51,9 +55,37 @@ export function transitionRequest(q:Request,e:RequestEvent):Result<Request> {
  if(e.type==='declare-complete'){
   return accept(reconcile({...q,declarations:[...q.declarations,{id:e.id,runId:e.runId,actor:'agent',at:e.at}]}));
  }
- if(q.state.kind!=='active'&&e.type!=='run-event'&&e.type!=='run-action')return reject('request-terminal');
+ if(q.state.kind!=='active'&&e.type!=='run-event'&&e.type!=='run-action'&&e.type!=='observe-runs')return reject('request-terminal');
  const replace=(run:Run)=>reconcile({...q,runs:q.runs.map(r=>r.id===run.id?run:r)});
  switch(e.type){
+  case 'review': return q.state.kind==='active'?accept({...q,state:{kind:'active',review:[...new Set([...q.state.review,e.reason])]}}):reject('request-terminal');
+  case 'restore-root': {
+   const run=q.runs.find(r=>r.id===e.id);if(!run||run.parentRunId||run.phase==='report')return reject('invalid-root');
+   return accept(reconcile({...q,rootRunId:e.id}));
+  }
+  case 'observe-runs': {
+   if(e.runs.length!==q.runs.length||e.runs.some(r=>r.requestId!==q.id||!q.runs.some(old=>old.id===r.id)))return reject('run-membership-mismatch');
+   return accept(reconcile({...q,runs:e.runs}));
+  }
+  case 'append-run': {
+   const r=e.run;
+   if(r.requestId!==q.id||q.runs.some(old=>old.id===r.id)||r.state.kind!=='queued'||r.createdBy!==e.actor)return reject('invalid-new-run');
+   const previous=r.retryOf?q.runs.find(old=>old.id===r.retryOf):null;
+   const retry=previous&&previous.phase===r.phase&&previous.state.kind==='ended'&&previous.state.outcome!=='normal';
+   if(r.phase!=='work'&&e.actor!=='program'&&!(e.actor==='human'&&retry))return reject('actor-forbidden');
+   if(e.actor==='program'&&r.phase==='work'&&!r.retryOf)return reject('actor-forbidden');
+   if(r.phase==='report'&&!nextSteps(q).some(s=>s.type==='prepare-report')&&!r.retryOf)return reject('report-not-ready');
+   if(r.phase==='result'&&!retry&&(!pendingResults(q).some(c=>c.id===r.resultOf)||!q.runs.some(p=>p.id===r.recipientRunId)))return reject('result-not-ready-or-already-delivered');
+   const parent=r.parentRunId&&q.runs.find(p=>p.id===r.parentRunId);
+   if(r.parentRunId&&!parent)return reject('parent-missing');
+   if(e.actor==='agent'&&r.phase==='work'&&(!parent||parent.state.kind!=='running'))return reject('parent-not-running');
+   const review=q.state.kind==='active'?q.state.review:[];
+   const state:RequestState={kind:'active',review:e.actor==='human'&&e.resolveReview?[]:review.filter(x=>x!=='needs-decision')};
+   return accept(reconcile({...q,state,decisions:e.actor==='human'&&e.resolveReview?[...q.decisions,...q.runs.filter(isTerminal).map(old=>({actor:'human' as const,reason:'reviewed-run:'+old.id}))]:q.decisions,delegated:q.delegated||!!r.parentRunId,
+    rootRunId:r.parentRunId===null&&r.phase!=='report'?r.id:q.rootRunId,
+    reportRunId:r.phase==='report'?r.id:q.reportRunId,runs:[...q.runs,r]}));
+  }
+
   case 'delegate': {
    if(q.reportRunId||q.runs.some(r=>r.id===e.id))return reject('report-or-duplicate-id');
    const parent=q.runs.find(r=>r.id===e.parentRunId);

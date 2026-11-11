@@ -313,3 +313,11 @@ PR #57以前の目印なし送信だけは、既存native入力のハッシュ�
 段階2ではfinish・acknowledge・work/request状態を維持する。報告も従来どおりfinishが必要。
 失敗・中断・確認不能の復旧一覧、削除済みAgentのキャンセル、終了済み報告のreportPending解除
 だけを依頼/画面側に追加した。全依頼の進行不変条件への接続は段階3で行う。
+
+## 段階3の接続
+
+依頼の正本、互換表示、移行・人間用API・反映手順は [state-stage3.md](state-stage3.md)。
+`observe-runs`（program）は段階2の送信モデルから事実を読み、`append-run` は作成者を
+検査して依頼に登録する。`review` はprogramが実行できない次手順を要確認にする。
+旧work.stateとrequest.statusは保存の正本ではなく、API/画面にだけ導出する。
+finishは申告の記録、acknowledgeは互換no-op。人間の復旧は専用APIでhumanとして記録する。

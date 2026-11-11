@@ -9,7 +9,7 @@ export function workReady(q:Request):boolean {
 }
 /** Deduplication is by source attempt, including failed/unknown/cancelled attempts. */
 export function pendingResults(q:Request):Run[] {
- return q.runs.filter(r=>r.parentRunId!==null&&r.phase!=='report'&&isTerminal(r)&&!q.runs.some(d=>d.phase==='result'&&d.resultOf===r.id));
+ return q.runs.filter(r=>r.parentRunId!==null&&r.phase!=='report'&&isTerminal(r)&&!r.supersededBy&&!q.runs.some(n=>n.retryOf===r.id)&&!q.runs.some(d=>d.phase==='result'&&d.resultOf===r.id));
 }
 /** Resolve the recipient without advertising an action that would be rejected. */
 export function resultRecipient(q:Request,child:Run):Run|null {
@@ -29,11 +29,11 @@ export function nextSteps(q:Request):NextStep[] {
  if(q.state.kind!=='active')return [];
  const results=pendingResults(q).filter(r=>resultRecipient(q,r)!==null);
  const steps:NextStep[]=results.map(r=>({type:'deliver-result',childRunId:r.id}));
- if(q.reportMode&&!q.reportRunId&&workReady(q)&&!q.state.review.length&&!q.runs.some(r=>!isTerminal(r))&&!pendingResults(q).length)steps.push({type:'prepare-report'});
+ if(q.reportMode&&!q.reportRunId&&workReady(q)&&!q.state.review.length&&!q.runs.some(r=>!isTerminal(r)&&!r.supersededBy)&&!pendingResults(q).length)steps.push({type:'prepare-report'});
  return steps;
 }
 export function checkProgress(q:Request):{ok:boolean; unfinishedRunIds:string[]; next:NextStep[]; review:readonly string[]} {
- const unfinishedRunIds=q.runs.filter(r=>!isTerminal(r)).map(r=>r.id),next=nextSteps(q),review=q.state.kind==='active'?q.state.review:[];
+ const unfinishedRunIds=q.runs.filter(r=>!isTerminal(r)&&!r.supersededBy).map(r=>r.id),next=nextSteps(q),review=q.state.kind==='active'?q.state.review:[];
  return {ok:q.state.kind!=='active'||unfinishedRunIds.length>0||next.length>0||review.length>0,unfinishedRunIds,next,review};
 }
 export const stalledRequests=(requests:readonly Request[]):string[]=>requests.filter(q=>!checkProgress(q).ok).map(q=>q.id);

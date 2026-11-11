@@ -1,4 +1,5 @@
 import {changeRun,observeRun,tracking,modelOf,projectObservation} from './run-lifecycle.mjs';
+import {migrateRequestStore} from './request-migration.mjs';
 import {migrateRunStore} from './run-migration.mjs';
 import {runMarker,markerContext,installInstructionsScript,verifyInstructionsScript} from './input-envelope.mjs';
 import {sessionModel} from './session-model.mjs';
@@ -54,12 +55,14 @@ export class DirectAgents {
     try { this.data=JSON.parse(await readFile(resolve(this.dir,'direct.json'),'utf8')); }
     catch(e) { if(e.code!=='ENOENT')throw e; }
     this.data=await migrateRunStore(this.dir,this.data);
+    this.data=await migrateRequestStore(this.dir,this.data);
     this.data.projects ||= [];
     for(const p of this.data.projects)if(p.deletion?.status==='running'){p.deletion.status='partial';p.deletion.interruptedAt=now();}
     for(const w of this.data.workshops)w.connectionType ||= 'ssh';
     for(const a of this.data.agents) {
       a.connection.connectionType ||= 'ssh';
       a.inputEnvelope ||= {mode:'legacy'};
+      if(a.inputEnvelope.mode==='startup-v1'&&a.inputEnvelope.hash&&a.inputEnvelope.hash!==createHash('sha256').update(this.startupInstructions()).digest('hex'))a.inputEnvelope={...a.inputEnvelope,mode:'legacy',reason:'request-rules-updated'};
       a.modelInfo={available:false};
       a.canSteer=false;delete a.steerTarget;a.canSend=false;a.canQueue=false;a.sendReason='再接続して稼働状態を確認しています';
       if(a.state!=='terminated'){a.connectionState='unknown';a.activityState='unknown';}
@@ -98,7 +101,7 @@ export class DirectAgents {
     try{await this.save();}catch(e){for(const q of requests)delete q.reviewedAt;if(previous===undefined)delete this.data.agentReviews[id];else this.data.agentReviews[id]=previous;throw e;}
     return {...current,unreviewed:false,attention:false,attentionRequestIds:[]};
   });}
-  discovery(){return {agents:this.data.agents.filter(a=>!a.deletedAt).map(a=>({...agentIdentity(a),projectId:a.projectId||null,projectName:this.data.projects.find(p=>p.id===a.projectId)?.name||null,metadataRevision:a.metadataRevision||0})),projects:structuredClone(this.data.projects.filter(p=>!p.deletedAt)),workshops:structuredClone(this.data.workshops),management:{workshopPattern:'PUT /api/direct/workshops/:id {iconPattern:[none|line|diamond x8]}; null resets to stable default; omitted fields preserved',help:'node scripts/village.mjs help',agentUpdate:'PUT /api/direct/agents/:id {revision,name?,projectId?}',projects:'POST /api/direct/projects {requestId,name}; PUT /api/direct/projects/:id {revision,name?,pinned?:boolean,suspended?:boolean (display only)}',projectDelete:'GET /api/direct/projects/:id/delete-plan; POST /api/direct/projects/:id/delete {operationId,revision,members}; deletes all member Agents, retry same operation on partial result',namePolicy:'村の表示名のみ変更。PurpleMuxのラベル、ID、セッション、接続先は維持。',requests:{help:'node scripts/village.mjs help',list:'GET /api/direct/requests',get:'POST /api/direct/requests/get {humanRequestId}',operations:'delegate / results / acknowledge / finish / retry / resume / cancel: POST /api/direct/requests/:operation',policy:'人間の依頼ごとに通知権1枚。正式delegateで親子を登録し、子結果を確認後、finishと対応native turn正常終了で全体完了。生PurpleMux送信・旧runを自動関連付けしない。'}}};}
+  discovery(){return {agents:this.data.agents.filter(a=>!a.deletedAt).map(a=>({...agentIdentity(a),projectId:a.projectId||null,projectName:this.data.projects.find(p=>p.id===a.projectId)?.name||null,metadataRevision:a.metadataRevision||0})),projects:structuredClone(this.data.projects.filter(p=>!p.deletedAt)),workshops:structuredClone(this.data.workshops),management:{workshopPattern:'PUT /api/direct/workshops/:id {iconPattern:[none|line|diamond x8]}; null resets to stable default; omitted fields preserved',help:'node scripts/village.mjs help',agentUpdate:'PUT /api/direct/agents/:id {revision,name?,projectId?}',projects:'POST /api/direct/projects {requestId,name}; PUT /api/direct/projects/:id {revision,name?,pinned?:boolean,suspended?:boolean (display only)}',projectDelete:'GET /api/direct/projects/:id/delete-plan; POST /api/direct/projects/:id/delete {operationId,revision,members}; deletes all member Agents, retry same operation on partial result',namePolicy:'村の表示名のみ変更。PurpleMuxのラベル、ID、セッション、接続先は維持。',requests:{help:'node scripts/village.mjs help',list:'GET /api/direct/requests',get:'POST /api/direct/requests/get {humanRequestId}',operations:'delegate / results / finish: POST /api/direct/requests/:operation',policy:'人間の依頼ごとに通知権1枚。正式delegateで親子を登録し、委任なしはnative正常終了、委任ありは子結果を確認後のfinishとnative正常終了で全体完了。生PurpleMux送信・旧runを自動関連付けしない。'}}};}
   project(id){return this.data.projects.find(p=>p.id===id)||fail('Projectがありません',404);}
   projectDeletePlan(id){return deletionPlan(this,id);}
   deleteProject(id,input){return deleteProject(this,id,input);}

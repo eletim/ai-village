@@ -1,0 +1,35 @@
+{
+  "health": {
+    "commit": "bfe8a7a6424b44cb3360d29f4334ea2d36490b00",
+    "instanceId": "7c1e5a0b-d7db-4ec2-b223-645805a4aab2",
+    "supervised": false
+  },
+  "version": 1,
+  "migration": {
+    "at": "2026-11-11T04:26:40.744Z",
+    "counts": {
+      "active": 27,
+      "completed": 205,
+      "withdrawn": 10,
+      "review": 17,
+      "stalled": 0
+    }
+  },
+  "backup": 18530396,
+  "review": 25,
+  "stalled": 0,
+  "inflight": 1,
+  "notification": false,
+  "secretaries": [
+    {
+      "id": "c12fa400-8044-4179-8dc9-5b20c750eecd",
+      "reportPending": false,
+      "canSend": false
+    },
+    {
+      "id": "64acebd4-75bc-4974-a18f-9471253678f9",
+      "reportPending": false,
+      "canSend": false
+    }
+  ]
+}
