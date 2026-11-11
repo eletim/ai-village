@@ -10,6 +10,7 @@ export function markerData(source){
   delete r.inputHash;for(const p of r.priorInputs||[])delete p.hash;
  }
  for(const q of data.requests){
+  if(q.integrity)continue;
   const affected=unconfirmed.filter(id=>data.runs.find(r=>r.id===id)?.humanRequestId===q.id);
   q.requestModel=ensureProgress({...q.requestModel,runs:data.runs.filter(r=>r.humanRequestId===q.id).map(r=>r.runModel),...(affected.length&&q.requestModel.state.kind==='active'?{state:{kind:'active',review:[...new Set([...q.requestModel.state.review,...affected.map(id=>'run-needs-review:'+id)])]}}:{})});
  }

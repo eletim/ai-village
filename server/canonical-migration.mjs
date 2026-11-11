@@ -18,6 +18,7 @@ export function canonicalData(source){
  }
  for(const a of data.agents)remove(a,agentKeys);
  for(const q of data.requests||[]){
+  if(q.integrity)continue;
   if(!q.requestModel)throw Error('Missing request model: '+q.id);
   // Claims live in declarations. Preserve old claims not imported by earlier versions.
   const declarations=[...q.requestModel.declarations];

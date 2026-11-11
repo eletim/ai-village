@@ -1,3 +1,4 @@
+import {quarantineRequests,quarantinedRun} from './request-integrity.mjs';
 import {PersistenceBoundary,checkpoint} from './persistence-boundary.mjs';
 import {migrateMarkerStore} from './marker-migration.mjs';
 import {AgentRules} from './agent-rules.mjs';
@@ -62,6 +63,7 @@ export class DirectAgents {
     }
     try { this.data=JSON.parse(await readFile(resolve(this.dir,'direct.json'),'utf8')); }
     catch(e) { if(e.code!=='ENOENT')throw e; }
+    quarantineRequests(this.data);
     this.data=await migrateRunStore(this.dir,this.data);
     this.data=await migrateRequestStore(this.dir,this.data);
     this.data=await migrateAgentStore(this.dir,this.data);
@@ -257,6 +259,7 @@ export class DirectAgents {
   }
   async send(id,input,originKind='human'){return this.flow.start(id,input,originKind);}
   async attemptRun(r){return this.locked(r.agentId,async()=>{
+    if(quarantinedRun(this.data,r))return r;
     if(runState(r)!=='queued'||r.nextTransferAt>Date.now())return r;
     const a=this.agent(r.agentId);
     const blocked=(reason,message=reason)=>this.persist(async()=>{changeRun(r,{type:modelOf(r).state.kind==='queued'?'dispatch-blocked':'lost',actor:'program',at:Date.now(),reason});r.error=message;await this.save();return r;});
@@ -308,7 +311,7 @@ export class DirectAgents {
   // sent/running records become terminal unconfirmed after a bounded wait, even
   // if an earlier observation already released the input gate.
   releaseStuckRuns(a){
-    for(const r of this.data.runs.filter(r=>r.agentId===a.id)){
+    for(const r of this.data.runs.filter(r=>r.agentId===a.id&&!quarantinedRun(this.data,r))){
       if(active(r)&&r.error){
         r.unknownSince ||= now();
         if(Date.now()-Date.parse(r.unknownSince)>=STUCK_RUN_TIMEOUT_MS){
@@ -357,7 +360,7 @@ export class DirectAgents {
         else a.inputEnvelope.sessionId=s.agentSessionId;
       }
       if(snapshot.sessionId)a.observedSessionId=snapshot.sessionId;
-      for(const r of this.data.runs.filter(r=>r.agentId===a.id&&active(r))){
+      for(const r of this.data.runs.filter(r=>r.agentId===a.id&&active(r)&&!quarantinedRun(this.data,r))){
         const observation=correlate(r,snapshot);
         observeRun(r,observation,snapshot);
         if(observation.turnId){r.acceptedAt ||= now();r.turnId=observation.turnId;r.sessionId=observation.sessionId;r.inputId ||= observation.inputId;if(typeof observation.output==='string')r.output=observation.output;if(typeof observation.finalOutput==='string')r.finalOutput=observation.finalOutput;}
@@ -401,7 +404,7 @@ export class DirectAgents {
     }catch(error){
       if(error.persistenceFailure)throw error;
       return this.persist(async()=>{
-      for(const r of this.data.runs.filter(r=>r.agentId===a.id&&active(r)))r.error ||= 'runtime-unavailable';
+      for(const r of this.data.runs.filter(r=>r.agentId===a.id&&active(r)&&!quarantinedRun(this.data,r)))r.error ||= 'runtime-unavailable';
       a.modelInfo={available:false};agentChange(a,{type:'observe',actor:'program',observation:{connected:false,process:'unknown',activity:'unknown',canSteer:false}});a.error='接続・状態取得ができません。監視を継続します。';this.releaseStuckRuns(a);this.updateAvailability(a);await this.save();return {available:false,turns:[],inputs:[]};
       });
     }
@@ -424,6 +427,7 @@ export class DirectAgents {
     // remain a dormant nonterminal record forever. Cancellation restores ownership
     // in cancelQueued; all other settled successors close the old human boundary.
     for(const r of this.data.runs){
+      if(quarantinedRun(this.data,r))continue;
       if(r.runModel?.supersededBy&&r.runModel.state.kind==='running'&&this.flow.run(r.runModel.supersededBy)?.runModel.state.kind!=='queued')changeRun(r,{type:'close-tracking',actor:'human',reason:'steering-successor-settled'});
       if(active(r)&&!this.data.agents.some(a=>a.id===r.agentId&&a.tabId&&!['terminated','stopping'].includes(agentControls(a).state))){r.error ||= 'agent-unavailable';this.releaseStuckRuns({id:r.agentId});}
     }

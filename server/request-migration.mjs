@@ -6,6 +6,7 @@ import {writeSnapshot} from './direct-store.mjs';
 export function validateRequestStore(data){
  const ids=new Set();
  for(const q of data.requests||[]){
+  if(q.integrity)continue;
   const m=q.requestModel;
   if(!m||m.id!==q.id||ids.has(q.id)||!['active','completed','withdrawn'].includes(m.state?.kind)||!Array.isArray(m.runs)||!Array.isArray(m.declarations)||!Array.isArray(m.decisions)||m.state.kind==='active'&&!Array.isArray(m.state.review))throw Error('Invalid request model: '+q.id);
   ids.add(q.id);

@@ -1,3 +1,4 @@
+import {quarantinedRun} from './request-integrity.mjs';
 import {projectRequest,projectRun} from './state-projection.mjs';
 import {agentControls} from './agent-lifecycle.mjs';
 import {bindRequest,requestChange,observeRequest,requestStatus,resultEntries} from './request-lifecycle.mjs';
@@ -17,10 +18,10 @@ export class RequestFlow {
  constructor(direct){this.d=direct;}
  init(){
   this.d.data.requests ||= [];
-  for(const q of this.d.data.requests)bindRequest(this.d.data,q);
+  for(const q of this.d.data.requests)if(!q.integrity)bindRequest(this.d.data,q);
   // Never mint tickets or replay notifications for historical/untracked turns.
   for(const r of this.d.data.runs)if(!r.humanRequestId)r.notificationPolicy ||= 'legacy-untracked';
-  for(const q of this.d.data.requests)if(q.notification?.status==='attempting')q.notification={...q.notification,status:'delivery_unknown',reason:'restart-during-delivery'};
+  for(const q of this.d.data.requests)if(!q.integrity&&q.notification?.status==='attempting')q.notification={...q.notification,status:'delivery_unknown',reason:'restart-during-delivery'};
  }
  reportStatus(){return {enabled:this.d.data.reportSettings?.enabled!==false};}
  async configureReport(enabled){
@@ -33,11 +34,11 @@ export class RequestFlow {
  reportPrompt(q){return this.d.rules.reportData(q,this.run(q.report.sourceRunId),this.d.data.runs.filter(r=>r.humanRequestId===q.id&&r.origin==='steering'&&!r.queueCancelledAt).map(r=>r.instruction));}
  get requests(){return this.d.data.requests;}
  root(id){return this.requests.find(q=>q.id===id)||fail('依頼がありません',404);}
- work(q,id){return q.works.find(w=>w.id===id)||fail('この依頼の作業ではありません',404);}
+ work(q,id){if(q.integrity)fail('依頼の参照不整合を修復してください: '+q.integrity.reasons.join(', '));return q.works.find(w=>w.id===id)||fail('この依頼の作業ではありません',404);}
  run(id){return this.d.data.runs.find(r=>r.id===id);}
  active(q){if(requestStatus(q)!=='active')fail('依頼は受付中ではありません: '+requestStatus(q));}
  version(q,revision){if(!Number.isInteger(revision)||revision!==q.revision)fail('依頼が更新されています。requests getでrevisionを再取得してください');}
- list(agentId){return structuredClone(this.requests.filter(q=>!agentId||q.works.some(w=>w.agentId===agentId)).map(q=>projectRequest(this.d.data,q)));}
+ list(agentId){return structuredClone(this.requests.filter(q=>!agentId||q.works?.some?.(w=>w.agentId===agentId)).map(q=>projectRequest(this.d.data,q)));}
  get(id){const q=this.root(id);return structuredClone({...projectRequest(this.d.data,q),runs:this.d.data.runs.filter(r=>r.humanRequestId===id).map(projectRun)});}
  results(id,workId){const q=this.root(id);this.work(q,workId);return structuredClone(resultEntries(this.d.data,q).filter(e=>e.parentWorkId===workId).map(e=>({...e,output:this.run(e.resultRunId)?.output||'',error:this.run(e.resultRunId)?.error||null})));}
  enqueue(q,w,text,op,origin,extra={}){
@@ -154,7 +155,7 @@ export class RequestFlow {
   await this.d.save();await this.settle();return structuredClone(w);
  }));}
  async complete(x){return this.d.locked('request-graph',()=>this.d.persist(async()=>{
-  const q=this.root(x.humanRequestId);this.version(q,x.revision);
+  const q=this.root(x.humanRequestId);if(q.integrity)fail('依頼の参照不整合を修復してください');this.version(q,x.revision);
   requestChange(q,{type:'complete-as-human',actor:'human',reason:x.reason||'人間が成果を確認して完了扱い'});
   q.revision++;await this.settle();await this.d.save();return this.get(q.id);
  }));}
@@ -191,7 +192,7 @@ export class RequestFlow {
   return structuredClone(r);
  }));});}
  async cancel(x){return this.d.locked('request-graph',()=>this.d.persist(async()=>{
-  const q=this.root(x.humanRequestId);if(requestStatus(q)==='cancelled')return this.get(q.id);
+  const q=this.root(x.humanRequestId);if(q.integrity)fail('依頼の参照不整合を修復してください');if(requestStatus(q)==='cancelled')return this.get(q.id);
   this.version(q,x.revision);if(requestStatus(q)==='completed')fail('完了した依頼はキャンセルできません');
   requestChange(q,{type:'withdraw',actor:'human',reason:x.reason||'人間が取り下げ'});q.cancelledAt=now();q.revision++;
   for(const r of this.d.data.runs.filter(r=>r.humanRequestId===q.id&&runState(r)==='queued')){changeRun(r,{type:'cancel',actor:'human'});r.error='request-cancelled-before-dispatch';}
@@ -202,6 +203,7 @@ export class RequestFlow {
  async settleChanges(){
   let changed=false;
   for(const q of this.requests){
+   if(q.integrity)continue;
    const before=JSON.stringify(q);
    observeRequest(this.d.data,q);
    if(requestStatus(q)==='active'){
@@ -273,7 +275,8 @@ export class RequestFlow {
    }
   }
   for(const r of this.d.data.runs.filter(r=>runState(r)==='queued'&&r.humanRequestId)){
-   const q=this.root(r.humanRequestId),a=this.d.data.agents.find(a=>a.id===r.agentId);if(!a){await this.d.persist(async()=>{changeRun(r,{type:'dispatch-blocked',actor:'program',at:Date.now(),reason:'agent-missing'});await this.d.save();});continue;}if(requestStatus(q)==='active'&&(this.d.agentDeleting(a)||r.steerTarget||agentControls(a).canSend||['terminated','stopping'].includes(agentControls(a).state)))await this.d.attemptRun(r);
+   if(quarantinedRun(this.d.data,r))continue;
+   const q=this.root(r.humanRequestId);if(q.integrity)continue;const a=this.d.data.agents.find(a=>a.id===r.agentId);if(!a){await this.d.persist(async()=>{changeRun(r,{type:'dispatch-blocked',actor:'program',at:Date.now(),reason:'agent-missing'});await this.d.save();});continue;}if(requestStatus(q)==='active'&&(this.d.agentDeleting(a)||r.steerTarget||agentControls(a).canSend||['terminated','stopping'].includes(agentControls(a).state)))await this.d.attemptRun(r);
   }
  });}
  async notifications(){

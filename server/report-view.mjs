@@ -6,7 +6,7 @@ import {recoveryRequests} from '../src/run-recovery.js';
 const firstAfter=(a,session,cursor)=>(a.nativeTurns||[]).filter(t=>(t.sessionId||a.observedSessionId)===session&&Number.isFinite(t.offset)&&t.offset>cursor).sort((x,y)=>x.offset-y.offset)[0];
 export function humanProjection(data){
  data=projectState(data);
- const view=structuredClone(data),protectedRequests=new Map((data.requests||[]).filter(q=>q.reportMode===true).map(q=>[q.id,q]));
+ const view=structuredClone(data),protectedRequests=new Map((data.requests||[]).filter(q=>q.reportMode===true&&!q.integrity).map(q=>[q.id,q]));
  const protectedRuns=data.runs.filter(r=>protectedRequests.has(r.humanRequestId));
  for(const a of view.agents){
   const owned=protectedRuns.filter(r=>r.agentId===a.id);
