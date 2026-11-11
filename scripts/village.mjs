@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { readFile, stat } from 'node:fs/promises';
+import {MAX_UPLOAD_BYTES,UPLOAD_SIZE_MESSAGE} from '../src/upload-limits.js';
 import {basename,extname} from 'node:path';
 // Connect to the running village; never race its state writer by editing files.
 const argv=process.argv.slice(2);
@@ -9,6 +10,7 @@ try {
     if(argv.length!==3)throw Error('usage: images upload LOCAL_FILE');
     const file=argv[2],mime={'.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp'}[extname(file).toLowerCase()];
     if(!mime||!(await stat(file)).isFile())throw Error('PNG・JPEG・WebPのローカルファイルを指定してください');
+    if((await stat(file)).size>MAX_UPLOAD_BYTES)throw Error(UPLOAD_SIZE_MESSAGE);
     const url=new URL('/api/images',process.env.VILLAGE_URL||'http://127.0.0.1:5173');url.searchParams.set('name',basename(file));
     const response=await fetch(url,{method:'POST',headers:{...authorization,'Content-Type':mime},body:await readFile(file)});
     const record=await response.json();if(!response.ok)throw Error(record.error||'画像を保存できません');
