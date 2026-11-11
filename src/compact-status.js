@@ -8,6 +8,13 @@ export function compactStatus(label,normal=true){
  const text=escape(label);
  return normal&&completedLabels.has(label)?`<span class="completion-icon" role="img" title="${text}" aria-label="${text}">${actionSVG()}</span>`:text;
 }
+export function compactStatusPair(runLabel,requestLabel,normal=true,prefix=''){
+ if(normal&&completedLabels.has(runLabel)&&completedLabels.has(requestLabel)){
+  const text=escape(runLabel+' · '+requestLabel);
+  return `<span class="badge">${escape(prefix)}<span class="completion-icon" role="img" title="${text}" aria-label="${text}">${actionSVG()}</span></span>`;
+ }
+ return `<span class="badge">${escape(prefix)}${compactStatus(runLabel,normal)}</span> · ${compactStatus(requestLabel,normal)}`;
+}
 export function connectionStatus(element,text,{normal=false,label='接続'}={}){
  element.textContent=normal?'● '+text:text;
  element.title=normal?label+' · '+text:text;
