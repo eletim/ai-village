@@ -121,3 +121,5 @@
 #run-recovery-inbox article{padding:10px 0;border-top:1px solid #344361;overflow-wrap:anywhere}
 #run-recovery-inbox article:first-of-type{margin-top:8px}
 #run-recovery-inbox button{margin:3px}
+
+.agent-panel form button.icon-send{min-width:40px;min-height:40px;flex-shrink:0}.completion-icon{display:inline-flex;align-items:center;vertical-align:middle}

@@ -1,0 +1,19 @@
+integration/single-village 2c8f13f: 102 passed / 17 failed
+
+tests/browser/board-review.spec.js:18:1 › four cards use 2x2, nine use 3x3, narrow screen uses readable rows and one consistent state palette
+tests/browser/board-review.spec.js:85:1 › quiet selection preserves blue and muted green; unread turns alone have no wash or ring
+tests/browser/conversation-pages.spec.js:38:1 › recovery fetches full request only on explicit retry and uses current revision
+tests/browser/direct.spec.js:36:1 › notification deep link focuses the matching Agent after asynchronous loading
+tests/browser/direct.spec.js:86:1 › sidebar uses registered places, auto layout, same-button restore and archived termination
+tests/browser/direct.spec.js:104:1 › drafts, conversation and board scroll survive place, zoom, polling and responsive layout
+tests/browser/direct.spec.js:122:1 › notification link to a terminated Agent opens saved history, not an Agent tab
+tests/browser/direct.spec.js:131:1 › server send eligibility, chat alignment, draft and scroll survive refresh and reload
+tests/browser/direct.spec.js:170:1 › secretary setup opens local runtime registration, and zoom survives polling until explicit place change
+tests/browser/projects.spec.js:4:1 › Project spans places with nine-card groups, zoom restore, dots and explicit membership
+tests/browser/projects.spec.js:26:1 › sidebar modes persist their own group, restore drafts and reach unassigned Agents without auto-view
+tests/browser/report-mode.spec.js:8:1 › Direct preserves original work until report commits; failure keeps original, internal report stays hidden
+tests/browser/runtime-recovery.spec.js:2:1 › failed runtime displays reason, scheduled recovery and explicit revision-safe retry/cancel
+tests/browser/sidebar-toggle.spec.js:2:31 › sidebar toggle keeps draft and scope, grows board, persists at 1440px
+tests/browser/sidebar-toggle.spec.js:2:31 › sidebar toggle keeps draft and scope, grows board, persists at 390px
+tests/browser/status-icons.spec.js:8:1 › default dots, roles preserve other preferences, match headers, rename/poll stable, unknown and escaped labels
+tests/browser/travel-registry.spec.js:2:1 › registered computer/folder CRUD, selection isolation, immutable draft and concurrent editing

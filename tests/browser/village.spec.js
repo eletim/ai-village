@@ -9,7 +9,7 @@ test('registered village, selection, poll movement/deletion, deep link and retur
  s.agents[2].workshopId='w1';await expect(page.locator('#place-detail h2')).toHaveText('川辺の工房');await expect(page.locator('#resident-detail h2')).toHaveText('住人 3');
  expect(m.mutations).toEqual([]);await page.getByRole('link',{name:/このAgentと話す/}).click();await expect(page).toHaveURL(new RegExp('/agents#agent-'+id(2)));await expect(page.locator('#agent-'+id(2))).toBeVisible();await page.getByRole('link',{name:'村へ戻る',exact:true}).click();await expect(page.locator('.village-lot')).toHaveCount(3);
  await page.locator('#village-lots [data-resident="'+id(2)+'"]').click();s.agents.splice(2,1);await expect(page.locator('#resident-detail')).toBeEmpty();
- m.offline(true);await expect(page.locator('#map-connection')).toContainText('接続未確認');await expect(page.locator('#village-lots [data-status=unknown]')).toHaveCount(7);m.offline(false);await expect(page.locator('#map-connection')).toContainText('接続中');expect(m.mutations.filter(x=>!x.endsWith('/view'))).toEqual([]);
+ m.offline(true);await expect(page.locator('#map-connection')).toContainText('接続未確認');await expect(page.locator('#village-lots [data-status=unknown]')).toHaveCount(7);m.offline(false);await expect(page.locator('#map-connection')).toHaveAttribute('aria-label',/接続中/);expect(m.mutations.filter(x=>!x.endsWith('/view'))).toEqual([]);
 });
 test('large village, mobile keyboard navigation and three themes stay within viewport',async({page})=>{
  const s=fixture(9,29);await mock(page,s);await page.setViewportSize({width:390,height:844});await page.goto('/');await expect(page.locator('.village-lot')).toHaveCount(10);await expect(page.locator('#village-lots [data-resident]')).toHaveCount(29);

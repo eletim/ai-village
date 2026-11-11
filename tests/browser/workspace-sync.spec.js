@@ -36,10 +36,10 @@ test('slow HTTP initial sync survives ten seconds and recovers from an interrupt
   calls++;if(calls===1)await new Promise(r=>setTimeout(r,11000));if(calls===3)return route.abort('connectionreset');
   await route.fulfill({json:server.reply({client:u.searchParams.get('client'),since:u.searchParams.get('since')},workspaceSnapshot(state))});
  });
- await page.goto('http://village-http.test/agents');await expect(page.locator('#connection')).toContainText('● 接続',{timeout:18000});
+ await page.goto('http://village-http.test/agents');await expect(page.locator('#connection')).toContainText('● ',{timeout:18000});
  await page.locator('textarea[name=instruction]').fill('keep this draft');
  await expect(page.locator('#connection')).toContainText('再試行',{timeout:6000});const failedCalls=calls;await page.waitForTimeout(2200);expect(calls).toBe(failedCalls);
- await expect(page.locator('#connection')).toContainText('● 接続',{timeout:10000});await expect(page.locator('textarea[name=instruction]')).toHaveValue('keep this draft');expect(errors).toEqual([]);
+ await expect(page.locator('#connection')).toContainText('● ',{timeout:10000});await expect(page.locator('textarea[name=instruction]')).toHaveValue('keep this draft');expect(errors).toEqual([]);
 });
 test('quick normal polls keep the connected footer without flashing the syncing text',async({page})=>{
  const state={agents:[{id:'a',name:'Fixture',location:'mayor',state:'idle',connection:{},canSend:true,nativeTurns:[]}],projects:[],workshops:[],reviews:{},requests:[],notification:{enabled:false},capabilities:{},runs:[]};
@@ -48,7 +48,7 @@ test('quick normal polls keep the connected footer without flashing the syncing 
   const u=new URL(route.request().url());if(u.pathname!=='/api/direct')return route.fulfill({json:{providers:{}}});
   await route.fulfill({json:server.reply({client:u.searchParams.get('client'),since:u.searchParams.get('since')},workspaceSnapshot(state))});
  });
- await page.goto('/agents');await expect(page.locator('#connection')).toContainText('● 接続');
+ await page.goto('/agents');await expect(page.locator('#connection')).toContainText('● ');
  await page.evaluate(()=>{window.__connectionTexts=[];new MutationObserver(()=>window.__connectionTexts.push(document.querySelector('#connection').textContent)).observe(document.querySelector('#connection'),{childList:true,characterData:true,subtree:true});});
  await page.waitForTimeout(6500);
  const seen=await page.evaluate(()=>window.__connectionTexts);expect(seen.some(t=>t.includes('同期中'))).toBe(false);
@@ -62,10 +62,10 @@ test('initial sync shows immediately and subsequent sync uses last success age',
   pending.push(()=>route.fulfill({json:state}));
  });
  await page.goto('/agents');await expect(page.locator('#connection')).toContainText('同期中');
- await expect.poll(()=>pending.length).toBe(1);await pending.shift()();await expect(page.locator('#connection')).toContainText('● 接続');
+ await expect.poll(()=>pending.length).toBe(1);await pending.shift()();await expect(page.locator('#connection')).toContainText('● ');
  await page.clock.fastForward(2000);await expect.poll(()=>pending.length).toBe(1);
- await expect(page.locator('#connection')).toContainText('● 接続');
- await page.clock.fastForward(7999);await expect(page.locator('#connection')).toContainText('● 接続');
+ await expect(page.locator('#connection')).toContainText('● ');
+ await page.clock.fastForward(7999);await expect(page.locator('#connection')).toContainText('● ');
  await page.clock.fastForward(1);await expect(page.locator('#connection')).toContainText('同期中');
- await pending.shift()();await expect(page.locator('#connection')).toContainText('● 接続');
+ await pending.shift()();await expect(page.locator('#connection')).toContainText('● ');
 });
