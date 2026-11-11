@@ -5,13 +5,14 @@ export function recoveryReason(r){
  if(reason?.startsWith('legacy-'))return '旧データに完了を確認できない送信が残っています。既存の成果・副作用を確認してください。';
  return '実行が停止したか、完了登録を確認できません。既存の成果・副作用を確認してください。';
 }
-export const needsRunRecovery=(q,r,w)=>!!w&&q?.requestModel?.state.kind==='active'&&q.requestModel.state.review.length>0;
+export const needsRunRecovery=(q,r,w)=>!q?.integrity&&!!w&&q?.requestModel?.state.kind==='active'&&q.requestModel.state.review.length>0;
 export function requestReviewReason(q,r){
  const reasons=q.requestModel?.state.kind==='active'?q.requestModel.state.review:[];
  return reasons.map(reason=>reason.startsWith('run-needs-review:')?'送信が失敗・中断・確認できずで終了しました。既存の成果・副作用を確認してください。':reason.startsWith('declaration-conflict:')?'完了申告と観察した事実が一致しません。':reason==='needs-decision'||reason==='legacy-needs-decision'?'送信が終了しています。成果を確認し、次の扱いを決めてください。':reason).join(' / ')||recoveryReason(r);
 }
 export function recoveryRequests(data){
  return (data.requests||[]).flatMap(q=>{
+  if(q.integrity)return [{id:q.id,revision:q.revision,agentName:data.agents.find(a=>a.id===q.originAgentId)?.name||'参照不整合',instruction:q.instruction,reason:'参照不整合のため隔離中: '+q.integrity.reasons.join(' / '),canRetry:false,quarantined:true}];
   const w=q.works.find(w=>w.id===q.rootWorkId)||q.works.find(w=>!w.parentWorkId);
   const r=data.runs.find(r=>r.id===w?.currentRunId);if(!r||!needsRunRecovery(q,r,w))return [];
   const a=data.agents.find(a=>a.id===w.agentId);

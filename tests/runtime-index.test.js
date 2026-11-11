@@ -195,3 +195,20 @@ test('Claude queued_command continues parent chain and indexed restart matches m
  const early=structuredClone(snapshot);early.turns[0].completionOffset=early.inputs[1].offset-1;assert.equal(correlate(r,early).reason,'steering-completion-before-input');
  const input=snapshot.inputs[1];assert.equal(correlate(r,{...snapshot,inputs:[...snapshot.inputs,{...input,id:'foreign',text:'outside',offset:input.offset+1}]}).state,'unknown');
 });
+
+test('middle equal-length rewrite invalidates host and restarted replica; append preserves identity',async t=>{
+ const f=await setup(t),padding={type:'padding',value:'x'.repeat(20000)};
+ const content=lines([padding,start,input,done,padding]);await writeFile(f.file,content);
+ let s=await f.reader.read(f.a,f.status,f.execute);const identity=s.fileIdentity;assert(s.available);
+ await writeFile(f.file,content.replace('hello ai-village-run-hello','other ai-village-run-other'));
+ f.reader=new RuntimeReader(f.dir);s=await f.reader.read(f.a,f.status,f.execute);assert(s.available);assert.notEqual(s.fileIdentity,identity);assert(!s.inputs.some(i=>i.text.includes('ai-village-run-hello')));
+ const rewritten=s.fileIdentity;await appendFile(f.file,lines([padding]));s=await f.reader.read(f.a,f.status,f.execute);assert(s.available);assert.equal(s.fileIdentity,rewritten);assert(s.verifiedBytes>40000);
+ await writeFile(f.file,lines([padding,start]));s=await f.reader.read(f.a,f.status,f.execute);assert(s.available);assert.notEqual(s.fileIdentity,rewritten);assert.equal(s.inputs.length,0);
+});
+test('large changed source audits bounded chunks and withholds cached acceptance until verified',async t=>{
+ const f=await setup(t),padding=JSON.stringify({type:'padding',value:'x'.repeat(1024*1024)})+'\n';
+ await writeFile(f.file,lines([start,input,done])+padding.repeat(34));let s;
+ for(let i=0;i<5;i++){s=await f.reader.read(f.a,f.status,f.execute);if(s.available)break;}assert(s.available);const identity=s.fileIdentity;
+ await appendFile(f.file,'{}\n');s=await f.reader.read(f.a,f.status,f.execute);assert(!s.available);assert.equal(s.reason,'source-verification-pending');assert.deepEqual(s.inputs,[]);
+ assert(s.verifiedBytes<=32*1024*1024);s=await f.reader.read(f.a,f.status,f.execute);assert(s.available);assert.equal(s.fileIdentity,identity);
+});

@@ -406,7 +406,7 @@ function render(){
  if(!inbox){inbox=document.createElement('details');inbox.id='run-recovery-inbox';$('#agents').before(inbox);}
  const recovery=state.recoveryRequests||[];
  inbox.hidden=!recovery.length;
- inbox.innerHTML='<summary>要確認の依頼（'+recovery.length+'件）</summary>'+recovery.map(q=>`<article><strong>${esc(q.agentName)} · ${esc((q.instruction||'依頼').slice(0,100))}</strong><p>要確認: ${esc(q.reason)}</p>${q.canRetry?`<button data-recovery-retry="${esc(q.id)}">再試行</button>`:'<button disabled>再試行</button><p>実行中、または再試行先がありません。</p>'}<button data-recovery-complete="${esc(q.id)}">完了扱い</button><button data-recovery-cancel="${esc(q.id)}">取り下げ</button></article>`).join('');
+ inbox.innerHTML='<summary>要確認の依頼（'+recovery.length+'件）</summary>'+recovery.map(q=>`<article><strong>${esc(q.agentName)} · ${esc((q.instruction||'依頼').slice(0,100))}</strong><p>要確認: ${esc(q.reason)}</p>${q.quarantined?'<p>自動処理を停止しています。保存記録の参照を修復して再起動してください。</p>':`${q.canRetry?`<button data-recovery-retry="${esc(q.id)}">再試行</button>`:'<button disabled>再試行</button><p>実行中、または再試行先がありません。</p>'}<button data-recovery-complete="${esc(q.id)}">完了扱い</button><button data-recovery-cancel="${esc(q.id)}">取り下げ</button>`}</article>`).join('');
  inbox.onclick=async e=>{
   const button=e.target.closest('[data-recovery-retry],[data-recovery-cancel],[data-recovery-complete]');if(!button)return;
   const id=button.dataset.recoveryRetry||button.dataset.recoveryCancel||button.dataset.recoveryComplete,q=recovery.find(q=>q.id===id);
