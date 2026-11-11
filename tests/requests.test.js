@@ -306,9 +306,9 @@ test('two-stage report replaces visible work after completion, waits for accepta
  // finish must come before the report body is written, so a trailing habitual remark can
  // never become the run's last message and clobber the report in finalOutput.
  assert.match(s.flow.context(report),/finishは不要/);
- assert.match(s.flow.context(report),/その後は何も書き加えないで/);
+ assert.match(s.flow.context(report),/その後は何も足さないで/);
  assert(JSON.stringify(s.snapshot()).includes('Output '+source.id));
- assert(!JSON.stringify(s.snapshot()).includes('人間向けの報告だけを作成'));
+ assert(!JSON.stringify(s.snapshot()).includes('人間が読む短い報告に書き直し'));
  assert.equal(s.snapshot().reviews[source.agentId].attention,false);
  const count=f.sent.length;await s.tick();await s.tick();assert.equal(f.sent.length,count);
  s=await f.restart();await s.tick();assert.equal(f.sent.length,count);
