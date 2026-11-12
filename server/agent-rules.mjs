@@ -13,7 +13,7 @@ const reportPolicy='人間が読む短い報告に書き直してください。
 export function visualReportContext(cli,url){return '\n図は必要時のみfenced mermaid（設定変更・HTML・外部URL禁止）。画像は '+cli+' images upload LOCAL_FILE、CLIがなければPOST '+url+'/api/images?name=report.png（Content-Type: image/png、画像本体・既存認証）。返却された ![説明](village-image:UUID) を本文に記載。ファイルは実行PC上のものを使用し、内部パス・外部画像URLは公開しない。通常の文字報告を維持。\n';}
 export class AgentRules {
  constructor(url){this.url=url;this.cli='VILLAGE_URL='+JSON.stringify(url)+' node '+JSON.stringify(resolve('scripts/village.mjs'));}
- access(id){return 'CLI: '+this.cli+' requests get '+id+'。API: POST '+this.url+'/api/direct/requests/get {humanRequestId}。読取はrequests get/results、詳細はCLI help。';}
+ access(id){return 'CLI: '+this.cli+' requests get '+id+'。API: POST '+this.url+'/api/direct/requests/get {humanRequestId}。必要時に最新詳細を取得: agents list、requests get HUMAN_REQUEST_ID、requests results HUMAN_REQUEST_ID WORK_ID（WORK_IDはworkId）。詳細はCLI help。秘書Agentはlocal接続の工房だけに作成できます。';}
  work(id){return [visualReportContext(this.cli,this.url),common,this.access(id),identity,guide,'最新名簿: GET '+this.url+'/api/direct/agents 。',steeringRule,'Agentの判断操作は delegate / finish だけです。',...Object.keys(agentActions).map(actionUsage),'委任ありのまとめ役は子の送信終了と結果を確認し、最終回答直前に requests finish を申告してください。'].join('\n');}
  report(id){return [visualReportContext(this.cli,this.url),reportPolicy,this.access(id)].join('\n');}
  startup(){return '<ai-village-instructions version="1">\n毎ターンの ai-village-request は識別情報。HUMAN_REQUEST_ID はそのhumanRequestIdに置き換え、人間本文と村の規則を区別してください。\n通常作業:\n'+this.work('HUMAN_REQUEST_ID')+'\nphase=report の場合だけ適用:\n'+this.report('HUMAN_REQUEST_ID')+'\n</ai-village-instructions>';}

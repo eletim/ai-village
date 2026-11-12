@@ -9,7 +9,7 @@ import {migrateAgentStore} from './agent-migration.mjs';
 import {changeRun,observeRun,tracking,modelOf,runState} from './run-lifecycle.mjs';
 import {migrateRequestStore} from './request-migration.mjs';
 import {migrateRunStore} from './run-migration.mjs';
-import {runMarker,markerContext,installInstructionsScript,verifyInstructionsScript} from './input-envelope.mjs';
+import {inputCorrelation,installInstructionsScript,verifyInstructionsScript} from './input-envelope.mjs';
 import {sessionModel} from './session-model.mjs';
 import {DirectStore,writeSnapshot} from './direct-store.mjs';
 import {ProjectGuides} from './project-guides.mjs';
@@ -154,7 +154,7 @@ export class DirectAgents {
     return structuredClone(a);
   })));}
   get rules(){let url=this.villageUrl;try{url=new URL(this.notifier.status().officeUrl).origin;}catch{}return new AgentRules(url);}
-  secretaryContext(agent){const identity=agentIdentity(agent);return this.rules.discovery({agentId:agent.id,role:identity.role,location:identity.location,workshopId:agent.workshopId||null,projectId:agent.projectId||null,metadataRevision:agent.metadataRevision||0});}
+  secretaryContext(agent){const identity=agentIdentity(agent);return this.rules.discovery({agentId:agent.id,role:identity.role,location:identity.location,projectId:agent.projectId||null});}
   startupInstructions(){return this.rules.startup();}
   async installInstructions(a){
     let envelope={mode:'legacy'};
@@ -284,10 +284,10 @@ export class DirectAgents {
     const deliveredInstruction=await this.persist(async()=>{
       if(this.agentDeleting(a))return null;
       r.instruction=instruction;r.attachmentFiles=files;r.attachmentError=null;
-      const text=instruction+(r.phase!=='report'?this.secretaryContext(a):'')+guide+this.flow.context(r)+markerContext(r.id);
+      const text=instruction+this.secretaryContext(a)+guide+this.flow.context(r);
       if(r.steerTarget){const previous=this.flow.run(r.steerTarget.runId);changeRun(previous,{type:'close-tracking',actor:'human',reason:'steering-successor-dispatched'});}
       changeRun(r,{type:'dispatch',actor:'program',at:Date.now(),sessionId:confirmed.sessionId||null,agentIdle:true});
-      Object.assign(r,{inputMarker:runMarker(r.id),inputEnvelopeMode:compact?'startup-v1':'legacy',dispatchAttemptedAt:now(),baselineRuntime:{sessionId:confirmed.sessionId,cursor:confirmed.cursor,fileIdentity:confirmed.fileIdentity},agentSessionId:status.agentSessionId||null});
+      Object.assign(r,{inputCorrelation:inputCorrelation(text,a.provider),inputEnvelopeMode:compact?'startup-v1':'legacy',dispatchAttemptedAt:now(),baselineRuntime:{sessionId:confirmed.sessionId,cursor:confirmed.cursor,fileIdentity:confirmed.fileIdentity},agentSessionId:status.agentSessionId||null});
       await this.save();return text;
     });
     if(deliveredInstruction===null||this.agentDeleting(a))return blocked('project-deletion-before-dispatch');

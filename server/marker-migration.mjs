@@ -4,7 +4,7 @@ export function markerData(source){
  if(source.markerVersion!==undefined&&source.markerVersion!==1)throw Error('Unsupported markerVersion');
  const data=structuredClone(source),unconfirmed=[];
  for(const r of data.runs){
-  if(['sent','running'].includes(r.runModel.state.kind)&&r.inputMarker!==runMarker(r.id)){
+  if(['sent','running'].includes(r.runModel.state.kind)&&r.inputMarker!==runMarker(r.id)&&r.inputCorrelation?.version!==1){
    r.runModel={...r.runModel,state:{kind:'ended',outcome:'unconfirmed',reason:'legacy-marker-missing'},facts:[...r.runModel.facts,{type:'marker-migration-unconfirmed',at:0}]};unconfirmed.push(r.id);
   }
   delete r.inputHash;for(const p of r.priorInputs||[])delete p.hash;
