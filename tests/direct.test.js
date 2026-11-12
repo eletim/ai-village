@@ -10,7 +10,7 @@ import {DirectAgents} from '../server/direct.mjs';
 import {} from '../server/runtime-events.mjs';
 async function fixture(t){
  const dir=await mkdtemp(join(tmpdir(),'direct-native-'));t.after(()=>rm(dir,{recursive:true,force:true}));
- const data={available:true,sessionId:'session',cursor:0,inputs:[],turns:[]};let sends=0,notices=0,disconnected=false,loseSend=false,present=true;
+ const data={available:true,sessionId:'session',cursor:0,inputs:[],turns:[]};const deliveredInputs=new Map();let sends=0,notices=0,disconnected=false,loseSend=false,present=true;
  const remote=async(args)=>{
   if(disconnected)throw Error('offline');
   if(args[0]==='python3'){
@@ -20,7 +20,7 @@ async function fixture(t){
   if(args[1]==='workspace')return '{"id":"ws","initialTab":{"tabId":"initial"}}';
   if(args[2]==='create')return '{"tabId":"tab","sessionName":"owned"}';
   if(args[2]==='status')return JSON.stringify({alive:true,cliState:'idle',agentSessionId:'session'});
-  if(args[2]==='send'){sends++;if(loseSend)throw Error('lost');return '{"status":"sent"}';}
+  if(args[2]==='send'){deliveredInputs.set(service.data.runs.at(-1).instruction,args.at(-1));sends++;if(loseSend)throw Error('lost');return '{"status":"sent"}';}
   if(args[2]==='list')return JSON.stringify({tabs:present?[{tabId:'tab',sessionName:'owned'}]:[]});
   if(args[2]==='close'){present=false;return 'ok';}
   throw Error('Unexpected operation '+args.slice(0,3));
@@ -29,7 +29,7 @@ async function fixture(t){
  const service=new DirectAgents(options);await service.init({watch:false});await service.flow.configureReport(false);
  const w=await service.putWorkshop({name:'w',sshHost:'host',baseUrl:'http://host',workplaces:['/tmp']});
  const a=await service.create({workshopId:w.id,cwd:'/tmp',requestId:'create-001'});await service.tick();
- const input=(instruction,id='turn-'+(data.turns.length+1))=>{data.cursor+=10;data.inputs.push({id:'input-'+id,turnId:id,text:service.data.runs.findLast(r=>r.instruction===instruction)?.inputMarker||instruction,hash:service.data.runs.findLast(r=>r.instruction===instruction)?.inputHash||inputHash(instruction),offset:data.cursor});data.turns.push({id,state:'running',output:''});return data.turns.at(-1);};
+ const input=(instruction,id='turn-'+(data.turns.length+1))=>{data.cursor+=10;data.inputs.push({id:'input-'+id,turnId:id,text:deliveredInputs.get(instruction)||instruction,hash:service.data.runs.findLast(r=>r.instruction===instruction)?.inputHash||inputHash(instruction),offset:data.cursor});data.turns.push({id,state:'running',output:''});return data.turns.at(-1);};
  return {service,options,w,a,data,input,sends:()=>sends,notices:()=>notices,disconnect:v=>disconnected=v,lose:()=>loseSend=true};
 }
 test('raw instructions, native completion, additional input and restart never use reply formats',async t=>{
@@ -191,7 +191,7 @@ test('secretary receives discovery without losing native input correlation or re
  const payload={instruction:'工房を確認して',requestId:'secretary-discovery'};
  const r=await f.service.send(f.a.id,payload);
  assert.equal(r.instruction,payload.instruction);assert(delivered.includes('最新名簿'));assert(delivered.includes('/api/direct/agents'));
- assert(delivered.includes(r.inputMarker));assert.equal(r.inputHash,undefined);
+ assert(delivered.includes(r.id));assert.equal(r.inputMarker,undefined);assert.equal(r.inputHash,undefined);
  Object.assign(f.input(delivered),{state:'completed',output:'confirmed'});await f.service.tick();assert.equal(testView(r).state,'completed');
  await f.service.send(f.a.id,payload);assert.equal(f.sends(),1);
 });

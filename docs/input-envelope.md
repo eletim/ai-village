@@ -2,20 +2,97 @@
 
 ## Protocol
 
-New direct runs append `ai-village-run-<run UUID>` inside a short
-`ai-village-input` tag. Correlation looks for that complete ASCII token in a native
-**user input**, never in assistant output. Markers have no whitespace or markup to
-escape. Input positions, session/file identities, duplicate/competing-input checks,
-owned-input checks and Codex steering boundaries remain mandatory. A run with a
-marker never falls back to its hash when the marker is missing. Hash matching and Python `unpasted()` have been removed. Native text is read verbatim.
-Historical terminal runs are retained; unmarked sent/running runs become
-unconfirmed with request review in the versioned marker migration. Native index
-digests remain only for event deduplication, never run correlation. See
-[single-rules.md](single-rules.md) for migration and current verification.
+New sends contain the human instruction/attachments, `ai-village-discovery`
+(`agentId`, `role`, `location`, `projectId`) and `ai-village-request`
+(`humanRequestId`, `workId`, `runId`, `origin`, `phase`). The recipient agentId
+appears only in discovery. Reports also receive that identity and retain their
+question/results material. `parentWorkId`, `originAgentId`, `finalAgentId`,
+`workshopId` and `metadataRevision` remain in village storage and read APIs, not
+per-turn metadata. Rules describe `agents list`, `requests get HUMAN_REQUEST_ID`
+and `requests results HUMAN_REQUEST_ID WORK_ID` for current details. The existing
+local-only secretary creation check is unchanged.
 
-This proves correlation, not authenticity or exact body integrity. Someone who can
-copy the entire current token into another input can impersonate it; concurrent
-inputs still fail closed. Removing/truncating/changing the token yields unconfirmed when the turn ends or observation expires.
+There is no new `ai-village-input` tag or `ai-village-run-ID` token. Before sending,
+the persistence boundary stores `inputCorrelation` version 1: SHA-256 of the
+**entire delivered input**, including the existing runId that the agent uses for
+finish/delegate operations. No fingerprint or replacement token is sent to the
+agent. Same human text in a different run has a different fingerprint.
+
+`matchesRunInput` computes its own hash from native user text; it never trusts a
+native hash field or searches for a runId quoted in prose. For Claude only, it
+also accepts the observed whole `pasted_content id="X"` wrapper with its matching
+closing ID and framing newlines. The enclosed body must match the stored full
+fingerprint, or the precomputed rendering that escapes literal
+`<pasted_content>` as `<\pasted_content>`. Other whitespace/content changes,
+malformed wrappers, truncated text and additional prose stay unmatched. Native
+text remains verbatim in the index.
+
+`correlate` still requires the persisted dispatch attempt, original session,
+file identity, post-baseline input offsets, exactly one matching input, no
+competing inputs, an owned native turn and valid steering ancestry/boundaries.
+Bound inputs must remain present and unique. Native terminal events, never
+assistant prose, determine completion. Missing/replaced logs or uncertain sends
+are not retried automatically. Claude next-turn steering must match the full
+input and its native ancestry/order; being the next turn alone is insufficient.
+
+Codex mirrors one input as a response item and a user_message event. Index parser
+version 8 pairs these one-to-one, preserving the event position as an alias.
+Repeated same-source records remain separate inputs; they cannot disappear into
+one response's aliases. Existing indexes rebuild from native JSONL, retaining
+fileIdentity for unchanged sources and native input IDs/positions.
+
+This is correlation, not authentication. A party able to replace the complete
+current input and native records is outside this guarantee. A single event and
+response with equal text in the same native turn are treated as provider mirrors;
+without an authoritative PurpleMux receipt they cannot prove physical keystroke
+provenance. Unknown provider transformations fail closed rather than guessing.
+
+### Evidence and compatibility
+
+The installed `purplemux api-guide` documents `/send` returning only
+`{"status":"sent"}`. Inspection of PurpleMux source at `4a53bf28`
+(`src/pages/api/cli/tabs/[tabId]/send.ts`, `src/lib/tab-input-runtime.ts`) confirms
+literal/bracketed-paste submission followed by Enter, with no receipt/native-turn
+ID. Read-only inspection of existing Claude user JSONL confirmed whole paired
+paste wrappers (168 examples in the inspected sample); the literal-tag escape
+was also observed in the historical isolated verification below. Native Codex
+response/event and Claude user/queued_command records expose the submitted text
+and native identities already read by this repository. No PurpleMux change is
+needed for this conservative full-input contract.
+
+Previously dispatched marker runs retain their original matcher and checkpoints;
+completed history is unchanged. New queued sends always use the new protocol,
+including legacy full-rule fallback. Marker migration recognizes versioned new
+fingerprints and does not turn these runs unconfirmed on restart. This does not
+revive old unmarked inputs lacking any trustworthy dispatch proof.
+
+Changed fixed rules invalidate old installation hashes on village startup, so
+existing CLI sessions immediately receive updated legacy rules without restart;
+new sessions install the current rules. An old CLI's in-memory system rules are
+not rewritten. Rollback to an older server that knows only markers cannot track
+new fingerprint runs: drain them first or use a coordinated pre-change backup,
+and never resend unknown external effects.
+
+### Verification — lean prompts (2026-11-12)
+
+- `npm test`: 389 passed, 1 existing skip, 0 failures on the final full run.
+  New coverage includes full native Codex/Claude JSONL matching, paired Claude
+  paste framing/escaping, duplicate mirrored records in either order, stale
+  completions, missing/replaced logs, uncertain sends, restart, old in-flight
+  marker compatibility and short/legacy metadata. Existing request-flow tests
+  now replay the actual new payloads for delegation, result delivery, report,
+  Codex steering and both Claude queued/next-turn steering (including wrappers).
+- Typecheck, syntax check, build and `git diff --check` passed.
+- Playwright: all 145 passed on isolated port 5417 with a dedicated disposable
+  state directory and notifications disabled; screenshots were not committed.
+- Initial unit invocation lacked generated vendor files; build supplied them.
+  A later full run had one transient `fetch failed` in the attachment HTTP test
+  immediately after an oversized-upload rejection. Its standalone rerun and the
+  final full run passed. It is not classified as a proven pre-existing defect.
+- Transport/native tests use deterministic isolated fixtures, including real
+  HTTP, Python JSONL parsing and persistence/restart. Existing local native logs
+  and PurpleMux API/source were read for protocol evidence; no new real CLI
+  agent or SSH session was exercised. Production files/service were untouched.
 
 ## Startup instructions
 
@@ -35,7 +112,7 @@ This integration depends on the current PurpleMux workspace prompt/launcher
 contract; changing the launcher or externally rewriting prompts requires review.
 
 Short turns preserve the human text, then append current identity, request IDs,
-phase and marker. Attachments and travel data remain per turn. Project-guide rules
+and phase. Attachments and travel data remain per turn. Project-guide rules
 fetch the latest document using the current project ID; report and steering rules
 are installed once. Reports still carry the dynamic source question/results.
 All current policy text and action help are generated from `server/agent-rules.mjs`.

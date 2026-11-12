@@ -56,7 +56,7 @@ export class RequestFlow {
   if(!q.requestModel)bindRequest(this.d.data,q);
   return r;
  }
- context(r){const q=this.root(r.humanRequestId),w=this.work(q,r.workId);return this.d.rules.dynamic(r)+this.d.rules.context({humanRequestId:q.id,workId:w.id,runId:r.id,agentId:w.agentId,parentWorkId:w.parentWorkId,originAgentId:q.originAgentId,finalAgentId:q.finalAgentId,origin:r.origin,phase:r.phase||'work'},this.d.agent(r.agentId).inputEnvelope?.mode==='startup-v1');}
+ context(r){const q=this.root(r.humanRequestId),w=this.work(q,r.workId);return this.d.rules.dynamic(r)+this.d.rules.context({humanRequestId:q.id,workId:w.id,runId:r.id,origin:r.origin,phase:r.phase||'work'},this.d.agent(r.agentId).inputEnvelope?.mode==='startup-v1');}
  // originKind tags who actually dispatched this independent new request. The browser's own
  // /api/direct/agents/:id/runs route does not pass
  // a third argument, so it keeps the default 'human'; the generic CLI/API 'requests start'

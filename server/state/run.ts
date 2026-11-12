@@ -14,7 +14,7 @@ export type Run = Readonly<{
 export type RunEvent =
  | Command<'dispatch','program',{at:number; sessionId:string|null; agentIdle:boolean}>
  | Command<'transport-ack','program',{at:number}>
- | Command<'input','program',{at:number; sessionId:string; turnId:string; inputId:string; text:string; competing:boolean}>
+ | Command<'input','program',{at:number; sessionId:string; turnId:string; inputId:string; text:string; matchedRunId?:string; competing:boolean}>
  | Command<'terminal','program',{at:number; sessionId:string; turnId:string; outcome:'normal'|'failed'|'interrupted'; errorCode?:string}>
  | Command<'lost','program',{at:number; reason:'session-changed'|'turn-ended-without-marker'|'timeout'|'agent-stopped'}>
  | Command<'dispatch-blocked','program',{at:number; reason:string}>
@@ -40,7 +40,9 @@ export function transitionRun(r:Run,e:RunEvent):Result<Run> {
   case 'transport-ack': return r.state.kind==='sent'?record(r.state):reject('not-sent');
   case 'input': {
    if(r.state.kind!=='sent')return reject('input-requires-sent');
-   if(e.competing||!e.sessionId||!e.turnId||!e.inputId||(!e.text.split(/[^A-Za-z0-9-]+/).includes('ai-village-run-'+r.id)))return reject('unmatched-or-competing-input');
+   // The native boundary supplies matchedRunId only after full-input verification.
+   // The text path remains for legacy marker events.
+   if(e.competing||!e.sessionId||!e.turnId||!e.inputId||(e.matchedRunId!==undefined?e.matchedRunId!==r.id:!e.text.split(/[^A-Za-z0-9-]+/).includes('ai-village-run-'+r.id)))return reject('unmatched-or-competing-input');
    if(r.state.sessionId&&r.state.sessionId!==e.sessionId)return reject('session-mismatch');
    return record({kind:'running',sessionId:e.sessionId,turnId:e.turnId,inputId:e.inputId});
   }
