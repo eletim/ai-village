@@ -137,3 +137,6 @@ footer{font-variant-numeric:tabular-nums}
  :root[data-mobile-editing=true] body>footer{display:none}
 }
 #next-agent{padding:3px 6px;flex-shrink:0}
+#agent-profile-dialog [data-editor]{overflow:auto;min-height:0;flex:1}
+#agent-profile-dialog [data-policy]{display:block;box-sizing:border-box;width:100%;max-height:40dvh;resize:vertical}
+#agent-profile-dialog .profile-guide > [data-editor]{flex-shrink:1}

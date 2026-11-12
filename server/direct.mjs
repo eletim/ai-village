@@ -46,7 +46,7 @@ export class DirectAgents {
   constructor({dir, remote, notifier, attachments, transferAttachment=stageAttachment, localRun=run, localBin=process.env.VILLAGE_PMUX_BIN || 'purplemux', pollMs=2000, villageUrl='http://127.0.0.1:5173'}) {
     Object.assign(this,{dir,remote,notifier,attachments,transferAttachment,localRun,localBin,pollMs,villageUrl});
     this.data={version:1,workshops:[],projects:[],agents:[],runs:[]};
-    this.projectGuides=new ProjectGuides();
+    this.projectGuides=new ProjectGuides(undefined,this);
     this.flow=new RequestFlow(this);
     this.persistence=new PersistenceBoundary();
     this.queue=Promise.resolve(); this.locks=new Map(); this.monitors=new Map();
@@ -82,6 +82,7 @@ export class DirectAgents {
       if(!(a.agentModel.intent==='stop'&&a.processVerification?.remainingOwned===0&&a.terminatedAt))a.agentModel={...a.agentModel,observation:null};
 
     }
+    for(const p of this.data.projects)if(!p.deletedAt)await this.projectGuides.initialize(p);
     this.flow.init();
     await this.save();
     if(watch){this.timer=setInterval(()=>this.tick().catch(()=>{}),this.pollMs);this.timer.unref();void this.tick();}
@@ -140,8 +141,21 @@ export class DirectAgents {
     if(old){if(old.initialName!==name)fail('requestIdの再利用です');return {...old};}
     if(this.data.projects.some(p=>!p.deletedAt&&p.name===name))fail('同名のProjectがあります');
     const p={id:randomUUID(),requestId:input.requestId,initialName:name,name,revision:0,createdAt:now()};
+    await this.projectGuides.initialize(p);
     this.data.projects.push(p);await this.save();return {...p};
   }));}
+  async putProjectGuide(id,input){return this.locked('projects',async()=>{
+    this.writableProject(id);
+    if(typeof input.content!=='string'||!input.content.trim()||input.content.length>20000||input.content.includes('\0'))fail('方針は空白のみを除く1〜20000文字で指定してください',400);
+    if(typeof input.revision!=='string'||input.revision.length>100)fail('表示した方針のrevisionが必要です',400);
+    const current=await this.projectGuides.get(id);
+    if(!current.available||current.revision!==input.revision)fail('方針が更新されているか取得できません。下書きを控えて再読込してください');
+    return this.persist(async()=>{
+      const policies=this.data.projectPolicies ||= {};
+      policies[id]={content:input.content,revision:(policies[id]?.revision??0)+1};
+      await this.save();return this.projectGuides.get(id);
+    });
+  });}
   async updateAgent(id,input){return this.locked('projects',()=>this.locked(id,()=>this.persist(async()=>{
     const a=this.writableAgent(this.agent(id)),revision=a.metadataRevision||0;
     if(!Number.isInteger(input.revision)||input.revision!==revision)fail('Agentが更新されています。再読込してください');
