@@ -1,7 +1,9 @@
 # Rebuildable host-local index. Never writes the provider JSONL or request state.
 import os,json,time,hashlib,re,sqlite3,uuid,fcntl
 from pathlib import Path
-PARSER_VERSION=5
+PARSER_VERSION=7
+HASH_CHUNK=1024*1024
+VERIFY_BYTES=32*1024*1024
 BATCH_BYTES=32*1024*1024
 BATCH_EVENTS=50000
 BATCH_SECONDS=3
@@ -50,7 +52,7 @@ def edges(f,offset):
  f.seek(0);head=f.read(min(offset,4096));f.seek(max(0,offset-4096));tail=f.read(min(offset,4096))
  return hashlib.sha256(head+tail).hexdigest()
 def save_proof(path,cp):
- value={k:cp[k] for k in ['path','fileIdentity','stat','offset','edges']}
+ value={k:cp[k] for k in ['path','fileIdentity','stat','offset','edges','chunks']}
  try:
   if json.loads(path.read_text())==value:return
  except (FileNotFoundError,ValueError):pass
@@ -89,7 +91,7 @@ def index_read(provider,sid,request,parse):
   try:cp=json.loads(row[0]) if row else None
   except ValueError:raise sqlite3.DatabaseError('invalid checkpoint')
   with os.fdopen(os.open(path,os.O_RDONLY|os.O_NOFOLLOW),'rb') as f:
-   st=os.fstat(f.fileno());now=stamp(st);before_edges=edges(f,now[2])
+   st=os.fstat(f.fileno());now=stamp(st)
    # Source continuity is independent of the rebuildable parser generation.
    proof=None;proof_bad=False
    try:proof=json.loads(proofpath.read_text())
@@ -97,24 +99,41 @@ def index_read(provider,sid,request,parse):
    except (ValueError,OSError):proof_bad=True
    if proof_bad and not cp:return unavailable('source-proof-corrupt')
    proof=proof or cp
-   # Neither timestamp is a dependable content-change signal: ctime also moves on a
-   # metadata-only touch (chmod, utime, xattr/ACL, a hardlink count change) that writes no
-   # content byte, and a live, actively-growing Claude Code session was observed moving
-   # BOTH mtime and ctime with the size and edges() (the actual head+tail content hash)
-   # completely unchanged — some internal preallocation/checkpoint write, not a real
-   # rewrite. edges() is the real content check; neither timestamp adds a safe guarantee
-   # beyond it, only false positives, so same-size continuity relies on edges() alone.
+   # Acceptance follows the append boundary; an independent rolling audit checks
+   # the interior. Freeze each round's chunk count so an ever-growing tail cannot
+   # starve the next round. Never replace an old partial hash before checking it.
+   verified=0;audit_next=0;audit_limit=0
    def same_source(p):
     return bool(p and p.get('path')==str(path.resolve()) and p['stat'][:2]==now[:2] and now[2]>=p['stat'][2] and edges(f,p['offset'])==p.get('edges'))
-   continuity=same_source(proof)
+   verified_source=same_source(proof)
+   if verified_source and proof.get('chunks') is not None:
+    hashes=proof['chunks']
+    def matches(i):
+     f.seek(i*HASH_CHUNK);raw=f.read(min(HASH_CHUNK,proof['offset']-i*HASH_CHUNK))
+     return hashlib.sha256(raw).hexdigest()==hashes[i]
+    # The tail may be rehashed when extending it; verify its entire previous
+    # content first, including bytes outside edges()'s 4 KiB sample.
+    if hashes and not matches(len(hashes)-1):verified_source=False
+    auditrow=c.execute("select value from meta where key='audit'").fetchone()
+    audit=json.loads(auditrow[0]) if auditrow else {}
+    if audit.get('identity')!=proof['fileIdentity'] or not audit.get('limit') or audit.get('next',0)>=audit.get('limit',0):
+     audit={'identity':proof['fileIdentity'],'limit':len(hashes),'next':0}
+    i=audit['next'];limit=min(audit['limit'],len(hashes))
+    while verified_source and i<limit and verified<VERIFY_BYTES:
+     verified+=min(HASH_CHUNK,proof['offset']-i*HASH_CHUNK)
+     if not matches(i):verified_source=False;break
+     i+=1
+    audit['next']=i;audit_next=i;audit_limit=limit
+    c.execute("insert or replace into meta values('audit',?)",(encode(audit),))
+   continuity=verified_source
    source_changed=bool(proof) and not continuity
-   reset=not cp or cp.get('version')!=PARSER_VERSION or not same_source(cp)
+   reset=not cp or cp.get('version')!=PARSER_VERSION or not continuity or not same_source(cp) or cp.get('chunks') is None
    if reset:
     for table in ['records','changes','parents','inputs']:c.execute('delete from '+table)
     # A first observation retains dev:inode for pre-index checkpoints. A detected
     # source change gets a new epoch; rebuilding a cache alone preserves identity.
     identity=(proof.get('fileIdentity') if continuity else None) or (str(now[0])+':'+str(now[1])+(':'+uuid.uuid4().hex if source_changed else ''))
-    cp={'version':PARSER_VERSION,'path':str(path.resolve()),'generation':uuid.uuid4().hex,'fileIdentity':identity,'offset':0,'current':None,'stat':now}
+    cp={'version':PARSER_VERSION,'path':str(path.resolve()),'generation':uuid.uuid4().hex,'fileIdentity':identity,'offset':0,'current':None,'stat':now,'chunks':[]}
    db=Store(c);db.current=cp['current'];start=cp['offset'];offset=start;count=0;partial=False;reason=None;t0=time.monotonic();f.seek(offset)
    while offset<now[2] and offset-start<BATCH_BYTES and count<BATCH_EVENTS and time.monotonic()-t0<BATCH_SECONDS:
     raw=f.readline(MAX_LINE+1)
@@ -124,14 +143,15 @@ def index_read(provider,sid,request,parse):
     except (ValueError,UnicodeDecodeError):reason='invalid-json-line';break
     parse(db,provider,x,offset+len(raw));offset+=len(raw);count+=1
    after=stamp(os.fstat(f.fileno()))
-   # Concurrent append is safe for parsed prefix; replacement/rewrite is not. Re-checking
-   # edges() at the same offset (now[2]) is the content-change signal here too, for the
-   # same reason same_source() above no longer trusts either timestamp for this.
-   if after[:2]!=now[:2] or after[2]<now[2] or (after[2]==now[2] and edges(f,now[2])!=before_edges) or stamp(path.stat())[:2]!=now[:2]:
+   # Do not publish a snapshot if the source changed while parsing/hashing it.
+   chunks=cp['chunks'][:start//HASH_CHUNK]
+   for pos in range((start//HASH_CHUNK)*HASH_CHUNK,offset,HASH_CHUNK):
+    f.seek(pos);chunks.append(hashlib.sha256(f.read(min(HASH_CHUNK,offset-pos))).hexdigest())
+   if stamp(os.fstat(f.fileno()))!=now or stamp(path.stat())!=now:
     c.rollback();return unavailable('source-changed-during-read')
-   cp.update(offset=offset,current=db.current,stat=now,edges=edges(f,offset));c.execute("insert or replace into meta values('checkpoint',?)",(encode(cp),))
+   cp.update(offset=offset,current=db.current,stat=now,edges=edges(f,offset),chunks=chunks);c.execute("insert or replace into meta values('checkpoint',?)",(encode(cp),))
   top=c.execute('select coalesce(max(seq),0) from changes').fetchone()[0]
-  result={'version':2,'sessionId':sid,'generation':cp['generation'],'fileIdentity':cp['fileIdentity'],'observedAt':time.time()*1000,'cursor':offset,'sourceSize':after[2],'available':not reason and offset==after[2] and not partial,'incompleteTail':partial,'reason':reason or ('index-catching-up' if offset<after[2] and not partial else 'partial-line' if partial else None),'indexedBytes':offset-start,'indexedEvents':count,'revision':top}
+  result={'version':2,'sessionId':sid,'generation':cp['generation'],'fileIdentity':cp['fileIdentity'],'observedAt':time.time()*1000,'cursor':offset,'sourceSize':after[2],'available':not reason and offset==after[2] and not partial,'incompleteTail':partial,'reason':reason or ('index-catching-up' if offset<after[2] and not partial else 'partial-line' if partial else None),'verifiedBytes':verified,'auditNext':audit_next,'auditChunks':audit_limit,'indexedBytes':offset-start,'indexedEvents':count,'revision':top}
   if request is None:
    # Compatibility/testing path is bounded too; production uses the delta protocol.
    if c.execute('select coalesce(sum(length(value)),0) from records').fetchone()[0]>PAGE_CHARS:

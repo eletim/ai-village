@@ -2,7 +2,7 @@ import {inputHash} from './model-fixtures.mjs';
 import {fixtureModels,testView} from './model-fixtures.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,mkdir,writeFile,appendFile,readFile,rm,readdir,rename,chmod,utimes} from 'node:fs/promises';
+import {mkdtemp,mkdir,writeFile,appendFile,readFile,rm,readdir,rename,chmod,utimes,open} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {execFileSync} from 'node:child_process';
@@ -138,7 +138,8 @@ test('incremental snapshots match the frozen pre-index parser for both providers
  for(const [provider,rows] of [['codex',codex],['claude',claude]]){
   const file=provider==='codex'?f.file:join(f.dir,'.claude','projects','fixture',sid+'.jsonl');await mkdir(join(file,'..'),{recursive:true});await writeFile(file,'');
   const env={...f.env,HOME:f.dir},execute=async(a,args)=>execFileSync(args[0],args.slice(1),{env,maxBuffer:15e6}).toString();
-  for(const row of rows){await appendFile(file,lines([row]));const actual=await f.reader.read({...f.a,provider},f.status,execute),expected=JSON.parse(execFileSync('python3',[reference,provider,sid],{env}));for(const field of ['available','cursor','turns','inputs','modelInfo'])assert.deepEqual(field==='inputs'?actual[field].map(({aliases,...i})=>i):actual[field],expected[field],provider+' '+field);}
+  for(const row of rows){await appendFile(file,lines([row]));const actual=await f.reader.read({...f.a,provider},f.status,execute),expected=JSON.parse(execFileSync('python3',[reference,provider,sid],{env}));if(provider==='claude'){actual.inputs=actual.inputs.map(({explicitTurn,source,...i})=>i);actual.turns=actual.turns.map(({completionOffset,...t})=>t);}
+   for(const field of ['available','cursor','turns','inputs','modelInfo'])assert.deepEqual(field==='inputs'?actual[field].map(({aliases,...i})=>i):actual[field],expected[field],provider+' '+field);}
  }
 });
 test('Direct runtime retains local/SSH routing and does not mix equal session IDs on different hosts',async t=>{
@@ -180,4 +181,57 @@ test('fresh Claude missing session stays unrecorded through the indexed reader, 
  const first=await f.reader.read(a,f.status,execute);assert.equal(first.unrecorded,true);assert.equal(first.available,false);assert.equal(first.sessionId,sid);
  await writeFile(join(root,sid+'.jsonl'),'');await mkdir(join(root,'other'));await writeFile(join(root,'other',sid+'.jsonl'),'');
  const ambiguous=await f.reader.read(a,f.status,execute);assert.equal(ambiguous.available,false);assert.notEqual(ambiguous.unrecorded,true);
+});
+
+test('Claude queued_command continues parent chain and indexed restart matches marker ownership',async t=>{
+ const f=await setup(t),file=join(f.dir,'.claude/projects/test',sid+'.jsonl');await mkdir(join(file,'..'),{recursive:true});
+ const env={...f.env,HOME:f.dir},execute=async(a,args)=>execFileSync(args[0],args.slice(1),{env}).toString(),agent={...f.a,provider:'claude'};
+ await writeFile(file,lines([{type:'user',uuid:'u',message:{content:'initial'}},{type:'assistant',uuid:'tool',parentUuid:'u',message:{stop_reason:'tool_use',content:[]}}]));
+ const baseline=await f.reader.read(agent,f.status,execute);
+ const r={id:'supplement',inputMarker:'ai-village-run-supplement',steeringProvider:'claude',steerTarget:{turnId:'u',sessionId:sid},priorInputs:baseline.inputs.map(({id,offset})=>({id,offset})),baselineRuntime:baseline,dispatchAttemptedAt:'now'};
+ await appendFile(file,lines([{type:'attachment',uuid:'queued',parentUuid:'tool',attachment:{type:'queued_command',prompt:'<pasted_content> ai-village-run-supplement'}},{type:'user',uuid:'result',parentUuid:'queued',message:{content:[{type:'tool_result',content:'done'}]}},{type:'assistant',uuid:'end',parentUuid:'result',message:{stop_reason:'end_turn',content:'KUMQUAT'}}]));
+ f.reader=new RuntimeReader(f.dir);const snapshot=await f.reader.read(agent,f.status,execute);
+ assert.equal(snapshot.turns.length,1);assert.equal(snapshot.inputs.length,2);assert.equal(snapshot.inputs[1].source,'claude-queued');assert.equal(correlate(r,snapshot).state,'completed');assert.equal(correlate(r,snapshot).output,'KUMQUAT');assert(Number.isFinite(snapshot.turns[0].completionOffset));
+ const early=structuredClone(snapshot);early.turns[0].completionOffset=early.inputs[1].offset-1;assert.equal(correlate(r,early).reason,'steering-completion-before-input');
+ const input=snapshot.inputs[1];assert.equal(correlate(r,{...snapshot,inputs:[...snapshot.inputs,{...input,id:'foreign',text:'outside',offset:input.offset+1}]}).state,'unknown');
+});
+
+test('middle equal-length rewrite invalidates host and restarted replica; append preserves identity',async t=>{
+ const f=await setup(t),padding={type:'padding',value:'x'.repeat(20000)};
+ const content=lines([padding,start,input,done,padding]);await writeFile(f.file,content);
+ let s=await f.reader.read(f.a,f.status,f.execute);const identity=s.fileIdentity;assert(s.available);
+ await writeFile(f.file,content.replace('hello ai-village-run-hello','other ai-village-run-other'));
+ f.reader=new RuntimeReader(f.dir);s=await f.reader.read(f.a,f.status,f.execute);assert(s.available);assert.notEqual(s.fileIdentity,identity);assert(!s.inputs.some(i=>i.text.includes('ai-village-run-hello')));
+ const rewritten=s.fileIdentity;await appendFile(f.file,lines([padding]));s=await f.reader.read(f.a,f.status,f.execute);assert(s.available);assert.equal(s.fileIdentity,rewritten);assert(s.verifiedBytes>40000);
+ await writeFile(f.file,lines([padding,start]));s=await f.reader.read(f.a,f.status,f.execute);assert(s.available);assert.notEqual(s.fileIdentity,rewritten);assert.equal(s.inputs.length,0);
+});
+test('large changed source audits bounded chunks without blocking append acceptance',async t=>{
+ const f=await setup(t),padding=JSON.stringify({type:'padding',value:'x'.repeat(1024*1024)})+'\n';
+ await writeFile(f.file,lines([start,input,done])+padding.repeat(34));let s;
+ for(let i=0;i<5;i++){s=await f.reader.read(f.a,f.status,f.execute);if(s.available)break;}assert(s.available);const identity=s.fileIdentity;
+ await appendFile(f.file,'{}\n');s=await f.reader.read(f.a,f.status,f.execute);assert(s.available);assert(s.inputs.length);assert(s.auditNext<=s.auditChunks);
+ assert(s.verifiedBytes<=32*1024*1024);s=await f.reader.read(f.a,f.status,f.execute);assert(s.available);assert.equal(s.fileIdentity,identity);
+});
+
+
+test('100 MiB continuously appended history accepts every poll and detects a persistent middle rewrite within one audit round',async t=>{
+ const f=await setup(t),padding=JSON.stringify({type:'padding',value:'x'.repeat(1024*1024)})+'\n';
+ const prefix=padding.repeat(50),middle=lines([start,input,done]);
+ await writeFile(f.file,prefix+middle+padding.repeat(51));let s;
+ for(let i=0;i<10;i++){s=await f.reader.read(f.a,f.status,f.execute);if(s.available)break;}assert(s.available);
+ const identity=s.fileIdentity,timings=[],positions=[];
+ const poll=async n=>{
+  await appendFile(f.file,lines([{type:'event_msg',payload:{type:'task_started',turn_id:'p'+n}},{type:'response_item',payload:{role:'user',id:'u'+n,turn_id:'p'+n,content:[{type:'input_text',text:'ai-village-run-p'+n}]}}]));
+  const began=performance.now();s=await f.reader.read(f.a,f.status,f.execute);timings.push(performance.now()-began);positions.push([s.auditNext,s.auditChunks]);
+ };
+ for(let n=0;n<12;n++){await poll(n);assert(s.available);assert(s.inputs.some(i=>i.text==='ai-village-run-p'+n));assert.equal(s.fileIdentity,identity);}
+ let extra=100;while(s.auditNext<64||s.auditNext>=s.auditChunks){await poll(extra++);assert(s.available);assert(extra<106);}
+ // Change a chunk immediately behind the audit cursor, without changing file size.
+ const file=await open(f.file,'r+');try{await file.write(Buffer.from('other ai-village-run-other'),0,Buffer.byteLength('other ai-village-run-other'),Buffer.byteLength(prefix)+middle.indexOf('hello ai-village-run-hello'));}finally{await file.close();}
+ f.reader=new RuntimeReader(f.dir);let detected=0;
+ for(let n=12;n<18;n++){await poll(n);if(s.fileIdentity!==identity){detected=n-11;break;}}
+ assert(detected>0&&detected<=5);assert(s.available||s.reason==='index-catching-up');
+ for(let n=20;!s.available&&n<30;n++)await poll(n);
+ assert(s.available);assert(!s.inputs.some(i=>i.text.includes('ai-village-run-hello')));assert(s.inputs.some(i=>i.text.includes('ai-village-run-other')),JSON.stringify(s.inputs.map(i=>i.text)));
+ t.diagnostic(JSON.stringify({sourceMiB:101,normalPolls:12,acceptanceDelayPolls:0,auditPositions:positions.slice(0,12),auditRoundCalls:4,auditRoundMs:Math.round(timings.slice(3,7).reduce((a,b)=>a+b)),normalPollTotalMs:Math.round(timings.slice(0,12).reduce((a,b)=>a+b)),normalPollMaxMs:Math.round(Math.max(...timings.slice(0,12))),rewriteDetectedAfterPolls:detected}));
 });

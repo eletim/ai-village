@@ -19,9 +19,9 @@ test('four cards use 2x2, nine use 3x3, narrow screen uses readable rows and one
  const state=fixture();await mock(page,state);expect(await dimensions(page)).toEqual({cols:2,rows:2});
  for(const agent of state.agents){
   const dot=page.locator(`[data-place=w] [data-agent-dot=${agent.id}]`);await expect(dot).toHaveAttribute('title',new RegExp(agent.name));
-  expect(await dot.evaluate(el=>getComputedStyle(el).backgroundColor)).toBe(await page.locator(`#agent-${agent.id} .panel-heading .dot`).evaluate(el=>getComputedStyle(el).backgroundColor));
+  expect(await dot.evaluate(el=>getComputedStyle(el).color)).toBe(await page.locator(`#agent-${agent.id} .panel-heading .dot`).evaluate(el=>getComputedStyle(el).color));
  }
- expect(new Set(await page.locator('[data-place=w] .dot').evaluateAll(els=>els.map(el=>getComputedStyle(el).backgroundColor))).size).toBe(4);
+ expect(new Set(await page.locator('[data-place=w] .dot').evaluateAll(els=>els.map(el=>getComputedStyle(el).color))).size).toBe(4);
  await expect(page.locator('[data-place=w] small')).toHaveCount(0);
  await page.screenshot({path:'/tmp/ai-village-grid-four.png'});
  state.agents=fixture(9).agents;await expect(page.locator('.agent-panel:visible')).toHaveCount(9);expect(await dimensions(page)).toEqual({cols:3,rows:3});
@@ -87,10 +87,10 @@ test('quiet selection preserves blue and muted green; unread turns alone have no
  for(const i of [0,2])state.agents[i].nativeTurns=[{id:'done'+i,sessionId:'s'+i,state:'completed'}];
  state.reviews={a0:{revision:'done0',hasCompleted:true,unreviewed:true},a2:{revision:'done2',hasCompleted:true,unreviewed:false}};
  await mock(page,state);
- const style=id=>page.locator('#agent-'+id).evaluate(el=>({border:getComputedStyle(el).borderTopColor,ring:getComputedStyle(el).boxShadow,outline:getComputedStyle(el).outlineStyle,header:getComputedStyle(el.querySelector('.panel-heading')).backgroundColor,dot:getComputedStyle(el.querySelector('.dot')).backgroundColor}));
+ const style=id=>page.locator('#agent-'+id).evaluate(el=>({border:getComputedStyle(el).borderTopColor,ring:getComputedStyle(el).boxShadow,outline:getComputedStyle(el).outlineStyle,header:getComputedStyle(el.querySelector('.panel-heading')).backgroundColor,dot:getComputedStyle(el.querySelector('.dot')).color}));
  const unread=await style('a0'),read=await style('a2'),busy=await style('a1');expect(unread.border).toBe('rgb(139, 167, 152)');expect(read.border).toBe(unread.border);expect(unread.ring).toBe('none');expect(read.ring).toBe('none');expect(unread.header).toBe(read.header);expect(busy.border).toBe('rgb(102, 158, 255)');
  await page.locator('#agent-a1 h2').click();expect(await style('a1')).toEqual(busy);await expect(page.locator('#agent-a1')).toHaveAttribute('aria-current','true');
- for(const id of ['a0','a1','a2','a3'])expect(await page.locator('[data-place=w] [data-agent-dot='+id+']').evaluate(el=>getComputedStyle(el).backgroundColor)).toBe(['a0','a2'].includes(id)?'rgb(119, 155, 136)':(await style(id)).dot);
+ for(const id of ['a0','a1','a2','a3'])expect(await page.locator('[data-place=w] [data-agent-dot='+id+']').evaluate(el=>getComputedStyle(el).color)).toBe(['a0','a2'].includes(id)?'rgb(119, 155, 136)':(await style(id)).dot);
  await page.screenshot({path:'/tmp/ai-village-quiet-states.png'});
  await page.locator('#agent-a0 h2').click();await expect.poll(()=>state.reviews.a0.unreviewed).toBe(false);await expect.poll(async()=>(await style('a0')).ring).toBe('none');expect((await style('a0')).border).toBe(unread.border);expect((await style('a0')).header).toBe(read.header);
  await page.locator('#agent-a0 .travel-add').focus();await page.keyboard.press('Tab');await expect(page.locator('#agent-a1')).toBeFocused();expect((await style('a1')).outline).toBe('dashed');

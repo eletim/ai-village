@@ -1,3 +1,5 @@
+import {humanUI} from '../server/human-ui.mjs';
+import {receiveUpload} from '../server/upload-limits.mjs';
 import {apiValue} from '../server/state-projection.mjs';
 import {workspaceSnapshot,historyPage} from '../server/conversation-pages.mjs';
 import {WorkspaceSync} from '../server/workspace-sync.mjs';
@@ -26,6 +28,7 @@ const args = process.argv.slice(2);
 const value = (name, fallback) => { const i = args.indexOf(name); return i < 0 ? fallback : args[i + 1]; };
 const port = Number(value('--port', 5173)), host = value('--host', '127.0.0.1'), root = resolve('.');
 const addresses = listenAddresses({host});
+const humanIntent=humanUI();
 const allowRequest = await accessPolicy({host:addresses[0],port,vpnAddress:addresses.find(address=>address.startsWith('100.'))});
 const library = new VillageLibrary();
 const dir=stateDirectory();
@@ -47,6 +50,7 @@ const handleRequest = async (req, res) => {
   try {
     if(!allowRequest(req,res))return;
     const pathname = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
+    if(pathname.startsWith('/api/direct/human/')&&!humanIntent.allow(req))return json(res,403,{error:'人間専用の操作です。村の画面を再読み込みして操作してください。'});
     if (pathname.startsWith('/api/')) {
       if (pathname.startsWith('/api/direct')) {
         if(req.method==='GET' && pathname==='/api/direct/usage')return json(res,200,await weeklyUsage.get());
@@ -127,8 +131,7 @@ const handleRequest = async (req, res) => {
         res.writeHead(200,{'Content-Type':record.kind==='image'?'image/png':'application/octet-stream','Content-Disposition':(record.kind==='image'?'inline':'attachment')+"; filename*=UTF-8''"+encodeURIComponent(record.name).replaceAll("'",'%27'),'X-Content-Type-Options':'nosniff','Content-Security-Policy':"sandbox; default-src 'none'",'Cache-Control':'private, no-store'});res.end(bytes);return;
       }
       if(req.method==='POST'&&pathname==='/api/attachments'){
-        const chunks=[];for await(const chunk of req)chunks.push(chunk);
-        return json(res,201,await attachments.save(Buffer.concat(chunks),new URL(req.url,'http://localhost').searchParams.get('name'),req.headers['content-type']));
+        return receiveUpload(req,res,bytes=>attachments.save(bytes,new URL(req.url,'http://localhost').searchParams.get('name'),req.headers['content-type']));
       }
       const imageRoute = pathname.match(/^\/api\/images\/([0-9a-f-]{36})$/);
       if (req.method === 'GET' && imageRoute) {
@@ -138,10 +141,8 @@ const handleRequest = async (req, res) => {
       }
       if (req.method === 'POST' && pathname === '/api/images') {
         if (!['image/png','image/jpeg','image/webp'].includes(req.headers['content-type'])) return json(res,415,{error:'PNG・JPEG・WebPを選んでください。'});
-        const chunks=[];
-        for await (const chunk of req) chunks.push(chunk);
         const name = new URL(req.url,'http://localhost').searchParams.get('name') || '画像';
-        return json(res,201,await images.save(Buffer.concat(chunks),name));
+        return receiveUpload(req,res,bytes=>images.save(bytes,name));
       }
       if (req.method === 'POST' && pathname === '/api/village') {
         if (!req.headers['content-type']?.startsWith('application/json')) return json(res,415,{error:'JSON required'});
@@ -155,6 +156,7 @@ const handleRequest = async (req, res) => {
     if (req.method !== 'GET' || !(pathname === '/agents' || pathname === '/agents/' || pathname === '/agents.html' || pathname === '/' || pathname === '/index.html' || /^\/src\/[a-z-]+\.(js|css)$/.test(pathname) || /^\/src\/vendor\/(?:[a-zA-Z0-9_.-]+\/)*[a-zA-Z0-9_-]+\.mjs$/.test(pathname)&&!pathname.split('/').some(p=>p==='..'||p==='.'))) { res.writeHead(404); res.end('Not found'); return; }
     const file = resolve(root, ['/agents','/agents/'].includes(pathname) ? 'agents.html' : pathname === '/' ? 'index.html' : '.' + pathname);
     const content = await readFile(file);
+    if(extname(file)==='.html')humanIntent.issue(req,res);
     res.writeHead(200, { 'Content-Type': mime[extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-store' }); res.end(content);
   } catch (error) {
     if (error.code === 'ENOENT') { res.writeHead(404); res.end('Not found'); }

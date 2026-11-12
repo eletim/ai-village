@@ -326,3 +326,14 @@ test('discovery prompt carries only recipient identity and stays fixed as the vi
  f.service.villageUrl='http://core.example:5173';
  assert(f.service.rules.work('q').includes('GET http://core.example:5173/api/direct/agents'));assert(!f.service.secretaryContext(f.a).includes('GET '));
 });
+test('Agent creation and stop intent save failures happen before external effects',async t=>{
+ const f=await fixture(t),s=f.service,write=s.store.write,execute=s.remote;let creates=0,closes=0;
+ s.remote=async(args,...rest)=>{if(args[1]==='workspace')creates++;if(args[2]==='close')closes++;return execute(args,...rest);};
+ s.store.write=async value=>{if(JSON.parse(value).agents.length>1)throw Error('save failed');return write(value);};
+ const input={workshopId:f.w.id,cwd:'/tmp',requestId:'failed-agent-create'};
+ await assert.rejects(s.create(input),/save failed/);assert.equal(s.data.agents.length,1);assert.equal(creates,0);
+ s.store.write=write;const a=await s.create(input);assert.equal((await s.create(input)).id,a.id);assert.equal(creates,1);
+ s.store.write=async()=>{throw Error('save failed');};
+ await assert.rejects(s.stop(f.a.id),/save failed/);assert.equal(closes,0);assert.notEqual(f.a.agentModel.intent,'stop');
+ s.store.write=write;await s.stop(f.a.id);await s.stop(f.a.id);assert.equal(closes,1);
+});

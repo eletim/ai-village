@@ -23,3 +23,17 @@ test('only an exact run marker matches: hashes, prose, wrapper or escapes never 
  assert(matchesRunInput(r,input));assert(!matchesRunInput(r,{...input,text:'no marker',hash:'same'}));assert(!matchesRunInput({...r,inputMarker:null},input));assert(!matchesRunInput(r,{...input,text:'ai-village-run-r-extra'}));
  const snapshot={available:true,sessionId:'s',cursor:2,inputs:[input],turns:[{id:'t',state:'completed'}]};assert.equal(correlate(r,snapshot).state,'completed');assert.equal(correlate(r,{...snapshot,inputs:[input,{...input,id:'stranger',text:'no marker'}]}).reason,'competing-or-unmatched-input');
 });
+
+test('report policy rewrites material for the human as a natural reply to the original question',()=>{
+ const rules=new AgentRules('http://127.0.0.1:5399');
+ for(const text of [rules.report('q'),rules.startup(),rules.context({humanRequestId:'q',phase:'report'},false)]){
+  assert.doesNotMatch(text,/言語|日本語|Japanese|英語|English|翻訳/i);
+  for(const phrase of ['画面から隠れ','転記・構成のなぞりではなく','質問への答えを最初','まずquestion（元の依頼）を読み','その人への自然な返答','成果の捏造','追加作業','finishは不要','何も足さない'])assert(text.includes(phrase),phrase);
+ }
+ const data=rules.reportData({id:'q',instruction:'Original question'},{id:'r',finalOutput:'Work material'},['supplement']);
+ assert(data.includes('question=元の依頼、finalResult=書き直し用の作業回答'));
+ assert.doesNotMatch(data.split('\n')[0],/言語|日本語|英語|Japanese|English|翻訳/i);
+ for(const action of Object.keys(agentActions))assert.doesNotMatch(actionUsage(action),/言語|日本語|英語|Japanese|English|翻訳/i);
+ assert.doesNotMatch(rules.context({humanRequestId:'q',phase:'report'},true),/言語|日本語|英語|Japanese|English|翻訳/i);
+ assert.deepEqual(JSON.parse(data.split('\n')[1]),{question:'Original question',supplements:['supplement'],finalResult:'Work material'});
+});

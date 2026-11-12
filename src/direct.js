@@ -1,3 +1,4 @@
+import {boardProjectTitle,mobileWorkspace} from './mobile-workspace.js';
 import {compactStatusPair,compactStatus,actionSVG,connectionStatus} from './compact-status.js';
 import {deliveryUnconfirmed} from './queued-run.js';
 import {needsRunRecovery,requestReviewReason} from './run-recovery.js';
@@ -88,6 +89,8 @@ function sidebarState(collapsed){
  button.setAttribute('aria-expanded',String(!collapsed));button.setAttribute('aria-label',label);button.title=label;
 }
 sidebarState(document.documentElement.dataset.sidebarCollapsed==='true');
+mobileWorkspace();
+$('#next-agent').onclick=()=>{const list=filtered();const index=list.findIndex(a=>a.id===zoomId);if(index>=0&&list.length>1)toggleZoom(list[(index+1)%list.length].id);};
 $('#sidebar-toggle').onclick=()=>{
  capturePositions();
  const collapsed=document.documentElement.dataset.sidebarCollapsed!=='true';
@@ -148,7 +151,8 @@ function renderBoard(){
  if(restoreScroll!==null)zoomId='';
  const shown=zoomId?list.filter(a=>a.id===zoomId):list.slice(selectedPage*PAGE_SIZE,(selectedPage+1)*PAGE_SIZE),ids=new Set(shown.map(a=>a.id));
  focusIds=ids;
- $('#board-title').textContent=(zoomId?shown[0].name:groupTitle(selectedPlace,selectedPage))+(isProject(selectedPlace)&&(state.projects||[]).find(p=>p.id===selectedPlace.slice(8))?.suspended?' · 休止中（表示整理のみ）':'');
+ $('#board-title').textContent=boardProjectTitle(shown,state.projects,groupTitle(selectedPlace,selectedPage))+(isProject(selectedPlace)&&(state.projects||[]).find(p=>p.id===selectedPlace.slice(8))?.suspended?' · 休止中（表示整理のみ）':'');
+ $('#next-agent').hidden=!zoomId||list.length<2;
  $('#agent-count').textContent=`${shown.length} / ${list.length} Agent`;
  $('#pages').hidden=selectedPlace!=='all'||!!zoomId||pageCount===1;
  $('#page-number').textContent=`${selectedPage+1} / ${pageCount}`;
@@ -201,7 +205,9 @@ function renderBoard(){
   const sendLabel=send.form.dataset.sending==='true'?'送信中…':pending.has(a.id)?'送信結果を確認中':a.canSteer?'実行中に補足':a.canQueue&&!a.canSend?'待機キューへ':'送信';
   send.innerHTML=sendLabel==='送信'?actionSVG('send'):esc(sendLabel);
   send.classList.toggle('icon-send',sendLabel==='送信');send.setAttribute('aria-label',sendLabel);
-  send.title=sendLabel+' · '+(pending.has(a.id)?'送信結果を確認中です。自動再送しません。':a.canSteer?'実行中の同じ依頼に補足します。native受付を照合し、通知は依頼全体で1回です。':a.canQueue&&!a.canSend?'別の依頼として保存し、現在の応答が終わったら渡します。':a.sendReason||'指示を送信します。');
+  const claudeSteering=a.canSteer&&a.provider==='claude'?'作業中か終了直後のどちらに反映されるかは保証されません。':'';
+  if(claudeSteering)send.setAttribute('aria-label',sendLabel+' · '+claudeSteering);
+  send.title=claudeSteering+sendLabel+' · '+(pending.has(a.id)?'送信結果を確認中です。自動再送しません。':a.canSteer?'実行中の同じ依頼に補足します。native受付を照合し、通知は依頼全体で1回です。':a.canQueue&&!a.canSend?'別の依頼として保存し、現在の応答が終わったら渡します。':a.sendReason||'指示を送信します。');
 
   card.hidden=!ids.has(a.id);card.style.order=list.findIndex(x=>x.id===a.id);
   if(!card.hidden){card.autogrow.update();scrolls.get(a.id).restore();}
@@ -390,7 +396,7 @@ async function api(path,body,method='POST'){
  if(path.endsWith('/runs')&&body?.attachments?.length&&!state?.capabilities?.attachments)throw Error('添付にはサーバー更新の反映が必要です。');
  if(path.endsWith('/runs')&&body?.travelContexts?.length&&!state?.capabilities?.travelContexts)throw Error('出張先の送信にはサーバー更新の反映が必要です。下書きは保持しています。');
  if(method==='GET')return readJSON('/api/direct'+path,{onProgress:bytes=>{if(path.startsWith('?view=workspace')&&syncIndicatorDue)$('#connection').textContent='同期中 · '+Math.ceil(bytes/1024)+' KB受信';}});
- const response=await fetch('/api/direct'+path,{method,signal:AbortSignal.timeout(30000),headers:{'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});
+ const response=await fetch('/api/direct'+path,{method,signal:AbortSignal.timeout(30000),headers:{'Content-Type':'application/json',...(path.startsWith('/human/')?{'X-Village-Human-UI':'1'}:{})},...(body?{body:JSON.stringify(body)}:{})});
  const value=await response.json();if(!response.ok)throw Object.assign(Error(value.error||'操作に失敗しました'),{status:response.status});return value;
 }
 async function action(form,fn){const buttons=[...form.querySelectorAll('button')],card=form.closest('.agent-panel');if(card)card.dataset.pending='true';if(form.matches('[data-send]')){form.dataset.sending='true';const send=form.querySelector('[type=submit]');send.textContent='送信中…';send.setAttribute('aria-label','送信中…');send.title='送信中…';}buttons.forEach(b=>b.disabled=true);$('#error').textContent='';document.querySelectorAll('.dialog-error').forEach(el=>el.textContent='');try{await fn();await refresh(true);}catch(e){const target=document.querySelector('dialog[open] .dialog-error')||$('#error');target.textContent=e.message;}finally{delete form.dataset.sending;if(card)card.dataset.pending='false';buttons.forEach(b=>b.disabled=false);if(state)renderBoard();}}
@@ -400,7 +406,7 @@ function render(){
  if(!inbox){inbox=document.createElement('details');inbox.id='run-recovery-inbox';$('#agents').before(inbox);}
  const recovery=state.recoveryRequests||[];
  inbox.hidden=!recovery.length;
- inbox.innerHTML='<summary>要確認の依頼（'+recovery.length+'件）</summary>'+recovery.map(q=>`<article><strong>${esc(q.agentName)} · ${esc((q.instruction||'依頼').slice(0,100))}</strong><p>要確認: ${esc(q.reason)}</p>${q.canRetry?`<button data-recovery-retry="${esc(q.id)}">再試行</button>`:'<button disabled>再試行</button><p>実行中、または再試行先がありません。</p>'}<button data-recovery-complete="${esc(q.id)}">完了扱い</button><button data-recovery-cancel="${esc(q.id)}">取り下げ</button></article>`).join('');
+ inbox.innerHTML='<summary>要確認の依頼（'+recovery.length+'件）</summary>'+recovery.map(q=>`<article><strong>${esc(q.agentName)} · ${esc((q.instruction||'依頼').slice(0,100))}</strong><p>要確認: ${esc(q.reason)}</p>${q.quarantined?'<p>自動処理を停止しています。保存記録の参照を修復して再起動してください。</p>':`${q.canRetry?`<button data-recovery-retry="${esc(q.id)}">再試行</button>`:'<button disabled>再試行</button><p>実行中、または再試行先がありません。</p>'}<button data-recovery-complete="${esc(q.id)}">完了扱い</button><button data-recovery-cancel="${esc(q.id)}">取り下げ</button>`}</article>`).join('');
  inbox.onclick=async e=>{
   const button=e.target.closest('[data-recovery-retry],[data-recovery-cancel],[data-recovery-complete]');if(!button)return;
   const id=button.dataset.recoveryRetry||button.dataset.recoveryCancel||button.dataset.recoveryComplete,q=recovery.find(q=>q.id===id);

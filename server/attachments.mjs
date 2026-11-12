@@ -1,3 +1,4 @@
+import {checkUploadSize} from './upload-limits.mjs';
 import {ImageStore} from './images.mjs';
 import {mkdir,writeFile,rename,open} from 'node:fs/promises';
 import {constants} from 'node:fs';
@@ -9,6 +10,7 @@ export class AttachmentStore {
  constructor(dir){this.root=resolve(dir,'attachments');this.images=new ImageStore(dir);}
  async init(){await mkdir(this.root,{recursive:true,mode:0o700});await this.images.init();}
  async save(bytes,name,mime){
+  checkUploadSize(bytes);
   if(!Buffer.isBuffer(bytes)||!bytes.length)throw fail('ファイルが空です。');
   name=String(name||'file').split(/[\\/]/).at(-1).replace(/[\x00-\x1f\x7f]/g,'').slice(0,160)||'file';
   if(['image/png','image/jpeg','image/webp'].includes(mime)){

@@ -13,6 +13,7 @@ function ownedTurn(run,turn,input,snapshot){
  const result={...turn,turnId:turn.id,sessionId:snapshot.sessionId};
  if(run.steerTarget){
   if(!input||!Number.isFinite(input.offset))return {state:'unknown',reason:'steering-input-boundary-missing'};
+  if(run.steeringProvider==='claude'&&['completed','failed','interrupted'].includes(turn.state)&&(!Number.isFinite(turn.completionOffset)||turn.completionOffset<=input.offset))return {state:'unknown',reason:'steering-completion-before-input'};
   result.output=outputBetween(turn,input.offset);
  }
  return result;
@@ -48,7 +49,14 @@ export function correlate(run,snapshot){
  // Unbound competing input, including duplicate identical text, stays unknown.
  if(turnIds.length!==1||inputs.some(i=>i.turnId!==turnIds[0]||!matchesRunInput(run,i))||candidates.length!==1)return {state:'unknown',reason:inputs.length?'competing-or-unmatched-input':'input-not-observed'};
  if(run.steerTarget&&candidates.some(i=>i.explicitTurn!==true))return {state:'unknown',reason:'steering-turn-attribution-missing'};
- if(run.steerTarget&&(snapshot.sessionId!==run.steerTarget.sessionId||turnIds[0]!==run.steerTarget.turnId))return {state:'unknown',reason:'steering-target-changed'};
+ if(run.steerTarget){
+  if(snapshot.sessionId!==run.steerTarget.sessionId)return {state:'unknown',reason:'steering-target-changed'};
+  if(turnIds[0]!==run.steerTarget.turnId){
+   const index=snapshot.turns.findIndex(t=>t.id===run.steerTarget.turnId),prior=snapshot.turns[index];
+   const nextClaude=run.steeringProvider==='claude'&&candidates[0].source==='claude-user'&&index>=0&&snapshot.turns[index+1]?.id===turnIds[0]&&prior.state==='completed'&&Number.isFinite(prior.completionOffset)&&candidates[0].offset>prior.completionOffset;
+   if(!nextClaude)return {state:'unknown',reason:'steering-target-changed'};
+  }
+ }
  const turn=snapshot.turns.find(t=>t.id===turnIds[0]);
  if(!turn)return {state:'unknown',reason:'turn-not-observed'};
  return {...ownedTurn(run,turn,candidates[0],snapshot),inputId:candidates[0].id};

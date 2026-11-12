@@ -1,3 +1,4 @@
+import {directSnapshot,mockSnapshot} from './helpers/direct-fixtures.js';
 import {test,expect} from '@playwright/test';
 // These existing place-operation scenarios start from the persisted Places mode.
 test.beforeEach(async({page})=>{await page.addInitScript(()=>{if(!localStorage.getItem('ai-village-sidebar-v1'))localStorage.setItem('ai-village-sidebar-v1',JSON.stringify({mode:'places'}));});});
@@ -35,7 +36,7 @@ test('direct workshop editor, safe output and persistent instruction draft',asyn
 });
 test('notification deep link focuses the matching Agent after asynchronous loading',async({page})=>{
  const id='bdeab87b-6247-4355-9b5c-3a17c1a3c955';
- await page.route('**/api/direct',async route=>{
+ await page.route(directSnapshot,async route=>{
   await new Promise(resolve=>setTimeout(resolve,150));
   await route.fulfill({json:{workshops:[],runs:[],notification:{},agents:[{id,name:'通知対象',connection:{name:'工房'},cwd:'/tmp',state:'idle'}]}});
  });
@@ -84,7 +85,7 @@ function boardFixture(){
  return {workshops,agents,runs,notification:{}};
 }
 test('sidebar uses registered places, auto layout, same-button restore and archived termination',async({page})=>{
- const state=boardFixture();await page.route('**/api/direct',r=>r.fulfill({json:state}));await page.goto('/agents');
+ const state=boardFixture();await page.route(directSnapshot,r=>r.fulfill({json:state}));await page.goto('/agents');
  await expect(page.locator('[data-place]')).toHaveCount(6);await expect(page.locator('.agent-panel:visible')).toHaveCount(9);
  await page.locator('#next-page').click();await expect(page.locator('.agent-panel:visible')).toHaveCount(4);await page.locator('#previous-page').click();
  await expect(page.locator('#scope,#layout,#agent-tabs,[data-launch]:visible')).toHaveCount(0);
@@ -94,18 +95,19 @@ test('sidebar uses registered places, auto layout, same-button restore and archi
  await expect(page.locator('[data-place=w3]')).toHaveAttribute('aria-current','page');
  await expect(page.locator('#agent-a7 [data-zoom]')).toHaveAttribute('aria-label','一覧に戻る');
  await page.locator('#agent-a7 [data-zoom]').click();await expect(page.locator('.agent-panel:visible')).toHaveCount(3);
- await page.locator('[data-place=mayor]').click();await expect(page.locator('.agent-panel:visible')).toHaveCount(1);await expect(page.locator('#agent-a0')).toContainText('秘書 · Codex');
+ await page.locator('[data-place=mayor]').click();await expect(page.locator('.agent-panel:visible')).toHaveCount(1);await expect(page.locator('#agent-a0 .agent-name')).toHaveText('秘書');await expect(page.locator('#agent-a0 .header-status')).toHaveAttribute('aria-label',/秘書/);await page.locator('#agent-a0 .agent-name').click();await expect(page.getByRole('dialog',{name:'Agentのプロフィール'})).toContainText('Codex');await page.keyboard.press('Escape');
  await page.locator('[data-place=all]').click();await page.locator('#agent-a2 [data-zoom]').click();await expect(page.locator('#agent-a2')).toContainText('入力待ち');
- state.agents.find(a=>a.id==='a2').state='stop_unknown';await expect(page.locator('#agent-a2')).toContainText('終了結果不明');
+ state.agents.find(a=>a.id==='a2').state='stopping';await expect(page.locator('#agent-a2')).toContainText('終了処理中');state.agents.find(a=>a.id==='a2').state='unknown';await expect(page.locator('#agent-a2')).toContainText('接続・状態不明');
  state.agents.find(a=>a.id==='a2').state='terminated';await expect(page.locator('#agent-a2')).toHaveCount(0);await expect(page.locator('.agent-panel:visible')).toHaveCount(9);
  state.workshops.push({id:'new-place',name:'追加工房',connectionType:'ssh',workplaces:['/tmp']});await expect(page.locator('[data-place="new-place"]')).toContainText('追加工房');
  await page.locator('#manage').click();await page.getByRole('button',{name:'終了Agentの履歴',exact:true}).click();await page.locator('#history-agent').selectOption('ended');await expect(page.locator('#history-content')).toContainText('終了後も履歴を保持');
 });
 test('drafts, conversation and board scroll survive place, zoom, polling and responsive layout',async({page})=>{
- const state=boardFixture();await page.route('**/api/direct',r=>r.fulfill({json:state}));await page.goto('/agents');
+ const state=boardFixture();const polls=await mockSnapshot(page,state);await page.goto('/agents');
  const first=page.locator('#agent-a0'),second=page.locator('#agent-a1');await first.locator('textarea').fill('秘書への書きかけ');await second.locator('textarea').fill('別Agentの書きかけ');
- await first.locator('.runs').evaluate(el=>el.scrollTop=215);await second.locator('.runs').evaluate(el=>el.scrollTop=83);
- await page.waitForTimeout(2300);expect(await first.locator('.runs').evaluate(el=>el.scrollTop)).toBe(215);expect(await second.locator('.runs').evaluate(el=>el.scrollTop)).toBe(83);
+ for(const card of [first,second])await expect.poll(()=>card.locator('.runs').evaluate(el=>el.scrollHeight-el.scrollTop-el.clientHeight)).toBeLessThan(3);
+ await first.locator('.runs').evaluate(el=>el.scrollTop=215);await expect(first.locator('.latest-message')).toBeVisible();await second.locator('.runs').evaluate(el=>el.scrollTop=83);await expect(second.locator('.latest-message')).toBeVisible();
+ const previous=polls();await expect.poll(polls).toBeGreaterThan(previous);expect(await first.locator('.runs').evaluate(el=>el.scrollTop)).toBe(215);expect(await second.locator('.runs').evaluate(el=>el.scrollTop)).toBe(83);
  await page.locator('#next-page').click();await page.locator('#agent-a9 [data-zoom]').scrollIntoViewIfNeeded();const top=await page.locator('#agents').evaluate(el=>el.scrollTop);
  await page.locator('#agent-a9 [data-zoom]').click();await expect(page.locator('.agent-panel:visible')).toHaveCount(1);
  await page.locator('#agent-a9 [data-zoom]').click();expect(await page.locator('#agents').evaluate(el=>el.scrollTop)).toBe(top);
@@ -121,7 +123,7 @@ test('drafts, conversation and board scroll survive place, zoom, polling and res
 });
 test('notification link to a terminated Agent opens saved history, not an Agent tab',async({page})=>{
  const id='bdeab87b-6247-4355-9b5c-3a17c1a3c955',state={workshops:[],agents:[{id,name:'Archived',state:'terminated',connection:{name:'Local'}}],runs:[{id:'run',agentId:id,state:'completed',instruction:'saved',output:'archive reply'}],notification:{}};
- await page.route('**/api/direct',r=>r.fulfill({json:state}));await page.goto('/agents#agent-'+id);await expect(page.locator('#history-dialog')).toBeVisible();await expect(page.locator('#history-content')).toContainText('archive reply');await expect(page.locator('.agent-panel')).toHaveCount(0);await expect(page.locator('.agent-panel')).toHaveCount(0);
+ await page.route(directSnapshot,r=>r.fulfill({json:state}));await page.goto('/agents#agent-'+id);await expect(page.locator('#history-dialog')).toBeVisible();await expect(page.locator('#history-content')).toContainText('archive reply');await expect(page.locator('.agent-panel')).toHaveCount(0);await expect(page.locator('.agent-panel')).toHaveCount(0);
 });
 test('empty workshop launch inherits context and supports another launch after termination',async({page})=>{
  const state=boardFixture();state.agents=[];state.runs=[];let launched;
@@ -130,7 +132,7 @@ test('empty workshop launch inherits context and supports another launch after t
 });
 test('server send eligibility, chat alignment, draft and scroll survive refresh and reload',async({page})=>{
  const state=boardFixture();state.agents[0].canSend=false;state.agents[0].sendReason='確認中';state.runs[0].createdAt='2026-11-04T10:00:00Z';state.runs[0].completedAt='2026-11-04T10:01:00Z';
- await page.route('**/api/direct',r=>r.fulfill({json:state}));await page.goto('/agents');await page.locator('#agent-a0 [data-zoom]').click();const card=page.locator('#agent-a0');await card.locator('textarea').fill('再読み込みでも残す');await expect(card.getByRole('button',{name:'送信',exact:true})).toBeDisabled();state.agents[0].canSend=true;await expect(card.getByRole('button',{name:'送信',exact:true})).toBeEnabled();
+ await page.route(directSnapshot,r=>r.fulfill({json:state}));await page.goto('/agents');await page.locator('#agent-a0 [data-zoom]').click();const card=page.locator('#agent-a0');await card.locator('textarea').fill('再読み込みでも残す');await expect(card.getByRole('button',{name:'送信',exact:true})).toBeDisabled();state.agents[0].canSend=true;await expect(card.getByRole('button',{name:'送信',exact:true})).toBeEnabled();
  expect(await card.locator('.message.user').evaluate(el=>getComputedStyle(el).alignSelf)).toBe('flex-end');expect(await card.locator('.message.assistant').evaluate(el=>getComputedStyle(el).alignSelf)).toBe('flex-start');expect(await card.locator('time').first().evaluate(el=>parseFloat(getComputedStyle(el).fontSize))).toBe(10);
  await card.locator('.runs').evaluate(el=>el.scrollTop=120);await page.waitForTimeout(100);await page.reload();await expect(card.locator('textarea')).toHaveValue('再読み込みでも残す');expect(await card.locator('.runs').evaluate(el=>el.scrollTop)).toBe(120);
 });
@@ -169,7 +171,7 @@ test('each place menu launches and sends to its exact Agent without switching an
 
 test('secretary setup opens local runtime registration, and zoom survives polling until explicit place change',async({page})=>{
  const state={workshops:[{id:'remote',name:'E-frontier',connectionType:'ssh',workplaces:['/tmp']}],agents:[],runs:[],notification:{}};
- await page.route('**/api/direct',r=>r.fulfill({json:state}));await page.goto('/agents');
+ await page.route(directSnapshot,r=>r.fulfill({json:state}));await page.goto('/agents');
  await expect(page.locator('[data-add=mayor]')).toBeEnabled();
  await page.locator('[data-place=mayor]').click();await expect(page.locator('#start-secretary')).toBeEnabled();
  await page.locator('#start-secretary').click();await expect(page.locator('#settings-dialog')).toBeVisible();

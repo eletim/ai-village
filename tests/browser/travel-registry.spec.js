@@ -1,6 +1,7 @@
+import {directSnapshot} from './helpers/direct-fixtures.js';
 import {test,expect} from '@playwright/test';
 test('registered computer/folder CRUD, selection isolation, immutable draft and concurrent editing',async({page,request})=>{
- await page.route('**/api/direct',r=>r.fulfill({json:{capabilities:{travelContexts:true},agents:[{id:'registry-test',name:'Agent',connection:{},state:'idle',canSend:true}],runs:[],notification:{}}}));
+ await page.route(directSnapshot,r=>r.fulfill({json:{capabilities:{travelContexts:true},agents:[{id:'registry-test',name:'Agent',connection:{},state:'idle',canSend:true}],runs:[],notification:{}}}));
  await page.goto('/agents');
  const open=async()=>{await page.getByRole('button',{name:'添付を追加',exact:true}).click();await page.getByRole('button',{name:'出張先を追加',exact:true}).click();};
  await open();const dialog=page.getByRole('dialog',{name:'出張先',exact:true});await dialog.getByRole('button',{name:'登録・管理'}).click();

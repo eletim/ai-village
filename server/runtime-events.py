@@ -53,15 +53,18 @@ def parse_event(db,provider,x,offset):
    if not uid:return
    db.current=uid;turn(uid);db.parent(uid,uid)
    body=text(content)
-   db.input({'id':uid,'turnId':uid,'hash':digest(body),'offset':offset,'text':body})
+   db.input({'explicitTurn':True,'source':'claude-user','id':uid,'turnId':uid,'hash':digest(body),'offset':offset,'text':body})
   elif uid and db.parent(parent):
    tid=db.parent(parent);db.parent(uid,tid)
+   if x.get('type')=='attachment' and (x.get('attachment') or {}).get('type')=='queued_command':
+    body=x['attachment'].get('prompt')
+    if isinstance(body,str):db.input({'explicitTurn':True,'source':'claude-queued','id':uid,'turnId':tid,'hash':digest(body),'offset':offset,'text':body})
    if x.get('type')=='assistant':
     db.put('model','model',{'model':m.get('model'),'serviceTier':(m.get('usage') or {}).get('speed'),'recordedAt':at})
     t=db.get('turn',tid);body=text(content)
     if body:message(tid,uid,body)
-    if x.get('isApiErrorMessage') is True:t.update(state='failed',outputFromMessages=True,outputThrough=offset,error=x.get('error') or 'runtime-api-error',completedAt=at,completionEvent=uid)
-    elif m.get('stop_reason') in ('end_turn','stop_sequence','max_tokens'):t.update(state='interrupted' if m.get('stop_reason')=='max_tokens' else 'completed',finalOutput=body,outputFromMessages=True,outputThrough=offset,completedAt=at,completionEvent=uid)
+    if x.get('isApiErrorMessage') is True:t.update(state='failed',outputFromMessages=True,outputThrough=offset,error=x.get('error') or 'runtime-api-error',completedAt=at,completionEvent=uid,completionOffset=offset)
+    elif m.get('stop_reason') in ('end_turn','stop_sequence','max_tokens'):t.update(state='interrupted' if m.get('stop_reason')=='max_tokens' else 'completed',finalOutput=body,outputFromMessages=True,outputThrough=offset,completedAt=at,completionEvent=uid,completionOffset=offset)
     elif m.get('stop_reason')=='tool_use':t.update(state='running',outputFromMessages=True)
     db.put('turn',tid,t)
 

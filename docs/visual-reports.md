@@ -18,7 +18,7 @@ flowchart LR
 VILLAGE_URL=http://village-host:5173 node scripts/village.mjs images upload ./report.png
 ```
 
-返された`reference`（`![説明](village-image:UUID)`）をassistantの返信本文へ記載する。PNG/JPEG/WebPの静止画を既存ImageStoreでデコードし、安全なPNGへ再保存する。保存は`VILLAGE_STATE_DIR/images`（通常`.runtime/images`）、Git管理外。画像報告のアップロード・保存・配信には村独自のバイト／画素上限を設けない。
+返された`reference`（`![説明](village-image:UUID)`）をassistantの返信本文へ記載する。PNG/JPEG/WebPの静止画を既存ImageStoreでデコードし、安全なPNGへ再保存する。保存は`VILLAGE_STATE_DIR/images`（通常`.runtime/images`）、Git管理外。新規アップロードは1ファイル40 MiB・2400万画素まで。同時処理等の制限は docs/resource-limits.md を参照。既存保存画像の読取は維持する。
 
 CLIがないPCからは既存認証付きの`POST /api/images?name=report.png`へ画像バイトを送れる。
 
@@ -39,6 +39,6 @@ curl --fail-with-body -H 'Content-Type: image/png' --data-binary @report.png \
 
 ## PRの範囲と検証
 
-origin/mainから独立worktreeで実装。未マージPR5/6のProject設定・復旧機能は含めない。画像報告に必要なImageStoreと`/api/images`の容量／画素上限撤廃だけはPR5と共通修正。統合時にその撤廃を維持する。既存添付全般の上限撤廃はPR5側の範囲。
+origin/mainから独立worktreeで実装。未マージPR5/6のProject設定・復旧機能は含めない。画像報告に必要なImageStoreと`/api/images`の容量／画素上限撤廃だけはPR5と共通修正。当時は上限を撤廃したが、後続の資源制限修正で新規アップロードに上限を導入した。既存添付全般の上限撤廃はPR5側の範囲。
 
 単体／HTTPは安全な本文分割、認証付きCLIによる8 MiB超実PNGの保存・再起動後取得、破損画像／SVG／サーバーパスの拒否を検証。ブラウザは実Mermaid、画像upload→本文→拡大、キーボード、危険参照・不正／途中図のfallback、pollと返信伸長でのDOM再利用、村／執務室、既存スクロール・リンク・IMEを検証。実Agentへの送信や稼働デプロイは行わない。

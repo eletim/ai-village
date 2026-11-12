@@ -5,7 +5,7 @@ import {testView} from './model-fixtures.mjs';
 import {verifyInstructionsScript} from '../server/input-envelope.mjs';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,rm,readFile,writeFile} from 'node:fs/promises';
+import {mkdtemp,rm,readFile,writeFile,mkdir,rename} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {randomUUID} from 'node:crypto';
@@ -248,7 +248,7 @@ test('unsafe steering targets reject without dispatch; cancellation never turns 
  const f=await fixture(t),s=f.service,root=await s.send(f.agents[0].id,{requestId:randomUUID(),instruction:'Original'});await f.submit(root);
  const target=structuredClone(s.agent(root.agentId).steerTarget),input={requestId:randomUUID(),instruction:'More',steerTarget:target};
  await assert.rejects(s.send(root.agentId,{...input,steerTarget:{...target,turnId:'wrong'}}),/補足対象/);f.offline(true);await assert.rejects(s.send(root.agentId,input),/補足対象/);f.offline(false);await s.tick();
- s.agent(root.agentId).provider='claude';await assert.rejects(s.send(root.agentId,input),/補足対象/);s.agent(root.agentId).provider='codex';await s.tick();
+ s.agent(root.agentId).provider='unsupported';await assert.rejects(s.send(root.agentId,input),/補足対象/);s.agent(root.agentId).provider='codex';await s.tick();
  const q=s.flow.root(root.humanRequestId);await s.flow.cancel({humanRequestId:q.id,revision:q.revision});await assert.rejects(s.send(root.agentId,input),/補足対象/);assert.equal(f.sent.length,1);assert.equal(f.notifications.length,0);
 });
 test('unattributed supplement or external same-turn input prevents finish and further steering',async t=>{
@@ -306,9 +306,9 @@ test('two-stage report replaces visible work after completion, waits for accepta
  // finish must come before the report body is written, so a trailing habitual remark can
  // never become the run's last message and clobber the report in finalOutput.
  assert.match(s.flow.context(report),/finishは不要/);
- assert.match(s.flow.context(report),/その後は何も書き加えないで/);
+ assert.match(s.flow.context(report),/その後は何も足さないで/);
  assert(JSON.stringify(s.snapshot()).includes('Output '+source.id));
- assert(!JSON.stringify(s.snapshot()).includes('人間向けの報告だけを作成'));
+ assert(!JSON.stringify(s.snapshot()).includes('人間が読む短い報告に書き直し'));
  assert.equal(s.snapshot().reviews[source.agentId].attention,false);
  const count=f.sent.length;await s.tick();await s.tick();assert.equal(f.sent.length,count);
  s=await f.restart();await s.tick();assert.equal(f.sent.length,count);
@@ -556,4 +556,145 @@ test('human completion never hides a physically valid supplement; terminal reque
  const q=s.flow.root(root.humanRequestId);await s.flow.complete({humanRequestId:q.id,revision:q.revision});
  assert.equal(testView(q).status,'completed');assert.equal(testView(s.agent(root.agentId)).canSteer,true);
  const r=await steer(f,root);assert.notEqual(r.humanRequestId,q.id);assert.equal(testView(q).status,'completed');await acceptSteer(f,r);await f.complete(r);assert.equal(testView(s.flow.root(r.humanRequestId)).status,'completed');
+});
+
+for(const nextTurn of [false,true])test('Claude steering keeps request, finish and report across '+(nextTurn?'next user turn':'queued command'),async t=>{
+ const f=await fixture(t,{reportMode:true}),s=f.service;s.agent(f.agents[0].id).provider='claude';
+ const root=await s.send(f.agents[0].id,{requestId:randomUUID(),instruction:'Original'});await f.submit(root);
+ const r=await steer(f,root);assert.equal(r.humanRequestId,root.humanRequestId);assert.equal(r.steeringProvider,'claude');assert.equal(testView(s.agent(root.agentId)).canSteer,false);
+ const n=f.runtimes.get(root.agentId);const prior=n.turns[0];
+ if(nextTurn){n.cursor+=1;Object.assign(prior,{state:'completed',completionOffset:n.cursor,output:'original final'});}
+ n.cursor+=10;const tid=nextTurn?'next-claude-turn':prior.id;
+ if(nextTurn)n.turns.push({id:tid,state:'running',output:'',messageOffsets:true,messages:[]});
+ n.inputs.push({id:'supplement-input',turnId:tid,offset:n.cursor,text:f.sent.at(-1).text,explicitTurn:true,source:nextTurn?'claude-user':'claude-queued'});
+ await s.tick();assert.equal(receipt(r).acceptance,'accepted');assert.equal(r.turnId,tid);await f.finish(r);n.cursor+=10;n.turns.find(t=>t.id===tid).completionOffset=n.cursor;await f.complete(r);await s.tick();
+ const q=s.flow.root(root.humanRequestId),report=s.flow.run(q.works[0].currentRunId);assert.equal(report.phase,'report');await f.submit(report);assert.equal(testView(s.agent(root.agentId)).canSteer,false);await f.complete(report);await s.tick();
+ assert.equal(testView(q).status,'completed');assert.equal(s.data.requests.length,1);assert.equal(f.notifications.length,1);
+});
+
+// Fail the real persistence boundary before file replacement, not the transport.
+function failWrites(s,predicate){
+ const write=s.store.write;let failures=0;
+ s.store.write=async value=>{if(predicate(JSON.parse(value))){failures++;throw Error('injected save failure');}return write(value);};
+ return {restore(){s.store.write=write;},get failures(){return failures;}};
+}
+test('failed request admission cannot leak into a concurrent save or later tick; same ID retries once',async t=>{
+ const f=await fixture(t),s=f.service,input={requestId:'save-failed-request',instruction:'once'};
+ const fault=failWrites(s,d=>d.requests.some(q=>q.clientRequestId===input.requestId));
+ await assert.rejects(s.send(f.agents[0].id,input),/injected/);
+ await s.tick();assert.equal(s.data.requests.length,0);assert.equal(f.sent.length,0);
+ fault.restore();const r=await s.send(f.agents[0].id,input);assert.equal((await s.send(f.agents[0].id,input)).id,r.id);
+ await f.submit(r);await f.complete(r);assert.equal(f.sent.length,1);assert.equal(f.notifications.length,1);
+});
+test('failed delegate and finish roll back identity and declaration; identical operation IDs retry once',async t=>{
+ const f=await fixture(t),s=f.service,r=await s.send(f.agents[0].id,{requestId:'save-parent-request',instruction:'parent'});await f.submit(r);
+ const q=s.flow.root(r.humanRequestId),fault=failWrites(s,d=>d.requests[0].works.length>1);
+ await assert.rejects(f.delegate(r,f.agents[2],'save-delegate-op'),/injected/);await s.tick();
+ assert.equal(q.works.length,1);assert.equal(f.sent.length,1);
+ fault.restore();const w=await f.delegate(r,f.agents[2],'save-delegate-op');assert.equal((await f.delegate(r,f.agents[2],'save-delegate-op')).id,w.id);
+ const claim=failWrites(s,d=>d.requests[0].requestModel.declarations.some(x=>x.id==='save-finish-op'));
+ await assert.rejects(f.finish(r,'save-finish-op'),/injected/);assert.equal(q.requestModel.declarations.length,0);
+ claim.restore();await f.finish(r,'save-finish-op');await f.finish(r,'save-finish-op');
+ assert.equal(q.requestModel.declarations.length,1);await s.tick();assert.equal(f.sent.length,2);
+});
+test('failed steering leaves original owned run intact and cannot dispatch the rejected supplement',async t=>{
+ const f=await fixture(t),s=f.service,r=await s.send(f.agents[0].id,{requestId:'save-steer-parent',instruction:'parent'});await f.submit(r);
+ const before=JSON.stringify(r.runModel),fault=failWrites(s,d=>d.runs.some(r=>r.origin==='steering'));
+ await assert.rejects(steer(f,r,'extra','save-steer-input'),/injected/);assert.equal(JSON.stringify(r.runModel),before);
+ await s.tick();assert.equal(f.sent.length,1);assert.equal(s.data.runs.length,1);
+ fault.restore();const extra=await steer(f,r,'extra','save-steer-input');assert.equal((await s.send(r.agentId,{requestId:'save-steer-input',instruction:'extra',steerTarget:extra.steerTarget})).id,extra.id);
+ await acceptSteer(f,extra);await f.complete(extra);assert.equal(f.sent.length,2);assert.equal(f.notifications.length,1);
+});
+for(const phase of ['result','report'])test('failed '+phase+' creation is not dispatched until durable, then created once',async t=>{
+ const f=await fixture(t,{reportMode:phase==='report'}),s=f.service,r=await s.send(f.agents[0].id,{requestId:'save-auto-'+phase,instruction:'parent'});await f.submit(r);
+ if(phase==='result'){
+  const w=await f.delegate(r,f.agents[2]);await s.tick();const child=s.flow.run(w.currentRunId);await f.submit(child);await f.complete(child);
+ }
+ const native=f.runtimes.get(r.agentId);Object.assign(native.turns.at(-1),{state:'completed',output:'done',finalOutput:'done'});
+ await s.observe(s.agent(r.agentId));const count=f.sent.length;
+ const fault=failWrites(s,d=>d.runs.some(r=>r.origin===phase));
+ await assert.rejects(s.tick(),/injected/);await assert.rejects(s.tick(),/injected/);
+ assert.equal(s.data.runs.filter(r=>r.origin===phase).length,0);assert.equal(f.sent.length,count);
+ fault.restore();await s.tick();await s.tick();
+ const deliveries=s.data.runs.filter(r=>r.origin===phase);assert.equal(deliveries.length,1);assert.equal(f.sent.length,count+1);
+ await f.submit(deliveries[0]);if(phase==='result')await f.finish(deliveries[0]);await f.complete(deliveries[0]);
+ assert.equal(f.notifications.length,1);
+});
+test('notification pre-send save failure retries; post-send save failure never replays even on restart',async t=>{
+ for(const after of [false,true]){
+  const f=await fixture(t),s=f.service,r=await s.send(f.agents[0].id,{requestId:'save-notify-'+after,instruction:'work'});await f.submit(r);
+  const native=f.runtimes.get(r.agentId);Object.assign(native.turns.at(-1),{state:'completed',output:'done'});await s.observe(s.agent(r.agentId));await s.flow.settle();
+  const q=s.flow.root(r.humanRequestId),fault=failWrites(s,d=>{const n=d.requests[0].notification?.status;return after?['sent','delivery_unknown'].includes(n):n==='attempting';});
+  await assert.rejects(s.flow.notifications(),/injected/);
+  assert.equal(q.notification.status,after?'attempting':'pending');assert.equal(f.notifications.length,after?1:0);
+  fault.restore();await s.flow.notifications();assert.equal(f.notifications.length,1);
+  await f.restart();await f.service.tick();assert.equal(f.notifications.length,1);
+ }
+});
+for(const decision of ['complete','cancel'])test('failed human '+decision+' preserves revision and permits retry',async t=>{
+ const f=await fixture(t),s=f.service,r=await s.send(f.agents[0].id,{requestId:'save-human-'+decision,instruction:'work'});await f.submit(r);await f.complete(r,'failed');
+ const q=s.flow.root(r.humanRequestId),revision=q.revision,state=JSON.stringify(q.requestModel);
+ const fault=failWrites(s,d=>d.requests[0].requestModel.state.kind!=='active');
+ await assert.rejects(s.flow[decision]({humanRequestId:q.id,revision}),/injected/);
+ assert.equal(q.revision,revision);assert.equal(JSON.stringify(q.requestModel),state);assert.equal(f.notifications.length,0);
+ fault.restore();await s.flow[decision]({humanRequestId:q.id,revision});await s.tick();assert.equal(f.notifications.length,decision==='complete'?1:0);
+});
+test('a second writer cannot commit failed admission while the first disk write is pending',async t=>{
+ const f=await fixture(t),s=f.service,write=s.store.write;let entered,release;
+ const pending=new Promise(r=>entered=r),gate=new Promise(r=>release=r);
+ s.store.write=async value=>{if(JSON.parse(value).requests.some(q=>q.clientRequestId==='concurrent-failed')){entered();await gate;throw Error('injected save failure');}return write(value);};
+ const failed=s.send(f.agents[0].id,{requestId:'concurrent-failed',instruction:'rejected'});
+ const rejected=assert.rejects(failed,/injected/);await pending;
+ const successful=s.putProject({name:'unrelated success',requestId:'unrelated-project'});
+ release();await rejected;await successful;await s.tick();
+ const disk=JSON.parse(await readFile(join(f.options.dir,'direct.json'),'utf8'));
+ assert.equal(disk.requests.length,0);assert.equal(s.data.requests.length,0);assert.equal(f.sent.length,0);assert.equal(disk.projects.length,1);
+});
+test('post-dispatch save failure retains durable sent intent across restart without resending',async t=>{
+ const f=await fixture(t),s=f.service,write=s.store.write;let dispatched=false;
+ const remote=s.localRun;s.localRun=async(...args)=>{const result=await remote(...args);if(args[1]?.includes('send'))dispatched=true;return result;};
+ s.store.write=async value=>{if(dispatched)throw Error('injected save failure');return write(value);};
+ const input={requestId:'post-dispatch-failure',instruction:'only once'};
+ const admitted=await s.send(f.agents[0].id,input);assert.equal(admitted,s.data.runs[0]);
+ assert.equal(s.data.runs[0].runModel.state.kind,'sent');assert.equal(f.sent.length,1);
+ s.store.write=write;await f.restart();const r=await f.service.send(f.agents[0].id,input);await f.service.tick();assert.equal(f.sent.length,1);
+ await f.submit(r);await f.complete(r);assert.equal(f.notifications.length,1);
+});
+test('uncertain file replacement fences subsequent mutations instead of dispatching',async t=>{
+ const f=await fixture(t),s=f.service,write=s.store.write;
+ s.store.write=async value=>{await write(value);throw Object.assign(Error('directory sync failure'),{persistenceUncertain:true});};
+ await assert.rejects(s.send(f.agents[0].id,{requestId:'uncertain-replacement',instruction:'work'}),/directory sync/);
+ await assert.rejects(s.putProject({name:'must not write'}),/directory sync/);assert.equal(f.sent.length,0);
+});
+test('failed dispatch-intent save returns durable queued admission, not a false rejection',async t=>{
+ const f=await fixture(t),s=f.service,input={requestId:'failed-dispatch-intent',instruction:'once'};
+ const fault=failWrites(s,d=>d.runs.some(r=>r.runModel.state.kind==='sent'));
+ const r=await s.send(f.agents[0].id,input);assert.equal(r.runModel.state.kind,'queued');assert.equal(f.sent.length,0);
+ assert.equal((await s.send(f.agents[0].id,input)).id,r.id);fault.restore();await s.tick();await s.tick();assert.equal(f.sent.length,1);
+});
+test('notification cannot claim a completion that rolls back while it waits for persistence',async t=>{
+ const f=await fixture(t),s=f.service,r=await s.send(f.agents[0].id,{requestId:'notify-concurrent-claim',instruction:'work'});await f.submit(r);await f.complete(r,'failed');
+ const q=s.flow.root(r.humanRequestId),write=s.store.write;let entered,release;
+ const pending=new Promise(r=>entered=r),gate=new Promise(r=>release=r);
+ s.store.write=async value=>{if(JSON.parse(value).requests[0].notification?.status==='pending'){entered();await gate;throw Error('injected save failure');}return write(value);};
+ const failed=assert.rejects(s.flow.complete({humanRequestId:q.id,revision:q.revision}),/injected/);await pending;
+ const notification=s.flow.notifications();release();await failed;await notification;assert.equal(f.notifications.length,0);assert.equal(q.notification,undefined);
+});
+test('real rename failure rolls back admission and retry dispatches only once',async t=>{
+ const f=await fixture(t),s=f.service,file=join(f.options.dir,'direct.json'),backup=file+'.test-backup';
+ await rename(file,backup);await mkdir(file);
+ const input={requestId:'real-rename-failure',instruction:'once'};
+ await assert.rejects(s.send(f.agents[0].id,input),e=>['EISDIR','ENOTDIR','EEXIST'].includes(e.code));
+ assert.equal(s.data.requests.length,0);assert.equal(f.sent.length,0);
+ await rm(file,{recursive:true});await rename(backup,file);
+ await s.tick();assert.equal(f.sent.length,0);
+ const r=await s.send(f.agents[0].id,input);assert.equal((await s.send(f.agents[0].id,input)).id,r.id);assert.equal(f.sent.length,1);
+});
+test('nested successful claim remains durable when later report creation fails',async t=>{
+ const f=await fixture(t,{reportMode:true}),s=f.service,r=await s.send(f.agents[0].id,{requestId:'nested-save-claim',instruction:'work'});await f.submit(r);
+ const native=f.runtimes.get(r.agentId);Object.assign(native.turns.at(-1),{state:'completed',output:'done'});await s.observe(s.agent(r.agentId));
+ const q=s.flow.root(r.humanRequestId),fault=failWrites(s,d=>d.runs.some(r=>r.phase==='report'));
+ await assert.rejects(f.finish(r,'durable-claim-op'),/injected/);
+ assert.equal(q.requestModel.declarations.filter(d=>d.id==='durable-claim-op').length,1);assert.equal(q.report,undefined);
+ fault.restore();await f.finish(r,'durable-claim-op');await s.tick();assert.equal(s.data.runs.filter(r=>r.phase==='report').length,1);
 });
