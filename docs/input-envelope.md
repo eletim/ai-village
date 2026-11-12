@@ -23,7 +23,8 @@ native hash field or searches for a runId quoted in prose. For Claude only, it
 also accepts the observed whole `pasted_content id="X"` wrapper with its matching
 closing ID and framing newlines. The enclosed body must match the stored full
 fingerprint, or the precomputed rendering that escapes literal
-`<pasted_content>` as `<\pasted_content>`. Other whitespace/content changes,
+`<pasted_content>` as `<\pasted_content>`. That exact escaped rendering is also
+accepted without the outer wrapper, as observed with Claude 2.1.322 below. Other whitespace/content changes,
 malformed wrappers, truncated text and additional prose stay unmatched. Native
 text remains verbatim in the index.
 
@@ -93,6 +94,63 @@ and never resend unknown external effects.
   HTTP, Python JSONL parsing and persistence/restart. Existing local native logs
   and PurpleMux API/source were read for protocol evidence; no new real CLI
   agent or SSH session was exercised. Production files/service were untouched.
+
+### Live follow-up — PR #85 review (2026-11-12)
+
+Created two new local Agents through the isolated village's real API on port
+5421, using fresh state/cwd and notifications OFF: Codex 0.163.0 and Claude Code
+2.1.322. PurpleMux workspace creation, provider startup, submission and native
+reading all used their real implementations. A transparent executable wrapper
+recorded the exact argv submitted to PurpleMux; it delegated all operations to
+the installed CLI. No production service or pre-existing Agent was changed.
+
+**Found and fixed:** Claude's first short input escaped the literal
+`<pasted_content>` to `<\pasted_content>` **without any outer paste wrapper**.
+The earlier matcher only accepted that escaped digest inside a wrapper, so this
+run correctly stayed unconfirmed and did not produce a report. The fix accepts
+the already-stored exact escaped digest for Claude user/queued inputs even when
+unwrapped. It does not normalize arbitrary text or fall back to a runId search.
+Regression assertions reject other providers/sources and appended content.
+The failed historical run was not relabelled successful or automatically resent.
+Only the disposable village server was restarted to load the fix; both test CLI
+sessions retained their identities.
+
+Results after that fix:
+
+- New-session `startup-v1`: both providers completed normal work and its automatic
+  report with native input facts and `ended/normal` terminal facts. No full fixed
+  rules were present in any short payload. Codex work/report inputs were 471/732
+  characters; Claude work/report were 465/730 sent, 466/789 in native JSONL.
+  Claude's work used unwrapped escaping; its report used wrapping plus escaping.
+- Legacy fallback: removed the instruction block only from each **owned test
+  workspace** provider prompt, leaving the CLI running. Pre-dispatch verification
+  durably selected legacy. Both work/report pairs were accepted and completed;
+  the Agent session IDs remained unchanged. Full rules were present, but no
+  removed metadata or dedicated correlation marker returned. This tests the
+  same-session fallback, not a restart of an existing production CLI.
+- Steering: Codex accepted the supplement in the same native turn. Claude accepted
+  it as the next native user turn, with wrapping and escaping. Both completed and
+  produced an automatic report containing the revised keyword. An earlier Claude
+  waiting-task attempt ended before the supplement and returned HTTP 409 for the
+  stale target; no supplement was sent for that rejected attempt. A new explicit
+  test request exercised the successful path. Real queued-command delivery was
+  not observed in this run; automated coverage remains in place.
+- All **17 submitted payloads** passed structural checks: exact lean discovery and
+  request keys, no dedicated marker, no removed quoted metadata fields. Sixteen
+  inputs had native acceptance facts; fourteen ended normally and two original
+  steering runs were superseded as designed. The one pre-fix failure is retained
+  separately in the evidence, not counted as a success.
+
+[Sanitized evidence](verification/lean-prompts-live.json) records request/run and
+native-input identities, matching results, payload lengths, modes and cleanup.
+Related regression tests: 96 passed. Full `npm test`: 389 passed, 1 existing skip,
+0 failures. Browser behavior was unchanged; the earlier 145 passing Playwright
+checks were not repeated for this matcher-only follow-up.
+
+Cleanup verified zero remaining owned processes for both test Agents, closed
+only their tabs, and deleted their two empty workspaces. The isolated server,
+state/cwd, test native JSONL/index cache and owned prompt files were removed.
+Pre-existing workspaces remained present. Production and main were untouched.
 
 ## Startup instructions
 

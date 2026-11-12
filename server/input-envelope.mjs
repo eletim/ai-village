@@ -17,6 +17,8 @@ export function matchesRunInput(run,input){
   // that outer framing; never trim/normalize the submitted body or search prose.
   // pastedDigest is the exact, precomputed literal-tag escaping observed in Claude.
   if(key.provider!=='claude'||!['claude-user','claude-queued'].includes(input.source))return false;
+  // Claude 2.1.322 also escapes the literal tag without adding outer framing.
+  if(digest(input.text)===key.pastedDigest)return true;
   const wrapped=input.text.match(/^\s*<pasted_content id="([^"\n]+)">\n([\s\S]*)\n<\/pasted_content id="\1">\s*$/);
   return !!wrapped&&[key.digest,key.pastedDigest].includes(digest(wrapped[2]));
  }

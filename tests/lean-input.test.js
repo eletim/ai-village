@@ -40,6 +40,10 @@ for(const provider of ['codex','claude'])test(provider+': full-input correlation
  assert(!matchesRunInput({...run,inputCorrelation:{version:999}},snapshot.inputs[0]));
  assert(!matchesRunInput({...run,inputCorrelation:inputCorrelation(text.replace('"r"','"another-run"'),provider)},snapshot.inputs[0]));
  if(provider==='claude'){
+  const escaped=text.replaceAll('<pasted_content>','<\\pasted_content>');
+  assert(matchesRunInput(run,{...snapshot.inputs[0],text:escaped}));
+  assert(!matchesRunInput(run,{...snapshot.inputs[0],text:escaped,source:'response'}));
+  assert(!matchesRunInput(run,{...snapshot.inputs[0],text:escaped+' extra'}));
   assert(!matchesRunInput(run,{...snapshot.inputs[0],text:body.replace('</pasted_content id="paired">','</pasted_content id="other">')}));
   assert(!matchesRunInput(run,{...snapshot.inputs[0],text:'extra prose'+body}));
   assert(!matchesRunInput(run,{...snapshot.inputs[0],text:body.replace('同じ',' 同じ')}));
