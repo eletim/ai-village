@@ -1,7 +1,7 @@
 # Rebuildable host-local index. Never writes the provider JSONL or request state.
 import os,json,time,hashlib,re,sqlite3,uuid,fcntl
 from pathlib import Path
-PARSER_VERSION=7
+PARSER_VERSION=8
 HASH_CHUNK=1024*1024
 VERIFY_BYTES=32*1024*1024
 BATCH_BYTES=32*1024*1024
@@ -31,13 +31,20 @@ class Store:
   row=self.c.execute('select turn from parents where key=?',(key,)).fetchone();return row[0] if row else None
  def input(self,value):
   tid=value['turnId'];h=value['hash'];source=value.get('source','');key=str(value['offset'])
-  if source=='event' and self.c.execute("select 1 from inputs where turn=? and hash=? and source='response'",(tid,h)).fetchone():return
+  # A response and its one mirrored user_message may share an input. Never
+  # collapse multiple same-source occurrences: those can be duplicate submissions.
+  if source=='event':
+   for (old,) in self.c.execute("select key from inputs where turn=? and hash=? and source='response' order by cast(key as integer)",(tid,h)).fetchall():
+    response=self.get('input',old)
+    if not response.get('aliases'):
+     response['aliases']=[{'id':value['id'],'offset':value['offset']}]
+     self.put('input',old,response);return
   if source=='response':
-   aliases=[]
-   for (old,) in self.c.execute("select key from inputs where turn=? and hash=? and source='event'",(tid,h)).fetchall():
-    event=self.get('input',old);aliases.append({'id':event['id'],'offset':event['offset']});self.put('input',old,None)
-   if aliases:value['aliases']=aliases
-   self.c.execute("delete from inputs where turn=? and hash=? and source='event'",(tid,h))
+   row=self.c.execute("select key from inputs where turn=? and hash=? and source='event' order by cast(key as integer) limit 1",(tid,h)).fetchone()
+   if row:
+    old=row[0];event=self.get('input',old)
+    value['aliases']=[{'id':event['id'],'offset':event['offset']}]
+    self.put('input',old,None);self.c.execute("delete from inputs where key=?",(old,))
   self.c.execute('insert or replace into inputs values(?,?,?,?)',(key,tid,h,source));self.put('input',key,value)
 
 def schema(c):

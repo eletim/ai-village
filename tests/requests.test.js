@@ -32,8 +32,8 @@ async function fixture(t,{reportMode=false}={}){
  await service.save();await service.tick();
  const submit=async(r,transform=x=>x)=>{
   const native=runtimes.get(r.agentId),text=sent.findLast(s=>s.agentId===r.agentId)?.text;
-  assert(text.includes(r.inputMarker));const tid=randomUUID();native.cursor+=10;
-  native.inputs.push({id:'input-'+tid,turnId:tid,hash:inputHash(transform(text)),offset:native.cursor,text:transform(text)});
+  assert(text.includes(r.id));assert.equal(r.inputMarker,undefined);const tid=randomUUID();native.cursor+=10;
+  native.inputs.push({id:'input-'+tid,turnId:tid,hash:inputHash(transform(text)),offset:native.cursor,source:service.agent(r.agentId).provider==='claude'?'claude-user':'response',text:transform(text)});
   native.turns.push({id:tid,state:'running',output:''});await service.tick();assert.equal(receipt(r).acceptance,'accepted');return tid;
  };
  const complete=async(r,outcome='completed')=>{const native=runtimes.get(r.agentId);Object.assign(native.turns.find(t=>t.id===r.turnId),{state:outcome,output:'Output '+r.id,finalOutput:'Final '+r.id,completionEvent:'event-'+r.id});await service.tick();};
@@ -457,7 +457,7 @@ test('startup envelope retains literal human input and dynamic identity; report 
  const human='  本文 <pasted_content>\nそのまま  ';
  const r=await s.send(a.id,{instruction:human,requestId:randomUUID()});
  const delivered=f.sent.at(-1).text;
- assert(delivered.startsWith(human+'\n'));assert(delivered.includes(r.inputMarker));
+ assert(delivered.startsWith(human+'\n'));assert(delivered.includes(r.id));assert.equal(r.inputMarker,undefined);
  assert(delivered.includes('ai-village-discovery'));assert(delivered.includes(a.id));
  assert(!delivered.includes('requests finish'));assert(!delivered.includes('図は必要時のみ'));
  assert(s.startupInstructions().includes('requests finish'));assert(s.startupInstructions().includes('phase=report'));
@@ -475,7 +475,7 @@ test('startup envelope uses latest metadata and retains attachments/travel; chan
  const f=await fixture(t),s=f.service,a=f.agents[0];a.inputEnvelope={mode:'startup-v1',sessionId:'previous-session'};
  await s.tick();assert.equal(a.inputEnvelope.mode,'legacy');assert.equal(a.inputEnvelope.reason,'native-session-changed');
  a.inputEnvelope={mode:'startup-v1'};a.projectId='current-project';a.metadataRevision=42;
- const context=s.secretaryContext(a,true);assert(context.includes('current-project'));assert(context.includes('42'));assert(!context.includes('所属は'));
+ const context=s.secretaryContext(a,true);assert(context.includes('current-project'));assert(!context.includes('metadataRevision'));assert(!context.includes('所属は'));
  assert(s.rules.dynamic({attachmentFiles:[{path:'/attachment',sha256:'verified'}],travelContexts:[]}).includes('/attachment'));
  await s.save();await f.restart();assert.equal(f.service.agent(a.id).inputEnvelope.mode,'startup-v1');
 });
@@ -566,7 +566,7 @@ for(const nextTurn of [false,true])test('Claude steering keeps request, finish a
  if(nextTurn){n.cursor+=1;Object.assign(prior,{state:'completed',completionOffset:n.cursor,output:'original final'});}
  n.cursor+=10;const tid=nextTurn?'next-claude-turn':prior.id;
  if(nextTurn)n.turns.push({id:tid,state:'running',output:'',messageOffsets:true,messages:[]});
- n.inputs.push({id:'supplement-input',turnId:tid,offset:n.cursor,text:f.sent.at(-1).text,explicitTurn:true,source:nextTurn?'claude-user':'claude-queued'});
+ n.inputs.push({id:'supplement-input',turnId:tid,offset:n.cursor,text:'\n<pasted_content id="steer">\n'+f.sent.at(-1).text+'\n</pasted_content id="steer">\n',explicitTurn:true,source:nextTurn?'claude-user':'claude-queued'});
  await s.tick();assert.equal(receipt(r).acceptance,'accepted');assert.equal(r.turnId,tid);await f.finish(r);n.cursor+=10;n.turns.find(t=>t.id===tid).completionOffset=n.cursor;await f.complete(r);await s.tick();
  const q=s.flow.root(root.humanRequestId),report=s.flow.run(q.works[0].currentRunId);assert.equal(report.phase,'report');await f.submit(report);assert.equal(testView(s.agent(root.agentId)).canSteer,false);await f.complete(report);await s.tick();
  assert.equal(testView(q).status,'completed');assert.equal(s.data.requests.length,1);assert.equal(f.notifications.length,1);
@@ -697,4 +697,41 @@ test('nested successful claim remains durable when later report creation fails',
  await assert.rejects(f.finish(r,'durable-claim-op'),/injected/);
  assert.equal(q.requestModel.declarations.filter(d=>d.id==='durable-claim-op').length,1);assert.equal(q.report,undefined);
  fault.restore();await f.finish(r,'durable-claim-op');await s.tick();assert.equal(s.data.runs.filter(r=>r.phase==='report').length,1);
+});
+
+for(const mode of ['startup-v1','legacy'])test('lean '+mode+' input fields and same-text requests stay distinct through report and restart',async t=>{
+ const f=await fixture(t,{reportMode:true}),a=f.agents[0];a.projectId='project';a.inputEnvelope={mode,hash:inputHash(f.service.startupInstructions())};
+ const r=await f.service.send(a.id,{instruction:'repeat',requestId:randomUUID()});
+ const check=(r,text)=>{
+  assert.doesNotMatch(text,/ai-village-input|ai-village-run-|"(?:parentWorkId|originAgentId|finalAgentId|workshopId|metadataRevision)"/);
+  const own=JSON.parse(text.match(/<ai-village-discovery>(.*?)<\/ai-village-discovery>/s)[1]);
+  assert.deepEqual(own,{agentId:a.id,role:'secretary',location:'mayor',projectId:'project'});
+  const request=JSON.parse(text.match(/<ai-village-request>([^\n]*)/)[1].split('</ai-village-request>')[0]);
+  assert.deepEqual(request,{humanRequestId:r.humanRequestId,workId:r.workId,runId:r.id,origin:r.origin,phase:r.phase||'work'});
+  assert.equal(r.inputMarker,undefined);assert.equal(r.inputCorrelation.version,1);
+ };
+ check(r,f.sent.at(-1).text);await f.submit(r);await f.complete(r);
+ const report=f.service.flow.run(f.service.flow.root(r.humanRequestId).works[0].currentRunId);
+ check(report,f.sent.at(-1).text);await f.submit(report);await f.complete(report);
+ const next=await f.service.send(a.id,{instruction:'repeat',requestId:randomUUID()});
+ assert.notDeepEqual(next.inputCorrelation,r.inputCorrelation);
+ await f.restart();await f.service.tick();assert.equal(receipt(f.service.flow.run(next.id)).acceptance,'pending');
+ await f.submit(f.service.flow.run(next.id));await f.complete(f.service.flow.run(next.id));
+});
+
+test('old installed rules downgrade immediately after upgrade; previously dispatched marker runs still complete',async t=>{
+ const f=await fixture(t),a=f.agents[0],r=await f.service.send(a.id,{instruction:'legacy in flight',requestId:randomUUID()});
+ // Persist the pre-upgrade contract, then boot the new service without resending.
+ delete r.inputCorrelation;r.inputMarker='ai-village-run-'+r.id;
+ a.inputEnvelope={mode:'startup-v1',hash:inputHash('previous rules')};await f.service.save();
+ await f.restart();const s=f.service,restored=s.flow.run(r.id),native=f.runtimes.get(a.id);
+ assert.equal(s.agent(a.id).inputEnvelope.mode,'legacy');assert.equal(s.agent(a.id).inputEnvelope.reason,'request-rules-updated');
+ native.cursor+=10;native.inputs.push({id:'old-input',turnId:'old-turn',offset:native.cursor,text:'old body '+r.inputMarker});
+ native.turns.push({id:'old-turn',state:'completed',output:'old result',completionOffset:native.cursor+1});
+ await s.tick();assert.equal(testView(restored).state,'completed');assert.equal(f.sent.length,1);
+ const next=await s.send(a.id,{instruction:'new input',requestId:randomUUID()});
+ assert.equal(next.inputMarker,undefined);assert.equal(next.inputEnvelopeMode,'legacy');
+ assert.doesNotMatch(f.sent.at(-1).text,/ai-village-input|ai-village-run-|"metadataRevision"/);
+ assert.match(f.sent.at(-1).text,/agents list/);assert.match(f.sent.at(-1).text,/requests results HUMAN_REQUEST_ID WORK_ID/);
+ await f.submit(next);await f.complete(next);
 });

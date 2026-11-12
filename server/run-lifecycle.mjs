@@ -1,3 +1,4 @@
+import {matchesRunInput} from './input-envelope.mjs';
 import {runView} from './state/projection.ts';
 // Model transitions only. Display labels are generated separately, never saved.
 import {transitionRun,newRun,retryRun,supplementRun} from './state/run.ts';
@@ -24,8 +25,8 @@ export function observeRun(r,observation,snapshot){
  if(!observation.turnId)return;
  if(modelOf(r).state.kind==='sent'){
   const input=resolveInputPosition(snapshot.inputs,observation.inputId||r.inputId,observation.turnId);
-  if(!input)throw Error('correlated native input missing');
-  changeRun(r,{type:'input',actor:'program',at:Date.now(),sessionId:observation.sessionId,turnId:observation.turnId,inputId:input.id,text:input.text||'',competing:false});
+  if(!input||!matchesRunInput(r,input))throw Error('correlated native input missing or unmatched');
+  changeRun(r,{type:'input',actor:'program',at:Date.now(),sessionId:observation.sessionId,turnId:observation.turnId,inputId:input.id,text:input.text||'',matchedRunId:r.id,competing:false});
  }
  if(['completed','failed','interrupted'].includes(observation.state))changeRun(r,{type:'terminal',actor:'program',at:Date.now(),sessionId:observation.sessionId,turnId:observation.turnId,outcome:observation.state==='completed'?'normal':observation.state,...(observation.errorCode?{errorCode:observation.errorCode}:{})});
 }

@@ -1,0 +1,567 @@
+{
+  "date": "2026-11-12",
+  "baseImplementation": "e14e289",
+  "port": 5421,
+  "isolatedStateAndCwd": true,
+  "notificationsEnabled": false,
+  "providers": {
+    "codex": "0.163.0",
+    "claude": "2.1.322"
+  },
+  "sessions": [
+    {
+      "provider": "codex",
+      "agentId": "83559c2a-b612-4836-8d6a-9579fa5823ae",
+      "workspaceId": "ws-dbdywk",
+      "sessionId": "01a1cd5c-e9ee-7be0-b199-ea1f5bfb3659",
+      "modeAfterFallback": "legacy"
+    },
+    {
+      "provider": "claude",
+      "agentId": "9fad53da-599c-4f5f-a514-fbe70018ae36",
+      "workspaceId": "ws-mgGtSj",
+      "sessionId": "a1ad8410-834f-4e29-8e59-73394c1d4c06",
+      "modeAfterFallback": "legacy"
+    }
+  ],
+  "runs": [
+    {
+      "provider": "codex",
+      "runId": "eebb5bcb-d3be-434f-a5ff-1065ebef9fb4",
+      "requestId": "b4e71978-a0ab-4be1-9fc0-9a8da769baf8",
+      "origin": "human",
+      "phase": "work",
+      "mode": "startup-v1",
+      "accepted": true,
+      "state": {
+        "kind": "ended",
+        "outcome": "normal",
+        "reason": "native-terminal"
+      },
+      "nativeInputId": "msg_01a1cd5d-29d4-7fd0-92e6-f2e65676916b",
+      "nativeSource": "response",
+      "nativeLength": 471,
+      "sentLength": 471,
+      "nativeMatchesAtVerification": true,
+      "nativeWrapper": false,
+      "nativeEscapedLiteral": false,
+      "unwantedMetadata": false,
+      "dedicatedMarker": false,
+      "fullRulesInInput": false,
+      "greenKeywordInFinal": false
+    },
+    {
+      "provider": "claude",
+      "runId": "47470539-c392-4a7e-94a1-774c784ceca2",
+      "requestId": "b9b6c4ce-0319-431a-ac58-42a0a0b8bc49",
+      "origin": "human",
+      "phase": "work",
+      "mode": "startup-v1",
+      "accepted": false,
+      "state": {
+        "kind": "ended",
+        "outcome": "unconfirmed",
+        "reason": "turn-ended-without-marker"
+      },
+      "nativeInputId": "c40bb8cf-4d38-4ea2-944e-6caa589ad30e",
+      "nativeSource": "claude-user",
+      "nativeLength": 472,
+      "sentLength": 471,
+      "nativeMatchesAtVerification": true,
+      "nativeWrapper": false,
+      "nativeEscapedLiteral": true,
+      "unwantedMetadata": false,
+      "dedicatedMarker": false,
+      "fullRulesInInput": false,
+      "greenKeywordInFinal": false
+    },
+    {
+      "provider": "codex",
+      "runId": "ba7b2a89-adba-4729-adc8-09f6e2576cd7",
+      "requestId": "b4e71978-a0ab-4be1-9fc0-9a8da769baf8",
+      "origin": "report",
+      "phase": "report",
+      "mode": "startup-v1",
+      "accepted": true,
+      "state": {
+        "kind": "ended",
+        "outcome": "normal",
+        "reason": "native-terminal"
+      },
+      "nativeInputId": "msg_01a1cd5d-38f9-7712-b9a4-507ac6fb91fc",
+      "nativeSource": "response",
+      "nativeLength": 732,
+      "sentLength": 732,
+      "nativeMatchesAtVerification": true,
+      "nativeWrapper": false,
+      "nativeEscapedLiteral": false,
+      "unwantedMetadata": false,
+      "dedicatedMarker": false,
+      "fullRulesInInput": false,
+      "greenKeywordInFinal": false
+    },
+    {
+      "provider": "claude",
+      "runId": "f144305c-2740-4a48-b0d1-be4b57f84d07",
+      "requestId": "52883c4b-3a1c-4352-9a89-18acbf028e9d",
+      "origin": "human",
+      "phase": "work",
+      "mode": "startup-v1",
+      "accepted": true,
+      "state": {
+        "kind": "ended",
+        "outcome": "normal",
+        "reason": "native-terminal"
+      },
+      "nativeInputId": "03899799-11ae-45b4-8377-312922a4a533",
+      "nativeSource": "claude-user",
+      "nativeLength": 466,
+      "sentLength": 465,
+      "nativeMatchesAtVerification": true,
+      "nativeWrapper": false,
+      "nativeEscapedLiteral": true,
+      "unwantedMetadata": false,
+      "dedicatedMarker": false,
+      "fullRulesInInput": false,
+      "greenKeywordInFinal": false
+    },
+    {
+      "provider": "claude",
+      "runId": "a38a903c-d43e-4f02-8883-13513d6ba231",
+      "requestId": "52883c4b-3a1c-4352-9a89-18acbf028e9d",
+      "origin": "report",
+      "phase": "report",
+      "mode": "startup-v1",
+      "accepted": true,
+      "state": {
+        "kind": "ended",
+        "outcome": "normal",
+        "reason": "native-terminal"
+      },
+      "nativeInputId": "a5436a71-6156-4864-8101-4d1526454230",
+      "nativeSource": "claude-user",
+      "nativeLength": 789,
+      "sentLength": 730,
+      "nativeMatchesAtVerification": true,
+      "nativeWrapper": true,
+      "nativeEscapedLiteral": true,
+      "unwantedMetadata": false,
+      "dedicatedMarker": false,
+      "fullRulesInInput": false,
+      "greenKeywordInFinal": false
+    },
+    {
+      "provider": "codex",
+      "runId": "85047bec-9c97-4c20-a768-a1fe4cd02fe4",
+      "requestId": "b2c42e9b-a657-45ec-9eef-cd2f5022068d",
+      "origin": "human",
+      "phase": "work",
+      "mode": "legacy",
+      "accepted": true,
+      "state": {
+        "kind": "ended",
+        "outcome": "normal",
+        "reason": "native-terminal"
+      },
+      "nativeInputId": "msg_01a1cd5e-61ef-70a3-a4b0-4007ca446107",
+      "nativeSource": "response",
+      "nativeLength": 2149,
+      "sentLength": 2149,
+      "nativeMatchesAtVerification": true,
+      "nativeWrapper": false,
+      "nativeEscapedLiteral": false,
+      "unwantedMetadata": false,
+      "dedicatedMarker": false,
+      "fullRulesInInput": true,
+      "greenKeywordInFinal": false
+    },
+    {
+      "provider": "claude",
+      "runId": "3c925783-55ad-4e75-8865-2b3a05aa65f5",
+      "requestId": "d2e12f2b-b1e3-44ca-8423-516edb8b585e",
+      "origin": "human",
+      "phase": "work",
+      "mode": "legacy",
+      "accepted": true,
+      "state": {
+        "kind": "ended",
+        "outcome": "normal",
+        "reason": "native-terminal"
+      },
+      "nativeInputId": "024d1528-636c-450b-b7ac-c019d03e89cd",
+      "nativeSource": "claude-user",
+      "nativeLength": 2208,
+      "sentLength": 2149,
+      "nativeMatchesAtVerification": true,
+      "nativeWrapper": true,
+      "nativeEscapedLiteral": true,
+      "unwantedMetadata": false,
+      "dedicatedMarker": false,
+      "fullRulesInInput": true,
+      "greenKeywordInFinal": false
+    },
+    {
+      "provider": "codex",
+      "runId": "2c3c6890-fddb-44bd-b269-7db5e954eae3",
+      "requestId": "b2c42e9b-a657-45ec-9eef-cd2f5022068d",
+      "origin": "report",
+      "phase": "report",
+      "mode": "legacy",
+      "accepted": true,
+      "state": {
+        "kind": "ended",
+        "outcome": "normal",
+        "reason": "native-terminal"
+      },
+      "nativeInputId": "msg_01a1cd5e-6eb8-7d72-9e71-a464d7719741",
+      "nativeSource": "response",
+      "nativeLength": 1832,
+      "sentLength": 1832,
+      "nativeMatchesAtVerification": true,
+      "nativeWrapper": false,
+      "nativeEscapedLiteral": false,
+      "unwantedMetadata": false,
+      "dedicatedMarker": false,
+      "fullRulesInInput": false,
+      "greenKeywordInFinal": false
+    },
+    {
+      "provider": "claude",
+      "runId": "cd91ab13-7d54-424d-964b-c7b9c562826a",
+      "requestId": "d2e12f2b-b1e3-44ca-8423-516edb8b585e",
+      "origin": "report",
+      "phase": "report",
+      "mode": "legacy",
+      "accepted": true,
+      "state": {
+        "kind": "ended",
+        "outcome": "normal",
+        "reason": "native-terminal"
+      },
+      "nativeInputId": "c6cccdc4-ab1e-4944-8a2a-2f5d3e39bb49",
+      "nativeSource": "claude-user",
+      "nativeLength": 1896,
+      "sentLength": 1837,
+      "nativeMatchesAtVerification": true,
+      "nativeWrapper": true,
+      "nativeEscapedLiteral": true,
+      "unwantedMetadata": false,
+      "dedicatedMarker": false,
+      "fullRulesInInput": false,
+      "greenKeywordInFinal": false
+    },
+    {
+      "provider": "codex",
+      "runId": "bee40199-d494-4fbe-b80d-13962c26fb35",
+      "requestId": "7be61f82-bfd1-455b-bdf8-638b6e56e5ff",
+      "origin": "human",
+      "phase": "work",
+      "mode": "legacy",
+      "accepted": true,
+      "state": {
+        "kind": "ended",
+        "outcome": "unconfirmed",
+        "reason": "human-closed-tracking"
+      },
+      "nativeInputId": "msg_01a1cd5e-d153-7bc1-8189-6bd7654f15b9",
+      "nativeSource": "response",
+      "nativeLength": 2172,
+      "sentLength": 2172,
+      "nativeMatchesAtVerification": true,
+      "nativeWrapper": false,
+      "nativeEscapedLiteral": false,
+      "unwantedMetadata": false,
+      "dedicatedMarker": false,
+      "fullRulesInInput": true,
+      "greenKeywordInFinal": false
+    },
+    {
+      "provider": "codex",
+      "runId": "997f826b-26ff-4fa5-8979-726c3c407369",
+      "requestId": "7be61f82-bfd1-455b-bdf8-638b6e56e5ff",
+      "origin": "steering",
+      "phase": "work",
+      "mode": "legacy",
+      "accepted": true,
+      "state": {
+        "kind": "ended",
+        "outcome": "normal",
+        "reason": "native-terminal"
+      },
+      "nativeInputId": "msg_01a1cd5e-e364-7801-bace-de6995cdfa7a",
+      "nativeSource": "response",
+      "nativeLength": 2139,
+      "sentLength": 2139,
+      "nativeMatchesAtVerification": true,
+      "nativeWrapper": false,
+      "nativeEscapedLiteral": false,
+      "unwantedMetadata": false,
+      "dedicatedMarker": false,
+      "fullRulesInInput": true,
+      "greenKeywordInFinal": true,
+      "sameNativeTurnAsSteerTarget": true
+    },
+    {
+      "provider": "claude",
+      "runId": "feb9316e-ffbd-401e-8c03-5992ad90c485",
+      "requestId": "199536ee-cf79-4736-8c45-2ecbfaba8366",
+      "origin": "human",
+      "phase": "work",
+      "mode": "legacy",
+      "accepted": true,
+      "state": {
+        "kind": "ended",
+        "outcome": "normal",
+        "reason": "native-terminal"
+      },
+      "nativeInputId": "514b94e4-6970-4f29-92c4-089ebd11be91",
+      "nativeSource": "claude-user",
+      "nativeLength": 2230,
+      "sentLength": 2172,
+      "nativeMatchesAtVerification": true,
+      "nativeWrapper": true,
+      "nativeEscapedLiteral": false,
+      "unwantedMetadata": false,
+      "dedicatedMarker": false,
+      "fullRulesInInput": true,
+      "greenKeywordInFinal": false
+    },
+    {
+      "provider": "claude",
+      "runId": "9acc24d3-9a8b-486d-8d9b-021b3ea212fd",
+      "requestId": "199536ee-cf79-4736-8c45-2ecbfaba8366",
+      "origin": "report",
+      "phase": "report",
+      "mode": "legacy",
+      "accepted": true,
+      "state": {
+        "kind": "ended",
+        "outcome": "normal",
+        "reason": "native-terminal"
+      },
+      "nativeInputId": "e726cdce-8047-4757-bf3a-51d70338850d",
+      "nativeSource": "claude-user",
+      "nativeLength": 1916,
+      "sentLength": 1858,
+      "nativeMatchesAtVerification": true,
+      "nativeWrapper": true,
+      "nativeEscapedLiteral": false,
+      "unwantedMetadata": false,
+      "dedicatedMarker": false,
+      "fullRulesInInput": false,
+      "greenKeywordInFinal": false
+    },
+    {
+      "provider": "codex",
+      "runId": "a0d7745a-27a2-4b17-80ea-2ffc225ddc58",
+      "requestId": "7be61f82-bfd1-455b-bdf8-638b6e56e5ff",
+      "origin": "report",
+      "phase": "report",
+      "mode": "legacy",
+      "accepted": true,
+      "state": {
+        "kind": "ended",
+        "outcome": "normal",
+        "reason": "native-terminal"
+      },
+      "nativeInputId": "msg_01a1cd5f-5190-7813-878e-eb90649af8ba",
+      "nativeSource": "response",
+      "nativeLength": 1946,
+      "sentLength": 1946,
+      "nativeMatchesAtVerification": true,
+      "nativeWrapper": false,
+      "nativeEscapedLiteral": false,
+      "unwantedMetadata": false,
+      "dedicatedMarker": false,
+      "fullRulesInInput": false,
+      "greenKeywordInFinal": true
+    },
+    {
+      "provider": "claude",
+      "runId": "f4f6bfc3-c48c-49a3-b5a7-0ec6e69bd45a",
+      "requestId": "a3d7e99d-e3c0-424d-a503-b4a99a59138c",
+      "origin": "human",
+      "phase": "work",
+      "mode": "legacy",
+      "accepted": true,
+      "state": {
+        "kind": "ended",
+        "outcome": "unconfirmed",
+        "reason": "human-closed-tracking"
+      },
+      "nativeInputId": "97bb8e12-d5fa-489d-9c1b-17c2ba9399f5",
+      "nativeSource": "claude-user",
+      "nativeLength": 2208,
+      "sentLength": 2150,
+      "nativeMatchesAtVerification": true,
+      "nativeWrapper": true,
+      "nativeEscapedLiteral": false,
+      "unwantedMetadata": false,
+      "dedicatedMarker": false,
+      "fullRulesInInput": true,
+      "greenKeywordInFinal": false
+    },
+    {
+      "provider": "claude",
+      "runId": "2768335c-296b-48c0-b780-78061005b03d",
+      "requestId": "a3d7e99d-e3c0-424d-a503-b4a99a59138c",
+      "origin": "steering",
+      "phase": "work",
+      "mode": "legacy",
+      "accepted": true,
+      "state": {
+        "kind": "ended",
+        "outcome": "normal",
+        "reason": "native-terminal"
+      },
+      "nativeInputId": "d0d0435f-e1c3-421b-bc18-36bccf63181a",
+      "nativeSource": "claude-user",
+      "nativeLength": 2197,
+      "sentLength": 2141,
+      "nativeMatchesAtVerification": true,
+      "nativeWrapper": true,
+      "nativeEscapedLiteral": true,
+      "unwantedMetadata": false,
+      "dedicatedMarker": false,
+      "fullRulesInInput": true,
+      "greenKeywordInFinal": true,
+      "sameNativeTurnAsSteerTarget": false
+    },
+    {
+      "provider": "claude",
+      "runId": "f0b60622-6798-4f0a-89af-48cb55344498",
+      "requestId": "a3d7e99d-e3c0-424d-a503-b4a99a59138c",
+      "origin": "report",
+      "phase": "report",
+      "mode": "legacy",
+      "accepted": true,
+      "state": {
+        "kind": "ended",
+        "outcome": "normal",
+        "reason": "native-terminal"
+      },
+      "nativeInputId": "1d6b9ffa-ef0c-4904-9a57-b90b4ad76a63",
+      "nativeSource": "claude-user",
+      "nativeLength": 1996,
+      "sentLength": 1937,
+      "nativeMatchesAtVerification": true,
+      "nativeWrapper": true,
+      "nativeEscapedLiteral": true,
+      "unwantedMetadata": false,
+      "dedicatedMarker": false,
+      "fullRulesInInput": false,
+      "greenKeywordInFinal": true
+    }
+  ],
+  "requests": [
+    {
+      "id": "b4e71978-a0ab-4be1-9fc0-9a8da769baf8",
+      "state": {
+        "kind": "completed",
+        "by": "program",
+        "reason": "normal-report"
+      },
+      "notification": "disabled"
+    },
+    {
+      "id": "b9b6c4ce-0319-431a-ac58-42a0a0b8bc49",
+      "state": {
+        "kind": "active",
+        "review": [
+          "run-needs-review:47470539-c392-4a7e-94a1-774c784ceca2"
+        ]
+      }
+    },
+    {
+      "id": "52883c4b-3a1c-4352-9a89-18acbf028e9d",
+      "state": {
+        "kind": "completed",
+        "by": "program",
+        "reason": "normal-report"
+      },
+      "notification": "disabled"
+    },
+    {
+      "id": "b2c42e9b-a657-45ec-9eef-cd2f5022068d",
+      "state": {
+        "kind": "completed",
+        "by": "program",
+        "reason": "normal-report"
+      },
+      "notification": "disabled"
+    },
+    {
+      "id": "d2e12f2b-b1e3-44ca-8423-516edb8b585e",
+      "state": {
+        "kind": "completed",
+        "by": "program",
+        "reason": "normal-report"
+      },
+      "notification": "disabled"
+    },
+    {
+      "id": "7be61f82-bfd1-455b-bdf8-638b6e56e5ff",
+      "state": {
+        "kind": "completed",
+        "by": "program",
+        "reason": "normal-report"
+      },
+      "notification": "disabled"
+    },
+    {
+      "id": "199536ee-cf79-4736-8c45-2ecbfaba8366",
+      "state": {
+        "kind": "completed",
+        "by": "program",
+        "reason": "normal-report"
+      },
+      "notification": "disabled"
+    },
+    {
+      "id": "a3d7e99d-e3c0-424d-a503-b4a99a59138c",
+      "state": {
+        "kind": "completed",
+        "by": "program",
+        "reason": "normal-report"
+      },
+      "notification": "disabled"
+    }
+  ],
+  "initialFailure": "Claude escaped a literal pasted_content tag without outer framing; fixed by accepting its already-stored exact escaped digest for Claude native user/queued inputs. Failed historical run was not reclassified or resent.",
+  "steeringFirstAttempt": "Claude first waiting task ended before supplement; HTTP 409 rejected stale target. A new explicit test request exercised steering.",
+  "productionModified": false,
+  "existingAgentsModified": false,
+  "cleanup": {
+    "agents": [
+      {
+        "provider": "codex",
+        "agentId": "83559c2a-b612-4836-8d6a-9579fa5823ae",
+        "workspaceId": "ws-dbdywk",
+        "remainingOwned": 0,
+        "workspaceDeletion": {
+          "workspaceId": "ws-dbdywk",
+          "status": "deleted",
+          "deleted": true
+        }
+      },
+      {
+        "provider": "claude",
+        "agentId": "9fad53da-599c-4f5f-a514-fbe70018ae36",
+        "workspaceId": "ws-mgGtSj",
+        "remainingOwned": 0,
+        "workspaceDeletion": {
+          "workspaceId": "ws-mgGtSj",
+          "status": "deleted",
+          "deleted": true
+        }
+      }
+    ],
+    "serverStopped": true,
+    "preexistingWorkspacesStillPresent": true,
+    "nativeSessionFilesRemoved": [
+      "claude",
+      "codex"
+    ],
+    "disposableStateAndCwd": "removed after evidence export"
+  }
+}

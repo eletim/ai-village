@@ -32,8 +32,9 @@ export function correlate(run,snapshot){
  if(snapshot.cursor< (run.baselineRuntime?.cursor||0))return {state:'unknown',reason:'runtime-truncated'};
  if(run.sessionId&&snapshot.sessionId!==run.sessionId)return {state:'unknown',reason:'session-changed'};
  if(run.priorInputs?.some(p=>snapshot.inputs.filter(i=>inputMatches(i,p)).length!==1))return {state:'unknown',reason:'steering-prior-input-missing'};
- if(!run.inputMarker)return {state:'unknown',reason:'run-marker-missing'};
+ if(!run.inputMarker&&!run.inputCorrelation)return {state:'unknown',reason:'run-marker-missing'};
  if(run.turnId){
+  if(run.inputCorrelation&&(!run.inputId||snapshot.inputs.filter(i=>matchesRunInput(run,i)).length!==1))return {state:'unknown',reason:'owned-input-ambiguous-or-missing'};
   if(run.inputId&&!snapshot.inputs.some(i=>byId(i,run.inputId)&&i.turnId===run.turnId&&matchesRunInput(run,i)))return {state:'unknown',reason:'owned-input-mismatch'};
   if(run.inputId&&snapshot.inputs.some(i=>i.turnId===run.turnId&&!byId(i,run.inputId)&&!run.priorInputs?.some(p=>inputMatches(i,p))))return {state:'unknown',reason:'additional-input-in-owned-turn'};
   const turn=snapshot.turns.find(t=>t.id===run.turnId);
