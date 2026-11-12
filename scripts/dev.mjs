@@ -79,6 +79,8 @@ const handleRequest = async (req, res) => {
         let body='';for await(const chunk of req){body+=chunk;if(body.length>80000)return json(res,413,{error:'Request too large'});}
         let input;try{input=JSON.parse(body);}catch{return json(res,400,{error:'Invalid JSON'});}
         if(!input || typeof input!=='object')return json(res,400,{error:'Object required'});
+        const guide=pathname.match(/^\/api\/direct\/human\/projects\/([0-9a-f-]{36})\/guide$/);
+        if(req.method==='PUT'&&guide)return json(res,200,await direct.putProjectGuide(guide[1],input));
         const humanAction=pathname.match(/^\/api\/direct\/human\/requests\/(retry|resume|cancel|complete|cancel-queued)$/);
         if(req.method==='POST'&&humanAction){
           const action=humanAction[1],flow=direct.flow;
