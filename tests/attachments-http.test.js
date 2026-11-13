@@ -20,7 +20,13 @@ test('attachment HTTP uses existing authentication and origin policy; data is do
   const store=new AttachmentStore(dir);const [record]=await store.select([image.id]);
   const staged=await stageAttachment({connection:{connectionType:'local'}},record,saved);assert.equal(staged.size,saved.length);await rm(dirname(staged.path),{recursive:true,force:true});
  }
+ const photo=await sharp({create:{width:8000,height:6000,channels:3,background:'#193456'}}).png().toBuffer();
  for(const endpoint of ['/api/attachments','/api/images']){
+  const upload=await fetch(base+endpoint+'?name=48mp.png',{method:'POST',headers:{authorization,'Content-Type':'image/png'},body:photo});assert.equal(upload.status,201);
+  const record=await upload.json();assert.equal(record.width,8000);assert.equal(record.height,6000);
+  const download=await fetch(base+endpoint+'/'+record.id,{headers:{authorization}});assert.equal(download.status,200);
+  const saved=Buffer.from(await download.arrayBuffer());assert.deepEqual(saved,photo);
+  const metadata=await sharp(saved,{limitInputPixels:false}).metadata();assert.equal(metadata.width,8000);assert.equal(metadata.height,6000);
   const over=await fetch(base+endpoint+'?name=too-big.png',{method:'POST',headers:{authorization,'Content-Type':'image/png'},body:Buffer.alloc(40*1024*1024+1)});assert.equal(over.status,413);assert.match((await over.json()).error,/40 MiB/);
   const screenshot=await sharp({create:{width:1220,height:2712,channels:3,background:'#193456'}}).png().toBuffer();
   const ok=await fetch(base+endpoint+'?name=screenshot.png',{method:'POST',headers:{authorization,'Content-Type':'image/png'},body:screenshot});assert.equal(ok.status,201);assert.equal((await ok.json()).height,2712);

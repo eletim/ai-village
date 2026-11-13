@@ -1,6 +1,6 @@
 import {test,expect} from '@playwright/test';
 import sharp from 'sharp';
-test('mobile composer explains oversize and uploads a real screenshot to the isolated server',async({page})=>{
+test('mobile composer explains oversize and uploads screenshot and 48MP images without resizing',async({page})=>{
  await page.setViewportSize({width:390,height:844});
  const state={capabilities:{attachments:true},agents:[{id:'a',name:'Agent',connection:{},state:'idle',canSend:true}],workshops:[],runs:[],notification:{}};let submitted;
  await page.route('**/api/direct**',async route=>{
@@ -18,7 +18,12 @@ test('mobile composer explains oversize and uploads a real screenshot to the iso
  const response=await page.request.get('/api/images/'+submitted.attachments[0]);expect(response.ok()).toBe(true);
  expect((await sharp(await response.body()).metadata()).height).toBe(2712);
  await expect(page.locator('.file-composer figure')).toHaveCount(0);
- const bomb=await sharp({create:{width:5000,height:5000,channels:3,background:'red'}}).png().toBuffer();
- await page.locator('[data-image]').setInputFiles({name:'bomb.png',mimeType:'image/png',buffer:bomb});await page.locator('[name=instruction]').press('Control+Enter');
- await expect(page.locator('body')).toContainText('2400万画素');
+ const photo=await sharp({create:{width:8000,height:6000,channels:3,background:'red'}}).png().toBuffer();
+ submitted=null;
+ await page.locator('[data-image]').setInputFiles({name:'48mp.png',mimeType:'image/png',buffer:photo});await page.locator('[name=instruction]').press('Control+Enter');
+ await expect.poll(()=>submitted?.attachments?.length).toBe(1);
+ const large=await page.request.get('/api/attachments/'+submitted.attachments[0]);expect(large.ok()).toBe(true);
+ const saved=await large.body(),metadata=await sharp(saved,{limitInputPixels:false}).metadata();
+ expect(metadata.width).toBe(8000);expect(metadata.height).toBe(6000);expect(saved.equals(photo)).toBe(true);
+ await expect(page.locator('.file-composer figure')).toHaveCount(0);
 });

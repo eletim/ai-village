@@ -18,7 +18,7 @@ flowchart LR
 VILLAGE_URL=http://village-host:5173 node scripts/village.mjs images upload ./report.png
 ```
 
-返された`reference`（`![説明](village-image:UUID)`）をassistantの返信本文へ記載する。PNG/JPEG/WebPの静止画を既存ImageStoreでデコードし、安全なPNGへ再保存する。保存は`VILLAGE_STATE_DIR/images`（通常`.runtime/images`）、Git管理外。新規アップロードは1ファイル40 MiB・2400万画素まで。同時処理等の制限は docs/resource-limits.md を参照。既存保存画像の読取は維持する。
+返された`reference`（`![説明](village-image:UUID)`）をassistantの返信本文へ記載する。PNG/JPEG/WebPの静止画を既存ImageStoreでデコードし、安全なPNGへ再保存する。保存は`VILLAGE_STATE_DIR/images`（通常`.runtime/images`）、Git管理外。新規アップロードは1ファイル40 MiBまで。画素数による拒否や自動縮小は行わない。同時処理等の制限は docs/resource-limits.md を参照。既存保存画像の読取は維持する。
 
 CLIがないPCからは既存認証付きの`POST /api/images?name=report.png`へ画像バイトを送れる。
 
