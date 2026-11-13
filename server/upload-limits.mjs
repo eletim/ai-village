@@ -1,4 +1,4 @@
-export {MAX_UPLOAD_BYTES,MAX_IMAGE_PIXELS} from '../src/upload-limits.js';
+export {MAX_UPLOAD_BYTES} from '../src/upload-limits.js';
 import {MAX_UPLOAD_BYTES,UPLOAD_SIZE_MESSAGE} from '../src/upload-limits.js';
 export const uploadError=(message,status)=>Object.assign(Error(message),{status});
 export function checkUploadSize(bytes){if(bytes?.length>MAX_UPLOAD_BYTES)throw uploadError(UPLOAD_SIZE_MESSAGE,413);}
