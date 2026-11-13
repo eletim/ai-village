@@ -23,11 +23,15 @@ test('declared excess and stalled uploads are rejected before processing',async(
  await assert.rejects(readUpload(req),e=>e.status===413);assert(req.isPaused());req.destroy();
  const slow=new PassThrough();slow.headers={};await assert.rejects(readUpload(slow,{timeout:10}),e=>e.status===408);slow.destroy();
 });
-test('both stores reject excessive bytes, pixel bomb is rejected, screenshot is accepted',async t=>{
+test('both stores retain byte limits and preserve 48MP image dimensions',async t=>{
  const dir=await directory(t),images=new ImageStore(dir),files=new AttachmentStore(dir);
  for(const store of [images,files])await assert.rejects(store.save(Buffer.alloc(MAX_UPLOAD_BYTES+1),'file.txt','text/plain'),e=>e.status===413);
- const bomb=await sharp({create:{width:5000,height:5000,channels:3,background:'white'}}).png().toBuffer();
- await assert.rejects(images.save(bomb),e=>e.status===413);
+ const large=await sharp({create:{width:8000,height:6000,channels:3,background:'white'}}).png().toBuffer();
+ for(const store of [images,files]){
+  const record=await store.save(large,'48mp.png','image/png');assert.equal(record.width,8000);assert.equal(record.height,6000);
+  const saved=await store.content(record.id),metadata=await sharp(saved,{limitInputPixels:false}).metadata();
+  assert.equal(metadata.width,8000);assert.equal(metadata.height,6000);assert.deepEqual(saved,large);
+ }
  const screenshot=await sharp({create:{width:1220,height:2712,channels:3,background:'#193456'}}).png().toBuffer();
  const result=await files.save(screenshot,'screenshot.png','image/png');assert.equal(result.width,1220);assert.equal(result.height,2712);
 });
