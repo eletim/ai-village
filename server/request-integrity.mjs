@@ -1,3 +1,4 @@
+import {validateGraph} from './unified-requests.mjs';
 // Preserve the source graph; isolation is an operational overlay, never a repair.
 const rows=value=>Array.isArray(value)?value:[];
 export function inspectRequests(data){
@@ -20,7 +21,7 @@ export function inspectRequests(data){
   if(works.size!==rows(q.works).length)bad('duplicate-work');
   for(const r of owned){
    const w=works.get(r.workId);if(!w||!w.runIds?.includes(r.id))bad('run.workId: '+r.id+' → '+r.workId);
-   if(!agents.has(r.agentId)||w&&r.agentId!==w.agentId)bad('run.agentId: '+r.id);
+   if(!agents.has(r.agentId)||w&&r.agentId!==(q.requestGraph?.nodes.find(n=>n.id===w.id)?.runAgents?.[r.id]||w.agentId))bad('run.agentId: '+r.id);
    if(r.runModel&&r.runModel.requestId!==q.id)bad('runModel.requestId: '+r.id);
    for(const k of ['retryOf','supersededBy','parentRunId','resultOf','recipientRunId'])if(r.runModel?.[k])ref(r.runModel[k],'runModel.'+k);
    const parent=r.runModel?.parentRunId&&runs.get(r.runModel.parentRunId);
@@ -42,7 +43,8 @@ export function inspectRequests(data){
    if(e.deliveryRunId)ref(e.deliveryRunId,'inbox.deliveryRunId',e.parentWorkId);
   }
   for(const w of works.values())if(w.finish?.runId)ref(w.finish.runId,'work.finish.runId',w.id);
-  const m=q.requestModel;
+  if(q.requestGraph){try{validateGraph(data,q);}catch(e){bad(e.message);}}
+  const m=q.requestGraph?null:q.requestModel;
   if(m){
    if(m.id!==q.id||!['active','completed','withdrawn'].includes(m.state?.kind)||!Array.isArray(m.declarations)||!Array.isArray(m.decisions))bad('requestModel.shape');
    ref(m.rootRunId,'requestModel.rootRunId',q.rootWorkId);if(m.reportRunId){const report=ref(m.reportRunId,'requestModel.reportRunId',q.rootWorkId);if(report&&report.phase!=='report')bad('reportRunId.phase: '+report.id);}

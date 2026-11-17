@@ -86,7 +86,7 @@ const handleRequest = async (req, res) => {
           const action=humanAction[1],flow=direct.flow;
           return json(res,200,action==='cancel-queued'?await flow.cancelQueued(input):action==='retry'||action==='resume'?await flow.continue(input,action==='retry'):await flow[action](input));
         }
-        const requestAction=pathname.match(/^\/api\/direct\/requests\/(get|results|delegate|finish)$/);
+        const requestAction=pathname.match(/^\/api\/direct\/requests\/(get|results|delegate|respond|finish)$/);
         if(req.method==='POST'&&requestAction){
           const action=requestAction[1],flow=direct.flow;
           const result=action==='cancel-queued'?await flow.cancelQueued(input):action==='get'?flow.get(input.humanRequestId):action==='results'?flow.results(input.humanRequestId,input.workId):action==='retry'||action==='resume'?await flow.continue(input,action==='retry'):await flow[action](input);
