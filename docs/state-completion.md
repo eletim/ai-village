@@ -1,5 +1,8 @@
 # 単一村 第2段階: 状態の正本
 
+> 現行の依頼モデルは [共通依頼モデル](unified-request-model.md)。この文書は以前の段階の記録であり、rootだけの状態集約・状態のないwork・旧反映手順は現行契約ではありません。実行の受付照合とnative事実の原則は維持します。
+
+
 `runModel`、`requestModel`、`agentModel`を正本とする。`projectObservation`と互換getterを廃止し、旧run.stateを観察で上書きしない。照合待ちはsent/runningを維持し、終了境界・セッション変更・タイムアウトでended/unconfirmedになる。
 
 画面・HTTP・CLIの表示値は`state/projection.ts`と`state-projection.mjs`で生成するDTO。表示ラベル（completed/awaiting_input等）は保存状態ではない。`acceptance`/`blocksInput`/`dispatchConfirmed`、work.state、ticket、inbox、work.finishはAPIからも削除。transport-ack/inputはrunのfacts、完了申告はrequestのdeclarations、結果配送はresultOf/recipientRunIdで表す。`requests results`とgetのresultsは送信と親子関係から導出する。workは識別子・親子・送信の並びのみを持つ。

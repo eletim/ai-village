@@ -1,6 +1,6 @@
 # AI村の目標設計
 
-この文書を概念・責務・依存関係の基準とする。第1段階は統合済み、第2段階を実装・検証済み（反映は秘書が実施）。
+この文書を概念・責務・依存関係の基準とする。現行実装の依頼単位・遷移・移行契約は [共通依頼モデル](unified-request-model.md) を参照。
 過去のstate-stage文書は当時の検証記録であり、現在の配線の仕様ではない。
 
 ## 用語
@@ -14,9 +14,9 @@
 | 工房（PC） | 登録された実行先PCと作業場所。AgentやProjectとは別 |
 | 村長の家 | 秘書Agentの画面上の配置場所。特別なCLIや独立の状態機械を持たない |
 | Project | Agentをまとめ、方針を共有する分類。依頼の完了単位ではない |
-| 依頼 | 人間の目的を追跡する単位。進行中/完了/取り下げと要確認の印を持つ |
+| 依頼 | 人間またはAgentから担当者へ結果を求める単位。親子とも進行中/結果提出済み/完了/取り下げを持つ |
 | 送信（run） | 1回の入力とnative記録の照合単位。再試行は別の送信 |
-| 委任 | 同じ依頼内で別Agentへの親子付き送信を正式に作る操作 |
+| 委任 | 親依頼から別Agentに子依頼を正式に作る操作 |
 | 報告 | 依頼の成果を人間向けにまとめる送信。通常回答と同じnative終了を用いる |
 | 完了申告 | 委任ありのまとめ役が記録する判断。正常終了など観察事実と合わせて評価する |
 
@@ -33,7 +33,7 @@ HTTP/CLI → アプリケーション操作 → 依頼の流れ/Agent管理 → 
 | 保存 | direct-store、各専用ストア | 版付きスナップショット、事前バックアップ、単一所有者 |
 | PurpleMux操作 | direct.mjsのpmux/execute | 接続層に依存する独立アダプタへ分離 |
 | native読取/照合 | runtime-events/index、Python読取器 | 観察事実を返す。出力文を判断材料にしない |
-| 状態モデル | state/*.ts | Agent7、送信5＋結果4、依頼3＋要確認。唯一の正本 |
+| 状態モデル | state/*.ts | Agent、native run、親子共通依頼。requestGraphとrunModelの正本を分離 |
 | 依頼の流れ | requests.mjs、request/run-lifecycle | 生成・委任・結果配送・報告・通知をモデル経由で調整 |
 | Agent管理 | direct.mjs、agent-lifecycle | 起動停止意図と観察の統合 |
 | Agent文面 | server/agent-rules.mjs | 1つの規則定義から起動文・動的入力・helpを生成 |
@@ -42,6 +42,8 @@ HTTP/CLI → アプリケーション操作 → 依頼の流れ/Agent管理 → 
 | 横断機能 | library、todos、travel、images/attachments、notifier、pull-requests | 依頼/ジョブ実行を所有しない |
 
 ## 単一の情報源と段階計画
+
+共通依頼モデルでは `state/requests.ts` がすべての親子依頼の進行を決め、`unified-requests.mjs` が保存・旧DTO・移行の境界を担当する。旧 `state/request.ts` / `progress.ts` は旧形式の移行とその検査にのみ使用する。以下はこれ以前の段階計画の記録。
 
 1. **完了・統合済み**: 旧執務室・ジョブ配線を完全撤去。実行/ディレクトリを独立。
    state.json/conversation.jsonは読まず、書かず、削除しない。自動移行・旧ジョブ再開も行わない。

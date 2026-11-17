@@ -6,8 +6,8 @@ async function open(page,id='p'){await page.locator(`[data-add="project:${id}"]`
 test('scoped operations, rename/pin revision, keyboard focus and unchanged global settings',async({page})=>{
  const s=fixture(),writes=await setup(page,s);await page.locator('[data-place="project:q"]').click();await open(page);
  await expect(menu(page)).toContainText('Target の操作');await expect(menu(page)).not.toContainText('Other');await expect(menu(page).getByRole('heading',{name:'通知'})).toHaveCount(0);await expect(menu(page)).not.toContainText('工房設定');await expect(page.locator('#manage-dialog')).not.toBeVisible();
- await page.keyboard.press('Escape');await expect(page.locator('[data-add="project:p"]')).toBeFocused();await page.keyboard.press('Enter');await page.locator('#project-pin').click();expect(writes[0]).toEqual({path:'/api/direct/projects/p',data:{revision:3,pinned:true}});
- await open(page);await page.locator('#project-rename-form input').fill('Renamed');await page.getByRole('button',{name:'名前を保存'}).click();expect(s.projects[0].name).toBe('Renamed');expect(s.projects[1].name).toBe('Other');
+ await page.keyboard.press('Escape');await expect(page.locator('[data-add="project:p"]')).toBeFocused();await page.keyboard.press('Enter');await page.locator('#project-pin').click();await expect.poll(()=>writes[0]).toEqual({path:'/api/direct/projects/p',data:{revision:3,pinned:true}});
+ await open(page);await page.locator('#project-rename-form input').fill('Renamed');await page.getByRole('button',{name:'名前を保存'}).click();await expect.poll(()=>s.projects[0].name).toBe('Renamed');expect(s.projects[1].name).toBe('Other');
  await open(page);s.projects[0].revision++;await page.locator('#project-pin').click();await expect(menu(page).locator('.dialog-error')).toContainText('更新されています');await page.keyboard.press('Escape');
  await page.locator('#manage').click();await expect(page.locator('#manage-dialog')).toBeVisible();await expect(page.locator('#manage-dialog')).toContainText('工房設定');await expect(page.locator('#manage-dialog')).toContainText('通知');
 });

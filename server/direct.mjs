@@ -1,3 +1,4 @@
+import {migrateUnifiedStore} from './unified-requests.mjs';
 import {quarantineRequests,quarantinedRun} from './request-integrity.mjs';
 import {PersistenceBoundary,checkpoint} from './persistence-boundary.mjs';
 import {migrateMarkerStore} from './marker-migration.mjs';
@@ -65,10 +66,11 @@ export class DirectAgents {
     catch(e) { if(e.code!=='ENOENT')throw e; }
     quarantineRequests(this.data);
     this.data=await migrateRunStore(this.dir,this.data);
-    this.data=await migrateRequestStore(this.dir,this.data);
+    if(!this.data.unifiedRequestVersion)this.data=await migrateRequestStore(this.dir,this.data);
     this.data=await migrateAgentStore(this.dir,this.data);
-    this.data=await migrateCanonicalStore(this.dir,this.data);
-    this.data=await migrateMarkerStore(this.dir,this.data);
+    if(!this.data.unifiedRequestVersion)this.data=await migrateCanonicalStore(this.dir,this.data);
+    if(!this.data.unifiedRequestVersion)this.data=await migrateMarkerStore(this.dir,this.data);
+    this.data=await migrateUnifiedStore(this.dir,this.data);
     this.data.projects ||= [];
     for(const p of this.data.projects)if(p.deletion?.status==='running'){p.deletion.status='partial';p.deletion.interruptedAt=now();}
     for(const w of this.data.workshops)w.connectionType ||= 'ssh';
