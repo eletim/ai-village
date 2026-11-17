@@ -49,9 +49,9 @@ test('real HTTP + native JSONL + durable inbox + isolated notify CLI: 0 interim,
   const received=await submit(delivery);const ack=await post('/requests/acknowledge',{humanRequestId:r.humanRequestId,workId:r.workId,actorRunId:received.id,resultIds:[result.id]});assert.equal(ack.status,404);await until(async()=>(await lines(capture)).length===3);
   const responseIntent={humanRequestId:r.humanRequestId,workId:r.workId,runId:received.id,operationId:'http-handle-result',results:[{requestId:result.workId,resultId:result.id,version:result.version,decision:'accept'}]};
   assert.equal((await post('/requests/respond',responseIntent)).status,200);assert.equal((await post('/requests/respond',responseIntent)).status,200);
-  assert.equal((await request(r.humanRequestId)).results[0].handled,true);
+  assert.equal((await request(r.humanRequestId)).results[0].handled,false);await stop();await start();assert.equal((await request(r.humanRequestId)).results[0].handled,false);
   const staleRevision=(await get()).reviews[r.agentId].revision;const intent=await finish(received,'http-final-report');assert.equal((await lines(notices)).length,0);
-  await complete(received,'SECRET original final report');assert.equal((await lines(notices)).length,0);
+  await complete(received,'SECRET original final report');await until(async()=>(await request(r.humanRequestId)).results[0].handled);assert.equal((await lines(notices)).length,0);
   const report=await until(async()=>{const q=await request(r.humanRequestId);return q.runs.find(r=>r.phase==='report'&&r.state==='awaiting_input');});
   assert(JSON.stringify(await get()).includes('SECRET original final report'));
   const officeBefore=await (await fetch(base+'/api/direct')).json();assert(JSON.stringify(officeBefore).includes('SECRET original final report'));

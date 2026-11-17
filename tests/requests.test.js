@@ -1,3 +1,4 @@
+import {changeRun} from '../server/run-lifecycle.mjs';
 import {inputHash} from './model-fixtures.mjs';
 import {resultEntries} from '../server/request-lifecycle.mjs';
 import {receipt} from './model-fixtures.mjs';
@@ -49,7 +50,7 @@ test('polling then finish handles both child results without redundant parent re
  const q=s.flow.root(root.humanRequestId),before=JSON.stringify(q);
  assert.equal(s.flow.results(q.id,root.workId).length,2);assert.equal(JSON.stringify(q),before);
  assert.equal(f.notifications.length,0);const op=randomUUID();await f.finish(root,op);await f.finish(root,op);
- assert(resultEntries(s.data,q).every(e=>e.handled&&!e.deliveryRunId));await f.complete(root);
+ assert(resultEntries(s.data,q).every(e=>!e.handled&&!e.deliveryRunId));await f.complete(root);assert(resultEntries(s.data,q).every(e=>e.handled));
  assert.equal(testView(q).status,'completed');assert.equal(f.notifications.length,1);assert.equal(f.sent.filter(x=>x.agentId===root.agentId).length,1);
  await f.restart();await f.service.tick();assert.equal(f.notifications.length,1);
 });
@@ -795,7 +796,7 @@ test('legacy in-flight parent and child migrate with exact input ownership and l
  const f=await fixture(t),s=f.service,r=await s.send(f.agents[0].id,{instruction:'migration in progress',requestId:randomUUID()});await f.submit(r);
  const w=await f.delegate(r,f.agents[2]);await s.tick();const c=s.flow.run(w.currentRunId);await f.submit(c);
  const source=structuredClone(s.data);for(const q of source.requests){q.requestModel=structuredClone(s.flow.root(q.id).requestModel);delete q.requestGraph;}delete source.unifiedRequestVersion;
- await writeFile(join(f.options.dir,'direct.json'),JSON.stringify(source));await rm(join(f.options.dir,'direct.pre-unified-requests-v1.json'),{force:true});const sends=f.sent.length;
+ await writeFile(join(f.options.dir,'direct.json'),JSON.stringify(source));await rm(join(f.options.dir,'direct.pre-unified-requests-v2.json'),{force:true});const sends=f.sent.length;
  await f.restart();assert.equal(f.sent.length,sends);const next=f.service,parent=next.flow.run(r.id),child=next.flow.run(c.id);assert.deepEqual(parent.inputCorrelation,r.inputCorrelation);assert.deepEqual(child.runModel,c.runModel);
  await f.complete(child);await f.finish(parent);await f.complete(parent);assert.equal(testView(next.flow.root(r.humanRequestId)).status,'completed');assert.equal(f.sent.length,sends);assert.equal(f.notifications.length,1);
  await f.restart();await f.service.tick();assert.equal(f.notifications.length,1);assert.equal(f.sent.length,sends);
@@ -807,4 +808,59 @@ test('a newer child attempt retires only the obsolete unsent delivery reservatio
  const q=s.flow.root(r.humanRequestId),old=s.flow.run(s.flow.results(q.id,r.workId)[0].deliveryRunId);assert.equal(old.runModel.state.kind,'queued');
  const retry=await s.flow.continue({humanRequestId:q.id,workId:w.id,revision:q.revision,operationId:randomUUID(),instruction:'retry child'},true);await s.tick();assert.equal(old.runModel.state.kind,'cancelled');assert.equal(old.runModel.decisions.at(-1).reason,'result-superseded-before-dispatch');
  await f.submit(retry);await f.complete(retry);const result=s.flow.results(q.id,r.workId).find(e=>e.id===retry.id);assert.equal(result.version,2);assert.notEqual(result.deliveryRunId,old.id);assert.equal(s.flow.run(result.deliveryRunId).runModel.state.kind,'queued');assert.equal(f.sent.filter(e=>e.agentId===r.agentId).length,1);
+});
+
+async function loseObservedRun(f,r){
+ changeRun(r,{type:'lost',actor:'program',at:Date.now(),reason:'turn-ended-without-marker'});
+ const native=f.runtimes.get(r.agentId);native.turns=[];await f.service.save();await f.service.tick();
+}
+for(const action of ['respond','finish','legacy-finish'])for(const outcome of ['failed','interrupted','terminated'])test(`pending ${action} survives restart without handling after ${outcome}`,async t=>{
+ const f=await fixture(t);let s=f.service,r=await s.send(f.agents[0].id,{instruction:'declaration is not completion',requestId:randomUUID()});await f.submit(r);
+ const w=await f.delegate(r,f.agents[2]);await s.tick();const c=s.flow.run(w.currentRunId);await f.submit(c);await f.complete(c);
+ const qid=r.humanRequestId,ref=s.flow.results(qid,r.workId)[0],payload={humanRequestId:qid,workId:r.workId,runId:r.id,operationId:randomUUID(),...(action==='legacy-finish'?{}:{results:[{requestId:w.id,resultId:ref.id,version:ref.version,decision:'accept'}]})};
+ const method=action==='respond'?'respond':'finish';await s.flow[method](payload);assert.equal(s.flow.results(qid,r.workId)[0].handled,false);
+ s=await f.restart();r=s.flow.run(r.id);assert.equal(s.flow.results(qid,r.workId)[0].handled,false);
+ if(outcome==='terminated')await loseObservedRun(f,r);else await f.complete(r,outcome);assert.equal(s.flow.results(qid,r.workId)[0].handled,false);assert.equal(s.flow.root(qid).requestGraph.nodes.find(n=>n.id===w.id).state.kind,'submitted');
+ s=await f.restart();await s.tick();assert.equal(s.flow.results(qid,r.workId)[0].handled,false);
+ const delivery=s.flow.run(s.flow.results(qid,r.workId)[0].deliveryRunId);assert(delivery);await f.submit(delivery);await f.finish(delivery);await loseObservedRun(f,delivery);
+ const sends=f.sent.length;s=await f.restart();await s.tick();await s.tick();assert.equal(f.sent.length,sends);assert.equal(s.flow.results(qid,r.workId)[0].handled,false);assert.equal(f.notifications.length,0);
+ const retry=await s.flow.continue({humanRequestId:qid,workId:r.workId,revision:s.flow.root(qid).revision,operationId:randomUUID(),instruction:'human explicitly authorizes recovery'},true);await s.tick();await f.submit(retry);await f.finish(retry);await f.complete(retry);assert.equal(s.flow.results(qid,r.workId)[0].handled,true);assert.equal(testView(s.flow.root(qid)).status,'completed');
+});
+test('confirmation save failure rolls back handling and completion; restart reconfirms native facts once',async t=>{
+ const f=await fixture(t),s=f.service,r=await s.send(f.agents[0].id,{instruction:'atomic confirmation',requestId:randomUUID()});await f.submit(r);
+ const w=await f.delegate(r,f.agents[2]);await s.tick();const c=s.flow.run(w.currentRunId);await f.submit(c);await f.complete(c);await f.finish(r);
+ const fault=failWrites(s,d=>d.requests[0].requestGraph.nodes.some(n=>n.handling.length));
+ await assert.rejects(f.complete(r),/injected/);assert.equal(s.flow.results(r.humanRequestId,r.workId)[0].handled,false);assert.equal(f.notifications.length,0);
+ fault.restore();await f.restart();await f.service.tick();assert.equal(f.service.flow.results(r.humanRequestId,r.workId)[0].handled,true);assert.equal(f.notifications.length,1);
+ await f.restart();await f.service.tick();assert.equal(f.notifications.length,1);
+});
+test('cancelled supplement preserves invalidation across restart and needs a fresh finish',async t=>{
+ const f=await fixture(t);let s=f.service;const r=await s.send(f.agents[0].id,{instruction:'cancel supplement',requestId:randomUUID()});await f.submit(r);
+ const w=await f.delegate(r,f.agents[2]);await s.tick();const c=s.flow.run(w.currentRunId);await f.submit(c);await f.complete(c);await f.finish(r);
+ const dispatch=s.attemptRun.bind(s);s.attemptRun=async run=>run.origin==='steering'?run:dispatch(run);
+ const supplement=await steer(f,r,'new direction');
+ await s.flow.cancelQueued({agentId:r.agentId,humanRequestId:r.humanRequestId,runId:supplement.id});s=await f.restart();await f.complete(s.flow.run(r.id));
+ assert.equal(s.flow.results(r.humanRequestId,r.workId)[0].handled,false);assert.equal(f.notifications.length,0);
+});
+
+test('v1 pending-response restart upgrades before integrity validation and preserves pending evidence',async t=>{
+ const f=await fixture(t),s=f.service,r=await s.send(f.agents[0].id,{instruction:'v1 upgrade',requestId:randomUUID()});await f.submit(r);
+ const w=await f.delegate(r,f.agents[2]);await s.tick();const c=s.flow.run(w.currentRunId);await f.submit(c);await f.complete(c);await f.finish(r);
+ const source=structuredClone(s.data);source.unifiedRequestVersion=1;const graph=source.requests[0].requestGraph;graph.version=1;
+ for(const n of graph.nodes){n.handling.push(...n.claims.map(({legacy,invalidated,...claim})=>claim));delete n.claims;delete n.replacements;delete n.invalidatedRuns;}
+ graph.nodes[1].state={kind:'completed',by:'agent',reason:'result-accepted:'+c.id};
+ await writeFile(join(f.options.dir,'direct.json'),JSON.stringify(source));await rm(join(f.options.dir,'direct.pre-unified-requests-v2.json'),{force:true});
+ const restarted=await f.restart(),q=restarted.flow.root(r.humanRequestId);assert.equal(q.integrity,undefined);assert.equal(restarted.data.unifiedRequestVersion,2);assert.equal(restarted.flow.results(q.id,r.workId)[0].handled,false);assert.equal(q.requestGraph.nodes[0].claims.length,1);assert.equal(f.sent.length,2);
+ await f.restart();assert.equal(f.service.flow.root(q.id).integrity,undefined);
+});
+test('failed rework reservation preserves both dependencies and a later valid run can explicitly adopt it',async t=>{
+ const f=await fixture(t);let s=f.service;const r=await s.send(f.agents[0].id,{instruction:'rework confirmation',requestId:randomUUID()});await f.submit(r);
+ const w=await f.delegate(r,f.agents[2]);await s.tick();const c=s.flow.run(w.currentRunId);await f.submit(c);await f.complete(c);const e=s.flow.results(r.humanRequestId,r.workId)[0];
+ const ref={requestId:w.id,resultId:e.id,version:e.version,decision:'rework'};
+ await s.flow.respond({humanRequestId:r.humanRequestId,workId:r.workId,runId:r.id,operationId:randomUUID(),results:[ref]});
+ const next=await s.flow.delegate({humanRequestId:r.humanRequestId,parentWorkId:r.workId,actorRunId:r.id,agentId:f.agents[2].id,operationId:randomUUID(),instruction:'Fix it',replacesRequestId:w.id});await s.tick();const cr=s.flow.run(next.currentRunId);await f.submit(cr);
+ await f.complete(r,'failed');s=await f.restart();let q=s.flow.root(r.humanRequestId);assert.equal(q.requestGraph.nodes.find(n=>n.id===w.id).replacementId,undefined);
+ const delivery=s.flow.run(s.flow.results(q.id,r.workId)[0].deliveryRunId);await f.submit(delivery);await s.flow.respond({humanRequestId:q.id,workId:r.workId,runId:delivery.id,operationId:randomUUID(),results:[ref]});await f.complete(delivery);
+ assert.equal(q.requestGraph.nodes.find(n=>n.id===w.id).replacementId,next.id);assert.equal(testView(q).status,'active');assert.equal(f.notifications.length,0);
+ await f.restart();q=f.service.flow.root(q.id);assert.equal(q.integrity,undefined);assert.equal(q.requestGraph.nodes.find(n=>n.id===w.id).replacementId,next.id);
 });

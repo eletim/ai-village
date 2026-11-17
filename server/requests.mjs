@@ -52,7 +52,7 @@ export class RequestFlow {
   this.d.data.runs.push(r);w.runIds.push(r.id);w.currentRunId=r.id;
   if(!q.requestGraph)attachGraph(this.d.data,q);
   else if(!node(q.requestGraph,w.id))applyGraph(this.d.data,q,{type:'add',actor:'agent',request:newNode(q,w)});
-  else applyGraph(this.d.data,q,{type:'attempt',actor:r.runModel.createdBy,requestId:w.id,runId:r.id,report:r.phase==='report',reopen:['retry','continuation','steering'].includes(origin)});
+  else applyGraph(this.d.data,q,{type:'attempt',actor:r.runModel.createdBy,requestId:w.id,runId:r.id,report:r.phase==='report',resolveReview:r.runModel.createdBy==='human'&&['retry','continuation'].includes(origin)});
   return r;
  }
  context(r){const q=this.root(r.humanRequestId),w=this.work(q,r.workId);return this.d.rules.dynamic(r)+this.d.rules.context({humanRequestId:q.id,workId:w.id,runId:r.id,origin:r.origin,phase:r.phase||'work'},this.d.agent(r.agentId).inputEnvelope?.mode==='startup-v1');}
@@ -157,11 +157,11 @@ export class RequestFlow {
   return this.d.persist(async()=>{
    observeRequest(this.d.data,q);
    // Old finish means "I have handled the current direct child results". Reads alone never do.
-   const refs=x.results??(finish&&w.currentRunId===r.id&&accepted(r)?resultEntries(this.d.data,q).filter(e=>e.parentWorkId===w.id&&!e.superseded&&!e.handled).map(e=>({requestId:e.workId,resultId:e.id,version:e.version,decision:'accept'})):[]);
+   const refs=x.results??(finish&&w.currentRunId===r.id&&accepted(r)?resultEntries(this.d.data,q).filter(e=>e.parentWorkId===w.id&&!e.superseded&&!e.handled&&!e.claims.some(c=>c.actorRunId===r.id&&!c.invalidated)).map(e=>({requestId:e.workId,resultId:e.id,version:e.version,decision:'accept'})):[]);
    applyGraph(this.d.data,q,{type:finish?'finish':'respond',actor:'agent',requestId:w.id,runId:r.id,operationId:x.operationId,results:refs,at:Date.now(),legacy:x.results===undefined});
    // Reservation may be cancelled; an external send is never rewritten as unsent.
    for(const delivery of this.d.data.runs.filter(d=>d.humanRequestId===q.id&&d.workId===w.id&&d.runModel.phase==='result'&&d.runModel.state.kind==='queued')){
-    if(refs.some(ref=>ref.resultId===delivery.runModel.resultOf)){changeRun(delivery,{type:'cancel-result-reservation',actor:'program',resultId:delivery.runModel.resultOf,reason:'handled'});delivery.queueCancelledAt=now();delivery.error='result-handled-before-dispatch';}
+    if(resultEntries(this.d.data,q).some(e=>e.id===delivery.runModel.resultOf&&e.handled)){changeRun(delivery,{type:'cancel-result-reservation',actor:'program',resultId:delivery.runModel.resultOf,reason:'handled'});delivery.queueCancelledAt=now();delivery.error='result-handled-before-dispatch';}
    }
    w.currentRunId=node(q.requestGraph,w.id).currentRunId;
    q.revision++;await this.d.save();await this.settle();return structuredClone(w);
@@ -199,7 +199,7 @@ export class RequestFlow {
   if(previous){
    // The supplement never reached the provider. Restore ownership of the
    // ongoing turn, but never restore an invalidated finish declaration.
-   changeRun(previous,{type:'restore',actor:'human',successorId:r.id});w.currentRunId=previous.id;observeRequest(this.d.data,q);node(q.requestGraph,w.id).currentRunId=previous.id;
+   changeRun(previous,{type:'restore',actor:'human',successorId:r.id});w.currentRunId=previous.id;node(q.requestGraph,w.id).currentRunId=previous.id;observeRequest(this.d.data,q);
   }else{applyGraph(this.d.data,q,{type:'withdraw',actor:'human',requestId:w.id,reason:'未送信の依頼を取り下げ'});if(!w.parentWorkId)q.cancelledAt=now();}
   q.revision++;
   await this.d.save();

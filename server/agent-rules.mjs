@@ -1,8 +1,8 @@
 import {resolve} from 'node:path';
 // The only source of Agent-facing policy and Agent decision-operation schemas.
 export const agentActions=Object.freeze({
- delegate:{fields:'{humanRequestId,parentWorkId,actorRunId,agentId,operationId,instruction,replacesRequestId?}',description:'同じ依頼内で別Agentへ委任。子の再作業は新しい委任。rework判断後はreplacesRequestIdに旧子依頼IDを指定。'},
- respond:{fields:'{humanRequestId,workId,runId,operationId,results:[{requestId,resultId,version,decision:accept|rework}]}',description:'現在の依頼runが直接の子依頼の結果版に対応した判断。読取のみでは状態は変わらない。'},
+ delegate:{fields:'{humanRequestId,parentWorkId,actorRunId,agentId,operationId,instruction,replacesRequestId?}',description:'同じ依頼内で別Agentへ委任。子の再作業は新しい委任。rework申告後はreplacesRequestIdで置換予約。正常終了で確定。'},
+ respond:{fields:'{humanRequestId,workId,runId,operationId,results:[{requestId,resultId,version,decision:accept|rework}]}',description:'現在runが直接の子結果版への対応を申告。当該runの正常終了で確定。読取は不変。'},
  finish:{fields:'{humanRequestId,workId,runId,operationId,results?}',description:'委任ありのまとめ役の完了申告。申告と当該回の正常終了・子の終了を照合。'}
 });
 export const actionUsage=action=>'requests '+action+' JSON '+agentActions[action].fields+' — '+agentActions[action].description;
@@ -15,7 +15,7 @@ export function visualReportContext(cli,url){return '\n図は必要時のみfenc
 export class AgentRules {
  constructor(url){this.url=url;this.cli='VILLAGE_URL='+JSON.stringify(url)+' node '+JSON.stringify(resolve('scripts/village.mjs'));}
  access(id){return 'CLI: '+this.cli+' requests get '+id+'。API: POST '+this.url+'/api/direct/requests/get {humanRequestId}。必要時に最新詳細を取得: agents list、requests get HUMAN_REQUEST_ID、requests results HUMAN_REQUEST_ID WORK_ID（WORK_IDはworkId）。詳細はCLI help。秘書Agentはlocal接続の工房だけに作成できます。';}
- work(id){return [visualReportContext(this.cli,this.url),common,this.access(id),identity,guide,'最新名簿: GET '+this.url+'/api/direct/agents 。',steeringRule,'Agentの判断操作は delegate / respond / finish です。結果の読取は自由ですが読取だけでは対応済みになりません。対応した結果をrequests respondまたはfinishのresultsで指定してください。results省略のfinishはその時点の直接の子結果への対応申告です。失敗結果の受入には明示resultsを使います。',...Object.keys(agentActions).map(actionUsage),'委任ありのまとめ役は子の送信終了と結果を確認し、最終回答直前に requests finish を申告してください。'].join('\n');}
+ work(id){return [visualReportContext(this.cli,this.url),common,this.access(id),identity,guide,'最新名簿: GET '+this.url+'/api/direct/agents 。',steeringRule,'Agentの判断操作は delegate / respond / finish です。結果の読取は自由ですが読取だけでは対応済みになりません。対応した結果をrequests respondまたはfinishのresultsで指定してください。申告は当該runの正常終了で確定し、失敗・中断・不明では未確定です。results省略のfinishはその時点の直接の子結果への対応申告です。失敗結果の受入には明示resultsを使います。',...Object.keys(agentActions).map(actionUsage),'委任ありのまとめ役は子の送信終了と結果を確認し、最終回答直前に requests finish を申告してください。'].join('\n');}
  report(id){return [visualReportContext(this.cli,this.url),reportPolicy,this.access(id)].join('\n');}
  startup(){return '<ai-village-instructions version="1">\n毎ターンの ai-village-request は識別情報。HUMAN_REQUEST_ID はそのhumanRequestIdに置き換え、人間本文と村の規則を区別してください。\n通常作業:\n'+this.work('HUMAN_REQUEST_ID')+'\nphase=report の場合だけ適用:\n'+this.report('HUMAN_REQUEST_ID')+'\n</ai-village-instructions>';}
  context(metadata,compact){return '\n<ai-village-request>'+JSON.stringify(metadata)+(compact?'':'\n'+(metadata.phase==='report'?this.report(metadata.humanRequestId):this.work(metadata.humanRequestId)))+'</ai-village-request>';}
