@@ -36,14 +36,14 @@ export function workspaceSnapshot(view,ranges={},focus=null){
   const from=ranges[a.id]?decode(ranges[a.id],a.id):null;
   const window=from?all.filter(r=>entryKey(r)>=from):all.slice(-100),visible=new Set(window);
   // Keep unsent/uncertain/running controls reachable even when older than the window.
-  const entries=all.filter(r=>visible.has(r)||!r.external&&!terminal.has(r.state));
+  const entries=all.filter(r=>visible.has(r)||!r.inputReceipt&&!r.external&&!terminal.has(r.state));
   entries.forEach(r=>{if(!r.external)included.add(r.id);});
   conversations[a.id]={entries:entries.map(present),hasMore:all.some(r=>window.length&&entryKey(r)<entryKey(window[0])),cursor:window.length?cursor(a.id,entryKey(window[0])):null};
  }
  const runs=view.runs.filter(r=>included.has(r.id));
  const agents=view.agents.map(a=>{const {nativeTurns,runtime,creationInput,ownedProcesses,processVerification,initialTabId,sessionName,...rest}=a;return {...rest,nativeTurns:(nativeTurns||[]).slice(-1).map(t=>({id:t.id,sessionId:t.sessionId,state:t.state}))};});
  const ids=new Set(runs.map(r=>r.humanRequestId));
- const requests=(view.requests||[]).filter(q=>ids.has(q.id)||q.status==='active'&&q.requestGraph?.nodes.some(n=>!focusIds||focusIds.has(n.assignee))).map(q=>({id:q.id,instruction:q.inputProtocol===1?(q.instruction||'').slice(0,100):'',status:q.status,revision:q.revision,needsReview:q.needsReview,waiting:q.waiting,requestGraph:q.requestGraph?{rootId:q.requestGraph.rootId,nodes:q.requestGraph.nodes.map(n=>({id:n.id,assignee:n.assignee,metadata:{instruction:(n.metadata?.instruction||'').slice(0,100)},inbox:(!focusIds||focusIds.has(n.assignee))?(n.inbox||[]).filter(i=>i.kind==='supplement').map(i=>({id:i.id,operationId:i.operationId,kind:i.kind,text:i.text,attachments:i.attachments||[],travelContexts:i.travelContexts||[],createdAt:i.createdAt,handledBy:i.handledBy})):[],currentRunId:n.currentRunId,parentId:n.parentId,state:n.state}))}:undefined}));
+ const requests=(view.requests||[]).filter(q=>ids.has(q.id)||q.status==='active'&&q.requestGraph?.nodes.some(n=>!focusIds||focusIds.has(n.assignee))).map(q=>({id:q.id,instruction:q.inputProtocol===1?(q.instruction||'').slice(0,100):'',status:q.status,revision:q.revision,needsReview:q.needsReview,waiting:q.waiting,requestGraph:q.requestGraph?{rootId:q.requestGraph.rootId,nodes:q.requestGraph.nodes.map(n=>({id:n.id,assignee:n.assignee,metadata:{instruction:(n.metadata?.instruction||'').slice(0,100)},inbox:(!focusIds||focusIds.has(n.assignee))?(n.inbox||[]).filter(i=>i.kind==='supplement').map(i=>({id:i.id,operationId:i.operationId})):[],currentRunId:n.currentRunId,parentId:n.parentId,state:n.state}))}:undefined}));
  // runs are referenced by controls, but their bodies are carried only once in conversations.
  const controlFields='id requestId agentId humanRequestId workId phase state turnId sessionId agentSessionId createdAt hiddenCompletion'.split(' ');
  const controls=runs.map(r=>Object.fromEntries(controlFields.filter(k=>r[k]!==undefined).map(k=>[k,r[k]])));
