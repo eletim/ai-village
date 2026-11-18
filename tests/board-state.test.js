@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {boardLayout,orderedAgents,orderedProjects,PAGE_SIZE} from '../src/board-state.js';
+import {boardLayout,orderedAgents,orderedProjectAgents,orderedProjects,PAGE_SIZE} from '../src/board-state.js';
 import {completedEntries,unreadByAgent,agentEntries,completionKey,visualState,faviconHref} from '../src/completions.js';
 
 test('desktop grids fit four as 2x2 and nine as 3x3, narrow layouts keep readable cards',()=>{
@@ -40,6 +40,12 @@ test('explicit pins precede other projects without name special cases or changin
  assert.deepEqual(orderedProjects(projects).map(p=>p.id),['b','a','c']);
  assert.deepEqual(projects.map(p=>p.id),['a','b','c']);
  assert.deepEqual(orderedProjects(projects.filter(p=>p.id!=='b')).map(p=>p.id),['a','c']);
+});
+test('a Project first Agent moves to the first card without changing other card order',()=>{
+ const agents=[{id:'worker-1'},{id:'secretary'},{id:'worker-2'}];
+ assert.deepEqual(orderedProjectAgents(agents,{firstAgentId:'secretary'}).map(a=>a.id),['secretary','worker-1','worker-2']);
+ assert.deepEqual(orderedProjectAgents(agents,{firstAgentId:'missing'}).map(a=>a.id),['worker-1','secretary','worker-2']);
+ assert.deepEqual(agents.map(a=>a.id),['worker-1','secretary','worker-2']);
 });
 test('visualState: a finished Agent whose native turns are all withheld (report mode) shows completed, not idle',async()=>{
  const {visualState}=await import('../src/completions.js');

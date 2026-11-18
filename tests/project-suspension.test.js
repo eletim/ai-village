@@ -7,6 +7,19 @@ import {DirectAgents} from '../server/direct.mjs';
 import {VillageOperations} from '../server/operations.mjs';
 import {isSuspended,orderedProjects,suspensionSummary} from '../src/board-state.js';
 import {villageModel} from '../src/village-model.js';
+test('Project first Agent validates membership and persists through restart',async t=>{
+ const dir=await mkdtemp(join(tmpdir(),'first-agent-'));t.after(()=>rm(dir,{recursive:true,force:true}));
+ const d=new DirectAgents({dir});await d.init({watch:false});t.after(()=>d.close());
+ const p=await d.putProject({name:'New999',requestId:'project-first-agent'});
+ d.data.agents=[{id:'secretary',projectId:p.id},{id:'other',projectId:null}].map(a=>({...a,connection:{connectionType:'local'},agentModel:{id:a.id,intent:null,observation:null}}));
+ await assert.rejects(d.putProject({revision:0,firstAgentId:'other'},p.id),{status:400});
+ await d.putProject({revision:0,firstAgentId:'secretary'},p.id);
+ assert.equal(d.project(p.id).firstAgentId,'secretary');
+ const restored=new DirectAgents({dir});await restored.init({watch:false});t.after(()=>restored.close());
+ assert.equal(restored.project(p.id).firstAgentId,'secretary');
+ await restored.putProject({revision:1,firstAgentId:null},p.id);
+ assert.equal(restored.project(p.id).firstAgentId,null);
+});
 test('display-only suspend/resume persists, validates revision and preserves pin/rename/membership/requests',async t=>{
  const dir=await mkdtemp(join(tmpdir(),'suspend-'));t.after(()=>rm(dir,{recursive:true,force:true}));let calls=0;
  const options={dir,localRun:async()=>{calls++;throw Error('must not execute');},remote:async()=>{calls++;throw Error('must not execute');}};

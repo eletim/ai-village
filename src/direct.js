@@ -23,7 +23,7 @@ import {chatScroll} from './chat-scroll.js';
 import {foldEntriesHTML,rootRunIds} from './run-groups.js';
 import {travelComposer} from './travel-composer.js';
 import {travelSummary,sameTravelContexts} from './travel-context.js';
-import {PAGE_SIZE,isSuspended,placeOf,orderedAgents,orderedProjects,boardLayout} from './board-state.js';
+import {PAGE_SIZE,isSuspended,placeOf,orderedAgents,orderedProjectAgents,orderedProjects,boardLayout} from './board-state.js';
 import {agentEntries,unreadByAgent,visualState,faviconHref} from './completions.js';
 import {agentPlaceName} from './agent-identity.js';
 import {bindPromptInput} from './prompt-input.js';
@@ -81,7 +81,7 @@ const placeName=agentPlaceName;
 function options(select,items){const previous=select.value,html=items.map(i=>`<option value="${esc(i.id)}">${esc(i.name)}</option>`).join('');if(select.innerHTML!==html){select.innerHTML=html;if(items.some(i=>i.id===previous))select.value=previous;}}
 const isProject=id=>id.startsWith('project:');
 const inScope=(a,id)=>isProject(id)?a.projectId===id.slice(8):!isSuspended(state.projects||[],a)&&(id==='all'||placeId(a)===id);
-function filtered(){return live().filter(a=>inScope(a,selectedPlace));}
+function filtered(){const agents=live().filter(a=>inScope(a,selectedPlace));return isProject(selectedPlace)?orderedProjectAgents(agents,(state.projects||[]).find(p=>p.id===selectedPlace.slice(8))):agents;}
 function projectOptions(select){options(select,[{id:'',name:'未所属'},...orderedProjects(state.projects||[]).map(p=>({...p,name:p.name+(p.suspended?'（休止中）':'')}))]);}
 function sidebarState(collapsed){
  document.documentElement.dataset.sidebarCollapsed=String(collapsed);
@@ -234,7 +234,7 @@ function renderPlaces(){
  if(sidebarMode==='places'&&all.some(a=>placeId(a)==='unassigned'))places.push({id:'unassigned'});
  const allPage=selectedPlace==='all'?selectedPage:pageMemory.get(pageKey('all'))||0;
  const entries=[{id:'all',page:0,agents:all.slice(allPage*PAGE_SIZE,(allPage+1)*PAGE_SIZE)}];
- for(const {id} of places){const agents=all.filter(a=>inScope(a,id));for(let page=0;page<Math.max(1,Math.ceil(agents.length/PAGE_SIZE));page++)entries.push({id,page,agents:agents.slice(page*PAGE_SIZE,(page+1)*PAGE_SIZE)});}
+ for(const {id} of places){const agents=orderedProjectAgents(all.filter(a=>inScope(a,id)),isProject(id)?(state.projects||[]).find(p=>p.id===id.slice(8)):null);for(let page=0;page<Math.max(1,Math.ceil(agents.length/PAGE_SIZE));page++)entries.push({id,page,agents:agents.slice(page*PAGE_SIZE,(page+1)*PAGE_SIZE)});}
  const html=entries.map(({id,page,agents})=>`<div class="place-row"><button data-place="${esc(id)}" data-page="${page}" ${selectedPlace===id&&(id==='all'||selectedPage===page)?'aria-current="page"':''}><span>${esc(groupTitle(id,page))}</span><span class="place-dots" aria-label="${id==='all'?'全体表示の現在ページ':'このグループ'}のAgent状態">${agents.map(agentDot).join('')}</span></button>${id==='all'||id==='unassigned'?'':`<button class="add-agent" data-add="${esc(id)}" data-page="${page}" aria-label="${esc(groupTitle(id,page))}の操作">…</button>`}</div>`).join('');
  if($('#places').innerHTML!==html){const dataset=document.activeElement?.dataset;$('#places').innerHTML=html;if(dataset?.place||dataset?.add){const key=dataset.place?'place':'add';[...$('#places').querySelectorAll('button')].find(b=>b.dataset[key]===dataset[key]&&b.dataset.page===dataset.page)?.focus({preventScroll:true});}}
 }
@@ -534,7 +534,7 @@ document.addEventListener('click',async e=>{
 function renderSuspended(){
  const projects=orderedProjects((state.projects||[]).filter(p=>p.suspended===true));
  const summary=$('#suspended-projects summary'),text=`休止中(${projects.length})`;if(summary.textContent!==text)summary.textContent=text;
- const html=projects.map(p=>{const members=live().filter(a=>a.projectId===p.id);return Array.from({length:Math.max(1,Math.ceil(members.length/PAGE_SIZE))},(_,page)=>`<div class="place-row"><button data-place="project:${esc(p.id)}" data-page="${page}" ${selectedPlace==='project:'+p.id&&selectedPage===page?'aria-current="page"':''}><span>${esc(p.name)}${page?' ('+(page+1)+')':''}</span><span class="place-dots">${members.slice(page*PAGE_SIZE,(page+1)*PAGE_SIZE).map(agentDot).join('')}</span></button><button data-add="project:${esc(p.id)}" aria-label="${esc(p.name)}の操作">…</button></div>`).join('');}).join('')||'<p>休止中のProjectはありません。</p>';
+ const html=projects.map(p=>{const members=orderedProjectAgents(live().filter(a=>a.projectId===p.id),p);return Array.from({length:Math.max(1,Math.ceil(members.length/PAGE_SIZE))},(_,page)=>`<div class="place-row"><button data-place="project:${esc(p.id)}" data-page="${page}" ${selectedPlace==='project:'+p.id&&selectedPage===page?'aria-current="page"':''}><span>${esc(p.name)}${page?' ('+(page+1)+')':''}</span><span class="place-dots">${members.slice(page*PAGE_SIZE,(page+1)*PAGE_SIZE).map(agentDot).join('')}</span></button><button data-add="project:${esc(p.id)}" aria-label="${esc(p.name)}の操作">…</button></div>`).join('');}).join('')||'<p>休止中のProjectはありません。</p>';
  const host=$('#suspended-list');if(host.innerHTML!==html){const active=document.activeElement?.dataset;host.innerHTML=html;if(active?.place||active?.add)[...host.querySelectorAll('button')].find(b=>b.dataset.place===active.place&&b.dataset.add===active.add&&b.dataset.page===active.page)?.focus({preventScroll:true});}
 }
 let projectActionTarget=null;
