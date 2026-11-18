@@ -1,3 +1,4 @@
+import {bindSidebarOrder} from './sidebar-order.js';
 import {boardProjectTitle,mobileWorkspace} from './mobile-workspace.js';
 import {compactStatusPair,compactStatus,actionSVG,connectionStatus} from './compact-status.js';
 import {deliveryUnconfirmed} from './queued-run.js';
@@ -222,7 +223,7 @@ function renderBoard(){
  $('#start-secretary').title=state.workshops.some(w=>w.connectionType==='local')?'秘書を追加':'ローカル実行環境を登録して秘書を追加';
  layoutBoard();if(restoreScroll!==null)$('#agents').scrollTop=restoreScroll;renderHistory();syncSelection();
 }
-function placeTitle(id){if(isProject(id))return (state.projects||[]).find(p=>p.id===id.slice(8))?.name||'Project';return id==='all'?'全部表示':id==='mayor'?'秘書':id==='unassigned'?'所属未登録':'工房（'+(state.workshops.find(w=>w.id===id)?.name||'未登録')+'）';}
+function placeTitle(id){if(isProject(id))return (state.projects||[]).find(p=>p.id===id.slice(8))?.name||'Project';return id==='all'?'':id==='mayor'?'秘書':id==='unassigned'?'所属未登録':'工房（'+(state.workshops.find(w=>w.id===id)?.name||'未登録')+'）';}
 function groupTitle(id,page){return placeTitle(id)+(id!=='all'&&page>0?` (${page+1})`:'');}
 function agentMarker(a,sidebar=true){
  const stateName=visualState(a,agentEntries(state,a));
@@ -230,6 +231,7 @@ function agentMarker(a,sidebar=true){
 }
 function agentDot(a){return agentMarker(a);}
 function renderPlaces(){
+ if(sidebarOrder.busy())return;
  renderSuspended();
  const all=live().filter(a=>!isSuspended(state.projects||[],a)),places=sidebarMode==='projects'?orderedProjects((state.projects||[]).filter(p=>p.suspended!==true)).map(p=>({id:'project:'+p.id})):[{id:'mayor'},...state.workshops];
  for(const button of document.querySelectorAll('[data-mode]'))button.setAttribute('aria-pressed',String(button.dataset.mode===sidebarMode));
@@ -238,7 +240,13 @@ function renderPlaces(){
  const allPage=selectedPlace==='all'?selectedPage:pageMemory.get(pageKey('all'))||0;
  const entries=[{id:'all',page:0,agents:all.slice(allPage*PAGE_SIZE,(allPage+1)*PAGE_SIZE)}];
  for(const {id} of places){const agents=scopeAgents(id,all);for(let page=0;page<Math.max(1,Math.ceil(agents.length/PAGE_SIZE));page++)entries.push({id,page,agents:agents.slice(page*PAGE_SIZE,(page+1)*PAGE_SIZE)});}
- const html=entries.map(({id,page,agents})=>`<div class="place-row"><button data-place="${esc(id)}" data-page="${page}" ${selectedPlace===id&&(id==='all'||selectedPage===page)?'aria-current="page"':''}><span>${esc(groupTitle(id,page))}</span><span class="place-dots" aria-label="${id==='all'?'全体表示の現在ページ':'このグループ'}のAgent状態">${agents.map(agentDot).join('')}</span></button>${id==='all'||id==='unassigned'?'':`<button class="add-agent" data-add="${esc(id)}" data-page="${page}" aria-label="${esc(groupTitle(id,page))}の操作">…</button>`}</div>`).join('');
+ const html=entries.map(({id,page,agents})=>{
+  const project=isProject(id)?state.projects.find(p=>p.id===id.slice(8)):null;
+  const order=project?` data-order-kind="projects" data-order-id="${esc(project.id)}" data-order-revision="${project.revision}" data-order-pinned="${project.pinned===true}"`:'';
+  const dots=agents.map(a=>project?`<span data-agent-handle data-order-kind="agents" data-order-id="${esc(a.id)}" data-order-project="${esc(project.id)}" data-order-revision="${a.metadataRevision||0}" tabindex="0" role="button" aria-label="${esc(a.name||'Agent')}を並べ替え" title="ドラッグで並べ替え・Alt＋矢印キー" aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight">${agentDot(a)}</span>`:agentDot(a)).join('');
+  const title=id==='all'?'<svg class="all-grid" viewBox="0 0 20 20" aria-hidden="true"><path d="M2 2h6v6H2zM12 2h6v6h-6zM2 12h6v6H2zM12 12h6v6h-6z"/></svg>':esc(groupTitle(id,page));
+  return `<div class="place-row"${order}>${project?`<button class="order-grip" data-project-handle aria-label="${esc(project.name)}を並べ替え" title="ドラッグで並べ替え・Alt＋上下キー" aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown">⠿</button>`:''}<button data-place="${esc(id)}" data-page="${page}" ${id==='all'?'aria-label="全体を表示" title="全体を表示"':''} ${selectedPlace===id&&(id==='all'||selectedPage===page)?'aria-current="page"':''}><span>${title}</span><span class="place-dots" aria-label="${id==='all'?'全体表示の現在ページ':'このグループ'}のAgent状態">${dots}</span></button>${id==='all'||id==='unassigned'?'':`<button class="add-agent" data-add="${esc(id)}" data-page="${page}" aria-label="${esc(groupTitle(id,page))}の操作">…</button>`}</div>`;
+ }).join('');
  if($('#places').innerHTML!==html){const dataset=document.activeElement?.dataset;$('#places').innerHTML=html;if(dataset?.place||dataset?.add){const key=dataset.place?'place':'add';[...$('#places').querySelectorAll('button')].find(b=>b.dataset[key]===dataset[key]&&b.dataset.page===dataset.page)?.focus({preventScroll:true});}}
 }
 function updateCompletionIndicator(){
@@ -324,6 +332,7 @@ function focusAgent(){
  if(zoomId!==id)toggleZoom(id);cards.get(id)?.focus({preventScroll:true});
 }
 window.addEventListener('hashchange',()=>{focusedHash='';focusAgent();});
+const sidebarOrder=bindSidebarOrder($('#places'),{save:input=>api('/reorder',input),changed:()=>{void refresh(true);},error:e=>{$('#error').textContent='並び替えを保存できません: '+e.message;}});
 $('#places').onclick=e=>{const add=e.target.closest('[data-add]'),place=e.target.closest('[data-place]');if(add)openManagement(add.dataset.add);else if(place){choosePlace(place.dataset.place,place.dataset.place==='all'?undefined:Number(place.dataset.page));void refresh(true);}};
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&zoomId&&!document.querySelector('dialog[open]')){toggleZoom(zoomId);void refresh(true);}});
 let launcherProjectId=null;
