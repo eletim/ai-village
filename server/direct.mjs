@@ -117,7 +117,7 @@ export class DirectAgents {
     await this.save();
     return {...current,unreviewed:false,attention:false,attentionRequestIds:[]};
   }));}
-  discovery(){return {agents:this.data.agents.filter(a=>!a.deletedAt).map(a=>({...agentIdentity(a),projectId:a.projectId||null,projectName:this.data.projects.find(p=>p.id===a.projectId)?.name||null,metadataRevision:a.metadataRevision||0})),projects:structuredClone(this.data.projects.filter(p=>!p.deletedAt)),workshops:structuredClone(this.data.workshops),management:{workshopPattern:'PUT /api/direct/workshops/:id {iconPattern:[none|line|diamond x8]}; null resets to stable default; omitted fields preserved',help:'node scripts/village.mjs help',agentUpdate:'PUT /api/direct/agents/:id {revision,name?,projectId?}',projects:'POST /api/direct/projects {requestId,name}; PUT /api/direct/projects/:id {revision,name?,pinned?:boolean,suspended?:boolean (display only)}',projectDelete:'GET /api/direct/projects/:id/delete-plan; POST /api/direct/projects/:id/delete {operationId,revision,members}; deletes all member Agents, retry same operation on partial result',namePolicy:'村の表示名のみ変更。PurpleMuxのラベル、ID、セッション、接続先は維持。',requests:{help:'node scripts/village.mjs help',list:'GET /api/direct/requests',get:'POST /api/direct/requests/get {humanRequestId}',operations:'delegate / results / finish: POST /api/direct/requests/:operation',policy:'人間の依頼ごとに通知権1枚。正式delegateで親子を登録し、委任なしはnative正常終了、委任ありは子結果を確認後のfinishとnative正常終了で全体完了。生PurpleMux送信・旧runを自動関連付けしない。'}}};}
+  discovery(){return {agents:this.data.agents.filter(a=>!a.deletedAt).map(a=>({...agentIdentity(a),projectId:a.projectId||null,projectName:this.data.projects.find(p=>p.id===a.projectId)?.name||null,metadataRevision:a.metadataRevision||0,displayOrder:a.displayOrder??null})),projects:structuredClone(this.data.projects.filter(p=>!p.deletedAt)),workshops:structuredClone(this.data.workshops),management:{workshopPattern:'PUT /api/direct/workshops/:id {iconPattern:[none|line|diamond x8]}; null resets to stable default; omitted fields preserved',help:'node scripts/village.mjs help',agentUpdate:'PUT /api/direct/agents/:id {revision,name?,projectId?,displayOrder?:integer|null}',projects:'POST /api/direct/projects {requestId,name}; PUT /api/direct/projects/:id {revision,name?,pinned?:boolean,suspended?:boolean,displayOrder?:integer|null (display only)}',projectDelete:'GET /api/direct/projects/:id/delete-plan; POST /api/direct/projects/:id/delete {operationId,revision,members}; deletes all member Agents, retry same operation on partial result',namePolicy:'村の表示名のみ変更。PurpleMuxのラベル、ID、セッション、接続先は維持。',requests:{help:'node scripts/village.mjs help',list:'GET /api/direct/requests',get:'POST /api/direct/requests/get {humanRequestId}',operations:'delegate / results / finish: POST /api/direct/requests/:operation',policy:'人間の依頼ごとに通知権1枚。正式delegateで親子を登録し、委任なしはnative正常終了、委任ありは子結果を確認後のfinishとnative正常終了で全体完了。生PurpleMux送信・旧runを自動関連付けしない。'}}};}
   project(id){return this.data.projects.find(p=>p.id===id)||fail('Projectがありません',404);}
   projectDeletePlan(id){return deletionPlan(this,id);}
   deleteProject(id,input){return deleteProject(this,id,input);}
@@ -128,13 +128,14 @@ export class DirectAgents {
   async putProject(input,id){return this.locked('projects',()=>this.persist(async()=>{
     if(id){
       const p=this.writableProject(id);
-      if (!('name' in input)&&!('pinned' in input)&&!('suspended' in input))fail('名前、pinnedまたはsuspendedを指定してください',400);
+      if (!('name' in input)&&!('pinned' in input)&&!('suspended' in input)&&!('displayOrder' in input))fail('名前、pinned、suspendedまたはdisplayOrderを指定してください',400);
       if ('suspended' in input&&typeof input.suspended!=='boolean')fail('suspendedはbooleanです',400);
       if ('pinned' in input&&typeof input.pinned!=='boolean')fail('pinnedはbooleanです',400);
+      if('displayOrder' in input&&input.displayOrder!==null&&!Number.isSafeInteger(input.displayOrder))fail('displayOrderは安全な整数またはnullです',400);
       const name='name' in input?this.validName(input.name):p.name;
       if(!Number.isInteger(input.revision)||input.revision!==p.revision)fail('Projectが更新されています。再読込してください');
       if(this.data.projects.some(p=>!p.deletedAt&&p.id!==id&&p.name===name))fail('同名のProjectがあります');
-      Object.assign(p,{name,...('suspended' in input?{suspended:input.suspended}:{}),...('pinned' in input?{pinned:input.pinned}:{}),revision:p.revision+1,updatedAt:now()});
+      Object.assign(p,{name,...('displayOrder' in input?{displayOrder:input.displayOrder}:{}),...('suspended' in input?{suspended:input.suspended}:{}),...('pinned' in input?{pinned:input.pinned}:{}),revision:p.revision+1,updatedAt:now()});
       await this.save();return {...p};
     }
     const name=this.validName(input.name);
@@ -161,10 +162,11 @@ export class DirectAgents {
   async updateAgent(id,input){return this.locked('projects',()=>this.locked(id,()=>this.persist(async()=>{
     const a=this.writableAgent(this.agent(id)),revision=a.metadataRevision||0;
     if(!Number.isInteger(input.revision)||input.revision!==revision)fail('Agentが更新されています。再読込してください');
-    if(Object.keys(input).some(k=>!['revision','name','projectId'].includes(k))||(!('name' in input)&&!('projectId' in input)))fail('名前またはProject所属を指定してください',400);
+    if(Object.keys(input).some(k=>!['revision','name','projectId','displayOrder'].includes(k))||(!('name' in input)&&!('projectId' in input)&&!('displayOrder' in input)))fail('名前、Project所属またはdisplayOrderを指定してください',400);
     const patch={metadataRevision:revision+1};
     if('name' in input)patch.name=this.validName(input.name);
-    if('projectId' in input){if(input.projectId!==null)this.writableProject(input.projectId);patch.projectId=input.projectId;}
+    if('projectId' in input){if(input.projectId!==null)this.writableProject(input.projectId);patch.projectId=input.projectId;if(input.projectId!==a.projectId)patch.displayOrder=null;}
+    if('displayOrder' in input){if(input.displayOrder!==null&&!Number.isSafeInteger(input.displayOrder))fail('displayOrderは安全な整数またはnullです',400);if(!(patch.projectId===undefined?a.projectId:patch.projectId))fail('Project所属が必要です',400);patch.displayOrder=input.displayOrder;}
     a.creationInput ||= {workshopId:a.workshopId,cwd:a.cwd,name:a.name,provider:a.provider||'codex',location:a.location||'workshop',projectId:a.projectId||null};
     Object.assign(a,patch);await this.save();
     return structuredClone(a);
