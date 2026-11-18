@@ -277,26 +277,21 @@ test('busy agent accepts queued additions and delivers each once in order',async
  assert.equal(testView(third).state,'awaiting_input');assert.equal(f.sends(),3);
 });
 
-test('Project pin uses revision updates, persists across rename and keeps create retries idempotent',async t=>{
+test('retired Project pin is rejected; display order uses revisions and survives rename',async t=>{
  const f=await fixture(t),s=f.service;
- const {VillageOperations}=await import('../server/operations.mjs');
- const ops=new VillageOperations({dir:f.options.dir},null,{direct:s});
- const input={name:'Arbitrary project',requestId:'pin-project-test'};
- const p=await s.putProject(input);
- assert.equal(p.pinned,undefined);
- assert.ok((await ops.execute(['help'])).result.some(c=>c.name==='projects pin'));
- assert.equal((await ops.execute(['projects','pin',p.id,'0','true'])).ok,true);
- assert.equal((await ops.execute(['projects','pin',p.id,'0','false'])).ok,false);
- await assert.rejects(s.putProject({revision:1,pinned:'true'},p.id),{status:400});
+ const {VillageOperations}=await import('../server/operations.mjs');const ops=new VillageOperations({dir:f.options.dir},null,{direct:s});
+ const input={name:'Arbitrary project',requestId:'order-project-test'},p=await s.putProject(input);
+ assert.ok(!(await ops.execute(['help'])).result.some(c=>c.name==='projects pin'));
+ await assert.rejects(ops.execute(['projects','pin',p.id,'0','true']),/未対応/);
+ await assert.rejects(s.putProject({revision:0,pinned:true},p.id),{status:400});
+ await assert.rejects(s.putProject({...input,requestId:'invalid-new-pin',pinned:true}),{status:400});
+ await s.putProject({revision:0,displayOrder:2},p.id);
  assert.equal((await ops.execute(['projects','rename',p.id,'1','Renamed'])).ok,true);
- assert.equal((await s.putProject(input)).id,p.id);
- await assert.rejects(s.putProject({...input,name:'Different'}),{status:409});
+ assert.equal((await s.putProject(input)).id,p.id);await assert.rejects(s.putProject({...input,name:'Different'}),{status:409});
  const restored=new DirectAgents(f.options);await restored.init({watch:false});
- assert.equal(restored.project(p.id).pinned,true);assert.equal(restored.project(p.id).name,'Renamed');
- assert.equal(restored.project(p.id).revision,2);
- const edits=await Promise.allSettled([restored.putProject({revision:2,pinned:false},p.id),restored.putProject({revision:2,name:'Stale'},p.id)]);
- assert.equal(testView(edits[0]).status,'fulfilled');assert.equal(testView(edits[1].reason).status,409);
- assert.equal(restored.project(p.id).pinned,false);assert.equal(f.sends(),0);
+ assert.equal(restored.project(p.id).displayOrder,2);assert.equal(restored.project(p.id).name,'Renamed');
+ const edits=await Promise.allSettled([restored.putProject({revision:2,displayOrder:3},p.id),restored.putProject({revision:2,name:'Stale'},p.id)]);
+ assert.equal(edits[0].status,'fulfilled');assert.equal(edits[1].reason.status,409);assert.equal(f.sends(),0);
 });
 
 test('stale busy releases only matching native terminal without later input or new running turn',async t=>{

@@ -16,9 +16,9 @@ test('official HTTP/CLI suspension persists across server restart, rejects inval
  await start();const {data:p}=await request('/api/direct/projects',{name:'Sample',requestId:'create-example'});assert.notEqual(p.suspended,true);
  assert.equal((await request('/api/direct/projects/'+p.id,{revision:0,suspended:1},'PUT')).status,400);
  const suspended=await cli(['projects','suspend',p.id,'0']);assert.equal(suspended.data.ok,true);assert.equal(suspended.data.result.suspended,true);assert.equal((await cli(['projects','resume',p.id,'0'])).data.ok,false);
- await stop();await start();let list=(await cli(['projects','list'])).data.result;assert.equal(list[0].suspended,true);assert.equal((await cli(['projects','rename',p.id,'1','New name'])).data.ok,true);assert.equal((await request('/api/direct/projects/'+p.id,{revision:2,pinned:true},'PUT')).status,200);
+ await stop();await start();let list=(await cli(['projects','list'])).data.result;assert.equal(list[0].suspended,true);assert.equal((await cli(['projects','rename',p.id,'1','New name'])).data.ok,true);assert.equal((await request('/api/direct/projects/'+p.id,{revision:2,displayOrder:0},'PUT')).status,200);
  assert.equal((await cli(['projects','resume',p.id,'3'])).data.result.suspended,false);assert.equal((await cli(['projects','suspend',p.id,'4'])).data.result.suspended,true);
- const saved=JSON.parse(await readFile(join(dir,'direct.json'),'utf8'));assert.equal(saved.projects[0].pinned,true);assert.equal(saved.projects[0].name,'New name');assert.equal(saved.agents.length,0);
+ const saved=JSON.parse(await readFile(join(dir,'direct.json'),'utf8'));assert.equal(saved.projects[0].displayOrder,0);assert.equal(saved.projects[0].name,'New name');assert.equal(saved.agents.length,0);
  const plan=(await request('/api/direct/projects/'+p.id+'/delete-plan',null,'GET')).data;
  assert.equal((await request('/api/direct/projects/'+p.id+'/delete',{operationId:'delete-empty-project',revision:plan.revision,members:[]})).data.status,'deleted');assert.equal((await cli(['projects','list'])).data.result.length,0);
 });

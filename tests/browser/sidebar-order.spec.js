@@ -63,3 +63,15 @@ test('project name click still selects; settings order preserves rename draft an
  await last.focus();await page.keyboard.press('Alt+ArrowLeft');await expect.poll(()=>writes.length).toBe(1);await expect(page.locator('#project-rename-form input')).toHaveValue('未保存の名前');
  await page.locator('#project-actions-dialog [data-close]').click();await page.locator('[data-add="project:q"]').click();await expect(page.locator('#project-agent-order [data-agent-handle]')).toHaveCount(1);
 });
+test('settings up/down moves keep dialog and draft; boundaries and drag share the same order',async({page})=>{
+ const {writes,state}=await setup(page);await page.locator('[data-add="project:p"]').first().click();
+ await expect(page.locator('#project-pin')).toHaveCount(0);await expect(page.locator('#project-move-up')).toBeDisabled();await expect(page.locator('#project-move-down')).toBeEnabled();
+ await page.locator('#project-rename-form input').fill('名前の下書き');await page.locator('#project-move-down').click();
+ await expect.poll(()=>writes.length).toBe(1);await expect(page.locator('#project-move-down')).toBeDisabled();await expect(page.locator('#project-move-up')).toBeEnabled();await expect(page.locator('#project-rename-form input')).toHaveValue('名前の下書き');
+ await page.locator('#project-move-up').click();await expect.poll(()=>writes.length).toBe(2);await expect(page.locator('#project-move-up')).toBeDisabled();
+ await page.locator('#project-actions-dialog [data-close]').click();await drag(page,page.locator('[data-place="project:q"] [data-project-handle]'),page.locator('.place-row[data-order-id="p"]').first());await expect.poll(()=>writes.length).toBe(3);
+ await page.locator('[data-add="project:q"]').click();await expect(page.locator('#project-move-up')).toBeDisabled();
+});
+test('settings reorder conflict shows error without changing displayed order',async({page})=>{
+ await setup(page,{conflict:true});await page.locator('[data-add="project:p"]').first().click();await page.locator('#project-move-down').click();await expect(page.locator('#project-actions-dialog .dialog-error')).toContainText('一覧が更新');await expect(page.locator('#project-move-up')).toBeDisabled();await expect(page.locator('#project-move-down')).toBeEnabled();
+});
