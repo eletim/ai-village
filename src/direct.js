@@ -199,7 +199,7 @@ function renderBoard(){
   }
   const area=card.querySelector('.runs'),html=runHTML(a),wasLoading=area.dataset.loading==='true';area.dataset.loading=String(!!state.conversations&&!state.conversations[a.id]);if(wasLoading){updateReportHTML(area,html);scrolls.get(a.id).loaded();}else scrolls.get(a.id).preserve(()=>updateReportHTML(area,html));
   const prompt=card.querySelector('textarea[name=instruction]'),promptLabel=(a.name||'Agent')+'に聞く';
-  prompt.placeholder=promptLabel;prompt.title=promptLabel+'（Ctrl+Enterで送信、Enter / Shift+Enterで改行）';prompt.setAttribute('aria-label',prompt.title);
+  prompt.placeholder=promptLabel;prompt.title=promptLabel+'（Enter / Ctrl+Enterで送信、Shift+Enterで改行、変換中のEnterは確定）';prompt.setAttribute('aria-label',prompt.title);
   const send=card.querySelector('[data-send] button:not([data-reconcile])');
   fileEditors.get(a.id).lock(card.dataset.pending==='true'||pending.has(a.id));
   travelEditors.get(a.id).lock(card.dataset.pending==='true'||pending.has(a.id));

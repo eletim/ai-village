@@ -40,7 +40,7 @@ for (const mode of ['direct'])
         await expect(input).toHaveValue('出張先で調査してください');
         await expect(page.getByRole('button', { name: '出張先：編集済み', exact: true })).toBeVisible();
         await page.screenshot({ path: `/tmp/ai-village-travel-${mode}-chip.png` });
-        await input.press('Enter');
+        await input.press('Shift+Enter');
         await expect(input).toHaveValue('出張先で調査してください\n');
         expect(payloads.length).toBe(0);
         await input.press('Control+Enter');
