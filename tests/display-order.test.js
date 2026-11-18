@@ -39,3 +39,19 @@ test('project order keeps pins first; project member order does not change place
  assert.deepEqual(orderedAgents(agents).map(x=>x.id),['1','2','3','4']);
  assert.deepEqual(orderedProjectAgents(agents).map(x=>x.id),['4','2','3','1']);assert.equal(agents[0].id,'1');
 });
+test('drag order is atomic, revision guarded, scoped and persistent',async t=>{
+ const dir=await mkdtemp(join(tmpdir(),'drag-order-'));t.after(()=>rm(dir,{recursive:true,force:true}));
+ const options={dir,notifier:{status:()=>({enabled:false})}};const d=new DirectAgents(options);await d.init({watch:false});t.after(()=>d.close());
+ const p=await d.putProject({name:'P',requestId:'drag-project-p'}),q=await d.putProject({name:'Q',requestId:'drag-project-q'});
+ await d.reorder({kind:'projects',id:q.id,targetId:p.id,position:'before',revision:0,targetRevision:0});
+ assert.deepEqual(orderedProjects(d.data.projects).map(p=>p.id),[q.id,p.id]);
+ await assert.rejects(d.reorder({kind:'projects',id:q.id,targetId:p.id,position:'after',revision:0,targetRevision:0}));
+ d.data.agents=['a','b','c'].map((id,i)=>({id,projectId:i===2?q.id:p.id,metadataRevision:0,connection:{connectionType:'local'},agentModel:{id,intent:null,observation:{connected:true,process:'alive',activity:'idle',canSteer:false}}}));
+ const move={kind:'agents',projectId:p.id,id:'b',targetId:'a',position:'before',revision:0,targetRevision:0};
+ const before=structuredClone(d.data.agents),save=d.save;d.save=async()=>{throw Error('disk');};await assert.rejects(d.reorder(move),/disk/);d.save=save;
+ assert.deepEqual(d.data.agents,before);
+ await assert.rejects(d.reorder({...move,targetId:'c'}));assert.deepEqual(d.data.agents,before);
+ await d.reorder(move);assert.deepEqual(orderedProjectAgents(d.data.agents.filter(a=>a.projectId===p.id)).map(a=>a.id),['b','a']);
+ const restored=new DirectAgents(options);await restored.init({watch:false});t.after(()=>restored.close());assert.equal(restored.agent('b').displayOrder,0);assert.equal(restored.agent('c').displayOrder,undefined);
+ await d.putProject({revision:1,pinned:true},p.id);await assert.rejects(d.reorder({kind:'projects',id:q.id,targetId:p.id,position:'before',revision:1,targetRevision:2}),/先頭固定/);
+});

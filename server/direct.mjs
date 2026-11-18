@@ -1,3 +1,4 @@
+import {orderedProjects,orderedProjectAgents} from '../src/board-state.js';
 import {migrateUnifiedStore} from './unified-request-migration.mjs';
 import {quarantineRequests,quarantinedRun} from './request-integrity.mjs';
 import {PersistenceBoundary,checkpoint} from './persistence-boundary.mjs';
@@ -146,6 +147,22 @@ export class DirectAgents {
     const p={id:randomUUID(),requestId:input.requestId,initialName:name,name,revision:0,createdAt:now()};
     await this.projectGuides.initialize(p);
     this.data.projects.push(p);await this.save();return {...p};
+  }));}
+  async reorder(input){return this.locked('projects',()=>this.persist(async()=>{
+    const {kind,id,targetId,position,revision,targetRevision,projectId}=input;
+    if(!['projects','agents'].includes(kind)||!['before','after'].includes(position)||typeof id!=='string'||typeof targetId!=='string'||id===targetId)fail('並び替えの対象と位置が不正です',400);
+    const members=kind==='projects'?this.data.projects.filter(p=>!p.deletedAt):this.data.agents.filter(a=>!a.deletedAt&&a.projectId===projectId);
+    if(kind==='agents')this.writableProject(projectId);
+    const source=members.find(x=>x.id===id),target=members.find(x=>x.id===targetId),key=kind==='projects'?'revision':'metadataRevision';
+    if(!source||!target)fail('同じ一覧内の対象を指定してください',400);
+    if(kind==='projects'){this.writableProject(id);this.writableProject(targetId);if(!!source.pinned!==!!target.pinned)fail('先頭固定の範囲を越えて並べ替えできません',400);}
+    else{this.writableAgent(source);this.writableAgent(target);}
+    if(!Number.isInteger(revision)||!Number.isInteger(targetRevision)||revision!==(source[key]||0)||targetRevision!==(target[key]||0))fail('一覧が更新されています。再読込して並べ替えてください');
+    const ordered=(kind==='projects'?orderedProjects(members):orderedProjectAgents(members)).filter(x=>x.id!==id);
+    const index=ordered.findIndex(x=>x.id===targetId);if(index<0)fail('並び替え対象がありません',400);
+    ordered.splice(index+(position==='after'?1:0),0,source);
+    for(const [rank,item] of ordered.entries()){item.displayOrder=rank;item[key]=(item[key]||0)+1;}
+    await this.save();return {ok:true};
   }));}
   async putProjectGuide(id,input){return this.locked('projects',async()=>{
     this.writableProject(id);
