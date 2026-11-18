@@ -1,5 +1,5 @@
 import {test,expect} from '@playwright/test';
-import {mkdtemp,writeFile,rm,mkdir} from 'node:fs/promises';
+import {mkdtemp,writeFile,readFile,rm,mkdir} from 'node:fs/promises';
 import {tmpdir} from 'node:os';import {join} from 'node:path';import {randomUUID} from 'node:crypto';
 import {spawn} from 'node:child_process';import {createServer} from 'node:net';import {once} from 'node:events';
 test('isolated real API and browser preserve nested requests, result handling and root-only attention',async({page})=>{
@@ -12,12 +12,13 @@ test('isolated real API and browser preserve nested requests, result handling an
   await writeFile(join(dir,'direct.json'),JSON.stringify({version:1,workshops:[],agents,runs,requests:[q]}));await mkdir(join(dir,'sessions'));
   const bin=join(dir,'pmux');await writeFile(bin,'#!/bin/sh\nprintf \'%s\\n\' \'{"alive":true,"cliState":"busy"}\'\n',{mode:0o700});
   const probe=createServer();probe.listen(0,'127.0.0.1');await once(probe,'listening');const port=probe.address().port;await new Promise(r=>probe.close(r));const base=`http://127.0.0.1:${port}`;
-  child=spawn(process.execPath,['scripts/dev.mjs','--port',String(port)],{env:{...process.env,VILLAGE_STATE_DIR:dir,VILLAGE_PMUX_BIN:bin,VILLAGE_NOTIFICATIONS:'false',VILLAGE_AUTH_FILE:'',VILLAGE_PUBLIC_ORIGIN:'',VILLAGE_VPN_ADDRESS:'',CODEX_HOME:dir,VILLAGE_NATIVE_CACHE_DIR:join(dir,'cache')},stdio:['ignore','pipe','pipe']});
-  await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('startup timeout')),10000);child.once('exit',()=>{clearTimeout(timer);reject(Error('server exited'));});child.stdout.on('data',b=>{if(b.toString().includes('AI村 →')){clearTimeout(timer);resolve();}});});
+  child=spawn(process.execPath,['scripts/isolated-browser-server.mjs',String(port)],{env:{...process.env,VILLAGE_STATE_DIR:dir,VILLAGE_PMUX_BIN:bin,VILLAGE_NOTIFICATIONS:'false',VILLAGE_AUTH_FILE:'',VILLAGE_PUBLIC_ORIGIN:'',VILLAGE_VPN_ADDRESS:'',CODEX_HOME:dir,VILLAGE_NATIVE_CACHE_DIR:join(dir,'cache')},stdio:['ignore','pipe','pipe']});
+  await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('startup timeout')),10000);child.once('exit',()=>{clearTimeout(timer);reject(Error('server exited'));});child.stdout.on('data',b=>{if(b.toString().includes('ISOLATED_BROWSER_READY')){clearTimeout(timer);resolve();}});});
   const post=(path,data)=>page.request.post(base+'/api/direct/requests/'+path,{data});
   const get=async()=> (await post('get',{humanRequestId:qid})).json();
   await page.goto(base+'/agents');await expect(page.getByRole('button',{name:'親のプロフィール',exact:true})).toBeVisible();
-  const before=await get();expect(before.requestGraph.nodes).toHaveLength(3);expect(before.status).toBe('active');
+  const before=await get();const disk=JSON.parse(await readFile(join(dir,'direct.json'),'utf8'));expect(disk.requests[0].works).toBeUndefined();expect(disk.requests[0].requestModel).toBeUndefined();
+  const omitted=await post('finish',{humanRequestId:qid,workId:ids[0],runId:runIds[0],operationId:randomUUID()});expect(omitted.status()).toBe(400);expect((await omitted.json()).error).toContain('results');expect(await get()).toEqual(before);expect(before.requestGraph.nodes).toHaveLength(3);expect(before.status).toBe('active');
   const response=await post('results',{humanRequestId:qid,workId:ids[1]});const result=(await response.json())[0];expect(result.handled).toBe(false);
   const ref={requestId:ids[2],resultId:result.id,version:result.version,decision:'accept'};
   expect((await post('respond',{humanRequestId:qid,workId:ids[0],runId:runIds[0],operationId:randomUUID(),results:[ref]})).status()).toBe(409);
@@ -31,7 +32,7 @@ test('isolated real API and browser preserve nested requests, result handling an
 });
 
 test('isolated persisted failed declaration stays unhandled in API/browser after restart',async({page})=>{
- const {newRun}=await import('../../server/state/run.ts');const {unifiedData}=await import('../../server/unified-requests.mjs');const {transitionGraph}=await import('../../server/state/requests.ts');
+ const {newRun}=await import('../../server/state/run.ts');const {unifiedData}=await import('../../server/unified-request-migration.mjs');const {transitionGraph}=await import('../../server/state/requests.ts');
  const dir=await mkdtemp(join(tmpdir(),'unconfirmed-browser-'));let child;
  try{
   const qid=randomUUID(),ids=[randomUUID(),randomUUID()],rids=[randomUUID(),randomUUID()],aids=[randomUUID(),randomUUID()];
@@ -44,7 +45,7 @@ test('isolated persisted failed declaration stays unhandled in API/browser after
   await writeFile(join(dir,'direct.json'),JSON.stringify(data));await mkdir(join(dir,'sessions'));
   const bin=join(dir,'pmux');await writeFile(bin,'#!/bin/sh\nprintf \'%s\\n\' \'{"alive":true,"cliState":"busy"}\'\n',{mode:0o700});
   const probe=createServer();probe.listen(0,'127.0.0.1');await once(probe,'listening');const port=probe.address().port;await new Promise(r=>probe.close(r));const base=`http://127.0.0.1:${port}`;
-  const start=async()=>{let stderr='';child=spawn(process.execPath,['scripts/dev.mjs','--port',String(port)],{env:{...process.env,VILLAGE_STATE_DIR:dir,VILLAGE_PMUX_BIN:bin,VILLAGE_NOTIFICATIONS:'false',VILLAGE_AUTH_FILE:'',VILLAGE_PUBLIC_ORIGIN:'',VILLAGE_VPN_ADDRESS:'',CODEX_HOME:dir,VILLAGE_NATIVE_CACHE_DIR:join(dir,'cache')},stdio:['ignore','pipe','pipe']});child.stderr.on('data',b=>stderr+=b);await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('startup timeout')),10000);child.once('exit',()=>{clearTimeout(timer);reject(Error('server exited: '+stderr));});child.stdout.on('data',b=>{if(b.toString().includes('AI村 →')){clearTimeout(timer);resolve();}});});};
+  const start=async()=>{let stderr='';child=spawn(process.execPath,['scripts/isolated-browser-server.mjs',String(port)],{env:{...process.env,VILLAGE_STATE_DIR:dir,VILLAGE_PMUX_BIN:bin,VILLAGE_NOTIFICATIONS:'false',VILLAGE_AUTH_FILE:'',VILLAGE_PUBLIC_ORIGIN:'',VILLAGE_VPN_ADDRESS:'',CODEX_HOME:dir,VILLAGE_NATIVE_CACHE_DIR:join(dir,'cache')},stdio:['ignore','pipe','pipe']});child.stderr.on('data',b=>stderr+=b);await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('startup timeout')),10000);child.once('exit',()=>{clearTimeout(timer);reject(Error('server exited: '+stderr));});child.stdout.on('data',b=>{if(b.toString().includes('ISOLATED_BROWSER_READY')){clearTimeout(timer);resolve();}});});};
   const stop=async()=>{const done=once(child,'exit');child.kill();await done;child=null;};
   for(let i=0;i<2;i++){
    await start();await page.goto(base+'/agents');await expect(page.getByRole('button',{name:'親のプロフィール',exact:true})).toBeVisible();

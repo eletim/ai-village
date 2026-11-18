@@ -22,3 +22,23 @@ test('failed runtime displays model review reason and explicit revision-safe ret
  page.once('dialog',d=>d.accept());await page.getByRole('button',{name:'取り下げ',exact:true}).click();
  await expect.poll(()=>mutations.length).toBe(2);expect(mutations[1].body).toEqual({humanRequestId:'q',revision:4});await expect(page.getByRole('button',{name:'再試行',exact:true})).toHaveCount(0);
 });
+
+test('shared graph normal waits explain progress without recovery controls, stalled progress requires judgment',async({page})=>{
+ const {reconcileGraph,waitingReason}=await import('../../server/state/requests.ts');
+ const {requestView}=await import('../../server/state/projection.ts');
+ const parent=runFixture({id:'p',agentId:'a',workId:'w',humanRequestId:'q',instruction:'工房への依頼',output:'委任しました'});
+ const child=runFixture({id:'c',agentId:'b',workId:'cw',humanRequestId:'q',instruction:'実装中'},{kind:'running',sessionId:'s',turnId:'t',inputId:'i'});
+ const q=requestFixture({id:'q',revision:0,instruction:parent.instruction,works:[{id:'w',agentId:'a',currentRunId:'p',runIds:['p']},{id:'cw',agentId:'b',parentWorkId:'w',currentRunId:'c',runIds:['c']}]},[parent,child]);
+ const evidence=[parent,child].map(r=>({run:r.runModel,ownerId:r.workId,agentId:r.agentId}));
+ const project=()=>{q.requestGraph=reconcileGraph(q.requestGraph,evidence);Object.assign(q,requestView(q.requestGraph.nodes[0]));q.waiting=Object.fromEntries(q.requestGraph.nodes.map(n=>[n.id,waitingReason(q.requestGraph,n,evidence)]));};project();
+ const state={agents:[{id:'a',name:'工房',state:'idle',canSend:true,canQueue:true,connection:{name:'Local'}}],workshops:[],runs:[parent],requests:[q],reviews:{},notification:{}};
+ await page.route('**/api/direct**',route=>route.fulfill({json:state}));await page.goto('/agents');
+ await expect(page.locator('.request-waiting')).toHaveText('子依頼の実行を待っています。');await expect(page.locator('.recovery')).toHaveCount(0);
+ child.runModel.state={kind:'ended',outcome:'normal',reason:'native'};project();await page.reload();
+ await expect(page.locator('.request-waiting')).toHaveText('子依頼の結果配送を待っています。');await expect(page.locator('.recovery')).toHaveCount(0);
+ child.runModel.state={kind:'ended',outcome:'unconfirmed',reason:'timeout'};q.requestGraph.nodes[1].state={kind:'active',review:[]};project();await page.reload();
+ await expect(page.locator('.recovery')).toContainText('子依頼に失敗');await expect(page.locator('.request-waiting')).toHaveCount(0);
+ // No runnable dependency or result delivery remains; a missing parent declaration needs judgment.
+ q.requestGraph.nodes[1].replacementId='replacement';project();await page.reload();
+ await expect(page.locator('.recovery')).toContainText('実行と自動で進む手順が終了');
+});

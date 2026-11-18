@@ -5,11 +5,11 @@ import type {Run,Outcome} from './run.ts';
 export type RequestState={kind:'active';review:string[]}|{kind:'submitted';resultId:string}|{kind:'completed';by:'program'|'human'|'agent';reason:string}|{kind:'withdrawn';reason:string};
 export type Submission={id:string;version:number;runId:string;outcome:Outcome|'cancelled';requestId:string};
 export type Response={requestId:string;resultId:string;version:number;decision:'accept'|'rework'};
-export type Handling=Response&{actorRunId:string;actor:Actor;operationId:string};
-export type Claim=Handling&{legacy:boolean;invalidated?:string};
+export type Handling=Omit<Response,'decision'>&{decision:Response['decision']|'review';actorRunId:string;actor:Actor;operationId:string};
+export type Claim=Handling&{invalidated?:string};
 export type Replacement={replacementId:string;actorRunId:string;resultId:string;version:number};
-export type Node={claims:Claim[];replacements:Replacement[];invalidatedRuns:string[];replacementId?:string;id:string;parentId:string|null;requester:{kind:'human'}|{kind:'agent';agentId:string;requestId:string};assignee:string;runAgents:Record<string,string>;runIds:string[];currentRunId:string;reportRunId:string|null;reportMode:boolean;state:RequestState;submissions:Submission[];handling:Handling[];declarations:{id:string;runId:string;at:number;invalidated?:string}[];decisions:{actor:Actor;reason:string}[]};
-export type Graph={version:2;rootId:string;nodes:Node[];operations:{id:string;payload:string}[]};
+export type Node={metadata:Record<string,unknown>;claims:Claim[];replacements:Replacement[];invalidatedRuns:string[];replacementId?:string;id:string;parentId:string|null;requester:{kind:'human'}|{kind:'agent';agentId:string;requestId:string};assignee:string;runAgents:Record<string,string>;runIds:string[];currentRunId:string;reportRunId:string|null;reportMode:boolean;state:RequestState;submissions:Submission[];handling:Handling[];declarations:{id:string;runId:string;at:number;invalidated?:string}[];decisions:{actor:Actor;reason:string}[]};
+export type Graph={version:3;rootId:string;nodes:Node[];operations:{id:string;payload:string;acceptedPayload?:string;allowOmittedResults?:true}[]};
 export type Evidence={run:Run;ownerId:string;agentId:string}[];
 export const node=(g:Graph,id:string)=>g.nodes.find(n=>n.id===id);
 const owned=(n:Node,runs:Evidence)=>runs.filter(e=>e.ownerId===n.id).map(e=>e.run);
@@ -24,6 +24,28 @@ export function ready(g:Graph,n:Node,runs:Evidence):boolean{
  const r=current(n,runs);
  return normal(r)&&(r?.phase==='report'||!dependencies(g,n).length||n.declarations.some(d=>d.runId===r?.id&&!d.invalidated))&&resolved(g,n);
 }
+/** Derived continuation evidence, never a second persisted lifecycle. */
+export function waitingReason(g:Graph,n:Node,runs:Evidence):string|null{
+ if(n.state.kind!=='active')return null;
+ const r=current(n,runs);
+ if(r&&!r.supersededBy&&!isTerminal(r))return r.phase==='result'?'result-processing':r.phase==='report'?'report-processing':r.state.kind==='queued'?'queued':r.state.kind==='sent'?'awaiting-input':'running';
+ if(graphSteps(g,runs).some(step=>step.requestId===n.id&&step.type==='deliver-result'))return 'result-delivery';
+ if(n.reportMode&&!n.reportRunId&&ready(g,n,runs))return 'report-preparation';
+ if(dependencies(g,n).some(c=>!c.replacementId&&c.state.kind==='active'&&waitingReason(g,c,runs)))return 'dependencies';
+ return null;
+}
+// Reevaluate derived waiting/review labels without committing claims or rewriting history.
+export function refreshProgressReviews(g:Graph,runs:Evidence):Graph{
+ const visit=(n:Node)=>{
+  for(const c of dependencies(g,n))visit(c);
+  if(n.state.kind!=='active')return;
+  const r=current(n,runs),review=n.state.review.filter(x=>!['dependencies-unresolved','progress-stalled','child-needs-review'].includes(x));
+  if(dependencies(g,n).some(c=>!c.replacementId&&c.state.kind==='active'&&c.state.review.length))review.push('child-needs-review');
+  if(normal(r)&&!ready(g,n,runs)&&!waitingReason(g,n,runs))review.push('progress-stalled');
+  n.state={kind:'active',review:[...new Set(review)]};
+ };
+ visit(node(g,g.rootId)!);return g;
+}
 /** Immutable structured facts only; no text, I/O, notification or clock. */
 export function reconcileGraph(source:Graph,runs:Evidence):Graph{
  const g=structuredClone(source);
@@ -35,7 +57,7 @@ export function reconcileGraph(source:Graph,runs:Evidence):Graph{
   if(n.handling.some(h=>h.operationId===claim.operationId&&h.resultId===claim.resultId))continue;
   if(!resolved(g,c!))continue;
   n.handling.push({requestId:claim.requestId,resultId:claim.resultId,version:claim.version,decision:claim.decision,actor:'agent',actorRunId:claim.actorRunId,operationId:claim.operationId});committed=true;
-  if(claim.decision==='accept'&&(c!.state.kind==='submitted'||c!.state.kind==='active'&&!claim.legacy)){
+  if(claim.decision==='accept'&&(c!.state.kind==='submitted'||c!.state.kind==='active')){
    c!.state={kind:'completed',by:'agent',reason:'result-accepted:'+s.id};c!.decisions.push({actor:'agent',reason:'result-accepted:'+s.id});
   }
   if(claim.decision==='rework'){
@@ -49,15 +71,15 @@ export function reconcileGraph(source:Graph,runs:Evidence):Graph{
   const r=current(n,runs);if(!r||r.supersededBy)continue;
   if(n.state.kind==='active'){
    const retryResolved=normal(r)&&r.phase==='work'&&r.retryOf&&n.declarations.some(d=>d.runId===r.id&&!d.invalidated);
-   const review=n.state.review.filter(x=>!['needs-decision','dependencies-unresolved','child-needs-review'].includes(x)&&!(retryResolved&&x==='run-needs-review:'+r.retryOf));
-   if(dependencies(g,n).some(c=>c.state.kind==='active'&&c.state.review.length))review.push('child-needs-review');
+   const review=n.state.review.filter(x=>!['needs-decision','dependencies-unresolved','progress-stalled','child-needs-review'].includes(x)&&!(retryResolved&&x==='run-needs-review:'+r.retryOf));
+   if(dependencies(g,n).some(c=>!c.replacementId&&c.state.kind==='active'&&c.state.review.length))review.push('child-needs-review');
    if(r.state.kind==='cancelled'||r.state.kind==='ended'&&r.state.outcome!=='normal')review.push('run-needs-review:'+r.id);
    if(isTerminal(r)&&!normal(r)||normal(r)&&(!dependencies(g,n).length||ready(g,n,runs))){
     if(!n.submissions.some(s=>s.runId===r.id))n.submissions.push({id:r.id,runId:r.id,requestId:n.id,version:n.submissions.length+1,outcome:r.state.kind==='ended'?r.state.outcome:'cancelled'});
    }
    if(ready(g,n,runs)&&review.length===0&&(!n.reportMode||r.phase==='report'))n.state=n.parentId?{kind:'submitted',resultId:r.id}:{kind:'completed',by:'program',reason:r.phase==='report'?'normal-report':'normal-work'};
    else {
-    if(isTerminal(r)&&normal(r)&&!ready(g,n,runs))review.push(dependencies(g,n).length?'dependencies-unresolved':'needs-decision');
+    if(normal(r)&&!ready(g,n,runs)&&!waitingReason(g,n,runs))review.push('progress-stalled');
     n.state={kind:'active',review:[...new Set(review)]};
    }
   }
@@ -67,7 +89,7 @@ export function reconcileGraph(source:Graph,runs:Evidence):Graph{
  for(const n of g.nodes)for(const r of owned(n,runs))if(n.state.kind!=='withdrawn'&&r.phase==='result'&&normal(r)&&correlated(r)&&!r.supersededBy&&!n.invalidatedRuns.includes(r.id)){
   const child=dependencies(g,n).find(c=>c.submissions.some(s=>s.id===r.resultOf)),s=child?.submissions.find(s=>s.id===r.resultOf);
   if(s&&!handled(n,s)){
-   n.handling.push({requestId:s.requestId,resultId:s.id,version:s.version,decision:'accept',actor:'program',actorRunId:r.id,operationId:'delivery:'+r.id});
+   n.handling.push({requestId:s.requestId,resultId:s.id,version:s.version,decision:s.outcome==='normal'?'accept':'review',actor:'program',actorRunId:r.id,operationId:'delivery:'+r.id});
    // Failed results require an explicit Agent/human decision, not mere normal receipt.
    if(child?.state.kind==='submitted'&&latest(child)?.id===s.id&&resolved(g,child))child.state={kind:'completed',by:'program',reason:'result-handled:'+r.id};
    changed=true;
@@ -78,7 +100,7 @@ export function reconcileGraph(source:Graph,runs:Evidence):Graph{
 export type Event=
  | {type:'add';actor:Actor;request:Node}
  | {type:'attempt';actor:Actor;requestId:string;runId:string;report:boolean;resolveReview?:boolean}
- | {type:'respond'|'finish';actor:'agent';requestId:string;runId:string;operationId:string;results:Response[];at:number;legacy?:boolean}
+ | {type:'respond'|'finish';actor:'agent';requestId:string;runId:string;operationId:string;results:Response[];at:number}
  | {type:'replace';actor:'agent';requestId:string;childId:string;replacementId:string}
  | {type:'assign';actor:'human';requestId:string;agentId:string}
  | {type:'review';actor:'program';requestId:string;reason:string}
@@ -110,9 +132,9 @@ export function transitionGraph(source:Graph,e:Event,runs:Evidence):Result<Graph
    for(const ref of e.results){
     const c=node(g,ref.requestId),s=c&&latest(c);
     if(!c||c.parentId!==n.id||!s||s.id!==ref.resultId||s.version!==ref.version||!['accept','rework'].includes(ref.decision))return reject('stale-or-foreign-result');
-    const existing=n.claims.find(h=>h.resultId===s.id&&h.actorRunId===r.id&&!h.invalidated);
+    const existing=n.claims.find(h=>h.resultId===s.id&&h.actorRunId===r.id&&!h.invalidated&&h.decision!=='review');
     if(existing&&existing.decision!==ref.decision)return reject('result-decision-conflict');
-    if(!existing)n.claims.push({...ref,actor:'agent',actorRunId:r.id,operationId:e.operationId,legacy:e.legacy===true});
+    if(!existing)n.claims.push({...ref,actor:'agent',actorRunId:r.id,operationId:e.operationId});
     if(ref.decision==='accept'&&!resolved(g,c))return reject('child-dependencies-unresolved');
    }
   }
@@ -151,7 +173,7 @@ export function transitionGraph(source:Graph,e:Event,runs:Evidence):Result<Graph
    }
    n.runAgents[r.id]=n.assignee;
    n.runIds.push(r.id);n.currentRunId=r.id;if(e.report)n.reportRunId=r.id;
-   n.state={kind:'active',review:e.resolveReview?[]:n.state.kind==='active'?n.state.review.filter(x=>!['needs-decision','dependencies-unresolved','child-needs-review'].includes(x)):[]};
+   n.state={kind:'active',review:e.resolveReview?[]:n.state.kind==='active'?n.state.review.filter(x=>!['needs-decision','dependencies-unresolved','progress-stalled','child-needs-review'].includes(x)):[]};
    return accept(reconcileGraph(g,runs));
   }
   case 'review':if(n.state.kind==='active')n.state.review=[...new Set([...n.state.review,e.reason])];return accept(g);

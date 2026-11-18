@@ -48,7 +48,7 @@ HTTP/CLI → アプリケーション操作 → 依頼の流れ/Agent管理 → 
 1. **完了・統合済み**: 旧執務室・ジョブ配線を完全撤去。実行/ディレクトリを独立。
    state.json/conversation.jsonは読まず、書かず、削除しない。自動移行・旧ジョブ再開も行わない。
    旧URLは404とし別画面への暗黙互換を残さない。READMEを現行機能だけにする。
-2. **状態移行の完了（実装済み）**: runModel/requestModel/agentModelだけを内部で参照。
+2. **状態移行の完了（実装済み）**: runModel/requestGraph.nodes/agentModelだけを内部で参照。
    projectObservationによる旧state書込、acceptance/blocksInput、work状態、ticket/inbox/w.finishの
    重複表現を除去。API/UIも型付き投影に切替。acknowledge互換を終了する。
    本番進行中入力を保つ版付き移行と段階2〜4の不変条件をテストする。
@@ -74,3 +74,5 @@ DirectAgentsと横断ストアだけで成立する操作を残す。旧ジョ�
   development、deployments。開発作業は通常の依頼としてAgentが行い、専用自動反映機構は持たない。
 - `/api/village`、`/api/direct/*`、health、文書/添付/画像/TODO/出張先APIを維持。
   `/api/state`、`/api/jobs*`、`/api/messages`、`/api/secretary/*`、`/office*`を廃止する。
+
+依頼の内部正本はv3 requestGraph.nodesのみ。旧works/requestModelはAPI出口の複製DTOであり、進行・報告・復旧・UIは参照しない。旧保存形式の変換はunified-request-migration.mjsで行う。明示results契約、稼働セッション更新、ロールバック条件は [共通依頼モデル](unified-request-model.md#v3-依頼ノードを唯一の所有者にする) を参照。
