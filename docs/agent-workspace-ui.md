@@ -141,3 +141,9 @@ Enter／Ctrl+Enterで送信、Shift+Enterは改行。IME変換確定・compositi
 - Ctrl+Enter: 送信。変換中は同様に確定を要求し、最終inputの後に送信する。Shift併用時は改行を優先する。
 
 通常Enterのcompositionend先行・isComposing・keyCode229保護と長押し防止を維持する。変換完了イベントが届かなければ保留した操作は実行しない。送信可否・空欄・送信中の制限は既存フォームで判定する。検証はイベント順序の再現とChromiumのIME composition操作で行い、各OSの実IME全組合せを保証したものではない。
+
+### 復帰時の同期とモバイル入力
+
+画面の再表示、BFCacheからの復帰、オンライン復帰では、古い読み取り同期を中止して全体同期を開始する。古い応答は画面へ反映せず、下書きを保持する。送信などの変更操作は再実行しない。
+
+幅700px以下のモバイルUIではEnterは改行する。PCではEnterは送信（IME変換中は確定のみ）。Shift+Enterは改行、Ctrl+Enterは送信。画面幅の変更は次のキー入力から反映する。
