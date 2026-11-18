@@ -1,7 +1,7 @@
 import {readFile,open} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {writeSnapshot} from './direct-store.mjs';
-import {node,reconcileGraph,graphSteps} from './state/requests.ts';
+import {node,reconcileGraph,graphSteps,refreshProgressReviews} from './state/requests.ts';
 import {evidence,rootNode,validateGraph} from './unified-requests.mjs';
 function oldNode(q,w){return {id:w.id,parentId:w.parentWorkId||null,requester:w.parentWorkId?{kind:'agent',agentId:q.works.find(p=>p.id===w.parentWorkId).agentId,requestId:w.parentWorkId}:{kind:'human'},assignee:w.agentId,runAgents:Object.fromEntries(w.runIds.map(id=>[id,w.agentId])),runIds:[...w.runIds],currentRunId:w.currentRunId,reportRunId:null,reportMode:!w.parentWorkId&&q.reportMode===true,state:{kind:'active',review:[]},submissions:[],claims:[],replacements:[],invalidatedRuns:[],handling:[],declarations:[],decisions:[]};}
 function importGraph(data,q){
@@ -75,6 +75,7 @@ export function unifiedData(source){
    g.version=3;delete q.works;delete q.requestModel;
   }
   validateGraph(data,q);
+  refreshProgressReviews(q.requestGraph,evidence(data,q));
  }
  data.unifiedRequestVersion=3;return data;
 }

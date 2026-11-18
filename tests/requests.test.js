@@ -900,3 +900,15 @@ for(const implicit of [true,false])test(`saved v2 failed-result declaration pres
  await f.complete(next.flow.run(r.id));assert.equal(next.flow.results(q.id,r.workId)[0].handled,true);assert.equal(nq.requestGraph.nodes.find(n=>n.id===w.id).state.kind,implicit?'active':'completed');assert.equal(testView(nq).status,implicit?'active':'completed');
  await f.restart();assert.equal(f.service.flow.root(q.id).integrity,undefined);
 });
+
+
+test('API projection and restart keep parent and child waiting for a running grandchild out of recovery',async t=>{
+ const f=await fixture(t),s=f.service,r=await s.send(f.agents[0].id,{instruction:'nested waiting',requestId:'normal-nested-wait'});await f.submit(r);
+ const c=await f.delegate(r,f.agents[2]);await s.tick();const cr=s.flow.run(c.currentRunId);await f.submit(cr);
+ const gc=await f.delegate(cr,f.agents[3]);await s.tick();await f.submit(s.flow.run(gc.currentRunId));
+ await f.complete(cr);await f.complete(r);
+ for(const service of [s,await f.restart()]){
+  const q=service.flow.get(r.humanRequestId);assert.equal(q.needsReview,false);assert.equal(q.waiting[r.workId],'dependencies');assert.equal(q.waiting[c.id],'dependencies');
+  assert(q.requestGraph.nodes.every(n=>n.state.kind==='active'&&n.state.review.length===0));assert.equal(f.notifications.length,0);
+ }
+});

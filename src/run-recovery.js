@@ -9,7 +9,7 @@ export const requestRootState=q=>q?.requestGraph?.nodes.find(n=>n.id===q.request
 export const needsRunRecovery=(q,r,w)=>!q?.integrity&&!!w&&requestRootState(q)?.kind==='active'&&requestRootState(q).review.length>0;
 export function requestReviewReason(q,r){
  const state=requestRootState(q),reasons=state?.kind==='active'?state.review:[];
- return reasons.map(reason=>reason.startsWith('run-needs-review:')?'送信が失敗・中断・確認できずで終了しました。既存の成果・副作用を確認してください。':reason.startsWith('declaration-conflict:')?'完了申告と観察した事実が一致しません。':reason==='dependencies-unresolved'?'子依頼の結果への対応または現在の回の完了申告を待っています。':reason==='child-needs-review'?'子依頼に失敗・中断・確認できない結果があります。結果を確認してください。':reason==='needs-decision'||reason==='legacy-needs-decision'?'送信が終了しています。成果を確認し、次の扱いを決めてください。':reason).join(' / ')||recoveryReason(r);
+ return reasons.map(reason=>reason.startsWith('run-needs-review:')?'送信が失敗・中断・確認できずで終了しました。既存の成果・副作用を確認してください。':reason.startsWith('declaration-conflict:')?'完了申告と観察した事実が一致しません。':reason==='progress-stalled'||reason==='dependencies-unresolved'?'実行と自動で進む手順が終了しています。結果への対応・完了申告・再作業の扱いを確認してください。':reason==='child-needs-review'?'子依頼に失敗・中断・確認できない結果があります。結果を確認してください。':reason==='needs-decision'||reason==='legacy-needs-decision'?'送信が終了しています。成果を確認し、次の扱いを決めてください。':reason).join(' / ')||recoveryReason(r);
 }
 export function recoveryRequests(data){
  return (data.requests||[]).flatMap(q=>{
@@ -19,4 +19,10 @@ export function recoveryRequests(data){
   const a=data.agents.find(a=>a.id===w.assignee);
   return [{id:q.id,revision:q.revision,runId:r.id,workId:w.id,agentId:w.assignee,agentName:a?.name||'削除済みAgent',instruction:q.instruction,phase:r.phase||'work',state:r.state,reason:requestReviewReason(q,r),canRetry:!!a&&!a.deletedAt&&!['terminated','stopping'].includes(a.state)&&!!a.tabId&&['completed','failed','interrupted','terminated'].includes(r.state)}];
  });
+}
+
+export function requestWaitingText(q,workId){
+ const n=q?.requestGraph?.nodes.find(n=>n.id===workId);
+ if(!n||n.state.kind!=='active'||n.state.review.length)return '';
+ return ({dependencies:'子依頼の実行を待っています。','result-delivery':'子依頼の結果配送を待っています。','result-processing':'子依頼の結果を処理しています。','report-preparation':'人間向けの報告を準備しています。','report-processing':'人間向けの報告を作成しています。'})[q.waiting?.[workId]]||'';
 }

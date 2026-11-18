@@ -4,7 +4,7 @@ import {mkdtemp,readFile,writeFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {newRun} from '../server/state/run.ts';
-import {transitionGraph,reconcileGraph,graphSteps} from '../server/state/requests.ts';
+import {transitionGraph,reconcileGraph,graphSteps,waitingReason} from '../server/state/requests.ts';
 import {unifiedData,migrateUnifiedStore} from '../server/unified-request-migration.mjs';
 import {validateGraph} from '../server/unified-requests.mjs';
 const run=(id,owner,kind='running',outcome='normal')=>({ownerId:owner,agentId:owner,run:{...newRun(id,'tree','human').value,state:kind==='running'?{kind,sessionId:'s',turnId:id,inputId:'i'}:kind==='ended'?{kind,outcome,reason:'native-terminal'}:{kind},facts:[{type:'input',at:1}]}});
@@ -158,4 +158,40 @@ test('previous quarantine cannot hide a conflicting v2 owner during boot inspect
  assert.deepEqual(inspectRequests(source)[0].reasons,[]);
  source.requests[0].integrity={version:1,reasons:['previous rejection']};g.nodes[1].assignee='other';
  assert(inspectRequests(source)[0].reasons.includes('Conflicting legacy ownership'));
+});
+
+
+test('normal dependency waits are shared across depth and partial results, while actionable stops retain review',()=>{
+ for(const kind of ['queued','sent','running']){
+  const runs=[run('p','parent','ended'),run('c','child',kind)],g=reconcileGraph(fixture(),runs);
+  assert.deepEqual(g.nodes[0].state,{kind:'active',review:[]});assert.equal(waitingReason(g,g.nodes[0],runs),'dependencies');
+ }
+ const source=fixture();source.nodes.push(request('grandchild','child','gc'),request('sibling','parent','s'));
+ const runs=[run('p','parent','ended'),run('c','child','ended'),run('gc','grandchild'),run('s','sibling','ended')];
+ const g=reconcileGraph(source,runs);assert.deepEqual(g.nodes[0].state.review,[]);assert.deepEqual(g.nodes[1].state.review,[]);
+ assert.equal(waitingReason(g,g.nodes[0],runs),'result-delivery');assert.equal(waitingReason(g,g.nodes[1],runs),'dependencies');
+ for(const outcome of ['failed','interrupted','unconfirmed']){
+  const bad=reconcileGraph(source,[...runs.slice(0,2),run('gc','grandchild','ended',outcome),runs[3]]);
+  assert(bad.nodes[0].state.review.includes('child-needs-review'));assert(bad.nodes[1].state.review.includes('child-needs-review'));
+ }
+});
+test('delivery reservations and execution are normal waits; consumed result without finish has no next step',()=>{
+ const runs=[run('p','parent','ended'),run('c','child','ended')];let g=reconcileGraph(fixture(),runs);
+ assert.deepEqual(g.nodes[0].state.review,[]);assert.equal(waitingReason(g,g.nodes[0],runs),'result-delivery');
+ for(const kind of ['queued','sent','running']){
+  const d=run('d','parent','queued');Object.assign(d.run,{phase:'result',createdBy:'program',resultOf:'c',retryOf:'p'});
+  const next=transitionGraph(g,{type:'attempt',actor:'program',requestId:'parent',runId:'d',report:false},[...runs,d]).value;
+  d.run.state=run('d','parent',kind).run.state;
+  assert.deepEqual(reconcileGraph(next,[...runs,d]).nodes[0].state.review,[]);assert.equal(waitingReason(next,next.nodes[0],[...runs,d]),'result-processing');
+ }
+ const accepted=transitionGraph(g,{type:'respond',actor:'agent',requestId:'parent',runId:'p',operationId:'consume',results:[{requestId:'child',resultId:'c',version:1,decision:'accept'}],at:1},runs).value;
+ assert(accepted.nodes[0].state.review.includes('progress-stalled'));assert.equal(waitingReason(accepted,accepted.nodes[0],runs),null);
+ const unavailable=structuredClone(g);unavailable.nodes[0].state.review.push('next-step-agent-unavailable');assert(reconcileGraph(unavailable,runs).nodes[0].state.review.includes('next-step-agent-unavailable'));
+});
+test('v2 and v3 reevaluate erroneous waiting labels without erasing failure history or native facts',()=>{
+ for(const version of [2,3]){
+  const g=fixture();g.version=version;g.nodes[0].state.review=['dependencies-unresolved','run-needs-review:old'];
+  const data=persisted(g,[run('p','parent','ended'),run('c','child')]);if(version===2)data.unifiedRequestVersion=2;
+  const migrated=unifiedData(data);assert.deepEqual(migrated.requests[0].requestGraph.nodes[0].state.review,['run-needs-review:old']);assert.deepEqual(migrated.runs,data.runs);assert.deepEqual(unifiedData(migrated),migrated);
+ }
 });
