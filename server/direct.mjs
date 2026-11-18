@@ -93,7 +93,7 @@ export class DirectAgents {
     if(watch){this.timer=setInterval(()=>this.tick().catch(()=>{}),this.pollMs);this.timer.unref();void this.tick();}
   }
   close(){clearInterval(this.timer);this.owner?.close();}
-  snapshot(){return structuredClone({...humanProjection(this.data),projects:this.data.projects.filter(p=>!p.deletedAt),capabilities:{steering:true,travelContexts:true,attachments:!!this.attachments},reviews:this.reviewStates(),notification:this.notifier.status()});}
+  snapshot(){return structuredClone({...humanProjection(this.data),projects:this.data.projects.filter(p=>!p.deletedAt),capabilities:{requestInbox:true,steering:true,travelContexts:true,attachments:!!this.attachments},reviews:this.reviewStates(),notification:this.notifier.status()});}
   reviewStates(){
     const keys=new Map(this.data.agents.map(a=>[a.id,[]]));
     for(const entry of completedEntries(humanProjection(this.data)))keys.get(entry.agentId)?.push(entry.key);
@@ -297,7 +297,7 @@ export class DirectAgents {
   async send(id,input,originKind='human'){return this.flow.start(id,input,originKind);}
   async attemptRun(r){return this.locked(r.agentId,async()=>{
     if(quarantinedRun(this.data,r))return r;
-    if(runState(r)!=='queued'||r.nextTransferAt>Date.now())return r;
+    if(runState(r)!=='queued'||r.nextTransferAt>Date.now()||!this.flow.schedulable(r))return r;
     const a=this.agent(r.agentId);
     const blocked=(reason,message=reason)=>this.persist(async()=>{changeRun(r,{type:modelOf(r).state.kind==='queued'?'dispatch-blocked':'lost',actor:'program',at:Date.now(),reason});r.error=message;await this.save();return r;});
     if(this.agentDeleting(a)||(a.agentModel?.intent==='stop'||agentControls(a).state==='terminated')||!a.tabId)return blocked('target-unavailable-before-dispatch');
@@ -454,7 +454,7 @@ export class DirectAgents {
     // Poll independent connections concurrently before advancing durable requests.
     await Promise.allSettled(this.data.agents.map(a=>{
       if(this.monitors.has(a.id))return this.monitors.get(a.id);
-      const task=this.poll(a);
+      const task=this.poll(a).then(async()=>{await this.flow.pump(false);await this.flow.notifications();});
       this.monitors.set(a.id,task);
       const clear=()=>this.monitors.delete(a.id);task.then(clear,clear);
       return task;

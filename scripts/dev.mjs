@@ -81,15 +81,15 @@ const handleRequest = async (req, res) => {
         if(!input || typeof input!=='object')return json(res,400,{error:'Object required'});
         const guide=pathname.match(/^\/api\/direct\/human\/projects\/([0-9a-f-]{36})\/guide$/);
         if(req.method==='PUT'&&guide)return json(res,200,await direct.putProjectGuide(guide[1],input));
-        const humanAction=pathname.match(/^\/api\/direct\/human\/requests\/(retry|resume|cancel|complete|cancel-queued)$/);
+        const humanAction=pathname.match(/^\/api\/direct\/human\/requests\/(retry|resume|cancel|complete|cancel-queued|supplement)$/);
         if(req.method==='POST'&&humanAction){
           const action=humanAction[1],flow=direct.flow;
           return json(res,200,action==='cancel-queued'?await flow.cancelQueued(input):action==='retry'||action==='resume'?await flow.continue(input,action==='retry'):await flow[action](input));
         }
-        const requestAction=pathname.match(/^\/api\/direct\/requests\/(get|results|delegate|respond|finish)$/);
+        const requestAction=pathname.match(/^\/api\/direct\/requests\/(get|results|inputs|delegate|amend|respond|finish)$/);
         if(req.method==='POST'&&requestAction){
           const action=requestAction[1],flow=direct.flow;
-          const result=action==='cancel-queued'?await flow.cancelQueued(input):action==='get'?flow.get(input.humanRequestId):action==='results'?flow.results(input.humanRequestId,input.workId):action==='retry'||action==='resume'?await flow.continue(input,action==='retry'):await flow[action](input);
+          const result=action==='cancel-queued'?await flow.cancelQueued(input):action==='get'?flow.get(input.humanRequestId):action==='inputs'?flow.inputs(input.humanRequestId,input.workId):action==='results'?flow.results(input.humanRequestId,input.workId):action==='retry'||action==='resume'?await flow.continue(input,action==='retry'):await flow[action](input);
           return json(res,200,result);
         }
         if(req.method==='POST' && pathname==='/api/direct/notifications/test'){if(input.agentId)direct.agent(input.agentId);return json(res,200,await notifier.test(input.agentId));}

@@ -31,6 +31,11 @@ export function newRun(id:string, requestId:string, actor:Actor, parentRunId:str
  return accept({createdBy:actor,id,requestId,parentRunId,retryOf:null,phase:kind.phase,resultOf:kind.phase==='result'?kind.resultOf:null,recipientRunId:kind.phase==='result'?kind.recipientRunId:null,state:{kind:'queued'},facts:[],decisions:[],retryBudget:{count:0,firstFailureAt:null}});
 }
 export const isTerminal = (r:Run):boolean => r.state.kind==='ended'||r.state.kind==='cancelled';
+// A scheduler continuation is neither a human request nor a retry of unknown effects.
+export function resumeRun(previous:Run,id:string):Result<Run> {
+ if(!id||previous.state.kind!=='ended'||previous.state.outcome!=='normal'||previous.supersededBy)return reject('resume-requires-normal-end');
+ return accept({...previous,id,createdBy:'program',phase:'work',retryOf:previous.id,resultOf:null,recipientRunId:null,state:{kind:'queued'},facts:[],decisions:[{actor:'program',reason:'inbox-resume'}],retryBudget:{count:0,firstFailureAt:null}});
+}
 export function transitionRun(r:Run,e:RunEvent):Result<Run> {
  if (!(runAuthorities[e.type] as readonly string[]).includes(e.actor)) return reject('actor-forbidden');
  if (isTerminal(r)) return reject('run-terminal');

@@ -24,5 +24,5 @@ export function recoveryRequests(data){
 export function requestWaitingText(q,workId){
  const n=q?.requestGraph?.nodes.find(n=>n.id===workId);
  if(!n||n.state.kind!=='active'||n.state.review.length)return '';
- return ({dependencies:'子依頼の実行を待っています。','result-delivery':'子依頼の結果配送を待っています。','result-processing':'子依頼の結果を処理しています。','report-preparation':'人間向けの報告を準備しています。','report-processing':'人間向けの報告を作成しています。'})[q.waiting?.[workId]]||'';
+ return ({'input-pending':'補足・結果への対応を待っています。秘書は順番に再開します。',dependencies:'子依頼の実行を待っています。','result-delivery':'子依頼の結果配送を待っています。','result-processing':'子依頼の結果を処理しています。','report-preparation':'人間向けの報告を準備しています。','report-processing':'人間向けの報告を作成しています。'})[q.waiting?.[workId]]||'';
 }

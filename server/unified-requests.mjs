@@ -1,7 +1,7 @@
 import {node,graphSteps,transitionGraph,latest,handled} from './state/requests.ts';
 export const evidence=(data,q)=>data.runs.filter(r=>r.humanRequestId===q.id).map(r=>({run:r.runModel,ownerId:r.workId,agentId:r.agentId}));
 export const rootNode=q=>node(q.requestGraph,q.rootWorkId);
-export function newNode(q,{id,parentId=null,assignee,metadata={}}){return {id,parentId,requester:parentId?{kind:'agent',agentId:node(q.requestGraph,parentId).assignee,requestId:parentId}:{kind:'human'},assignee,metadata,runAgents:{},runIds:[],currentRunId:null,reportRunId:null,reportMode:!parentId&&q.reportMode===true,state:{kind:'active',review:[]},submissions:[],claims:[],replacements:[],invalidatedRuns:[],handling:[],declarations:[],decisions:[]};}
+export function newNode(q,{id,parentId=null,assignee,metadata={}}){return {...(q.inputProtocol===1?{inbox:[],inputClaims:[]}:{}),id,parentId,requester:parentId?{kind:'agent',agentId:node(q.requestGraph,parentId).assignee,requestId:parentId}:{kind:'human'},assignee,metadata,runAgents:{},runIds:[],currentRunId:null,reportRunId:null,reportMode:!parentId&&q.reportMode===true,state:{kind:'active',review:[]},submissions:[],claims:[],replacements:[],invalidatedRuns:[],handling:[],declarations:[],decisions:[]};}
 export function applyGraph(data,q,event){
  const changed=transitionGraph(q.requestGraph,event,evidence(data,q));
  if(!changed.ok)throw Object.assign(Error('request transition rejected: '+event.type+' '+changed.reason),{status:409});
@@ -12,6 +12,8 @@ export function applyGraph(data,q,event){
 }
 export const steps=(data,q)=>graphSteps(q.requestGraph,evidence(data,q));
 export function validateGraph(data,q){
+ if(q.inputProtocol!==undefined&&![0,1].includes(q.inputProtocol))throw Error('Unsupported request input protocol');
+ if(q.inputProtocol===1&&q.requestGraph?.nodes?.some(n=>!Array.isArray(n.inbox)))throw Error('Request inbox missing');
  const g=q.requestGraph;if(!g||g.version!==3||g.rootId!==q.rootWorkId||!Array.isArray(g.nodes)||Object.hasOwn(q,'works')||Object.hasOwn(q,'requestModel')||!Array.isArray(g.operations))throw Error('Invalid request graph version/shape: '+q.id);
  if(new Set(g.operations.map(o=>o.id)).size!==g.operations.length||g.operations.some(o=>typeof o.id!=='string'||typeof o.payload!=='string'))throw Error('Invalid operation registry');
  if(g.nodes.filter(n=>n.parentId===null).length!==1||!node(g,g.rootId)||node(g,g.rootId).parentId!==null)throw Error('Invalid request root');
@@ -45,13 +47,18 @@ export function validateGraph(data,q){
   if(n.replacementId&&!node(g,n.parentId)?.handling.some(h=>h.requestId===n.id&&h.decision==='rework'&&n.replacements.some(x=>x.replacementId===n.replacementId&&x.resultId===h.resultId&&x.version===h.version)))throw Error('Replacement lacks confirmed judgment');
   if(n.parentId&&n.state.kind==='completed'&&n.state.by==='agent'&&!node(g,n.parentId)?.handling.some(h=>h.requestId===n.id&&h.resultId===latest(n)?.id&&h.decision==='accept'&&h.actor==='agent'))throw Error('Child completion lacks confirmed handling');
   if(n.invalidatedRuns.some(id=>!n.runIds.includes(id)))throw Error('Invalid supersession owner');
+  if(n.inbox){
+   if(!Array.isArray(n.inbox)||!Array.isArray(n.inputClaims)||new Set(n.inbox.map(i=>i.id)).size!==n.inbox.length)throw Error('Invalid inbox');
+   for(const i of n.inbox){if(typeof i.id!=='string'||typeof i.text!=='string'||!['request','supplement','result'].includes(i.kind)||!Array.isArray(i.attempts)||i.attempts.some(id=>!n.runIds.includes(id)))throw Error('Invalid inbox input');if(i.handledBy){const r=data.runs.find(r=>r.id===i.handledBy)?.runModel;if(!r||r.state.kind!=='ended'||r.state.outcome!=='normal'||!n.inputClaims.some(c=>c.runId===i.handledBy&&c.ids.includes(i.id)))throw Error('Input handling lacks evidence');}}
+   for(const c of n.inputClaims){const op=g.operations.find(o=>o.id===c.operationId);let payload;try{payload=JSON.parse(op?.payload);}catch{}if(!n.runIds.includes(c.runId)||!Array.isArray(c.ids)||c.ids.some(id=>!n.inbox.some(i=>i.id===id&&i.attempts.includes(c.runId)))||payload?.runId!==c.runId||payload?.requestId!==n.id||!['respond','finish'].includes(payload?.type)||JSON.stringify(payload.inputs)!==JSON.stringify(c.ids))throw Error('Invalid input claim');}
+  }
   for(const d of n.declarations)if(!n.runIds.includes(d.runId))throw Error('Invalid declaration owner');
  }
 }
 export function graphResults(data,q){
  if(q.integrity)return [];
  return q.requestGraph.nodes.filter(n=>n.parentId).flatMap(n=>n.submissions.map(s=>{
-  const parent=node(q.requestGraph,n.parentId),r=data.runs.find(r=>r.id===s.runId),delivery=data.runs.find(r=>r.humanRequestId===q.id&&r.runModel.phase==='result'&&r.runModel.resultOf===s.id);
+  const parent=node(q.requestGraph,n.parentId),r=data.runs.find(r=>r.id===s.runId),delivery=data.runs.find(r=>r.humanRequestId===q.id&&(r.runModel.phase==='result'&&r.runModel.resultOf===s.id||r.inboxBatch?.some(id=>parent.inbox?.some(i=>i.id===id&&i.result?.resultId===s.id))));
   return {id:s.id,version:s.version,requestId:n.id,workId:n.id,parentWorkId:n.parentId,recipientAgentId:parent.assignee,resultRunId:s.runId,outcome:({normal:'completed',failed:'failed',interrupted:'interrupted',unconfirmed:'terminated',cancelled:'terminated'})[s.outcome],createdAt:r.completedAt||r.createdAt,deliveryRunId:delivery?.id,handled:handled(parent,s),handling:parent.handling.filter(h=>h.resultId===s.id),claims:parent.claims.filter(h=>h.resultId===s.id),superseded:!!n.replacementId||latest(n)?.id!==s.id};
  }));
 }

@@ -5,6 +5,7 @@ export function restorePendingMessage(message){
  return message;
 }
 export function matchingRun(state,agentId,requestId){
+ for(const q of state.requests||[])for(const n of q.requestGraph?.nodes||[])if(n.assignee===agentId){const i=n.inbox?.find(i=>i.operationId===requestId);if(i)return {id:i.id,requestId,agentId,inputReceipt:true};}
  return [...(state.runs||[]),...(state.conversations?.[agentId]?.entries||[])].find(r=>r.agentId===agentId&&r.requestId===requestId);
 }
 export function unchangedDraft(message,value,version){return message.instruction===value&&message.draftVersion===version;}

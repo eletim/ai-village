@@ -3,7 +3,7 @@ import {AgentRules,agentActions,actionUsage} from '../server/agent-rules.mjs';
 import {markerData,migrateMarkerStore} from '../server/marker-migration.mjs';import {newRequest} from '../server/state/request.ts';
 import {matchesRunInput} from '../server/input-envelope.mjs';import {correlate} from '../server/runtime-events.mjs';
 test('startup, legacy work/report and help use exactly the same policy and action schemas',()=>{
- const rules=new AgentRules('http://127.0.0.1:5394');assert.deepEqual(Object.keys(agentActions),['delegate','respond','finish']);
+ const rules=new AgentRules('http://127.0.0.1:5394');assert.deepEqual(Object.keys(agentActions),['amend','delegate','respond','finish']);
  const startup=rules.startup();assert(startup.includes(rules.work('HUMAN_REQUEST_ID')));assert(startup.includes(rules.report('HUMAN_REQUEST_ID')));
  const work=rules.context({humanRequestId:'q',phase:'work'},false),report=rules.context({humanRequestId:'q',phase:'report'},false);
  assert(work.includes(rules.work('q')));assert(report.includes(rules.report('q')));for(const name of Object.keys(agentActions))assert(startup.includes(actionUsage(name)));
