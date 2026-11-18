@@ -9,8 +9,11 @@ export function boardLayout(count,width,height){
  return {cols,rows,rowHeight:Math.max(Math.min(220,height),(height-8*(rows-1))/rows,1)};
 }
 
-// Explicit pins precede other projects; retain relative order within each group.
-export function orderedProjects(projects){return [...projects].sort((a,b)=>Number(b.pinned===true)-Number(a.pinned===true));}
+// Unset ranks follow explicit ones; stable ties preserve the existing order.
+const compareOrder=(a,b)=>{const x=Number.isSafeInteger(a.displayOrder)?a.displayOrder:null,y=Number.isSafeInteger(b.displayOrder)?b.displayOrder:null;return x===null?(y===null?0:1):y===null?-1:x-y;};
+export function orderedProjectAgents(agents){return orderedAgents(agents).sort(compareOrder);}
+// Explicit pins precede other projects; custom order applies within each group.
+export function orderedProjects(projects){return [...projects].sort((a,b)=>Number(b.pinned===true)-Number(a.pinned===true)||compareOrder(a,b));}
 
 // A display preference on explicit Project membership, never a process state.
 export const isSuspended=(projects,agent)=>projects.some(p=>p.id===agent.projectId&&!p.deletedAt&&p.suspended===true);
