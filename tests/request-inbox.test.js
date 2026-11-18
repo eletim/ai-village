@@ -96,3 +96,30 @@ test('failed supplement persistence does not acknowledge or duplicate the receip
  const received=await s.flow.supplement(x);assert.equal((await s.flow.supplement(x)).id,received.id);
  const restarted=await f.restart();assert.equal(restarted.flow.inputs(r.humanRequestId,r.workId).filter(i=>i.operationId===x.operationId).length,1);
 });
+for(const race of [false,true])test(`supplement invalidates queued report atomically, dispatch race=${race}`,async t=>{
+ const f=await fixture(t,{reportMode:true}),s=f.service,r=await send(s,f.agents[0],'A');await f.submit(r);await handle(s,r);
+ const dispatch=s.flow.dispatchQueued.bind(s.flow);s.flow.dispatchQueued=async()=>{};await f.complete(r);
+ const q=s.flow.root(r.humanRequestId),report=s.flow.run(q.report.initialRunId);assert.equal(report.runModel.state.kind,'queued');
+ let pending,release;if(race){let entered;const started=new Promise(r=>entered=r),gate=new Promise(r=>release=r),verify=s.verifyInstructions.bind(s);s.verifyInstructions=async a=>{entered();await gate;return verify(a);};pending=s.attemptRun(report);await started;}
+ await s.flow.supplement({humanRequestId:q.id,workId:r.workId,operationId:randomUUID(),instruction:'new requirements'});if(release){release();await pending;}
+ assert.equal(report.runModel.state.kind,'cancelled');assert.equal(s.flow.work(q,r.workId).currentRunId,r.id);assert(!f.sent.some(x=>x.text.includes(report.id)));
+ s.flow.dispatchQueued=dispatch;await s.tick();const resumed=s.flow.run(s.flow.work(q,r.workId).currentRunId);await f.submit(resumed);await handle(s,resumed);await f.complete(resumed);
+ const next=s.flow.run(q.report.initialRunId);assert.notEqual(next.requestId,report.requestId);await f.submit(next);await f.complete(next);assert.equal(q.requestGraph.nodes[0].state.kind,'completed');
+});
+
+test('attachment-only supplement persists and participates in paged chronological history',async t=>{
+ const {AttachmentStore}=await import('../server/attachments.mjs'),{workspaceSnapshot,historyPage}=await import('../server/conversation-pages.mjs');
+ const f=await fixture(t),s=f.service;s.attachments=new AttachmentStore(f.options.dir);await s.attachments.init();const file=await s.attachments.save(Buffer.from('test'),'supplement.txt','text/plain');
+ const r=await send(s,f.agents[0],'A');await f.submit(r);
+ const i=await s.flow.supplement({humanRequestId:r.humanRequestId,workId:r.workId,operationId:randomUUID(),instruction:'',attachments:[file.id]});
+ const view=s.snapshot(),entries=workspaceSnapshot(view,{},[r.agentId]).conversations[r.agentId].entries;
+ assert(entries.findIndex(x=>x.id===r.id)<entries.findIndex(x=>x.id==='input:'+i.id));const shown=entries.find(x=>x.id==='input:'+i.id);assert.equal(shown.attachments[0].id,file.id);assert.equal(shown.inputStatus,'受付済み');
+ assert(historyPage(view,r.agentId).entries.some(x=>x.id===shown.id&&x.attachments[0].id===file.id));
+});
+test('previously saved orphan report reservation recovers without a second report send',async t=>{
+ const f=await fixture(t,{reportMode:true}),s=f.service,r=await send(s,f.agents[0],'A');await f.submit(r);await handle(s,r);
+ s.flow.dispatchQueued=async()=>{};await f.complete(r);const q=s.flow.root(r.humanRequestId),w=s.flow.work(q,r.workId),report=s.flow.run(q.report.initialRunId);
+ // Saved shape produced by the previous version: report metadata removed, queued head remains.
+ delete q.report;w.reportRunId=null;w.inbox.push({id:randomUUID(),kind:'supplement',text:'legacy late input',createdAt:new Date().toISOString(),attempts:[]});await s.save();
+ const restored=await f.restart();await restored.tick();const node=restored.flow.work(restored.flow.root(q.id),w.id);assert.equal(restored.flow.run(report.id).runModel.state.kind,'cancelled');assert.notEqual(node.currentRunId,report.id);assert(!f.sent.some(x=>x.text.includes(report.id)));
+});

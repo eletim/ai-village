@@ -316,10 +316,11 @@ export class DirectAgents {
     if(r.autoRecoveryFrom&&(Date.now()>r.recoveryDeadline||!this.flow.recoveryBoundary(this.flow.run(r.autoRecoveryFrom),confirmed,a.runtime)))return blocked('dispatch-boundary-changed','自動再試行前に新しい入力または状態変化を検出しました。requests getで確認し手動で復旧してください。');
     await this.verifyInstructions(a);
     const status=a.runtime,compact=a.inputEnvelope?.mode==='startup-v1';
-    const instruction=r.phase==='report'?this.flow.reportPrompt(this.flow.root(r.humanRequestId)):r.instruction;
+    if(runState(r)!=='queued'||r.phase==='report'&&!this.flow.reportCurrent(r))return r;
     const guide=compact?'':await this.projectGuides.context(a,r,this.villageUrl);
     const deliveredInstruction=await this.persist(async()=>{
-      if(this.agentDeleting(a))return null;
+      if(this.agentDeleting(a)||runState(r)!=='queued'||r.phase==='report'&&!this.flow.reportCurrent(r))return null;
+      const instruction=r.phase==='report'?this.flow.reportPrompt(this.flow.root(r.humanRequestId)):r.instruction;
       r.instruction=instruction;r.attachmentFiles=files;r.attachmentError=null;
       const text=instruction+this.secretaryContext(a)+guide+this.flow.context(r);
       if(r.steerTarget){const previous=this.flow.run(r.steerTarget.runId);changeRun(previous,{type:'close-tracking',actor:'human',reason:'steering-successor-dispatched'});}
@@ -327,7 +328,8 @@ export class DirectAgents {
       Object.assign(r,{inputCorrelation:inputCorrelation(text,a.provider),inputEnvelopeMode:compact?'startup-v1':'legacy',dispatchAttemptedAt:now(),baselineRuntime:{sessionId:confirmed.sessionId,cursor:confirmed.cursor,fileIdentity:confirmed.fileIdentity},agentSessionId:status.agentSessionId||null});
       await this.save();return text;
     });
-    if(deliveredInstruction===null||this.agentDeleting(a))return blocked('project-deletion-before-dispatch');
+    if(deliveredInstruction===null)return r;
+    if(this.agentDeleting(a))return blocked('project-deletion-before-dispatch');
     let sent=false;
     try{await this.pmux(a,'tab','send','-w',a.workspaceId,a.tabId,deliveredInstruction);sent=true;}catch{/* An uncertain transport is never replayed. */}
     await this.persist(async()=>{

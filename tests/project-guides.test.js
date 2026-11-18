@@ -29,7 +29,7 @@ test('dispatch attaches guide only to registered secretary normal runs',async t=
  const dir=await mkdtemp(join(tmpdir(),'guide-dispatch-'));t.after(()=>rm(dir,{recursive:true,force:true}));
  const d=new DirectAgents({dir});await d.init({watch:false});t.after(()=>d.close());
  d.observe=async a=>{a.canSend=true;a.runtime={agentSessionId:'native'};return {sessionId:'native',cursor:0};};
- d.flow.context=()=>'';d.flow.root=()=>({});d.flow.reportPrompt=()=> 'human instruction';
+ d.flow.context=()=>'';d.flow.root=()=>({});d.flow.reportPrompt=()=> 'human instruction';d.flow.reportCurrent=()=>true;
  let sent;d.pmux=async(...args)=>{sent=args.at(-1);};
  for(const [location,project,phase,expected] of [['mayor',projectId,undefined,true],['mayor','other',undefined,false],['workshop',projectId,undefined,false],['mayor',projectId,'report',false]]){
   const a={id:'agent',location,projectId:project,tabId:'tab',workspaceId:'ws',state:'idle'};d.data.agents=[a];

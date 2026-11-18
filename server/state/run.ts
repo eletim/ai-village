@@ -20,8 +20,9 @@ export type RunEvent =
  | Command<'dispatch-blocked','program',{at:number; reason:string}>
  | Command<'supersede','human',{successorId:string}> | Command<'restore','human',{successorId:string}>
  | Command<'cancel-result-reservation','program',{resultId:string;reason:'handled'|'superseded'}>
+ | Command<'cancel-report-reservation','program'>
  | Command<'cancel','human'> | Command<'close-tracking','human',{reason:string}>;
-export const runAuthorities = {dispatch:['program'],'transport-ack':['program'],input:['program'],terminal:['program'],lost:['program'],'dispatch-blocked':['program'],supersede:['human'],restore:['human'],cancel:['human'],'cancel-result-reservation':['program'],'close-tracking':['human']} as const;
+export const runAuthorities = {dispatch:['program'],'transport-ack':['program'],input:['program'],terminal:['program'],lost:['program'],'dispatch-blocked':['program'],supersede:['human'],restore:['human'],cancel:['human'],'cancel-report-reservation':['program'],'cancel-result-reservation':['program'],'close-tracking':['human']} as const;
 export type RunKind = {phase:'work'} | {phase:'report'} | {phase:'result'; resultOf:string; recipientRunId:string};
 export const creationAuthorities = {work:['human','agent'],report:['program'],result:['program']} as const;
 export function newRun(id:string, requestId:string, actor:Actor, parentRunId:string|null=null, kind:RunKind={phase:'work'}, compatibility:{allowAgentRoot?:boolean}={}): Result<Run> {
@@ -67,6 +68,7 @@ export function transitionRun(r:Run,e:RunEvent):Result<Run> {
    const {supersededBy,...rest}=r;return accept(rest);
   }
   case 'cancel-result-reservation': return r.state.kind==='queued'&&r.phase==='result'&&r.resultOf===e.resultId&&['handled','superseded'].includes(e.reason)?accept({...r,state:{kind:'cancelled'},decisions:[...r.decisions,{actor:'program',reason:'result-'+e.reason+'-before-dispatch'}]}):reject('not-cancellable-result-reservation');
+  case 'cancel-report-reservation': return r.state.kind==='queued'&&r.phase==='report'?accept({...r,state:{kind:'cancelled'},decisions:[...r.decisions,{actor:'program',reason:'report-superseded-before-dispatch'}]}):reject('not-cancellable-report');
   case 'cancel': return r.state.kind==='queued' ? accept({...r,state:{kind:'cancelled'},decisions:[...r.decisions,{actor:'human',reason:'cancel-before-send'}]}) : reject('already-dispatched');
   case 'close-tracking': return r.state.kind==='sent'||r.state.kind==='running'
    ? accept({...r,state:{kind:'ended',outcome:'unconfirmed',reason:'human-closed-tracking'},decisions:[...r.decisions,{actor:'human',reason:e.reason}]}) : reject('use-cancel-before-send');

@@ -32,6 +32,7 @@ export class RequestFlow {
    return this.reportStatus();
   }));
  }
+ reportCurrent(r){const q=this.root(r.humanRequestId),w=this.work(q,r.workId);return !!q.report&&w.reportRunId===r.id&&w.currentRunId===r.id;}
  reportPrompt(q){return this.d.rules.reportData(q,this.run(q.report.sourceRunId),this.d.data.runs.filter(r=>r.humanRequestId===q.id&&r.origin==='steering'&&!r.queueCancelledAt).map(r=>r.instruction).concat((rootNode(q).inbox||[]).filter(i=>i.kind==='supplement').map(i=>i.text)));}
  get requests(){return this.d.data.requests;}
  root(id){return this.requests.find(q=>q.id===id)||fail('依頼がありません',404);}
@@ -129,18 +130,18 @@ export class RequestFlow {
   const attachments=x.attachments?.length?await this.d.attachments.select(x.attachments):[];
   const travelContexts=normalizeTravelContexts(x.travelContexts);
   return this.d.locked('request-graph',()=>this.d.persist(async()=>{
-  operation(x.operationId);instruction(x.instruction);
+  operation(x.operationId);if(typeof x.instruction!=='string'||x.instruction.length>16000||(!x.instruction.trim()&&!attachments.length))fail('指示または添付が必要です',400);
   const q=this.root(x.humanRequestId),w=this.work(q,x.workId);
   const payload=JSON.stringify({type:'supplement',requestId:w.id,text:x.instruction,attachments,travelContexts,actorRunId:x.actorRunId||null});
   const old=q.requestGraph.operations.find(o=>o.id===x.operationId);
   if(old){if(old.payload!==payload)fail('operationIdの再利用です');return structuredClone(w.inbox?.find(i=>i.id===old.inputId));}
   this.active(q);if(!['active','submitted'].includes(w.state.kind))fail('終了済みの依頼には新しい依頼を作成してください');
   if(x.actorRunId){const r=this.run(x.actorRunId),parent=r&&this.work(q,r.workId);if(!parent||w.parentId!==parent.id)fail('直接の子依頼にだけ補足できます');await this.actor(q,parent,r.id);}
-  w.inbox ||= [];w.inputClaims ||= [];
-  const input={id:randomUUID(),kind:'supplement',operationId:x.operationId,text:x.instruction,attachments,travelContexts,createdAt:now(),attempts:[]};w.inbox.push(input);
-  w.state={kind:'active',review:w.state.kind==='active'?w.state.review:[]};
-  // A report already being generated is no longer a final report of the latest request.
-  if(!w.parentId&&q.report){delete q.report;w.reportRunId=null;}
+  const input={id:randomUUID(),kind:'supplement',operationId:x.operationId,text:x.instruction,attachments,travelContexts,createdAt:now(),attempts:[]};
+  const report=this.run(w.currentRunId),source=!w.parentId&&(q.report?.sourceRunId||(report?.phase==='report'?[...w.runIds].reverse().map(id=>this.run(id)).find(r=>r.phase!=='report'&&runState(r)==='completed')?.id:null));
+  applyGraph(this.d.data,q,{type:'supplement',actor:x.actorRunId?'agent':'human',requestId:w.id,input,...(source?{resumeFrom:source}:{})});
+  if(source){for(const r of this.d.data.runs.filter(r=>r.workId===w.id&&r.phase==='report'&&runState(r)==='queued')){changeRun(r,{type:'cancel-report-reservation',actor:'program'});r.queueCancelledAt=now();}delete q.report;}
+
   q.requestGraph.operations.push({id:x.operationId,payload,inputId:input.id});q.revision++;
   await this.d.save();return structuredClone(input);
  }));}
@@ -253,6 +254,12 @@ export class RequestFlow {
   for(const q of this.requests){
    if(q.integrity)continue;
    const before=JSON.stringify(q);
+   const root=rootNode(q),head=this.run(root.currentRunId);
+   // Repair reservations left by the earlier supplement/report split, without replaying a sent report.
+   if(!q.report&&root.state.kind==='active'&&head?.phase==='report'&&root.inbox?.some(i=>i.kind==='supplement'&&!i.handledBy)){
+    const source=[...root.runIds].reverse().map(id=>this.run(id)).find(r=>r.phase!=='report'&&runState(r)==='completed');
+    if(source){applyGraph(this.d.data,q,{type:'invalidate-report',actor:'program',requestId:root.id,sourceRunId:source.id});if(runState(head)==='queued'){changeRun(head,{type:'cancel-report-reservation',actor:'program'});head.queueCancelledAt=now();}}
+   }
    observeRequest(this.d.data,q);
    if(requestStatus(q)==='active'){
     for(const e of resultEntries(this.d.data,q).filter(e=>!e.superseded&&!e.handled)){
@@ -269,7 +276,7 @@ export class RequestFlow {
      const w=this.work(q,q.rootWorkId),r=this.run(rootNode(q).currentRunId);
      q.report={sourceRunId:r.id,createdAt:now()};
 
-     const report=this.enqueue(q,w,this.reportPrompt(q),'final-report','report',{phase:'report',attachments:[],travelContexts:[]});
+     const report=this.enqueue(q,w,this.reportPrompt(q),'final-report:'+r.id,'report',{phase:'report',attachments:[],travelContexts:[]});
      q.report.initialRunId=report.id;
     }
    }

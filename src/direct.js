@@ -110,6 +110,7 @@ function recoveryHTML(r){
  return `<div class="recovery"><p>${esc(reason)}</p>${!w.parentId?`<button data-retry-run="${esc(r.id)}">再試行</button>`:'<p>要確認の依頼一覧で人間が次の扱いを選べます。</p>'}<button data-complete-request="${esc(q.id)}">完了扱い</button><button data-cancel-request="${esc(q.id)}">取り下げ</button></div>`;
 }
 function entryHTML(a,r,divider){
+ if(r.inputReceipt)return `${divider(r.createdAt)}<div class="run" data-entry="${esc(r.id)}">${bubble('user',r.instruction,r.createdAt,travelSummary(r.travelContexts)+attachmentHTML(r.attachments)+`<small>補足 · ${esc(r.targetLabel)} · ${esc(r.inputStatus)}</small>`)}</div>`;
  const request=state.requests?.find(q=>q.id===r.humanRequestId),current=request?.requestGraph?.nodes.find(n=>n.id===r.workId)?.currentRunId===r.id;
  const waiting=current?requestWaitingText(request,r.workId):'';
  const normal=!r.error&&!r.errorCode&&!r.attachmentError&&!r.needsReview&&!requestRootState(state.requests?.find(q=>q.id===r.humanRequestId))?.review?.length;
@@ -199,8 +200,7 @@ function renderBoard(){
    if(!deliveryUnconfirmed(known))clearSubmittedDraft(a.id,receipt,outbox.get(a.id));
    pending.delete(a.id);outbox.delete(a.id);storeDrafts();
   }
-  const supplements=(state.requests||[]).flatMap(q=>(q.requestGraph?.nodes||[]).filter(n=>n.assignee===a.id).flatMap(n=>(n.inbox||[]).filter(i=>i.kind==='supplement').map(i=>`<div class="run" data-entry="input:${esc(i.id)}">${bubble('user',i.text,i.createdAt,`<small>補足 · ${esc((n.metadata?.instruction||q.instruction||'').slice(0,40))} · ${i.handledBy?'対応済み':'受付済み'}</small>`)}</div>`))).join('');
-  const area=card.querySelector('.runs'),html=runHTML(a)+supplements,wasLoading=area.dataset.loading==='true';area.dataset.loading=String(!!state.conversations&&!state.conversations[a.id]);if(wasLoading){updateReportHTML(area,html);scrolls.get(a.id).loaded();}else scrolls.get(a.id).preserve(()=>updateReportHTML(area,html));
+  const area=card.querySelector('.runs'),html=runHTML(a),wasLoading=area.dataset.loading==='true';area.dataset.loading=String(!!state.conversations&&!state.conversations[a.id]);if(wasLoading){updateReportHTML(area,html);scrolls.get(a.id).loaded();}else scrolls.get(a.id).preserve(()=>updateReportHTML(area,html));
   const prompt=card.querySelector('textarea[name=instruction]'),promptLabel=(a.name||'Agent')+'に聞く';
   prompt.placeholder=promptLabel;prompt.title=promptLabel+(mobilePromptUI()?'（Enterで改行、送信ボタン / Ctrl+Enterで送信）':'（Enter / Ctrl+Enterで送信、Shift+Enterで改行、変換中のEnterは確定）');prompt.setAttribute('aria-label',prompt.title);
   const send=card.querySelector('[data-send] button:not([data-reconcile])');

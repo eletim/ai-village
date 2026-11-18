@@ -112,12 +112,14 @@ export type Event=
  | {type:'attempt';actor:Actor;requestId:string;runId:string;report:boolean;resolveReview?:boolean}
  | {type:'respond'|'finish';actor:'agent';requestId:string;runId:string;operationId:string;results:Response[];inputs?:string[];at:number}
  | {type:'replace';actor:'agent';requestId:string;childId:string;replacementId:string}
+ | {type:'invalidate-report';actor:'program';requestId:string;sourceRunId:string}
+ | {type:'supplement';actor:'human'|'agent';requestId:string;input:InboxItem;resumeFrom?:string}
  | {type:'assign';actor:'human';requestId:string;agentId:string}
  | {type:'review';actor:'program';requestId:string;reason:string}
  | {type:'withdraw'|'complete';actor:'human';requestId:string;reason:string}
  | {type:'observe';actor:'program'};
 export function transitionGraph(source:Graph,e:Event,runs:Evidence):Result<Graph>{
- const authorities:Record<Event['type'],Actor[]>={add:['agent','human'],attempt:['agent','human','program'],respond:['agent'],finish:['agent'],review:['program'],withdraw:['human'],complete:['human'],observe:['program'],assign:['human'],replace:['agent']};
+ const authorities:Record<Event['type'],Actor[]>={add:['agent','human'],supplement:['human','agent'],'invalidate-report':['program'],attempt:['agent','human','program'],respond:['agent'],finish:['agent'],review:['program'],withdraw:['human'],complete:['human'],observe:['program'],assign:['human'],replace:['agent']};
  if(!authorities[e.type]?.includes(e.actor))return reject('actor-forbidden');
  let g=structuredClone(source);
  if(e.type==='observe')return accept(reconcileGraph(g,runs));
@@ -128,6 +130,18 @@ export function transitionGraph(source:Graph,e:Event,runs:Evidence):Result<Graph
   g.nodes.push(n);return accept(g);
  }
  const n=node(g,e.requestId);if(!n)return reject('request-missing');
+ if(e.type==='invalidate-report'){
+  const previous=owned(n,runs).find(r=>r.id===e.sourceRunId);
+  if(n.parentId||n.state.kind!=='active'||current(n,runs)?.phase!=='report'||!normal(previous)||previous?.phase==='report'||!n.inbox?.some(i=>i.kind==='supplement'&&!i.handledBy))return reject('report-not-obsolete');
+  n.currentRunId=e.sourceRunId;n.reportRunId=null;return accept(reconcileGraph(g,runs));
+ }
+ if(e.type==='supplement'){
+  if(!['active','submitted'].includes(n.state.kind)||e.input.kind!=='supplement'||n.inbox?.some(i=>i.id===e.input.id))return reject('invalid-supplement');
+  if(e.resumeFrom){const previous=owned(n,runs).find(r=>r.id===e.resumeFrom);if(n.parentId||!normal(previous)||previous?.phase==='report')return reject('invalid-report-source');n.currentRunId=e.resumeFrom;n.reportRunId=null;}
+  (n.inbox ||= []).push(e.input);n.inputClaims ||= [];
+  n.state={kind:'active',review:n.state.kind==='active'?n.state.review:[]};
+  return accept(reconcileGraph(g,runs));
+ }
  if(e.type==='respond'||e.type==='finish'){
   const payload=JSON.stringify({type:e.type,requestId:e.requestId,runId:e.runId,results:e.results,...(e.inputs!==undefined?{inputs:e.inputs}:{})});
   const old=g.operations.find(o=>o.id===e.operationId);if(old)return old.payload===payload?accept(g):reject('operation-id-reused');
