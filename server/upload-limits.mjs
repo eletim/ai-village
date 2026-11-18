@@ -25,6 +25,21 @@ export function readUpload(req,{limit=MAX_UPLOAD_BYTES,timeout=120000}={}){
   req.on('data',data);req.once('end',end);req.once('error',fail);req.once('aborted',aborted);
  });
 }
+// A close with unread TCP data may reset the connection before the client reads
+// the JSON error. Discard only a bounded remainder, with a deadline and no queue.
+const rejectedUploads=new Capacity(4);
+export function discardRejectedUpload(req,{timeout=1000}={}){
+ const declared=Number(req.headers['content-length']);
+ const limit=Number.isFinite(declared)&&declared>0?declared:64*1024;
+ if(req.readableEnded||req.destroyed||limit>MAX_UPLOAD_BYTES+64*1024)return Promise.resolve();
+ return new Promise(resolve=>{
+  let discarded=0;
+  const done=()=>{clearTimeout(timer);req.off('data',data);req.off('end',done);req.off('error',done);req.off('aborted',done);req.pause();resolve();};
+  const data=chunk=>{discarded+=chunk.length;if(discarded>limit)done();};
+  const timer=setTimeout(done,timeout);
+  req.on('data',data);req.once('end',done);req.once('error',done);req.once('aborted',done);req.resume();
+ });
+}
 export async function receiveUpload(req,res,save){
  // A client may reset after we have already rejected and removed the reader.
  req.on('error',()=>{});
@@ -32,9 +47,10 @@ export async function receiveUpload(req,res,save){
   const record=await uploads.use(async()=>save(await readUpload(req)));
   res.writeHead(201,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(record));
  }catch(error){
-  // Do not drain an attacker-controlled stream. Send the error, then close it.
+  // Give ordinary near-limit uploads a chance to finish before closing. Huge,
+  // endless or stalled bodies still stop at the discard budget/deadline.
+  await rejectedUploads.use(()=>discardRejectedUpload(req)).catch(()=>{});
   req.pause();res.shouldKeepAlive=false;
-  res.once('finish',()=>req.destroy());
   res.writeHead(error.status||500,{'Content-Type':'application/json; charset=utf-8','Connection':'close','Cache-Control':'no-store'});
   res.end(JSON.stringify({error:error.message}));
  }

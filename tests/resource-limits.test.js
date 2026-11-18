@@ -6,7 +6,7 @@ import {mkdtemp,rm,readFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import sharp from 'sharp';
-import {readUpload,receiveUpload,MAX_UPLOAD_BYTES,imageCapacity} from '../server/upload-limits.mjs';
+import {readUpload,receiveUpload,discardRejectedUpload,MAX_UPLOAD_BYTES,imageCapacity} from '../server/upload-limits.mjs';
 import {ImageStore} from '../server/images.mjs';
 import {AttachmentStore} from '../server/attachments.mjs';
 import {run} from '../server/execution.mjs';
@@ -70,3 +70,28 @@ test('original sleep 2 background timeout regression returns near the 50ms deadl
  const start=Date.now();await assert.rejects(run('bash',['-c','sleep 2 & wait'],{timeout:50}),/timeout/);
  const elapsed=Date.now()-start;t.diagnostic('elapsed='+elapsed+'ms');assert(elapsed<1000);
 });
+
+test('early oversized rejection delivers JSON over reused HTTP connections',async t=>{
+ let saves=0;
+ const server=createServer((req,res)=>void receiveUpload(req,res,async bytes=>{saves++;return {size:bytes.length};}));
+ await new Promise(r=>server.listen(0,'127.0.0.1',r));
+ t.after(()=>{server.closeAllConnections();return new Promise(r=>server.close(r));});
+ const url='http://127.0.0.1:'+server.address().port;
+ const oversized=Buffer.alloc(MAX_UPLOAD_BYTES+1);
+ for(let i=0;i<12;i++){
+  const valid=await fetch(url,{method:'POST',body:'ok'});
+  assert.equal(valid.status,201);assert.deepEqual(await valid.json(),{size:2});
+  const rejected=await fetch(url,{method:'POST',body:oversized});
+  assert.equal(rejected.status,413);assert.match((await rejected.json()).error,/40 MiB/);
+ }
+ assert.equal(saves,12,'rejected uploads must never reach storage');
+});
+
+ test('rejected body discard has byte and time bounds and skips huge declarations',async()=>{
+  const huge=new PassThrough();huge.headers={'content-length':String(MAX_UPLOAD_BYTES+64*1024+1)};
+  await discardRejectedUpload(huge);assert.equal(huge.listenerCount('data'),0);huge.destroy();
+  const stream=new PassThrough();stream.headers={};let bytes=0;stream.on('data',b=>bytes+=b.length);
+  const discarded=discardRejectedUpload(stream);stream.write(Buffer.alloc(65*1024));await discarded;
+  assert.equal(bytes,65*1024);assert(stream.isPaused());assert.equal(stream.listenerCount('end'),0);stream.destroy();
+  const slow=new PassThrough();slow.headers={};await discardRejectedUpload(slow,{timeout:10});assert(slow.isPaused());assert.equal(slow.listenerCount('data'),0);slow.destroy();
+ });
