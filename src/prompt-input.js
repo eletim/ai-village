@@ -2,6 +2,7 @@
 // composition before the confirming Enter keydown and report isComposing=false.
 // A fresh Control press after commit starts a new shortcut gesture. Do not keep
 // swallowing that shortcut when a mouse/candidate commit produced no Enter keyup.
+export const mobilePromptUI=()=>globalThis.matchMedia?.('(max-width:700px)').matches===true;
 export function bindPromptInput(input, submit) {
   let composing=false, ended=false, enterDown=false, pending=null;
   input.addEventListener('compositionstart',()=>{composing=true;ended=false;pending=null;});
@@ -34,7 +35,7 @@ export function bindPromptInput(input, submit) {
       }
       return;
     }
-    if(e.shiftKey||e.altKey||e.metaKey){ended=false;return;}
+    if(e.shiftKey||e.altKey||e.metaKey||(!e.ctrlKey&&mobilePromptUI())){ended=false;return;}
     if(ended&&!e.ctrlKey){e.preventDefault();ended=false;enterDown=true;return;}
     e.preventDefault();
     if(e.repeat||held)return;

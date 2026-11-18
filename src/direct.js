@@ -26,7 +26,7 @@ import {travelSummary,sameTravelContexts} from './travel-context.js';
 import {PAGE_SIZE,isSuspended,placeOf,orderedAgents,orderedProjectAgents,orderedProjects,boardLayout} from './board-state.js';
 import {agentEntries,unreadByAgent,visualState,faviconHref} from './completions.js';
 import {agentPlaceName} from './agent-identity.js';
-import {bindPromptInput} from './prompt-input.js';
+import {bindPromptInput,mobilePromptUI} from './prompt-input.js';
 const $=s=>document.querySelector(s);
 const profileViewer=agentProfileViewer();
 weeklyUsagePanel($('#weekly-usage'));
@@ -199,7 +199,7 @@ function renderBoard(){
   }
   const area=card.querySelector('.runs'),html=runHTML(a),wasLoading=area.dataset.loading==='true';area.dataset.loading=String(!!state.conversations&&!state.conversations[a.id]);if(wasLoading){updateReportHTML(area,html);scrolls.get(a.id).loaded();}else scrolls.get(a.id).preserve(()=>updateReportHTML(area,html));
   const prompt=card.querySelector('textarea[name=instruction]'),promptLabel=(a.name||'Agent')+'に聞く';
-  prompt.placeholder=promptLabel;prompt.title=promptLabel+'（Enter / Ctrl+Enterで送信、Shift+Enterで改行、変換中のEnterは確定）';prompt.setAttribute('aria-label',prompt.title);
+  prompt.placeholder=promptLabel;prompt.title=promptLabel+(mobilePromptUI()?'（Enterで改行、送信ボタン / Ctrl+Enterで送信）':'（Enter / Ctrl+Enterで送信、Shift+Enterで改行、変換中のEnterは確定）');prompt.setAttribute('aria-label',prompt.title);
   const send=card.querySelector('[data-send] button:not([data-reconcile])');
   fileEditors.get(a.id).lock(card.dataset.pending==='true'||pending.has(a.id));
   travelEditors.get(a.id).lock(card.dataset.pending==='true'||pending.has(a.id));
@@ -394,11 +394,11 @@ $('#confirm-project-delete').onclick=()=>action($('#project-delete-dialog'),asyn
 for(const b of document.querySelectorAll('[data-open]'))b.onclick=()=>{if(b.closest('#manage-dialog'))$('#manage-dialog').close();if(b.dataset.open==='projects-dialog')openProjects();else $('#'+b.dataset.open).showModal();if(b.dataset.open==='history-dialog')void refresh(true);};
 for(const b of document.querySelectorAll('[data-close]'))b.onclick=()=>b.closest('dialog').close();
 $('#history-agent').onchange=()=>{renderHistory();selectAgent($('#history-agent').value);void refresh(true);};
-async function api(path,body,method='POST'){
+async function api(path,body,method='POST',signal){
  if(path.endsWith('/runs')&&body?.steerTarget&&!state?.capabilities?.steering)throw Error('実行中の補足にはサーバー更新が必要です。');
  if(path.endsWith('/runs')&&body?.attachments?.length&&!state?.capabilities?.attachments)throw Error('添付にはサーバー更新の反映が必要です。');
  if(path.endsWith('/runs')&&body?.travelContexts?.length&&!state?.capabilities?.travelContexts)throw Error('出張先の送信にはサーバー更新の反映が必要です。下書きは保持しています。');
- if(method==='GET')return readJSON('/api/direct'+path,{onProgress:bytes=>{if(path.startsWith('?view=workspace')&&syncIndicatorDue)$('#connection').textContent='同期中 · '+Math.ceil(bytes/1024)+' KB受信';}});
+ if(method==='GET')return readJSON('/api/direct'+path,{signal,onProgress:bytes=>{if(!signal?.aborted&&path.startsWith('?view=workspace')&&syncIndicatorDue)$('#connection').textContent='同期中 · '+Math.ceil(bytes/1024)+' KB受信';}});
  const response=await fetch('/api/direct'+path,{method,signal:AbortSignal.timeout(30000),headers:{'Content-Type':'application/json',...(path.startsWith('/human/')?{'X-Village-Human-UI':'1'}:{})},...(body?{body:JSON.stringify(body)}:{})});
  const value=await response.json();if(!response.ok)throw Object.assign(Error(value.error||'操作に失敗しました'),{status:response.status});return value;
 }
@@ -427,7 +427,7 @@ function render(){
  $('#notifications').textContent=`Notify: ${state.notification.enabled===false?'OFF':state.notification.latest?.status||(state.notification.destinationConfigured?'設定済み':'未設定')}`;
  $('#notifications').title='sentは通知サーバーの受理。端末への到着は未確認。';renderBoard();
 }
-const syncClient=newRequestId();let syncBase=null,retryAt=0,syncFailures=0;
+const syncClient=newRequestId();let syncBase=null,retryAt=0,syncFailures=0,syncEpoch=0,syncController=null;
 // Keep recent successful syncs visually stable; initial/stale loads show progress.
 let syncIndicatorTimer=null,syncIndicatorDue=false,lastSyncSucceededAt=null;
 function armSyncIndicator(){
@@ -437,24 +437,34 @@ function armSyncIndicator(){
  if(remaining===0)reveal();else syncIndicatorTimer=setTimeout(reveal,remaining);
 }
 function disarmSyncIndicator(){clearTimeout(syncIndicatorTimer);syncIndicatorTimer=null;syncIndicatorDue=false;}
-async function fetchWorkspace(){
+async function fetchWorkspace(signal){
  const path='?view=workspace&sync=1&client='+syncClient+'&ranges='+encodeURIComponent(JSON.stringify(historyRanges))+'&focus='+encodeURIComponent(JSON.stringify([...focusIds]));
- const result=await api(path+(syncBase?'&since='+encodeURIComponent(syncBase.cursor):''),null,'GET');
- // A retained older server or isolated UI fixture can still return the original protocol.
+ const base=syncBase;
+ const result=await api(path+(base?'&since='+encodeURIComponent(base.cursor):''),null,'GET',signal);
+ signal.throwIfAborted();
  if(!result.protocol){syncBase=null;return result;}
- try{syncBase=acceptWorkspace(syncBase,result);return syncBase.state;}
- catch{syncBase=null;syncBase=acceptWorkspace(null,await api(path,null,'GET'));return syncBase.state;}
+ let next;
+ try{next=acceptWorkspace(base,result);}
+ catch{const full=await api(path,null,'GET',signal);signal.throwIfAborted();next=acceptWorkspace(null,full);}
+ syncBase=next;return next.state;
+}
+function restartSync(){
+ syncEpoch++;syncController?.abort();syncController=null;refreshTask=null;
+ syncBase=null;retryAt=0;disarmSyncIndicator();
+ void refresh(true);
 }
 async function refresh(force=false){
- if(refreshTask){const result=await refreshTask;if(force)return refresh(true);return result;}
+ const epoch=syncEpoch;
+ if(refreshTask){const result=await refreshTask;if(epoch!==syncEpoch)return false;if(force)return refresh(true);return result;}
  if(!force&&Date.now()<retryAt)return false;
  armSyncIndicator();
- const requestedFocus=focusKey();
- refreshTask=(async()=>{try{state=await fetchWorkspace();connected=true;retryAt=0;syncFailures=0;render();focusAgent();lastSyncSucceededAt=Date.now();disarmSyncIndicator();connectionStatus($('#connection'),new Date().toLocaleTimeString(),{normal:true});return true;}catch(e){connected=false;const delay=Math.min(30000,5000*2**Math.min(syncFailures++,3));retryAt=Date.now()+delay;if(state)renderBoard();disarmSyncIndicator();connectionStatus($('#connection'),'接続不明: '+(e.message==='Failed to fetch'?'通信できませんでした。':e.message)+'（'+delay/1000+'秒後に再試行）');return false;}})();
- let result;try{result=await refreshTask;}finally{refreshTask=null;}
+ const requestedFocus=focusKey(),controller=new AbortController();syncController=controller;
+ const task=(async()=>{try{const next=await fetchWorkspace(controller.signal);if(epoch!==syncEpoch)return false;state=next;connected=true;retryAt=0;syncFailures=0;render();focusAgent();lastSyncSucceededAt=Date.now();disarmSyncIndicator();connectionStatus($('#connection'),new Date().toLocaleTimeString(),{normal:true});return true;}catch(e){if(epoch!==syncEpoch)return false;connected=false;const delay=Math.min(30000,5000*2**Math.min(syncFailures++,3));retryAt=Date.now()+delay;if(state)renderBoard();disarmSyncIndicator();connectionStatus($('#connection'),'接続不明: '+(e.message==='Failed to fetch'?'通信できませんでした。':e.message)+'（'+delay/1000+'秒後に再試行）');return false;}})();
+ refreshTask=task;
+ let result;try{result=await task;}finally{if(epoch===syncEpoch&&refreshTask===task){refreshTask=null;syncController=null;}}
  // renderBoard() (inside render()/focusAgent()) may have widened focus past what we just asked for
  // (e.g. the very first summary-only reply reveals which agent should actually be shown) — go again.
- if(result&&focusKey()!==requestedFocus)void refresh(true);
+ if(epoch===syncEpoch&&result&&focusKey()!==requestedFocus)void refresh(true);
  return result;
 }
 $('#agent-form [name=workshopId]').onchange=places;
@@ -514,8 +524,10 @@ $('#agents').onclick=e=>{
   });return;
  }
  const reconcile=e.target.closest('[data-reconcile]');if(reconcile){const id=reconcile.dataset.reconcile,receipt=pending.get(id);if(receipt)action(reconcile.closest('article'),async()=>{await api('/agents/'+id+'/runs',receipt);await refresh();});return;}const manage=e.target.closest('[data-manage-agent]'),zoom=e.target.closest('[data-zoom]');if(manage)openMetadata(manage.dataset.manageAgent);if(zoom){toggleZoom(zoom.dataset.zoom);void refresh(true);}};
-await refresh();setInterval(()=>{if(!document.hidden)void refresh();},2000);
-document.addEventListener('visibilitychange',()=>{if(!document.hidden)void refresh(true);});
+void refresh();setInterval(()=>{if(!document.hidden)void refresh();},2000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)restartSync();});
+window.addEventListener('pageshow',e=>{if(e.persisted)restartSync();});
+window.addEventListener('online',()=>{if(!document.hidden)restartSync();});
 
 function refreshMessageLog(id){
  const card=cards.get(id);if(!card)return;
