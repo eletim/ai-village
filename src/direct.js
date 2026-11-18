@@ -1,7 +1,8 @@
+import {bindSidebarOrder} from './sidebar-order.js';
 import {boardProjectTitle,mobileWorkspace} from './mobile-workspace.js';
 import {compactStatusPair,compactStatus,actionSVG,connectionStatus} from './compact-status.js';
 import {deliveryUnconfirmed} from './queued-run.js';
-import {needsRunRecovery,requestReviewReason} from './run-recovery.js';
+import {needsRunRecovery,requestReviewReason,requestRootState,requestWaitingText} from './run-recovery.js';
 import {readJSON} from './read-json.js';
 import {acceptWorkspace} from './workspace-sync.js';
 import {restorePendingMessage,matchingRun,unchangedDraft,pendingMessageStatus} from './pending-message.js';
@@ -23,10 +24,10 @@ import {chatScroll} from './chat-scroll.js';
 import {foldEntriesHTML,rootRunIds} from './run-groups.js';
 import {travelComposer} from './travel-composer.js';
 import {travelSummary,sameTravelContexts} from './travel-context.js';
-import {PAGE_SIZE,isSuspended,placeOf,orderedAgents,orderedProjects,boardLayout} from './board-state.js';
+import {PAGE_SIZE,isSuspended,placeOf,orderedAgents,orderedProjectAgents,orderedProjects,boardLayout} from './board-state.js';
 import {agentEntries,unreadByAgent,visualState,faviconHref} from './completions.js';
 import {agentPlaceName} from './agent-identity.js';
-import {bindPromptInput} from './prompt-input.js';
+import {bindPromptInput,mobilePromptUI} from './prompt-input.js';
 const $=s=>document.querySelector(s);
 const profileViewer=agentProfileViewer();
 weeklyUsagePanel($('#weekly-usage'));
@@ -81,7 +82,8 @@ const placeName=agentPlaceName;
 function options(select,items){const previous=select.value,html=items.map(i=>`<option value="${esc(i.id)}">${esc(i.name)}</option>`).join('');if(select.innerHTML!==html){select.innerHTML=html;if(items.some(i=>i.id===previous))select.value=previous;}}
 const isProject=id=>id.startsWith('project:');
 const inScope=(a,id)=>isProject(id)?a.projectId===id.slice(8):!isSuspended(state.projects||[],a)&&(id==='all'||placeId(a)===id);
-function filtered(){return live().filter(a=>inScope(a,selectedPlace));}
+function scopeAgents(id,agents=live()){const members=agents.filter(a=>inScope(a,id));return isProject(id)?orderedProjectAgents(members):members;}
+function filtered(){return scopeAgents(selectedPlace);}
 function projectOptions(select){options(select,[{id:'',name:'未所属'},...orderedProjects(state.projects||[]).map(p=>({...p,name:p.name+(p.suspended?'（休止中）':'')}))]);}
 function sidebarState(collapsed){
  document.documentElement.dataset.sidebarCollapsed=String(collapsed);
@@ -101,14 +103,16 @@ function capturePositions(){for(const [id,card] of cards)if(!card.hidden)scrolls
 function timeHTML(value){if(!value)return '';const date=new Date(value);return Number.isNaN(date.getTime())?'':`<time datetime="${esc(value)}" title="${esc(date.toLocaleString())}">${esc(date.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}))}</time>`;}
 function bubble(side,text,at,extra=''){return `<div class="message ${side}">${text?(side==='assistant'?reportHTML(text):`<pre>${linkedText(text)}</pre>`):''}${extra}${timeHTML(at)}</div>`;}
 function recoveryHTML(r){
- const q=state.requests?.find(q=>q.id===r.humanRequestId),w=q?.works.find(w=>w.currentRunId===r.id);
+ const q=state.requests?.find(q=>q.id===r.humanRequestId),w=q?.requestGraph?.nodes.find(w=>w.currentRunId===r.id);
  if(!needsRunRecovery(q,r,w))return '';
- const reason=q.requestModel?requestReviewReason(q,r):r.recovery?.status==='scheduled'?'自動再試行予定: '+new Date(r.recovery.nextAt).toLocaleTimeString():r.recovery?.reason||(r.needsReview?'要確認: 実行結果を確認できません。副作用を確認してから再試行してください。':null)||'停止理由を確認し、未完了の作業を再開できます。';
- return `<div class="recovery"><p>${esc(reason)}</p>${!w.parentWorkId?`<button data-retry-run="${esc(r.id)}">再試行</button>`:'<p>要確認の依頼一覧で人間が次の扱いを選べます。</p>'}<button data-complete-request="${esc(q.id)}">完了扱い</button><button data-cancel-request="${esc(q.id)}">取り下げ</button></div>`;
+ const reason=q.requestGraph?requestReviewReason(q,r):r.recovery?.status==='scheduled'?'自動再試行予定: '+new Date(r.recovery.nextAt).toLocaleTimeString():r.recovery?.reason||(r.needsReview?'要確認: 実行結果を確認できません。副作用を確認してから再試行してください。':null)||'停止理由を確認し、未完了の作業を再開できます。';
+ return `<div class="recovery"><p>${esc(reason)}</p>${!w.parentId?`<button data-retry-run="${esc(r.id)}">再試行</button>`:'<p>要確認の依頼一覧で人間が次の扱いを選べます。</p>'}<button data-complete-request="${esc(q.id)}">完了扱い</button><button data-cancel-request="${esc(q.id)}">取り下げ</button></div>`;
 }
 function entryHTML(a,r,divider){
- const normal=!r.error&&!r.errorCode&&!r.attachmentError&&!r.needsReview&&!state.requests?.find(q=>q.id===r.humanRequestId)?.requestModel?.state?.review?.length;
- return `${divider(r.createdAt||r.completedAt)}<div class="run" data-entry="${esc(JSON.stringify([r.external?'native':'run',r.external?(r.sessionId||r.agentSessionId||''):'',r.id]))}">${r.suppressUser?'':bubble('user',r.instruction,r.createdAt,travelSummary(r.travelContexts)+attachmentHTML(r.attachments))}${r.output||r.finalOutput?'<div class="message assistant">'+responseHTML(r)+timeHTML(r.completedAt)+'</div>':''}<p class="run-status">${compactStatusPair(r.queueCancelledAt?'送信取消済み':r.reportStatus||labels[r.state]||r.state,r.humanRequestId?({active:'依頼継続中',finalizing:'最終報告の完了待ち',completed:'依頼全体完了',cancelled:'依頼キャンセル'})[state.requests?.find(q=>q.id===r.humanRequestId)?.status]||'依頼照合中':'達成状況: 未判定',normal,r.external?'PurpleMuxからの入力 · ':r.origin==='result'?'子作業結果の配送 · ':r.origin==='steering'?'実行中への補足 · ':'')} ${esc(r.errorCode||'')} ${esc(r.attachmentError||r.error||'')} ${r.notification?' · 通知: '+esc(r.notification.status)+(r.notification.reason?' / '+esc(r.notification.reason):''):''}</p>${canCancelQueued(r)?`<button type="button" data-cancel-queued="${esc(r.id)}" data-queue-agent="${esc(a.id)}">送信待ちを取り消す</button>`:''}${r.queueCancelledAt?'':recoveryHTML(r)}</div>`;
+ const request=state.requests?.find(q=>q.id===r.humanRequestId),current=request?.requestGraph?.nodes.find(n=>n.id===r.workId)?.currentRunId===r.id;
+ const waiting=current?requestWaitingText(request,r.workId):'';
+ const normal=!r.error&&!r.errorCode&&!r.attachmentError&&!r.needsReview&&!requestRootState(state.requests?.find(q=>q.id===r.humanRequestId))?.review?.length;
+ return `${divider(r.createdAt||r.completedAt)}<div class="run" data-entry="${esc(JSON.stringify([r.external?'native':'run',r.external?(r.sessionId||r.agentSessionId||''):'',r.id]))}">${r.suppressUser?'':bubble('user',r.instruction,r.createdAt,travelSummary(r.travelContexts)+attachmentHTML(r.attachments))}${r.output||r.finalOutput?'<div class="message assistant">'+responseHTML(r)+timeHTML(r.completedAt)+'</div>':''}<p class="run-status">${compactStatusPair(r.queueCancelledAt?'送信取消済み':r.reportStatus||labels[r.state]||r.state,r.humanRequestId?({active:'依頼継続中',finalizing:'最終報告の完了待ち',completed:'依頼全体完了',cancelled:'依頼キャンセル'})[state.requests?.find(q=>q.id===r.humanRequestId)?.status]||'依頼照合中':'達成状況: 未判定',normal,r.external?'PurpleMuxからの入力 · ':r.origin==='result'?'子作業結果の配送 · ':r.origin==='steering'?'実行中への補足 · ':'')} ${esc(r.errorCode||'')} ${esc(r.attachmentError||r.error||'')} ${r.notification?' · 通知: '+esc(r.notification.status)+(r.notification.reason?' / '+esc(r.notification.reason):''):''}</p>${canCancelQueued(r)?`<button type="button" data-cancel-queued="${esc(r.id)}" data-queue-agent="${esc(a.id)}">送信待ちを取り消す</button>`:''}${waiting?`<p class="request-waiting">${esc(waiting)}</p>`:''}${r.queueCancelledAt?'':recoveryHTML(r)}</div>`;
 }
 function runHTML(a){
  const page=state.conversations?.[a.id];
@@ -196,7 +200,7 @@ function renderBoard(){
   }
   const area=card.querySelector('.runs'),html=runHTML(a),wasLoading=area.dataset.loading==='true';area.dataset.loading=String(!!state.conversations&&!state.conversations[a.id]);if(wasLoading){updateReportHTML(area,html);scrolls.get(a.id).loaded();}else scrolls.get(a.id).preserve(()=>updateReportHTML(area,html));
   const prompt=card.querySelector('textarea[name=instruction]'),promptLabel=(a.name||'Agent')+'に聞く';
-  prompt.placeholder=promptLabel;prompt.title=promptLabel+'（Ctrl+Enterで送信、Enter / Shift+Enterで改行）';prompt.setAttribute('aria-label',prompt.title);
+  prompt.placeholder=promptLabel;prompt.title=promptLabel+(mobilePromptUI()?'（Enterで改行、送信ボタン / Ctrl+Enterで送信）':'（Enter / Ctrl+Enterで送信、Shift+Enterで改行、変換中のEnterは確定）');prompt.setAttribute('aria-label',prompt.title);
   const send=card.querySelector('[data-send] button:not([data-reconcile])');
   fileEditors.get(a.id).lock(card.dataset.pending==='true'||pending.has(a.id));
   travelEditors.get(a.id).lock(card.dataset.pending==='true'||pending.has(a.id));
@@ -219,7 +223,7 @@ function renderBoard(){
  $('#start-secretary').title=state.workshops.some(w=>w.connectionType==='local')?'秘書を追加':'ローカル実行環境を登録して秘書を追加';
  layoutBoard();if(restoreScroll!==null)$('#agents').scrollTop=restoreScroll;renderHistory();syncSelection();
 }
-function placeTitle(id){if(isProject(id))return (state.projects||[]).find(p=>p.id===id.slice(8))?.name||'Project';return id==='all'?'全部表示':id==='mayor'?'秘書':id==='unassigned'?'所属未登録':'工房（'+(state.workshops.find(w=>w.id===id)?.name||'未登録')+'）';}
+function placeTitle(id){if(isProject(id))return (state.projects||[]).find(p=>p.id===id.slice(8))?.name||'Project';return id==='all'?'':id==='mayor'?'秘書':id==='unassigned'?'所属未登録':'工房（'+(state.workshops.find(w=>w.id===id)?.name||'未登録')+'）';}
 function groupTitle(id,page){return placeTitle(id)+(id!=='all'&&page>0?` (${page+1})`:'');}
 function agentMarker(a,sidebar=true){
  const stateName=visualState(a,agentEntries(state,a));
@@ -227,6 +231,8 @@ function agentMarker(a,sidebar=true){
 }
 function agentDot(a){return agentMarker(a);}
 function renderPlaces(){
+ renderProjectOrder();
+ if(sidebarOrder.busy())return;
  renderSuspended();
  const all=live().filter(a=>!isSuspended(state.projects||[],a)),places=sidebarMode==='projects'?orderedProjects((state.projects||[]).filter(p=>p.suspended!==true)).map(p=>({id:'project:'+p.id})):[{id:'mayor'},...state.workshops];
  for(const button of document.querySelectorAll('[data-mode]'))button.setAttribute('aria-pressed',String(button.dataset.mode===sidebarMode));
@@ -234,8 +240,14 @@ function renderPlaces(){
  if(sidebarMode==='places'&&all.some(a=>placeId(a)==='unassigned'))places.push({id:'unassigned'});
  const allPage=selectedPlace==='all'?selectedPage:pageMemory.get(pageKey('all'))||0;
  const entries=[{id:'all',page:0,agents:all.slice(allPage*PAGE_SIZE,(allPage+1)*PAGE_SIZE)}];
- for(const {id} of places){const agents=all.filter(a=>inScope(a,id));for(let page=0;page<Math.max(1,Math.ceil(agents.length/PAGE_SIZE));page++)entries.push({id,page,agents:agents.slice(page*PAGE_SIZE,(page+1)*PAGE_SIZE)});}
- const html=entries.map(({id,page,agents})=>`<div class="place-row"><button data-place="${esc(id)}" data-page="${page}" ${selectedPlace===id&&(id==='all'||selectedPage===page)?'aria-current="page"':''}><span>${esc(groupTitle(id,page))}</span><span class="place-dots" aria-label="${id==='all'?'全体表示の現在ページ':'このグループ'}のAgent状態">${agents.map(agentDot).join('')}</span></button>${id==='all'||id==='unassigned'?'':`<button class="add-agent" data-add="${esc(id)}" data-page="${page}" aria-label="${esc(groupTitle(id,page))}の操作">…</button>`}</div>`).join('');
+ for(const {id} of places){const agents=scopeAgents(id,all);for(let page=0;page<Math.max(1,Math.ceil(agents.length/PAGE_SIZE));page++)entries.push({id,page,agents:agents.slice(page*PAGE_SIZE,(page+1)*PAGE_SIZE)});}
+ const html=entries.map(({id,page,agents})=>{
+  const project=isProject(id)?state.projects.find(p=>p.id===id.slice(8)):null;
+  const order=project?` data-order-kind="projects" data-order-id="${esc(project.id)}" data-order-revision="${project.revision}"`:'';
+  const dots=agents.map(agentDot).join('');
+  const title=id==='all'?'<svg class="all-grid" viewBox="0 0 20 20" aria-hidden="true"><path d="M2 2h6v6H2zM12 2h6v6h-6zM2 12h6v6H2zM12 12h6v6h-6z"/></svg>':esc(groupTitle(id,page));
+  return `<div class="place-row"${order}><button data-place="${esc(id)}" data-page="${page}" ${id==='all'?'aria-label="全体を表示" title="全体を表示"':''} ${selectedPlace===id&&(id==='all'||selectedPage===page)?'aria-current="page"':''}><span ${project?'data-project-handle title="ドラッグで並べ替え・Alt＋上下キー"':''}>${title}</span><span class="place-dots" aria-label="${id==='all'?'全体表示の現在ページ':'このグループ'}のAgent状態">${dots}</span></button>${id==='all'||id==='unassigned'?'':`<button class="add-agent" data-add="${esc(id)}" data-page="${page}" aria-label="${esc(groupTitle(id,page))}の操作">…</button>`}</div>`;
+ }).join('');
  if($('#places').innerHTML!==html){const dataset=document.activeElement?.dataset;$('#places').innerHTML=html;if(dataset?.place||dataset?.add){const key=dataset.place?'place':'add';[...$('#places').querySelectorAll('button')].find(b=>b.dataset[key]===dataset[key]&&b.dataset.page===dataset.page)?.focus({preventScroll:true});}}
 }
 function updateCompletionIndicator(){
@@ -321,6 +333,7 @@ function focusAgent(){
  if(zoomId!==id)toggleZoom(id);cards.get(id)?.focus({preventScroll:true});
 }
 window.addEventListener('hashchange',()=>{focusedHash='';focusAgent();});
+const sidebarOrder=bindSidebarOrder($('#places'),{activate:handle=>{const b=handle.closest('[data-place]');choosePlace(b.dataset.place,Number(b.dataset.page));void refresh(true);},save:input=>api('/reorder',input),changed:()=>{void refresh(true);},error:e=>{$('#error').textContent='並び替えを保存できません: '+e.message;}});
 $('#places').onclick=e=>{const add=e.target.closest('[data-add]'),place=e.target.closest('[data-place]');if(add)openManagement(add.dataset.add);else if(place){choosePlace(place.dataset.place,place.dataset.place==='all'?undefined:Number(place.dataset.page));void refresh(true);}};
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&zoomId&&!document.querySelector('dialog[open]')){toggleZoom(zoomId);void refresh(true);}});
 let launcherProjectId=null;
@@ -391,11 +404,11 @@ $('#confirm-project-delete').onclick=()=>action($('#project-delete-dialog'),asyn
 for(const b of document.querySelectorAll('[data-open]'))b.onclick=()=>{if(b.closest('#manage-dialog'))$('#manage-dialog').close();if(b.dataset.open==='projects-dialog')openProjects();else $('#'+b.dataset.open).showModal();if(b.dataset.open==='history-dialog')void refresh(true);};
 for(const b of document.querySelectorAll('[data-close]'))b.onclick=()=>b.closest('dialog').close();
 $('#history-agent').onchange=()=>{renderHistory();selectAgent($('#history-agent').value);void refresh(true);};
-async function api(path,body,method='POST'){
+async function api(path,body,method='POST',signal){
  if(path.endsWith('/runs')&&body?.steerTarget&&!state?.capabilities?.steering)throw Error('実行中の補足にはサーバー更新が必要です。');
  if(path.endsWith('/runs')&&body?.attachments?.length&&!state?.capabilities?.attachments)throw Error('添付にはサーバー更新の反映が必要です。');
  if(path.endsWith('/runs')&&body?.travelContexts?.length&&!state?.capabilities?.travelContexts)throw Error('出張先の送信にはサーバー更新の反映が必要です。下書きは保持しています。');
- if(method==='GET')return readJSON('/api/direct'+path,{onProgress:bytes=>{if(path.startsWith('?view=workspace')&&syncIndicatorDue)$('#connection').textContent='同期中 · '+Math.ceil(bytes/1024)+' KB受信';}});
+ if(method==='GET')return readJSON('/api/direct'+path,{signal,onProgress:bytes=>{if(!signal?.aborted&&path.startsWith('?view=workspace')&&syncIndicatorDue)$('#connection').textContent='同期中 · '+Math.ceil(bytes/1024)+' KB受信';}});
  const response=await fetch('/api/direct'+path,{method,signal:AbortSignal.timeout(30000),headers:{'Content-Type':'application/json',...(path.startsWith('/human/')?{'X-Village-Human-UI':'1'}:{})},...(body?{body:JSON.stringify(body)}:{})});
  const value=await response.json();if(!response.ok)throw Object.assign(Error(value.error||'操作に失敗しました'),{status:response.status});return value;
 }
@@ -424,7 +437,7 @@ function render(){
  $('#notifications').textContent=`Notify: ${state.notification.enabled===false?'OFF':state.notification.latest?.status||(state.notification.destinationConfigured?'設定済み':'未設定')}`;
  $('#notifications').title='sentは通知サーバーの受理。端末への到着は未確認。';renderBoard();
 }
-const syncClient=newRequestId();let syncBase=null,retryAt=0,syncFailures=0;
+const syncClient=newRequestId();let syncBase=null,retryAt=0,syncFailures=0,syncEpoch=0,syncController=null;
 // Keep recent successful syncs visually stable; initial/stale loads show progress.
 let syncIndicatorTimer=null,syncIndicatorDue=false,lastSyncSucceededAt=null;
 function armSyncIndicator(){
@@ -434,24 +447,34 @@ function armSyncIndicator(){
  if(remaining===0)reveal();else syncIndicatorTimer=setTimeout(reveal,remaining);
 }
 function disarmSyncIndicator(){clearTimeout(syncIndicatorTimer);syncIndicatorTimer=null;syncIndicatorDue=false;}
-async function fetchWorkspace(){
+async function fetchWorkspace(signal){
  const path='?view=workspace&sync=1&client='+syncClient+'&ranges='+encodeURIComponent(JSON.stringify(historyRanges))+'&focus='+encodeURIComponent(JSON.stringify([...focusIds]));
- const result=await api(path+(syncBase?'&since='+encodeURIComponent(syncBase.cursor):''),null,'GET');
- // A retained older server or isolated UI fixture can still return the original protocol.
+ const base=syncBase;
+ const result=await api(path+(base?'&since='+encodeURIComponent(base.cursor):''),null,'GET',signal);
+ signal.throwIfAborted();
  if(!result.protocol){syncBase=null;return result;}
- try{syncBase=acceptWorkspace(syncBase,result);return syncBase.state;}
- catch{syncBase=null;syncBase=acceptWorkspace(null,await api(path,null,'GET'));return syncBase.state;}
+ let next;
+ try{next=acceptWorkspace(base,result);}
+ catch{const full=await api(path,null,'GET',signal);signal.throwIfAborted();next=acceptWorkspace(null,full);}
+ syncBase=next;return next.state;
+}
+function restartSync(){
+ syncEpoch++;syncController?.abort();syncController=null;refreshTask=null;
+ syncBase=null;retryAt=0;disarmSyncIndicator();
+ void refresh(true);
 }
 async function refresh(force=false){
- if(refreshTask){const result=await refreshTask;if(force)return refresh(true);return result;}
+ const epoch=syncEpoch;
+ if(refreshTask){const result=await refreshTask;if(epoch!==syncEpoch)return false;if(force)return refresh(true);return result;}
  if(!force&&Date.now()<retryAt)return false;
  armSyncIndicator();
- const requestedFocus=focusKey();
- refreshTask=(async()=>{try{state=await fetchWorkspace();connected=true;retryAt=0;syncFailures=0;render();focusAgent();lastSyncSucceededAt=Date.now();disarmSyncIndicator();connectionStatus($('#connection'),new Date().toLocaleTimeString(),{normal:true});return true;}catch(e){connected=false;const delay=Math.min(30000,5000*2**Math.min(syncFailures++,3));retryAt=Date.now()+delay;if(state)renderBoard();disarmSyncIndicator();connectionStatus($('#connection'),'接続不明: '+(e.message==='Failed to fetch'?'通信できませんでした。':e.message)+'（'+delay/1000+'秒後に再試行）');return false;}})();
- let result;try{result=await refreshTask;}finally{refreshTask=null;}
+ const requestedFocus=focusKey(),controller=new AbortController();syncController=controller;
+ const task=(async()=>{try{const next=await fetchWorkspace(controller.signal);if(epoch!==syncEpoch)return false;state=next;connected=true;retryAt=0;syncFailures=0;render();focusAgent();lastSyncSucceededAt=Date.now();disarmSyncIndicator();connectionStatus($('#connection'),new Date().toLocaleTimeString(),{normal:true});return true;}catch(e){if(epoch!==syncEpoch)return false;connected=false;const delay=Math.min(30000,5000*2**Math.min(syncFailures++,3));retryAt=Date.now()+delay;if(state)renderBoard();disarmSyncIndicator();connectionStatus($('#connection'),'接続不明: '+(e.message==='Failed to fetch'?'通信できませんでした。':e.message)+'（'+delay/1000+'秒後に再試行）');return false;}})();
+ refreshTask=task;
+ let result;try{result=await task;}finally{if(epoch===syncEpoch&&refreshTask===task){refreshTask=null;syncController=null;}}
  // renderBoard() (inside render()/focusAgent()) may have widened focus past what we just asked for
  // (e.g. the very first summary-only reply reveals which agent should actually be shown) — go again.
- if(result&&focusKey()!==requestedFocus)void refresh(true);
+ if(epoch===syncEpoch&&result&&focusKey()!==requestedFocus)void refresh(true);
  return result;
 }
 $('#agent-form [name=workshopId]').onchange=places;
@@ -462,7 +485,7 @@ $('#workshop-form [name=connectionType]').onchange=connectionFields;
 $('#workshop-form').onsubmit=e=>{e.preventDefault();const f=e.currentTarget;action(f,async()=>{const x=Object.fromEntries(new FormData(f));if(secretarySetup&&x.connectionType!=='local')throw Error('秘書にはローカル（村長PC）を選んでください。');await api('/workshops'+(x.id?'/'+x.id:''),{...x,iconPattern:patternEditor.value(),workplaces:x.workplaces.split('\n').map(s=>s.trim()).filter(Boolean)},x.id?'PUT':'POST');f.reset();connectionFields();$('#workshop-title').textContent='工房を登録';if(secretarySetup){await refresh(true);$('#settings-dialog').close();openLauncher('mayor');}});};
 $('#reset-workshop').onclick=()=>{if(secretarySetup)prepareSecretaryForm();else{$('#workshop-form').reset();connectionFields();$('#workshop-title').textContent='工房を登録';}};
 $('#workshops').onclick=e=>{const id=e.target.dataset.edit;if(!id)return;const w=state.workshops.find(w=>w.id===id);for(const key of ['id','name','connectionType','sshHost','baseUrl','workplaces'])$('#workshop-form').elements[key].value=key==='workplaces'?w[key].join('\n'):(w[key]??(key==='connectionType'?'ssh':''));patternEditor.set(w);connectionFields();$('#workshop-title').textContent='工房を編集';};
-$('#agent-form').onsubmit=e=>{e.preventDefault();const f=e.currentTarget;f.dataset.requestId ||= newRequestId();action(f,async()=>{let a;try{a=await api('/agents',{...Object.fromEntries(new FormData(f)),...(launcherProjectId?{projectId:launcherProjectId}:{}),requestId:f.dataset.requestId});}catch(error){if(error.status&&error.status<500)delete f.dataset.requestId;throw error;}delete f.dataset.requestId;$('#agent-dialog').close();await refresh(true);if(a.id){const scope=a.projectId?'project:'+a.projectId:placeId(a);choosePlace(scope,Math.floor(live().filter(x=>inScope(x,scope)).findIndex(x=>x.id===a.id)/PAGE_SIZE));void refresh(true);cards.get(a.id)?.scrollIntoView({block:'nearest'});}});};
+$('#agent-form').onsubmit=e=>{e.preventDefault();const f=e.currentTarget;f.dataset.requestId ||= newRequestId();action(f,async()=>{let a;try{a=await api('/agents',{...Object.fromEntries(new FormData(f)),...(launcherProjectId?{projectId:launcherProjectId}:{}),requestId:f.dataset.requestId});}catch(error){if(error.status&&error.status<500)delete f.dataset.requestId;throw error;}delete f.dataset.requestId;$('#agent-dialog').close();await refresh(true);if(a.id){const scope=a.projectId?'project:'+a.projectId:placeId(a);choosePlace(scope,Math.floor(scopeAgents(scope).findIndex(x=>x.id===a.id)/PAGE_SIZE));void refresh(true);cards.get(a.id)?.scrollIntoView({block:'nearest'});}});};
 $('#agents').onsubmit=async e=>{
  e.preventDefault();const f=e.target,id=f.dataset.send;if(!id||pending.has(id)||f.querySelector('button').disabled||(!f.elements.instruction.value.trim()&&!fileEditors.get(id).count))return;
  if(travelEditors.get(id).value.length&&!state.capabilities?.travelContexts){$('#error').textContent='出張先の送信にはサーバー更新の反映が必要です。下書きは保持しています。';return;}
@@ -511,8 +534,10 @@ $('#agents').onclick=e=>{
   });return;
  }
  const reconcile=e.target.closest('[data-reconcile]');if(reconcile){const id=reconcile.dataset.reconcile,receipt=pending.get(id);if(receipt)action(reconcile.closest('article'),async()=>{await api('/agents/'+id+'/runs',receipt);await refresh();});return;}const manage=e.target.closest('[data-manage-agent]'),zoom=e.target.closest('[data-zoom]');if(manage)openMetadata(manage.dataset.manageAgent);if(zoom){toggleZoom(zoom.dataset.zoom);void refresh(true);}};
-await refresh();setInterval(()=>{if(!document.hidden)void refresh();},2000);
-document.addEventListener('visibilitychange',()=>{if(!document.hidden)void refresh(true);});
+void refresh();setInterval(()=>{if(!document.hidden)void refresh();},2000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)restartSync();});
+window.addEventListener('pageshow',e=>{if(e.persisted)restartSync();});
+window.addEventListener('online',()=>{if(!document.hidden)restartSync();});
 
 function refreshMessageLog(id){
  const card=cards.get(id);if(!card)return;
@@ -534,20 +559,28 @@ document.addEventListener('click',async e=>{
 function renderSuspended(){
  const projects=orderedProjects((state.projects||[]).filter(p=>p.suspended===true));
  const summary=$('#suspended-projects summary'),text=`休止中(${projects.length})`;if(summary.textContent!==text)summary.textContent=text;
- const html=projects.map(p=>{const members=live().filter(a=>a.projectId===p.id);return Array.from({length:Math.max(1,Math.ceil(members.length/PAGE_SIZE))},(_,page)=>`<div class="place-row"><button data-place="project:${esc(p.id)}" data-page="${page}" ${selectedPlace==='project:'+p.id&&selectedPage===page?'aria-current="page"':''}><span>${esc(p.name)}${page?' ('+(page+1)+')':''}</span><span class="place-dots">${members.slice(page*PAGE_SIZE,(page+1)*PAGE_SIZE).map(agentDot).join('')}</span></button><button data-add="project:${esc(p.id)}" aria-label="${esc(p.name)}の操作">…</button></div>`).join('');}).join('')||'<p>休止中のProjectはありません。</p>';
+ const html=projects.map(p=>{const members=scopeAgents('project:'+p.id);return Array.from({length:Math.max(1,Math.ceil(members.length/PAGE_SIZE))},(_,page)=>`<div class="place-row"><button data-place="project:${esc(p.id)}" data-page="${page}" ${selectedPlace==='project:'+p.id&&selectedPage===page?'aria-current="page"':''}><span>${esc(p.name)}${page?' ('+(page+1)+')':''}</span><span class="place-dots">${members.slice(page*PAGE_SIZE,(page+1)*PAGE_SIZE).map(agentDot).join('')}</span></button><button data-add="project:${esc(p.id)}" aria-label="${esc(p.name)}の操作">…</button></div>`).join('');}).join('')||'<p>休止中のProjectはありません。</p>';
  const host=$('#suspended-list');if(host.innerHTML!==html){const active=document.activeElement?.dataset;host.innerHTML=html;if(active?.place||active?.add)[...host.querySelectorAll('button')].find(b=>b.dataset.place===active.place&&b.dataset.add===active.add&&b.dataset.page===active.page)?.focus({preventScroll:true});}
 }
-let projectActionTarget=null;
+let projectActionTarget=null,projectMoveSaving=false;
+function renderProjectOrder(){
+ if(!$('#project-actions-dialog').open||!projectActionTarget)return;
+ renderProjectMove();
+ if(projectMemberOrder.busy())return;
+ const members=scopeAgents('project:'+projectActionTarget.id),root=$('#project-agent-order');
+ const html=members.map(a=>`<button type="button" data-agent-handle data-order-kind="agents" data-order-id="${esc(a.id)}" data-order-project="${esc(projectActionTarget.id)}" data-order-revision="${a.metadataRevision||0}" aria-label="${esc(a.name||'Agent')}を並べ替え" title="${esc(a.name||'Agent')}・ドラッグで並べ替え" aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight">${agentDot(a)}</button>`).join('')||'<p>Agentはまだいません。</p>';
+ if(root.innerHTML!==html){const focused=document.activeElement?.dataset.orderId;root.innerHTML=html;[...root.querySelectorAll('button')].find(b=>b.dataset.orderId===focused)?.focus({preventScroll:true});}
+}
+const projectMemberOrder=bindSidebarOrder($('#project-agent-order'),{save:input=>api('/reorder',input),changed:()=>{void refresh(true);},error:e=>{$('#project-actions-dialog .dialog-error').textContent='並び替えを保存できません: '+e.message;}});
 function openProjectActions(id){
  const p=(state.projects||[]).find(p=>p.id===id);if(!p)return;
  projectActionTarget={...p};
  $('#project-actions-title').textContent=p.name+' の操作';
  $('#project-rename-form').elements.name.value=p.name;
- $('#project-pin').textContent=p.pinned?'先頭固定を解除':'先頭に固定';
  $('#project-suspension').textContent=p.suspended?'再開':'休止する';
  $('#project-suspension-help').textContent=p.name+'：表示整理のみです。Agent・所属・会話・依頼・通知はそのまま継続します。';
  $('#project-actions-dialog .dialog-error').textContent='';
- $('#project-actions-dialog').showModal();
+ $('#project-actions-dialog').showModal();renderProjectOrder();
 }
 function patchProject(patch){
  const target=projectActionTarget;
@@ -558,7 +591,30 @@ function patchProject(patch){
  });
 }
 $('#project-rename-form').onsubmit=e=>{e.preventDefault();patchProject({name:e.currentTarget.elements.name.value});};
-$('#project-pin').onclick=()=>patchProject({pinned:!projectActionTarget.pinned});
+function projectMoveList(){
+ const p=state.projects.find(p=>p.id===projectActionTarget?.id);
+ return p?orderedProjects(state.projects.filter(x=>!!x.suspended===!!p.suspended)):[];
+}
+function renderProjectMove(){
+ const list=projectMoveList(),index=list.findIndex(p=>p.id===projectActionTarget?.id);
+ $('#project-move-up').disabled=projectMoveSaving||index<=0;
+ $('#project-move-down').disabled=projectMoveSaving||index<0||index>=list.length-1;
+}
+async function moveProject(direction){
+ if(projectMoveSaving)return;
+ const target=projectActionTarget,list=projectMoveList(),index=list.findIndex(p=>p.id===target?.id),source=list[index],neighbor=list[index+direction];
+ if(!source||!neighbor)return;
+ projectMoveSaving=true;renderProjectMove();$('#project-actions-dialog .dialog-error').textContent='';
+ try{
+  await api('/reorder',{kind:'projects',id:source.id,targetId:neighbor.id,position:direction<0?'before':'after',revision:source.revision,targetRevision:neighbor.revision});
+  const synced=await refresh(true);
+  // Preserve a genuine stale rename conflict, but allow edits after our own move.
+  if(synced&&projectActionTarget===target&&target.revision===source.revision)target.revision=state.projects.find(p=>p.id===target.id)?.revision??target.revision;
+ }catch(e){if(projectActionTarget===target)$('#project-actions-dialog .dialog-error').textContent='並び替えを保存できません: '+e.message;await refresh(true);}
+ finally{projectMoveSaving=false;if($('#project-actions-dialog').open)renderProjectMove();}
+}
+$('#project-move-up').onclick=()=>moveProject(-1);
+$('#project-move-down').onclick=()=>moveProject(1);
 $('#project-suspension').onclick=()=>patchProject({suspended:!projectActionTarget.suspended});
 $('#project-add-agent').onclick=()=>{
  if(!state.workshops.length){$('#project-actions-dialog .dialog-error').textContent='利用できる工房がありません。右上の設定から工房を登録してください。';return;}

@@ -44,3 +44,16 @@ test('invalid or removed saved scopes and virtual groups safely fall back to all
  await page.reload();await expect(page.locator('#board-title')).toHaveText('プロジェクト名未取得');await expect(page.locator('[data-place=all]')).toHaveCount(1);
  await page.evaluate(()=>localStorage.setItem('ai-village-sidebar-v1','null'));await page.reload();await expect(page.locator('[data-mode=projects]')).toHaveAttribute('aria-pressed','true');await expect(page.locator('#board-title')).toHaveText('プロジェクト名未取得');
 });
+
+test('configured project/member order controls sidebar, cards and page boundaries after reload',async({page})=>{
+ await page.addInitScript(()=>localStorage.setItem('village-display',JSON.stringify({projectView:'split'})));
+ const state=fixture();state.projects[1].displayOrder=-10;state.agents[10].displayOrder=-10;
+ await mock(page,state);
+ await expect(page.locator('#places [data-place^="project:"]').first()).toHaveAttribute('data-place','project:q');
+ await page.locator('[data-place="project:p"][data-page="0"]').click();
+ await expect(page.locator('#agent-a10')).toBeVisible();await expect(page.locator('#agent-a10')).toHaveCSS('order','0');
+ await expect(page.locator('#agent-a8')).not.toBeVisible();
+ await expect(page.locator('[data-place="project:p"][data-page="0"] [data-agent-dot]').first()).toHaveAttribute('data-agent-dot','a10');
+ await page.reload();await expect(page.locator('#agent-a10')).toHaveCSS('order','0');
+ await page.locator('[data-place="project:p"][data-page="1"]').click();await expect(page.locator('#agent-a8')).toBeVisible();
+});

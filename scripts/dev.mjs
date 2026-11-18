@@ -86,7 +86,7 @@ const handleRequest = async (req, res) => {
           const action=humanAction[1],flow=direct.flow;
           return json(res,200,action==='cancel-queued'?await flow.cancelQueued(input):action==='retry'||action==='resume'?await flow.continue(input,action==='retry'):await flow[action](input));
         }
-        const requestAction=pathname.match(/^\/api\/direct\/requests\/(get|results|delegate|finish)$/);
+        const requestAction=pathname.match(/^\/api\/direct\/requests\/(get|results|delegate|respond|finish)$/);
         if(req.method==='POST'&&requestAction){
           const action=requestAction[1],flow=direct.flow;
           const result=action==='cancel-queued'?await flow.cancelQueued(input):action==='get'?flow.get(input.humanRequestId):action==='results'?flow.results(input.humanRequestId,input.workId):action==='retry'||action==='resume'?await flow.continue(input,action==='retry'):await flow[action](input);
@@ -96,6 +96,7 @@ const handleRequest = async (req, res) => {
         if(req.method==='POST' && pathname==='/api/direct/workshops')return json(res,201,await direct.putWorkshop(input));
         const workshop=pathname.match(/^\/api\/direct\/workshops\/([0-9a-f-]{36})$/);
         if(req.method==='PUT' && workshop)return json(res,200,await direct.putWorkshop(input,workshop[1]));
+        if(req.method==='POST' && pathname==='/api/direct/reorder')return json(res,200,await direct.reorder(input));
         if(req.method==='POST' && pathname==='/api/direct/projects')return json(res,201,await direct.putProject(input));
         if(deletion&&req.method==='POST'&&deletion[2]==='delete')return json(res,200,await direct.deleteProject(deletion[1],input));
         const project=pathname.match(/^\/api\/direct\/projects\/([0-9a-f-]{36})$/);

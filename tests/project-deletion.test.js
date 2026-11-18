@@ -51,7 +51,7 @@ test('absent tab without captured processes never proves cleanup; close response
 });
 test('deletion intent suppresses pending finish success and retains formal request graph',async t=>{
  const f=await fixture(t),q={id:'q',rootWorkId:'work',status:'finalizing',revision:0,ticket:{state:'available'},works:[{id:'work',agentId:'a',state:'active',currentRunId:'history',runIds:['history'],finish:{status:'pending',runId:'history'}}],inbox:[]};f.d.data.requests.push(q);f.d.data.runs[0].acceptance='accepted';f.d.data.runs[0].humanRequestId='q';
- fixtureModels(f.d.data,{refresh:true});f.offline('b');await f.d.deleteProject(f.p.id,f.input());await f.d.flow.settle();await f.d.flow.notifications();assert.equal(testView(q).needsReview,true);assert.notEqual(testView(q).status,'completed');assert.equal(q.requestModel.state.kind,'active');assert.equal(f.d.flow.get('q').runs[0].output,'保持する履歴');
+ fixtureModels(f.d.data,{refresh:true});f.offline('b');await f.d.deleteProject(f.p.id,f.input());await f.d.flow.settle();await f.d.flow.notifications();assert.equal(testView(q).needsReview,true);assert.notEqual(testView(q).status,'completed');assert.equal(q.requestGraph.nodes[0].state.kind,'active');assert.equal(f.d.flow.get('q').runs[0].output,'保持する履歴');
 });
 test('intent blocks dispatch already waiting for observation and survives interrupted deletion restart',async t=>{
  const f=await fixture(t);let observed;const observing=new Promise(r=>observed=r);let release;const gate=new Promise(r=>release=r);
@@ -64,7 +64,7 @@ test('intent blocks dispatch already waiting for observation and survives interr
 });
 test('unconfirmed offline Agent does not become a confirmed terminated work or success',async t=>{
  const f=await fixture(t);const q={id:'q',rootWorkId:'work',status:'finalizing',revision:0,ticket:{state:'available'},works:[{id:'work',agentId:'a',state:'active',currentRunId:'history',runIds:['history'],finish:{status:'pending',runId:'history'}}],inbox:[]};f.d.data.requests.push(q);f.d.data.runs[0].acceptance='accepted';f.d.data.runs[0].humanRequestId='q';fixtureModels(f.d.data,{refresh:true});f.offline('a');
- await f.d.deleteProject(f.p.id,f.input());await f.d.flow.settle();assert.equal(testView(q).needsReview,true);assert.equal(testView(q).status,'active');assert.equal(q.requestModel.state.kind,'active');
+ await f.d.deleteProject(f.p.id,f.input());await f.d.flow.settle();assert.equal(testView(q).needsReview,true);assert.equal(testView(q).status,'active');assert.equal(q.requestGraph.nodes[0].state.kind,'active');
  const calls=f.calls.length;await f.d.observe(f.d.agent('b'));assert.equal(testView(f.d.agent('b')).state,'terminated');assert.equal(f.calls.length,calls);
 });
 test('empty Project deletion is idempotent and failed process verification never deletes a Project',async t=>{

@@ -1,9 +1,11 @@
+import {workDTO} from './request-compatibility.mjs';
+import {applyGraph,newNode,steps,rootNode} from './unified-requests.mjs';
+import {node} from './state/requests.ts';
 import {quarantinedRun} from './request-integrity.mjs';
 import {projectRequest,projectRun} from './state-projection.mjs';
 import {agentControls} from './agent-lifecycle.mjs';
-import {bindRequest,requestChange,observeRequest,requestStatus,resultEntries} from './request-lifecycle.mjs';
-import {nextSteps} from './state/progress.ts';
-import {runState,accepted,initializeSupplement,initializeRun,initializeRetry,changeRun,unconfirmed} from './run-lifecycle.mjs';
+import {observeRequest,requestStatus,resultEntries} from './request-lifecycle.mjs';
+import {runState,accepted,initializeSupplement,initializeRun,initializeRetry,changeRun} from './run-lifecycle.mjs';
 import {canCancelQueued} from '../src/queued-run.js';
 import {terminalBoundary,correlate} from './runtime-events.mjs';
 import {normalizeTravelContexts,sameTravelContexts} from '../src/travel-context.js';
@@ -18,7 +20,6 @@ export class RequestFlow {
  constructor(direct){this.d=direct;}
  init(){
   this.d.data.requests ||= [];
-  for(const q of this.d.data.requests)if(!q.integrity)bindRequest(this.d.data,q);
   // Never mint tickets or replay notifications for historical/untracked turns.
   for(const r of this.d.data.runs)if(!r.humanRequestId)r.notificationPolicy ||= 'legacy-untracked';
   for(const q of this.d.data.requests)if(!q.integrity&&q.notification?.status==='attempting')q.notification={...q.notification,status:'delivery_unknown',reason:'restart-during-delivery'};
@@ -34,26 +35,23 @@ export class RequestFlow {
  reportPrompt(q){return this.d.rules.reportData(q,this.run(q.report.sourceRunId),this.d.data.runs.filter(r=>r.humanRequestId===q.id&&r.origin==='steering'&&!r.queueCancelledAt).map(r=>r.instruction));}
  get requests(){return this.d.data.requests;}
  root(id){return this.requests.find(q=>q.id===id)||fail('依頼がありません',404);}
- work(q,id){if(q.integrity)fail('依頼の参照不整合を修復してください: '+q.integrity.reasons.join(', '));return q.works.find(w=>w.id===id)||fail('この依頼の作業ではありません',404);}
+ work(q,id){if(q.integrity)fail('依頼の参照不整合を修復してください: '+q.integrity.reasons.join(', '));return q.requestGraph.nodes.find(w=>w.id===id)||fail('この依頼の作業ではありません',404);}
  run(id){return this.d.data.runs.find(r=>r.id===id);}
  active(q){if(requestStatus(q)!=='active')fail('依頼は受付中ではありません: '+requestStatus(q));}
  version(q,revision){if(!Number.isInteger(revision)||revision!==q.revision)fail('依頼が更新されています。requests getでrevisionを再取得してください');}
- list(agentId){return structuredClone(this.requests.filter(q=>!agentId||q.works?.some?.(w=>w.agentId===agentId)).map(q=>projectRequest(this.d.data,q)));}
+ list(agentId){return structuredClone(this.requests.filter(q=>!agentId||q.requestGraph?.nodes?.some?.(w=>w.assignee===agentId)).map(q=>projectRequest(this.d.data,q)));}
  get(id){const q=this.root(id);return structuredClone({...projectRequest(this.d.data,q),runs:this.d.data.runs.filter(r=>r.humanRequestId===id).map(projectRun)});}
  results(id,workId){const q=this.root(id);this.work(q,workId);return structuredClone(resultEntries(this.d.data,q).filter(e=>e.parentWorkId===workId).map(e=>({...e,output:this.run(e.resultRunId)?.output||'',error:this.run(e.resultRunId)?.error||null})));}
  enqueue(q,w,text,op,origin,extra={}){
-  const previous=this.run(w.currentRunId)||(w.parentWorkId?this.run(this.work(q,w.parentWorkId).currentRunId):null);
-  const r={id:randomUUID(),requestId:runKey(q.id,op),agentId:w.agentId,humanRequestId:q.id,workId:w.id,origin,instruction:text,travelContexts:structuredClone(previous?.contextTravelContexts||previous?.travelContexts||q.travelContexts||[]),attachments:structuredClone(previous?.contextAttachments||previous?.attachments||q.attachments||[]),createdAt:now(),achievement:'unverified',recoveryPolicy:1,...extra};
+  const previous=this.run(w.currentRunId)||(w.parentId?this.run(this.work(q,w.parentId).currentRunId):null);
+  const r={id:randomUUID(),requestId:runKey(q.id,op),agentId:w.assignee,humanRequestId:q.id,workId:w.id,origin,instruction:text,travelContexts:structuredClone(previous?.contextTravelContexts||previous?.travelContexts||q.travelContexts||[]),attachments:structuredClone(previous?.contextAttachments||previous?.attachments||q.attachments||[]),createdAt:now(),achievement:'unverified',recoveryPolicy:1,...extra};
   if(extra.steerTarget)initializeSupplement(r,this.run(extra.steerTarget.runId));
-  else if(extra.retryFrom)initializeRetry(r,this.run(extra.retryFrom),{actor:extra.autoRecoveryFrom?'program':extra.legacyAgentRunId?'agent':'human',legacyAgentRunId:extra.legacyAgentRunId,leafRoot:!w.parentWorkId&&!q.works.some(c=>c.parentWorkId===w.id),boundaryConfirmed:!!extra.autoRecoveryFrom,agentIdle:!!extra.autoRecoveryFrom});
-  else initializeRun(r,{actor:r.phase==='report'||origin==='result'?'program':origin==='delegation'||origin==='agent'||extra.legacyAgentRunId?'agent':'human',parentRunId:w.parentWorkId?this.work(q,w.parentWorkId).currentRunId:null,resultOf:extra.resultId||null,recipientRunId:previous?.id||null});
-  if(q.requestModel){
-   // Result/steering/continuation attempts supersede the recipient's current response.
-   if(previous&&previous.workId===w.id&&r.phase!=='report'&&!r.runModel.retryOf)r.runModel={...r.runModel,retryOf:previous.id};
-   requestChange(q,{type:'append-run',actor:r.runModel.createdBy,run:r.runModel,resolveReview:['retry','continuation'].includes(origin)});
-  }
-  this.d.data.runs.push(r);w.runIds.push(r.id);w.currentRunId=r.id;
-  if(!q.requestModel)bindRequest(this.d.data,q);
+  else if(extra.retryFrom)initializeRetry(r,this.run(extra.retryFrom),{actor:extra.autoRecoveryFrom?'program':extra.legacyAgentRunId?'agent':'human',legacyAgentRunId:extra.legacyAgentRunId,leafRoot:!w.parentId&&!q.requestGraph.nodes.some(c=>c.parentId===w.id),boundaryConfirmed:!!extra.autoRecoveryFrom,agentIdle:!!extra.autoRecoveryFrom});
+  else initializeRun(r,{actor:r.phase==='report'||origin==='result'?'program':origin==='delegation'||origin==='agent'||extra.legacyAgentRunId?'agent':'human',parentRunId:w.parentId?this.work(q,w.parentId).currentRunId:null,resultOf:extra.resultId||null,recipientRunId:previous?.id||null});
+  if(previous&&previous.workId===w.id&&r.phase!=='report'&&!r.runModel.retryOf)r.runModel={...r.runModel,retryOf:previous.id};
+  this.d.data.runs.push(r);
+  if(!node(q.requestGraph,w.id)){w.runIds.push(r.id);w.currentRunId=r.id;w.runAgents[r.id]=w.assignee;applyGraph(this.d.data,q,{type:'add',actor:w.parentId?'agent':'human',request:w});}
+  else applyGraph(this.d.data,q,{type:'attempt',actor:r.runModel.createdBy,requestId:w.id,runId:r.id,report:r.phase==='report',resolveReview:r.runModel.createdBy==='human'&&['retry','continuation'].includes(origin)});
   return r;
  }
  context(r){const q=this.root(r.humanRequestId),w=this.work(q,r.workId);return this.d.rules.dynamic(r)+this.d.rules.context({humanRequestId:q.id,workId:w.id,runId:r.id,origin:r.origin,phase:r.phase||'work'},this.d.agent(r.agentId).inputEnvelope?.mode==='startup-v1');}
@@ -87,12 +85,12 @@ export class RequestFlow {
     const previous=this.run(a.steerTarget.runId);let q=this.root(previous.humanRequestId),w=this.work(q,previous.workId);
     if(requestStatus(q)!=='active'){
      if(a.provider==='claude')fail('補足対象の依頼は受付中ではありません');
-     q={reportMode:this.reportStatus().enabled,id:randomUUID(),clientRequestId:input.requestId,instruction:input.instruction,travelContexts,attachments,originAgentId:agentId,finalAgentId:agentId,revision:0,createdAt:now(),works:[]};
-     w={id:randomUUID(),parentWorkId:null,agentId,runIds:[]};q.rootWorkId=w.id;q.works.push(w);this.requests.push(q);
+     q={reportMode:this.reportStatus().enabled,id:randomUUID(),clientRequestId:input.requestId,instruction:input.instruction,travelContexts,attachments,originAgentId:agentId,finalAgentId:agentId,revision:0,createdAt:now(),requestGraph:{version:3,nodes:[],operations:[]}};
+     w=newNode(q,{id:randomUUID(),assignee:agentId});q.rootWorkId=w.id;q.requestGraph.rootId=w.id;this.requests.push(q);
     }
 
     // A successor keeps the one human request/ticket and invalidates any old finish.
-    if(q.requestModel)this.active(q);q.revision++;
+    if(q.requestGraph.nodes.length)this.active(q);q.revision++;
 
     const r=this.enqueue(q,w,input.instruction,'steer:'+input.requestId,'steering',{...(q.report&&previous.phase==='report'?{phase:'report'}:{}),requestId:input.requestId,steeringProvider:a.provider,steerTarget:structuredClone(a.steerTarget),priorInputs:snapshot.inputs.filter(i=>i.turnId===previous.turnId).map(({id,offset})=>({id,offset})),travelContexts,attachments,contextAttachments:[...new Map([...(previous.contextAttachments||previous.attachments||[]),...attachments].map(a=>[a.id,a])).values()],contextTravelContexts:structuredClone(travelContexts.length?travelContexts:previous.contextTravelContexts||previous.travelContexts||[])});
     q.initialRunId ||= r.id;changeRun(previous,{type:'supersede',actor:'human',successorId:r.id});
@@ -106,8 +104,8 @@ export class RequestFlow {
    if(q){if(q.originAgentId!==agentId||q.instruction!==input.instruction||!sameTravelContexts(q.travelContexts,travelContexts)||JSON.stringify((q.attachments||[]).map(a=>a.id))!==JSON.stringify(attachments.map(a=>a.id)))fail('requestIdの再利用です');return this.run(q.initialRunId);}
    const a=this.d.writableAgent(this.d.agent(agentId));if(!a.tabId||['terminated','stopping'].includes(agentControls(a).state))fail('Agentは送信可能ではありません');
    const r=await this.d.persist(async()=>{
-   q={reportMode:this.reportStatus().enabled,id:randomUUID(),clientRequestId:input.requestId,instruction:input.instruction,travelContexts,attachments,originAgentId:agentId,finalAgentId:agentId,revision:0,createdAt:now(),works:[]};
-   const w={id:randomUUID(),parentWorkId:null,agentId,runIds:[]};q.rootWorkId=w.id;q.works.push(w);this.requests.push(q);
+   q={reportMode:this.reportStatus().enabled,id:randomUUID(),clientRequestId:input.requestId,instruction:input.instruction,travelContexts,attachments,originAgentId:agentId,finalAgentId:agentId,revision:0,createdAt:now(),requestGraph:{version:3,nodes:[],operations:[]}};
+   const w=newNode(q,{id:randomUUID(),assignee:agentId});q.rootWorkId=w.id;q.requestGraph.rootId=w.id;this.requests.push(q);
    const r=this.enqueue(q,w,input.instruction,'human',originKind);r.requestId=input.requestId;q.initialRunId=r.id;
    await this.d.save();return r;
    });
@@ -122,8 +120,8 @@ export class RequestFlow {
  }
  async actor(q,w,runId){
   if(w.currentRunId!==runId)fail('現在の作業runを指定してください');
-  const r=this.run(runId);if(!r||r.humanRequestId!==q.id||r.workId!==w.id||r.agentId!==w.agentId)fail('runの所属が一致しません');
-  const a=this.d.writableAgent(this.d.agent(w.agentId));
+  const r=this.run(runId);if(!r||r.humanRequestId!==q.id||r.workId!==w.id||r.agentId!==w.assignee)fail('runの所属が一致しません');
+  const a=this.d.writableAgent(this.d.agent(w.assignee));
   if(!terminal(r)&&!['terminated','stopping'].includes(agentControls(a).state))await this.d.locked(a.id,()=>this.d.observe(a));
   this.d.writableAgent(a);
   if(!accepted(r)||!r.inputId||!r.turnId||!r.sessionId)fail('native prompt-submit/turnの受付をまだ照合できません');
@@ -132,31 +130,43 @@ export class RequestFlow {
  }
  async delegate(x){return this.d.locked('request-graph',async()=>{
   const q=this.root(x.humanRequestId),parent=this.work(q,x.parentWorkId);operation(x.operationId);instruction(x.instruction);
-  const old=q.works.find(w=>w.operationId===x.operationId);
-  if(old){if(old.parentWorkId!==parent.id||old.agentId!==x.agentId||old.instruction!==x.instruction)fail('operationIdの再利用です');return structuredClone(old);}
+  const old=q.requestGraph.nodes.find(w=>w.metadata.operationId===x.operationId);
+  if(old){if(old.parentId!==parent.id||old.runAgents[old.runIds[0]]!==x.agentId||old.metadata.instruction!==x.instruction||(old.metadata.actorRunId||this.run(old.runIds[0]).runModel.parentRunId)!==x.actorRunId||(old.metadata.replacesRequestId||null)!==(x.replacesRequestId||null))fail('operationIdの再利用です');return workDTO(old);}
+  if(q.requestGraph.operations.some(o=>o.id===x.operationId))fail('operationIdの再利用です');
   this.active(q);if(!['sent','running'].includes(this.run(parent.currentRunId)?.runModel.state.kind))fail('親作業は委任受付中ではありません');
   if(q.report)fail('報告工程では委任できません');
   await this.actor(q,parent,x.actorRunId);this.active(q);if(this.run(x.actorRunId).runModel?.state.kind!=='running')fail('委任元は実行中ではありません');const target=this.d.writableAgent(this.d.agent(x.agentId));if(!target.tabId||['terminated','stopping'].includes(agentControls(target).state))fail('宛先Agentを利用できません');
-  for(let ancestor=parent;ancestor;ancestor=ancestor.parentWorkId?this.work(q,ancestor.parentWorkId):null)if(ancestor.agentId===x.agentId)fail('祖先と同じAgentへの循環委任はできません');
+  for(let ancestor=parent;ancestor;ancestor=ancestor.parentId?this.work(q,ancestor.parentId):null)if(ancestor.assignee===x.agentId)fail('祖先と同じAgentへの循環委任はできません');
   return this.d.persist(async()=>{
   observeRequest(this.d.data,q);this.active(q);
-  const w={id:randomUUID(),parentWorkId:parent.id,agentId:x.agentId,operationId:x.operationId,instruction:x.instruction,runIds:[]};q.works.push(w);q.revision++;
-  this.enqueue(q,w,x.instruction,'delegate:'+x.operationId,'delegation');await this.d.save();return structuredClone(w);
+  const w=newNode(q,{id:randomUUID(),parentId:parent.id,assignee:x.agentId,metadata:{actorRunId:x.actorRunId,operationId:x.operationId,instruction:x.instruction,...(x.replacesRequestId?{replacesRequestId:x.replacesRequestId}:{})}});q.revision++;
+  this.enqueue(q,w,x.instruction,'delegate:'+x.operationId,'delegation');if(x.replacesRequestId)applyGraph(this.d.data,q,{type:'replace',actor:'agent',requestId:parent.id,childId:x.replacesRequestId,replacementId:w.id});q.requestGraph.operations.push({id:x.operationId,payload:JSON.stringify({type:'delegate',requestId:parent.id,runId:x.actorRunId,childId:w.id})});await this.d.save();return workDTO(this.work(q,w.id));
   });
  });}
- async finish(x){return this.d.locked('request-graph',()=>this.d.persist(async()=>{
+ async respond(x){return this.respondOrFinish(x,false);}
+ async finish(x){return this.respondOrFinish(x,true);}
+ async respondOrFinish(x,finish){return this.d.locked('request-graph',async()=>{
   const q=this.root(x.humanRequestId),w=this.work(q,x.workId);operation(x.operationId);
   const r=this.run(x.runId);if(!r||r.humanRequestId!==q.id||r.workId!==w.id)fail('runの所属が一致しません');
-  const old=q.requestModel.declarations.find(d=>d.id===x.operationId);
-  if(old){if(old.runId!==x.runId)fail('operationIdの再利用です');return structuredClone(w);}
-  // Record the claim even before native acceptance, after a decision, or with an old revision.
-  requestChange(q,{type:'declare-complete',actor:'agent',id:x.operationId,runId:x.runId,at:Date.now()});
-  q.revision++;
-  await this.d.save();await this.settle();return structuredClone(w);
- }));}
+  if(x.results!==undefined&&(!Array.isArray(x.results)||x.results.length>100||x.results.some(s=>!s||typeof s.requestId!=='string'||typeof s.resultId!=='string'||!Number.isInteger(s.version)||!['accept','rework'].includes(s.decision))))fail('resultsにはrequestId/resultId/version/decisionを指定してください',400);
+  const old=q.requestGraph.operations.find(o=>o.id===x.operationId);
+  if(old){const prior=JSON.parse(old.acceptedPayload||old.payload);if(x.results===undefined&&!old.allowOmittedResults)fail('resultsを明示してください。対応申告なしはresults:[]です',400);if(prior.runId!==r.id||prior.type!==(finish?'finish':'respond')||(x.results!==undefined&&JSON.stringify(prior.results)!==JSON.stringify(x.results)))fail('operationIdの再利用です');return workDTO(this.work(q,w.id));}
+  if(!Array.isArray(x.results))fail('resultsを明示してください。requests resultsで取得しrequestId/resultId/version/decisionを指定。対応申告なしはresults:[]です',400);
+  const reserved=this.run(w.currentRunId),reservation=reserved?.runModel.phase==='result'&&reserved.runModel.state.kind==='queued'&&reserved.runModel.retryOf===r.id;
+  if(!finish||x.results?.length)await this.actor(q,reservation?{...w,currentRunId:r.id}:w,x.runId);
+  return this.d.persist(async()=>{
+   observeRequest(this.d.data,q);
+   applyGraph(this.d.data,q,{type:finish?'finish':'respond',actor:'agent',requestId:w.id,runId:r.id,operationId:x.operationId,results:x.results,at:Date.now()});
+   // Reservation may be cancelled; an external send is never rewritten as unsent.
+   for(const delivery of this.d.data.runs.filter(d=>d.humanRequestId===q.id&&d.workId===w.id&&d.runModel.phase==='result'&&d.runModel.state.kind==='queued')){
+    if(resultEntries(this.d.data,q).some(e=>e.id===delivery.runModel.resultOf&&e.handled)){changeRun(delivery,{type:'cancel-result-reservation',actor:'program',resultId:delivery.runModel.resultOf,reason:'handled'});delivery.queueCancelledAt=now();delivery.error='result-handled-before-dispatch';}
+   }
+   q.revision++;await this.d.save();await this.settle();return workDTO(this.work(q,w.id));
+  });
+ });}
  async complete(x){return this.d.locked('request-graph',()=>this.d.persist(async()=>{
   const q=this.root(x.humanRequestId);if(q.integrity)fail('依頼の参照不整合を修復してください');this.version(q,x.revision);
-  requestChange(q,{type:'complete-as-human',actor:'human',reason:x.reason||'人間が成果を確認して完了扱い'});
+  applyGraph(this.d.data,q,{type:'complete',actor:'human',requestId:q.rootWorkId,reason:x.reason||'人間が成果を確認して完了扱い'});
   q.revision++;await this.settle();await this.d.save();return this.get(q.id);
  }));}
  async continue(x,retry=false){return this.d.locked('request-graph',()=>this.continueLocked(x,retry));}
@@ -165,13 +175,14 @@ export class RequestFlow {
   const key=runKey(q.id,(retry?'retry:':'resume:')+x.operationId),old=this.d.data.runs.find(r=>r.requestId===key);
   if(old){if(old.workId!==w.id||(old.retryInstruction||old.instruction)!==x.instruction)fail('operationIdの再利用です');return old;}
   this.active(q);this.version(q,x.revision);
-  if(q.report&&w.parentWorkId)fail('報告工程では子作業を再開できません');
+  if(q.report&&w.parentId)fail('報告工程では子作業を再開できません');
   const last=this.run(w.currentRunId);
   if(retry?!['failed','interrupted','terminated'].includes((last&&runState(last))):(last&&runState(last))!=='completed')fail('未受付・不明・実行中の入力は再送できません。resumeは途中応答完了後、retryは失敗/中断後です');
 
-  this.d.writableAgent(this.d.agent(w.agentId));
-  delete w.latestResultId;
-  const r=this.enqueue(q,w,q.report&&!w.parentWorkId?this.reportPrompt(q):x.instruction,(retry?'retry:':'resume:')+x.operationId,retry?'retry':'continuation',{...extra,...(retry?{retryFrom:last.id}:{}),...(q.report&&!w.parentWorkId?{phase:'report',retryInstruction:x.instruction}:{} )});q.revision++;await this.d.save();return r;
+  if(x.agentId&&x.agentId!==w.assignee){for(let ancestor=w.parentId?this.work(q,w.parentId):null;ancestor;ancestor=ancestor.parentId?this.work(q,ancestor.parentId):null)if(ancestor.assignee===x.agentId)fail('祖先Agentへの担当交代はできません');for(const candidate of q.requestGraph.nodes.filter(c=>c.assignee===x.agentId)){let descendant=candidate;while(descendant.parentId&&descendant.parentId!==w.id)descendant=this.work(q,descendant.parentId);if(descendant.parentId===w.id)fail('子孫Agentへの担当交代はできません');}const target=this.d.writableAgent(this.d.agent(x.agentId));if(!target.tabId||['terminated','stopping'].includes(agentControls(target).state))fail('交代先Agentを利用できません');applyGraph(this.d.data,q,{type:'assign',actor:'human',requestId:w.id,agentId:x.agentId});if(!w.parentId)q.finalAgentId=x.agentId;}
+  this.d.writableAgent(this.d.agent(w.assignee));
+  delete w.metadata.latestResultId;
+  const r=this.enqueue(q,w,q.report&&!w.parentId?this.reportPrompt(q):x.instruction,(retry?'retry:':'resume:')+x.operationId,retry?'retry':'continuation',{...extra,...(retry?{retryFrom:last.id}:{}),...(q.report&&!w.parentId?{phase:'report',retryInstruction:x.instruction}:{} )});q.revision++;await this.d.save();return r;
  });}
  async cancelQueued(x){return this.d.locked('request-graph',async()=>{
   const r=this.run(x.runId);if(!r||r.agentId!==x.agentId||r.humanRequestId!==x.humanRequestId)fail('対象Agent・依頼・runが一致しません',404);
@@ -185,8 +196,8 @@ export class RequestFlow {
   if(previous){
    // The supplement never reached the provider. Restore ownership of the
    // ongoing turn, but never restore an invalidated finish declaration.
-   changeRun(previous,{type:'restore',actor:'human',successorId:r.id});w.currentRunId=previous.id;observeRequest(this.d.data,q);if(!w.parentWorkId)requestChange(q,{type:'restore-root',actor:'human',id:previous.id});
-  }else{requestChange(q,{type:'withdraw',actor:'human',reason:'未送信の依頼を取り下げ'});q.cancelledAt=now();}
+   changeRun(previous,{type:'restore',actor:'human',successorId:r.id});w.currentRunId=previous.id;observeRequest(this.d.data,q);
+  }else{applyGraph(this.d.data,q,{type:'withdraw',actor:'human',requestId:w.id,reason:'未送信の依頼を取り下げ'});if(!w.parentId)q.cancelledAt=now();}
   q.revision++;
   await this.d.save();
   return structuredClone(r);
@@ -194,7 +205,7 @@ export class RequestFlow {
  async cancel(x){return this.d.locked('request-graph',()=>this.d.persist(async()=>{
   const q=this.root(x.humanRequestId);if(q.integrity)fail('依頼の参照不整合を修復してください');if(requestStatus(q)==='cancelled')return this.get(q.id);
   this.version(q,x.revision);if(requestStatus(q)==='completed')fail('完了した依頼はキャンセルできません');
-  requestChange(q,{type:'withdraw',actor:'human',reason:x.reason||'人間が取り下げ'});q.cancelledAt=now();q.revision++;
+  applyGraph(this.d.data,q,{type:'withdraw',actor:'human',requestId:q.rootWorkId,reason:x.reason||'人間が取り下げ'});q.cancelledAt=now();q.revision++;
   for(const r of this.d.data.runs.filter(r=>r.humanRequestId===q.id&&runState(r)==='queued')){changeRun(r,{type:'cancel',actor:'human'});r.error='request-cancelled-before-dispatch';}
   for(const r of this.d.data.runs.filter(r=>r.humanRequestId===q.id&&['sent','running'].includes(r.runModel?.state.kind)))changeRun(r,{type:'close-tracking',actor:'human',reason:'request-cancelled'});
   await this.d.save();return this.get(q.id);
@@ -207,14 +218,14 @@ export class RequestFlow {
    const before=JSON.stringify(q);
    observeRequest(this.d.data,q);
    if(requestStatus(q)==='active'){
-    for(const step of nextSteps(q.requestModel)){
+    for(const step of steps(this.d.data,q)){
      const child=step.type==='deliver-result'?this.run(step.childRunId):null;
-     const target=child?this.work(q,this.work(q,child.workId).parentWorkId):this.work(q,q.rootWorkId);
-     const agent=this.d.data.agents.find(a=>a.id===target.agentId);
-     if(!agent||this.d.agentDeleting(agent)||['terminated','stopping'].includes(agentControls(agent).state))requestChange(q,{type:'review',actor:'program',reason:'next-step-agent-unavailable'});
+     const target=child?this.work(q,this.work(q,child.workId).parentId):this.work(q,q.rootWorkId);
+     const agent=this.d.data.agents.find(a=>a.id===target.assignee);
+     if(!agent||this.d.agentDeleting(agent)||['terminated','stopping'].includes(agentControls(agent).state))applyGraph(this.d.data,q,{type:'review',actor:'program',requestId:target.id,reason:'next-step-agent-unavailable'});
     }
-    if(nextSteps(q.requestModel).some(step=>step.type==='prepare-report')){
-     const w=this.work(q,q.rootWorkId),r=this.run(q.requestModel.rootRunId);
+    if(steps(this.d.data,q).some(step=>step.type==='prepare-report')){
+     const w=this.work(q,q.rootWorkId),r=this.run(rootNode(q).currentRunId);
      q.report={sourceRunId:r.id,createdAt:now()};
 
      const report=this.enqueue(q,w,this.reportPrompt(q),'final-report','report',{phase:'report',attachments:[],travelContexts:[]});
@@ -222,7 +233,7 @@ export class RequestFlow {
     }
    }
    if(requestStatus(q)==='completed'&&!q.completedAt){
-    q.completedAt=now();q.finalRunId=q.requestModel.reportRunId||q.requestModel.rootRunId;
+    q.completedAt=now();q.finalRunId=rootNode(q).reportRunId||rootNode(q).currentRunId;
 
     // Stable delivery key; historical notification records are never reset.
     q.notification ||= {status:'pending',messageId:'request:'+q.id};
@@ -240,35 +251,35 @@ export class RequestFlow {
  recoveryPrompt(q,w){return this.d.rules.recovery(q,w);}
  async recover(){
   // Read-only host observations stay outside the short persistence boundary.
-  for(const q of this.requests.filter(q=>requestStatus(q)==='active'))for(const w of q.works){
+  for(const q of this.requests.filter(q=>requestStatus(q)==='active'))for(const w of q.requestGraph.nodes){
    const r=this.run(w.currentRunId);if((r&&runState(r))!=='failed'||r.recovery?.status==='enqueued')continue;
    let reason=r.phase==='report'?'報告生成に失敗しました。元回答は非表示です。確認して報告のみ再試行してください':r.steerTarget?'補足を含む作業は内容・副作用を確認して手動で復旧してください':r.recoveryPolicy!==1?'このrunは自動復旧導入前です':r.errorCode!=='server_overloaded'?'自動再試行対象外のエラーです':
     !accepted(r)||!r.inputId||!r.sessionId||!r.turnId?'受付照合が不完全です':
-    w.parentWorkId||q.works.some(c=>c.parentWorkId===w.id)?'子作業または委任元との確認が必要です':null;
-   const budget=w.autoRetry;
+    w.parentId||q.requestGraph.nodes.some(c=>c.parentId===w.id)?'子作業または委任元との確認が必要です':null;
+   const budget=w.metadata.autoRetry;
    if(!reason&&budget&&(budget.attempts>=2||Date.now()-budget.firstFailureAt>=600000))reason='自動再試行の上限（2回・10分）に達しました';
    if(reason){if(r.recovery?.status!=='manual'||r.recovery.reason!==reason)await this.d.persist(async()=>{r.recovery={status:'manual',reason};await this.d.save();});continue;}
-   if(!w.autoRetry||!r.recovery)await this.d.persist(async()=>{
-    w.autoRetry ||= {attempts:0,firstFailureAt:Date.now()};
-    r.recovery ||= {status:'scheduled',nextAt:Date.now()+[30000,120000][w.autoRetry.attempts]};await this.d.save();
+   if(!w.metadata.autoRetry||!r.recovery)await this.d.persist(async()=>{
+    w.metadata.autoRetry ||= {attempts:0,firstFailureAt:Date.now()};
+    r.recovery ||= {status:'scheduled',nextAt:Date.now()+[30000,120000][w.metadata.autoRetry.attempts]};await this.d.save();
    });
    if(r.recovery.status!=='scheduled'||r.recovery.nextAt>Date.now())continue;
-   const a=this.d.agent(w.agentId),snapshot=await this.d.locked(a.id,()=>this.d.observe(a));
+   const a=this.d.agent(w.assignee),snapshot=await this.d.locked(a.id,()=>this.d.observe(a));
    await this.d.persist(async()=>{
     if(!this.recoveryBoundary(r,snapshot,a.runtime)){r.recovery={status:'manual',reason:'終了後の入力またはセッションを確認できません。手動で復旧してください'};await this.d.save();return;}
     if(!agentControls(a).canSend)return;
-    r.recovery.status='enqueued';w.autoRetry.attempts++;
-    await this.continueLocked({humanRequestId:q.id,workId:w.id,revision:q.revision,operationId:'auto-recovery-'+r.id,instruction:this.recoveryPrompt(q,w)},true,{autoRecoveryFrom:r.id,recoveryDeadline:w.autoRetry.firstFailureAt+600000});
+    r.recovery.status='enqueued';w.metadata.autoRetry.attempts++;
+    await this.continueLocked({humanRequestId:q.id,workId:w.id,revision:q.revision,operationId:'auto-recovery-'+r.id,instruction:this.recoveryPrompt(q,w)},true,{autoRecoveryFrom:r.id,recoveryDeadline:w.metadata.autoRetry.firstFailureAt+600000});
    });
   }
  }
  async pump(){return this.d.locked('request-graph',async()=>{
   await this.settle();await this.recover();
   for(const q of this.requests.filter(q=>requestStatus(q)==='active')){
-   for(const e of resultEntries(this.d.data,q).filter(e=>!e.superseded&&!e.deliveryRunId)){
-    const parent=this.work(q,e.parentWorkId),previous=this.run(parent.currentRunId),agent=this.d.data.agents.find(a=>a.id===parent.agentId);
+   for(const e of resultEntries(this.d.data,q).filter(e=>!e.superseded&&!e.handled&&!e.deliveryRunId)){
+    const parent=this.work(q,e.parentWorkId),previous=this.run(parent.currentRunId),agent=this.d.data.agents.find(a=>a.id===parent.assignee);
     if(!agent||this.d.agentDeleting(agent)||!terminal(previous)||!agentControls(agent).canSend)continue;
-    if(!nextSteps(q.requestModel).some(step=>step.type==='deliver-result'&&step.childRunId===e.resultRunId))continue;
+    if(!steps(this.d.data,q).some(step=>step.type==='deliver-result'&&step.childRunId===e.resultRunId))continue;
     const output=this.run(e.resultRunId)?.output||this.run(e.resultRunId)?.error||'出力なし';
     const text=this.d.rules.result(q,parent,e,output);
     await this.d.persist(async()=>{this.enqueue(q,parent,text,'result:'+e.id,'result',{resultId:e.id});await this.d.save();});
@@ -276,7 +287,18 @@ export class RequestFlow {
   }
   for(const r of this.d.data.runs.filter(r=>runState(r)==='queued'&&r.humanRequestId)){
    if(quarantinedRun(this.d.data,r))continue;
-   const q=this.root(r.humanRequestId);if(q.integrity)continue;const a=this.d.data.agents.find(a=>a.id===r.agentId);if(!a){await this.d.persist(async()=>{changeRun(r,{type:'dispatch-blocked',actor:'program',at:Date.now(),reason:'agent-missing'});await this.d.save();});continue;}if(requestStatus(q)==='active'&&(this.d.agentDeleting(a)||r.steerTarget||agentControls(a).canSend||['terminated','stopping'].includes(agentControls(a).state)))await this.d.attemptRun(r);
+   const q=this.root(r.humanRequestId);if(q.integrity)continue;
+   if(r.runModel.phase==='result'&&!r.dispatchAttemptedAt){
+    const result=resultEntries(this.d.data,q).find(e=>e.id===r.runModel.resultOf);
+    if(result&&(result.handled||result.superseded)){
+     await this.d.persist(async()=>{
+      changeRun(r,{type:'cancel-result-reservation',actor:'program',resultId:result.id,reason:result.handled?'handled':'superseded'});r.queueCancelledAt=now();r.error='result-reservation-obsolete';
+      const w=this.work(q,r.workId);if(w.currentRunId===r.id)w.currentRunId=r.runModel.retryOf;
+      observeRequest(this.d.data,q);q.revision++;await this.d.save();
+     });continue;
+    }
+   }
+   const a=this.d.data.agents.find(a=>a.id===r.agentId);if(!a){await this.d.persist(async()=>{changeRun(r,{type:'dispatch-blocked',actor:'program',at:Date.now(),reason:'agent-missing'});await this.d.save();});continue;}if(requestStatus(q)==='active'&&node(q.requestGraph,r.workId)?.state.kind==='active'&&(this.d.agentDeleting(a)||r.steerTarget||agentControls(a).canSend||['terminated','stopping'].includes(agentControls(a).state)))await this.d.attemptRun(r);
   }
  });}
  async notifications(){

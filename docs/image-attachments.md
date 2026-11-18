@@ -72,7 +72,7 @@ POST /api/attachments?name=NAME はraw bodyのアップロード。GET /api/atta
 追加検証では10 MiBを超え、base64転送も旧15 MB出力制限を超える実PNGを一覧から発見・取り込み・再取得し、元データとの一致を確認。ハッシュが一致しない同サイズの転送データの拒否と、Projectの並べ替えが保存順・所属を変えないことも確認した。実SSH接続の再検証は行わず、接続先で実行するPythonを隔離ローカル環境で検証した。
 
 
-Projectの表示順は固有名ではなく、実行時登録の `pinned: true` を優先する。未設定は非pin。`projects list` でIDとrevisionを取得し、`projects pin PROJECT_ID REVISION true`（解除はfalse）で更新する。名前変更は従来の `projects rename` を利用でき、pinを維持する。HTTPは `PUT /api/direct/projects/:id` に `{revision,pinned:true}`。実登録の変更・自動移行は含めない。
+この時点で導入したProjectの先頭固定は廃止済みです。現在はdisplayOrderに統一し、旧固定順は通常の順序へ移行します。操作は [表示順](display-order.md) を参照してください。
 
 ## 2026-11-06 返信本文の図・画像
 

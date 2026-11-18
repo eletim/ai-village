@@ -1,3 +1,4 @@
+import {fixtureGraph} from './model-fixtures.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,readFile,writeFile,rm} from 'node:fs/promises';
@@ -18,7 +19,7 @@ test('canonical conversion is pure, deterministic, idempotent and preserves in-f
  for(const k of ['state','acceptance','blocksInput','dispatchConfirmed'])assert(!Object.hasOwn(next.runs[0],k));
  for(const k of ['ticket','ticketId','inbox','status'])assert(!Object.hasOwn(next.requests[0],k));assert(!Object.hasOwn(next.requests[0].works[0],'state'));
  const r=next.runs[0];observeRun(r,{state:'completed',sessionId:'s',turnId:'turn',inputId:'input'},{inputs:[{id:'input',turnId:'turn',text:'ai-village-run-r',offset:11}]});assert.equal(r.runModel.state.outcome,'normal');
- const projected=projectState(next);assert.equal(projected.runs[0].state,'completed');projected.runs[0].state='failed';assert.equal(r.runModel.state.outcome,'normal');
+ for(const q of next.requests)fixtureGraph(q,next.runs);const projected=projectState(next);assert.equal(projected.runs[0].state,'completed');projected.runs[0].state='failed';assert.equal(r.runModel.state.outcome,'normal');
 });
 test('canonical migration fsyncs exclusive original backup before replacing; restart neither changes nor overwrites it',async t=>{
  const dir=await mkdtemp(join(tmpdir(),'canonical-'));t.after(()=>rm(dir,{recursive:true,force:true}));const old=fixture(),bytes=JSON.stringify(old);await writeFile(join(dir,'direct.json'),bytes);

@@ -19,3 +19,13 @@ test('slow reads retain progress, bound stalls and overall time, and retry witho
   await assert.rejects(readJSON(base+'/error'),{status:503,message:'busy'});
  }finally{server.closeAllConnections();await new Promise(r=>server.close(r));}
 });
+
+test('caller cancellation releases even a transport that ignores abort',async()=>{
+ const controller=new AbortController();const read=readJSON('/ignored',{signal:controller.signal,fetcher:()=>new Promise(()=>{})});
+ controller.abort(new Error('superseded'));await assert.rejects(read,/superseded/);
+});
+test('cancellation releases a stalled body and timeout cannot hang on an ignored signal',async()=>{
+ const fetcher=async()=>({body:{getReader:()=>({read:()=>new Promise(()=>{})})}});
+ const controller=new AbortController();const read=readJSON('/body',{signal:controller.signal,fetcher});await Promise.resolve();controller.abort(new Error('resume'));await assert.rejects(read,/resume/);
+ await assert.rejects(readJSON('/timeout',{fetcher,idleMs:10,totalMs:50}),{name:'TimeoutError'});
+});
