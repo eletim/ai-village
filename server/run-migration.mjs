@@ -12,7 +12,7 @@ export async function migrateRunStore(dir,data){
   const seen=new Set();for(const item of items){if(!item||typeof item.id!=='string'||!item.id||seen.has(item.id))throw Error('Invalid or duplicate '+kind+' id');seen.add(item.id);}
  }
  for(const q of data.requests||[]){
-  if(q.integrity)continue;
+  if(q.integrity||q.requestGraph?.version===3)continue;
   if(!Array.isArray(q.works)||q.inbox!==undefined&&!Array.isArray(q.inbox))throw Error('Invalid request graph: '+q.id);
   const ids=new Set();for(const w of q.works){
    if(!w.id||ids.has(w.id)||!Array.isArray(w.runIds)||!data.runs.some(r=>r.id===w.currentRunId&&r.humanRequestId===q.id))throw Error('Invalid work reference: '+q.id+':'+w.id);

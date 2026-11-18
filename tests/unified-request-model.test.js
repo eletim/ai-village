@@ -5,10 +5,11 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {newRun} from '../server/state/run.ts';
 import {transitionGraph,reconcileGraph,graphSteps} from '../server/state/requests.ts';
-import {unifiedData,migrateUnifiedStore,validateGraph} from '../server/unified-requests.mjs';
+import {unifiedData,migrateUnifiedStore} from '../server/unified-request-migration.mjs';
+import {validateGraph} from '../server/unified-requests.mjs';
 const run=(id,owner,kind='running',outcome='normal')=>({ownerId:owner,agentId:owner,run:{...newRun(id,'tree','human').value,state:kind==='running'?{kind,sessionId:'s',turnId:id,inputId:'i'}:kind==='ended'?{kind,outcome,reason:'native-terminal'}:{kind},facts:[{type:'input',at:1}]}});
-const request=(id,parentId,currentRunId)=>({id,parentId,requester:parentId?{kind:'agent',requestId:parentId,agentId:parentId}:{kind:'human'},assignee:id,runAgents:{[currentRunId]:id},runIds:[currentRunId],currentRunId,reportRunId:null,reportMode:false,state:{kind:'active',review:[]},submissions:[],claims:[],replacements:[],invalidatedRuns:[],handling:[],declarations:[],decisions:[]});
-const fixture=()=>({version:2,rootId:'parent',nodes:[request('parent',null,'p'),request('child','parent','c')],operations:[]});
+const request=(id,parentId,currentRunId)=>({metadata:{},id,parentId,requester:parentId?{kind:'agent',requestId:parentId,agentId:parentId}:{kind:'human'},assignee:id,runAgents:{[currentRunId]:id},runIds:[currentRunId],currentRunId,reportRunId:null,reportMode:false,state:{kind:'active',review:[]},submissions:[],claims:[],replacements:[],invalidatedRuns:[],handling:[],declarations:[],decisions:[]});
+const fixture=()=>({version:3,rootId:'parent',nodes:[request('parent',null,'p'),request('child','parent','c')],operations:[]});
 test('pure identical lifecycle, actor enforcement, exact result versions and operation idempotence',()=>{
  const input=fixture(),runs=[run('p','parent'),run('c','child','ended')],g=reconcileGraph(input,runs);assert.equal(input.nodes[1].state.kind,'active');assert.equal(g.nodes[1].state.kind,'submitted');
  const event={type:'respond',actor:'agent',requestId:'parent',runId:'p',operationId:'response',at:1,results:[{requestId:'child',resultId:'c',version:1,decision:'accept'}]};
@@ -30,9 +31,9 @@ test('queued delivery reservation retracts but sent/unconfirmed delivery is neve
 test('migration is deterministic, idempotent, backs up exact bytes and preserves running evidence and notification history',async t=>{
  const runs=[run('p','parent'),run('c','child','ended')].map(e=>({id:e.run.id,agentId:e.agentId,humanRequestId:'tree',workId:e.ownerId,runModel:e.run,inputCorrelation:{version:1,hash:'exact-input'},baselineRuntime:{sessionId:'s',cursor:7,fileIdentity:'f'}}));
  const source={runs,agents:[{id:'parent'},{id:'child'}],requests:[{id:'tree',rootWorkId:'parent',works:[{id:'parent',parentWorkId:null,agentId:'parent',runIds:['p'],currentRunId:'p'},{id:'child',parentWorkId:'parent',agentId:'child',runIds:['c'],currentRunId:'c'}],notification:{status:'sent',messageId:'request:tree'},requestModel:{state:{kind:'active',review:[]},declarations:[],decisions:[]}}]};
- const original=JSON.stringify(source),a=unifiedData(source);assert.equal(JSON.stringify(source),original);assert.equal(JSON.stringify(unifiedData(source)),JSON.stringify(a));assert.equal(JSON.stringify(unifiedData(a)),JSON.stringify(a));assert.deepEqual(a.runs,source.runs);assert.deepEqual(a.requests[0].notification,source.requests[0].notification);assert(!JSON.stringify(a).includes('requestModel'));assert.equal(a.requests[0].requestModel.state.kind,'active');
+ const original=JSON.stringify(source),a=unifiedData(source);const inconsistent=structuredClone(a);inconsistent.requests[0].requestGraph.version=2;assert.throws(()=>unifiedData(inconsistent),/Inconsistent/);assert.equal(JSON.stringify(source),original);assert.equal(JSON.stringify(unifiedData(source)),JSON.stringify(a));assert.equal(JSON.stringify(unifiedData(a)),JSON.stringify(a));assert.deepEqual(a.runs,source.runs);assert.deepEqual(a.requests[0].notification,source.requests[0].notification);assert(!JSON.stringify(a).includes('requestModel'));assert.equal(a.requests[0].requestGraph.nodes[0].state.kind,'active');
  const dir=await mkdtemp(join(tmpdir(),'unified-migration-'));t.after(()=>rm(dir,{recursive:true,force:true}));await writeFile(join(dir,'direct.json'),original);
- await migrateUnifiedStore(dir,source);assert.equal(await readFile(join(dir,'direct.pre-unified-requests-v2.json'),'utf8'),original);
+ await migrateUnifiedStore(dir,source);assert.equal(await readFile(join(dir,'direct.pre-unified-requests-v3.json'),'utf8'),original);
  const saved=JSON.parse(await readFile(join(dir,'direct.json'),'utf8'));assert.equal(JSON.stringify(await migrateUnifiedStore(dir,saved)),JSON.stringify(a));
  for(const corrupt of [g=>g.nodes[1].parentId='child',g=>g.nodes[0].handling.push({requestId:'child',resultId:'c',version:999,actorRunId:'p'}),g=>g.nodes[1].runIds.push('p')]){const bad=unifiedData(source);corrupt(bad.requests[0].requestGraph);assert.throws(()=>validateGraph(bad,bad.requests[0]));}
 });
@@ -93,7 +94,7 @@ test('unrelated result receipt does not erase prior failure review; nested failu
  assert(failure.nodes[0].state.review.includes('child-needs-review'));assert(failure.nodes[1].state.review.includes('child-needs-review'));
 });
 
-function persisted(g,runs){return {unifiedRequestVersion:2,runs:runs.map(e=>({id:e.run.id,agentId:e.agentId,humanRequestId:'tree',workId:e.ownerId,runModel:e.run})),requests:[{id:'tree',rootWorkId:g.rootId,works:g.nodes.map(n=>({id:n.id,parentWorkId:n.parentId,agentId:n.assignee,runIds:n.runIds,currentRunId:n.currentRunId})),requestGraph:g,notification:{status:'sent',messageId:'existing-effect'}}]};}
+function persisted(g,runs){return {unifiedRequestVersion:3,runs:runs.map(e=>({id:e.run.id,agentId:e.agentId,humanRequestId:'tree',workId:e.ownerId,runModel:e.run})),requests:[{id:'tree',rootWorkId:g.rootId,...(g.version<3?{works:g.nodes.map(n=>({id:n.id,parentWorkId:n.parentId,agentId:n.assignee,runIds:n.runIds,currentRunId:n.currentRunId}))}:{}),requestGraph:g,notification:{status:'sent',messageId:'existing-effect'}}]};}
 test('persisted claims and handling validate operation, native outcome, owner and supersession evidence',()=>{
  const runs=[run('p','parent'),run('c','child','ended')];let g=reconcileGraph(fixture(),runs);
  const event={type:'finish',actor:'agent',requestId:'parent',runId:'p',operationId:'claim',at:1,results:[{requestId:'child',resultId:'c',version:1,decision:'accept'}]};
@@ -110,8 +111,8 @@ test('v1 premature handling becomes unconfirmed audit data, preserving sent effe
  g.nodes[0].handling=g.nodes[0].claims.map(({legacy,...h})=>h);g.nodes[1].state={kind:'completed',by:'agent',reason:'result-accepted:c'};
  for(const n of g.nodes){delete n.claims;delete n.replacements;delete n.invalidatedRuns;}g.version=1;
  const v1=persisted(g,runs);v1.unifiedRequestVersion=1;const copy=JSON.stringify(v1),v2=unifiedData(v1);
- assert.equal(JSON.stringify(v1),copy);assert.equal(v2.unifiedRequestVersion,2);assert.equal(v2.requests[0].requestGraph.nodes[0].handling.length,0);assert.equal(v2.requests[0].requestGraph.nodes[0].claims.length,1);assert.equal(v2.requests[0].requestGraph.nodes[1].state.kind,'active');assert.deepEqual(v2.requests[0].notification,v1.requests[0].notification);assert.equal(JSON.stringify(unifiedData(v2)),JSON.stringify(v2));
- const dir=await mkdtemp(join(tmpdir(),'unified-v2-'));t.after(()=>rm(dir,{recursive:true,force:true}));await writeFile(join(dir,'direct.json'),copy);await migrateUnifiedStore(dir,v1);assert.equal(await readFile(join(dir,'direct.pre-unified-requests-v2.json'),'utf8'),copy);
+ assert.equal(JSON.stringify(v1),copy);assert.equal(v2.unifiedRequestVersion,3);assert.equal(v2.requests[0].requestGraph.nodes[0].handling.length,0);assert.equal(v2.requests[0].requestGraph.nodes[0].claims.length,1);assert.equal(v2.requests[0].requestGraph.nodes[1].state.kind,'active');assert.deepEqual(v2.requests[0].notification,v1.requests[0].notification);assert.equal(JSON.stringify(unifiedData(v2)),JSON.stringify(v2));
+ const dir=await mkdtemp(join(tmpdir(),'unified-v2-'));t.after(()=>rm(dir,{recursive:true,force:true}));await writeFile(join(dir,'direct.json'),copy);await migrateUnifiedStore(dir,v1);assert.equal(await readFile(join(dir,'direct.pre-unified-requests-v3.json'),'utf8'),copy);
 });
 
 test('ordinary human supplement does not clear an unrelated failure review',()=>{
@@ -129,4 +130,32 @@ test('withdrawal remains terminal even if a pending declaring run later ends nor
  g=transitionGraph(g,{type:'finish',actor:'agent',requestId:'parent',runId:'p',operationId:'pending',at:1,results:[{requestId:'child',resultId:'c',version:1,decision:'accept'}]},runs).value;
  g=transitionGraph(g,{type:'withdraw',actor:'human',requestId:'parent',reason:'cancel'},runs).value;runs[0]=run('p','parent','ended');g=reconcileGraph(g,runs);
  assert.equal(g.nodes[0].handling.length,0);assert.equal(g.nodes[0].state.kind,'withdrawn');assert.equal(g.nodes[1].state.kind,'withdrawn');
+});
+
+test('automatic receipt of failure records review, never implicit acceptance',()=>{
+ const runs=[run('p','parent','ended'),run('c','child','ended','failed')];let g=reconcileGraph(fixture(),runs);
+ const delivery=run('d','parent','queued');Object.assign(delivery.run,{phase:'result',createdBy:'program',retryOf:'p',resultOf:'c'});runs.push(delivery);
+ g=transitionGraph(g,{type:'attempt',actor:'program',requestId:'parent',runId:'d',report:false},runs).value;
+ runs[2].run.state={kind:'ended',outcome:'normal',reason:'native'};g=reconcileGraph(g,runs);
+ assert.equal(g.nodes[0].handling[0].decision,'review');assert.equal(g.nodes[1].state.kind,'active');assert.equal(graphSteps(g,runs).length,0);
+ const data=persisted(g,runs);validateGraph(data,data.requests[0]);
+});
+
+test('a migrated receipt-only claim does not prevent an explicit decision in the same still-running run',()=>{
+ const runs=[run('p','parent'),run('c','child','ended','failed')];let g=reconcileGraph(fixture(),runs);
+ const event={type:'finish',actor:'agent',requestId:'parent',runId:'p',operationId:'old',at:1,results:[{requestId:'child',resultId:'c',version:1,decision:'accept'}]};
+ g=transitionGraph(g,event,runs).value;g.nodes[0].claims[0].legacy=true;g.version=2;
+ const source=persisted(g,runs);source.unifiedRequestVersion=2;g=unifiedData(source).requests[0].requestGraph;
+ assert.equal(g.nodes[0].claims[0].decision,'review');
+ const result=transitionGraph(g,{...event,operationId:'explicit'},runs);assert(result.ok);g=result.value;assert.equal(g.nodes[0].claims.length,2);assert.equal(g.nodes[1].state.kind,'active');
+ runs[0]=run('p','parent','ended');g=reconcileGraph(g,runs);assert.equal(g.nodes[1].state.kind,'completed');assert.equal(g.nodes[0].handling.at(-1).decision,'accept');
+});
+
+test('previous quarantine cannot hide a conflicting v2 owner during boot inspection',async()=>{
+ const {inspectRequests}=await import('../server/request-integrity.mjs');
+ const runs=[run('p','parent'),run('c','child','ended')],g=reconcileGraph(fixture(),runs);g.version=2;
+ const source=persisted(g,runs);source.unifiedRequestVersion=2;source.agents=[{id:'parent'},{id:'child'}];
+ assert.deepEqual(inspectRequests(source)[0].reasons,[]);
+ source.requests[0].integrity={version:1,reasons:['previous rejection']};g.nodes[1].assignee='other';
+ assert(inspectRequests(source)[0].reasons.includes('Conflicting legacy ownership'));
 });

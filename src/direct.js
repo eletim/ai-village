@@ -1,7 +1,7 @@
 import {boardProjectTitle,mobileWorkspace} from './mobile-workspace.js';
 import {compactStatusPair,compactStatus,actionSVG,connectionStatus} from './compact-status.js';
 import {deliveryUnconfirmed} from './queued-run.js';
-import {needsRunRecovery,requestReviewReason} from './run-recovery.js';
+import {needsRunRecovery,requestReviewReason,requestRootState} from './run-recovery.js';
 import {readJSON} from './read-json.js';
 import {acceptWorkspace} from './workspace-sync.js';
 import {restorePendingMessage,matchingRun,unchangedDraft,pendingMessageStatus} from './pending-message.js';
@@ -101,13 +101,13 @@ function capturePositions(){for(const [id,card] of cards)if(!card.hidden)scrolls
 function timeHTML(value){if(!value)return '';const date=new Date(value);return Number.isNaN(date.getTime())?'':`<time datetime="${esc(value)}" title="${esc(date.toLocaleString())}">${esc(date.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}))}</time>`;}
 function bubble(side,text,at,extra=''){return `<div class="message ${side}">${text?(side==='assistant'?reportHTML(text):`<pre>${linkedText(text)}</pre>`):''}${extra}${timeHTML(at)}</div>`;}
 function recoveryHTML(r){
- const q=state.requests?.find(q=>q.id===r.humanRequestId),w=q?.works.find(w=>w.currentRunId===r.id);
+ const q=state.requests?.find(q=>q.id===r.humanRequestId),w=q?.requestGraph?.nodes.find(w=>w.currentRunId===r.id);
  if(!needsRunRecovery(q,r,w))return '';
- const reason=q.requestModel?requestReviewReason(q,r):r.recovery?.status==='scheduled'?'自動再試行予定: '+new Date(r.recovery.nextAt).toLocaleTimeString():r.recovery?.reason||(r.needsReview?'要確認: 実行結果を確認できません。副作用を確認してから再試行してください。':null)||'停止理由を確認し、未完了の作業を再開できます。';
- return `<div class="recovery"><p>${esc(reason)}</p>${!w.parentWorkId?`<button data-retry-run="${esc(r.id)}">再試行</button>`:'<p>要確認の依頼一覧で人間が次の扱いを選べます。</p>'}<button data-complete-request="${esc(q.id)}">完了扱い</button><button data-cancel-request="${esc(q.id)}">取り下げ</button></div>`;
+ const reason=q.requestGraph?requestReviewReason(q,r):r.recovery?.status==='scheduled'?'自動再試行予定: '+new Date(r.recovery.nextAt).toLocaleTimeString():r.recovery?.reason||(r.needsReview?'要確認: 実行結果を確認できません。副作用を確認してから再試行してください。':null)||'停止理由を確認し、未完了の作業を再開できます。';
+ return `<div class="recovery"><p>${esc(reason)}</p>${!w.parentId?`<button data-retry-run="${esc(r.id)}">再試行</button>`:'<p>要確認の依頼一覧で人間が次の扱いを選べます。</p>'}<button data-complete-request="${esc(q.id)}">完了扱い</button><button data-cancel-request="${esc(q.id)}">取り下げ</button></div>`;
 }
 function entryHTML(a,r,divider){
- const normal=!r.error&&!r.errorCode&&!r.attachmentError&&!r.needsReview&&!state.requests?.find(q=>q.id===r.humanRequestId)?.requestModel?.state?.review?.length;
+ const normal=!r.error&&!r.errorCode&&!r.attachmentError&&!r.needsReview&&!requestRootState(state.requests?.find(q=>q.id===r.humanRequestId))?.review?.length;
  return `${divider(r.createdAt||r.completedAt)}<div class="run" data-entry="${esc(JSON.stringify([r.external?'native':'run',r.external?(r.sessionId||r.agentSessionId||''):'',r.id]))}">${r.suppressUser?'':bubble('user',r.instruction,r.createdAt,travelSummary(r.travelContexts)+attachmentHTML(r.attachments))}${r.output||r.finalOutput?'<div class="message assistant">'+responseHTML(r)+timeHTML(r.completedAt)+'</div>':''}<p class="run-status">${compactStatusPair(r.queueCancelledAt?'送信取消済み':r.reportStatus||labels[r.state]||r.state,r.humanRequestId?({active:'依頼継続中',finalizing:'最終報告の完了待ち',completed:'依頼全体完了',cancelled:'依頼キャンセル'})[state.requests?.find(q=>q.id===r.humanRequestId)?.status]||'依頼照合中':'達成状況: 未判定',normal,r.external?'PurpleMuxからの入力 · ':r.origin==='result'?'子作業結果の配送 · ':r.origin==='steering'?'実行中への補足 · ':'')} ${esc(r.errorCode||'')} ${esc(r.attachmentError||r.error||'')} ${r.notification?' · 通知: '+esc(r.notification.status)+(r.notification.reason?' / '+esc(r.notification.reason):''):''}</p>${canCancelQueued(r)?`<button type="button" data-cancel-queued="${esc(r.id)}" data-queue-agent="${esc(a.id)}">送信待ちを取り消す</button>`:''}${r.queueCancelledAt?'':recoveryHTML(r)}</div>`;
 }
 function runHTML(a){

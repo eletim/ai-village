@@ -4,7 +4,7 @@
 
 ## 正本と互換境界
 
-`requestGraph`（version 2）が依頼状態の正本。ノードIDは既存workIdを保持し、親ID、依頼者、担当Agent、現在run、run履歴、担当履歴、完了申告、結果版と対応判断を持つ。状態はactive（要判断の理由を含む）、submitted（結果提出済み）、completed、withdrawn。rootのhumanRequestIdは互換の依頼ツリーIDとして維持する。runModelは引き続きnative受付・実行状態の唯一の正本で、依頼側にはrunの状態を複製しない。旧requestModelは境界で生成する読取専用DTOであり保存しない。
+`requestGraph`（version 3）が依頼状態の正本。ノードIDは既存workIdを保持し、親ID、依頼者、担当Agent、現在run、run履歴、担当履歴、完了申告、結果版と対応判断を持つ。状態はactive（要判断の理由を含む）、submitted（結果提出済み）、completed、withdrawn。rootのhumanRequestIdは互換の依頼ツリーIDとして維持する。runModelは引き続きnative受付・実行状態の唯一の正本で、依頼側にはrunの状態を複製しない。旧requestModelは境界で生成する読取専用DTOであり保存しない。
 
 ## 遷移契約
 
@@ -19,7 +19,7 @@
 
 ## 移行・検証・運用
 
-`unifiedRequestVersion=2` を持つ。`unifiedData` は決定的・冪等な純粋移行で、書込前に `direct.pre-unified-requests-v2.json` を排他的に作成・fsyncする。古い形式は既存のrun/request/canonical/marker移行の後で移す。すでに新形式なら旧request/canonical/marker変換には戻さない。受付照合用のrunModel、inputCorrelation、セッション、turn、cursor、fileIdentity、補足境界、履歴、通知履歴を維持する。
+`unifiedRequestVersion=3` を持つ。`unifiedData` は決定的・冪等な純粋移行で、書込前に `direct.pre-unified-requests-v3.json` を排他的に作成・fsyncする。古い形式は既存のrun/request/canonical/marker移行の後で移す。すでに新形式なら旧request/canonical/marker変換には戻さない。受付照合用のrunModel、inputCorrelation、セッション、turn、cursor、fileIdentity、補足境界、履歴、通知履歴を維持する。
 
 旧workIdをそのまま依頼ノードIDにする。旧rootの確定状態を維持し、activeを移行だけで完了にしない。既存配送runから特定できる結果対応はそのrunを根拠に復元する。配送根拠がなければ読取・対応を推測しない。完了済みrootは再開・再配送しない。進行中runを一律不明に変更しない。参照破損は既存の隔離オーバーレイへ残し、元データを修復したことにしない。未知の版は拒否する。
 
@@ -29,7 +29,7 @@
 
 既存 `requests delegate/get/results/finish` と短い入力タグの humanRequestId/workId/runId を維持する。humanRequestIdはツリーID、workIdは依頼ノードIDである。新しい `requests respond` は `humanRequestId,workId,runId,operationId,results` を受ける。resultsは `{requestId,resultId,version,decision:"accept"|"rework"}` の配列。主体は現在の受付照合済みrunで、直接の子依頼の最新結果だけを扱える。複数結果の一部だけを対応済みにできる。
 
-`finish`にも同じresultsを指定できる。旧クライアントのresults省略は「その時点で利用できる直接の子結果を扱った」という従来の完了申告として受け付ける。ただし失敗結果の完了判断には明示resultsが必要。対応とnative正常終了を同一視しない。早いfinishは申告として記録するだけで、未提出の結果を未来にわたって受け入れたことにはしない。古いrunの申告は監査に残すが、現在の依存関係を消化できない。
+`finish`にも同じresultsを指定できる。新規申告はresults必須であり、省略を拒否する。保存済みの旧申告だけは移行時に元の意味を保持する。対応とnative正常終了を同一視しない。早いfinishは申告として記録するだけで、未提出の結果を未来にわたって受け入れたことにはしない。古いrunの申告は監査に残すが、現在の依存関係を消化できない。
 
 `rework`は受け取った結果を扱ったが依存関係は未解決という判断。新しいdelegateの `replacesRequestId` に旧子依頼IDを指定すると、旧結果と判断を保持したまま新しい子依頼で依存関係を置換する。新しい子依頼は即時に作成・実行できるが、置換は予約に留める。申告runの正常終了で旧依頼を取り下げ、依存先を確定する。すでに確定した完了状態は書き換えない。
 
@@ -37,7 +37,7 @@
 
 結果配送のqueued予約と明示対応が行き違った場合は、直前の受け手runと予約元結果が一致する場合だけ予約を撤回できる。programの `cancel-result-reservation` は未送信result専用であり、送信済み/受付不明runには使えない。送信した記録を取り消したり再送したりしない。通常の配送完了も同じhandlingに収束する。通知履歴は既存のrootキーを維持する。
 
-規則とhelpは `agent-rules.mjs` の同一定義から生成する。起動時規則hashが変わるため、既存セッションは再起動せずlegacy全文規則へ移る。旧finishは互換維持され、すでに送ったrunの入力全文照合は変更しない。
+規則とhelpは `agent-rules.mjs` の同一定義から生成する。起動時規則hashが変わるため、既存セッションは再起動せずlegacy全文規則へ移る。旧finishの保存済み操作再試行は互換維持され、新規のresults省略はエラーになる。すでに送ったrunの入力全文照合は変更しない。
 
 ## 反映・ロールバック（秘書が実施）
 
@@ -92,3 +92,26 @@ rework直後のdelegate(replacesRequestId)は、実作業の開始と依存解�
 ### レビュー修正後の検証
 
 最終のcheck/typecheck/build成功。npm testは442件中441成功・外部notify CLI条件付き1skip。途中の全体再実行では既知の40MiB超添付HTTP fetch失敗が1回あり、最終回では成功。隔離ブラウザ全体148件成功、要確認保持と取消の最終調整後の関連6件も成功。純粋状態・API/CLI・移行・保存障害・再起動を含む回帰を追加した。旧PR形式の実際のDirectAgents再起動も検証し、早まった確定を安全に要確認へ移すことを確認した。本番への追加テストは実施していない。
+
+## v3: 依頼ノードを唯一の所有者にする
+
+`requestGraph.nodes` が担当者、担当履歴 (`runAgents`)、現在run、run一覧、依頼状態、申告、対応確定を所有する。委任指示・operationId・起点run・置換元・自動復旧予算は node.metadata に保存する。`q.works` と `q.requestModel` は保存しない。RequestFlow、報告工程、再試行、取消、UIはgraphを直接参照する。旧API応答の works/requestModel は出口の `request-compatibility.mjs` で複製して導出し、進行判断へ戻さない。workId/humanRequestId、受付タグ、run ID は既存セッションとの照合のため維持する。
+
+respond/finish は必ず `results:[{requestId,resultId,version,decision:"accept"|"rework"}]` を指定する。`results:[]` は今回新たに対応を申告しないという意味で、未解決依存を暗黙受入しない。省略は400と現行契約案内になり、観測・保存・状態変更を行わない。readは不変。申告が確定するのは申告runの照合済み正常終了だけである。
+
+移行前に受け付けたoperationIdは旧受付内容を保持し、省略再送も元の受付結果として返す。同じIDの異なる内容は拒否する。保存済み旧暗黙申告のうち失敗結果・要確認の依頼へのacceptは、失敗を受け入れた事実ではなく受領を確認する `review` という対応として移行する。正常終了で受領を確定するが依存は解決しない。現行の自動配送でも失敗結果の正常受領には同じreviewを使い、明示acceptと区別する。明示acceptはそのまま保つ。受領確認だけの申告は、同じ実行中runによる新たな明示判断を妨げない。元のoperation payloadは監査・再試行照合用に保持する。この変換は移行時だけ行い、通常進行にはlegacy分岐を置かない。
+
+### 反映・復旧
+
+秘書レビュー後、統合ブランチの反映時に `unifiedRequestVersion:3` / graph.version:3 へ決定的に移行する。元のdirect.jsonを `direct.pre-unified-requests-v3.json` に排他的作成・fsyncしてから新状態を保存する。異なる原本の同名バックアップは上書きせず停止する。再起動時はv3の整合性を検証し、移行を繰り返さない。旧ownershipに食い違いがある依頼は推測で修復せず隔離する。隔離した旧原本は監査のため保持するが、通常進行へは使用しない。
+
+事前検証は原本の読取コピーを使い `node scripts/check-request-migration.mjs COPY` を実行する。このスクリプトはI/O送信や通知を初期化せず、run受付情報と通知履歴の不変、再移行の冪等性を確認する。ロールバックはサービス所有者が停止した上で移行前コードとバックアップを組み合わせる。反映後に新たな送信・通知があれば過去スナップショットへ単純に戻してはいけない。外部効果との照合を行い、不明な送信は自動再送しない。
+
+既存Agentを停止・作成し直さない。起動規則ハッシュが変わったAgentは既存の更新経路で旧モードとなり、次の入力に最新規則全文が付く。既に送信済みの本文・input hashは書き換えない。古い本文に従った省略finishには明確なエラーと修正方法を返す。送信済みrunを自動再送しないため、実行中Agentがエラーに対応できなければ人間または秘書の通常の補足・復旧判断を要する。
+
+### v3検証記録（2026-11-18）
+
+- 状態遷移・HTTP/CLI・保存失敗・再起動・移行・新旧契約の回帰検証。最終の直列全体実行は448件中447成功、1件skip。最後の移行整合性チェック追加後も関連50件成功。
+- 通常の並列 `npm test` は添付HTTPの上限超過アップロード（attachments-http.test.js:30）で `fetch failed` が発生。他のテストは成功。添付系コードは今回変更していない。単独再実行は成功し、既知報告と同じ不安定症状だが、比較用e254ef3の単独3回・全体1回では今回は再現しなかった。原因を今回の変更と無関係だと断定せず、残る検証上の制約とする。
+- typecheck / check / build成功。隔離ブラウザ全148件成功、結果受領意味の整理後の関連実APIブラウザ2件も成功。専用ポート15179、使い捨て状態、既存サーバー再利用なし。launcherは実際のbind、子プロセスcwd・状態dir・通知無効化、状態ファイル生成を確認してからreadyを出す。
+- 原本の読取コピーによるv2→v3移行で、今回の稼働中委任を含むrun全体、受付照合、通知履歴、バックアップ原本一致、再起動相当の再読込・冪等性・参照整合を確認。移行専用モジュールだけを実行し、transport/通知サービスを初期化しないため外部送信0。私的データとスクリーンショットはリポジトリに含めない。

@@ -1,3 +1,4 @@
+import {fixtureGraph} from './model-fixtures.mjs';
 import {fixtureModels} from './model-fixtures.mjs';
 import {receipt} from './model-fixtures.mjs';
 import {testView} from './model-fixtures.mjs';
@@ -48,7 +49,7 @@ test('unresolved tracking times out even after blocksInput=false',()=>{
 test('unconfirmed report releases reportPending and stays recoverable with a deleted/missing agent',()=>{
  const r={id:'r',humanRequestId:'q',agentId:'a',phase:'report',state:'terminated',needsReview:true,runModel:{state:{kind:'ended',outcome:'unconfirmed',reason:'timeout'}}};
  const w={id:'w',currentRunId:'r',agentId:'a',parentWorkId:null},q={id:'q',revision:1,status:'active',reportMode:true,works:[w],instruction:'test'};
- const d={runs:[r],requests:[q],agents:[{id:'a',deletedAt:'yes',state:'terminated'}]};q.requestModel={state:{kind:'active',review:['timeout']},runs:[],declarations:[]};d.agents[0].agentModel={id:'a',intent:'stop',observation:{connected:true,process:'absent',activity:'unknown',canSteer:false}};assert(needsRunRecovery(q,r,w));assert.equal(humanProjection(d).agents[0].reportPending,undefined);assert.equal(recoveryRequests(d)[0].canRetry,false);d.agents=[];assert.equal(recoveryRequests(d)[0].agentName,'削除済みAgent');q.requestModel.state={kind:'withdrawn'};assert.equal(recoveryRequests(d).length,0);
+ const d={runs:[r],requests:[q],agents:[{id:'a',deletedAt:'yes',state:'terminated'}]};q.requestModel={state:{kind:'active',review:['timeout']},runs:[],declarations:[]};d.agents[0].agentModel={id:'a',intent:'stop',observation:{connected:true,process:'absent',activity:'unknown',canSteer:false}};fixtureGraph(q);assert(needsRunRecovery(q,r,w));assert.equal(humanProjection(d).agents[0].reportPending,undefined);assert.equal(recoveryRequests(d)[0].canRetry,false);d.agents=[];assert.equal(recoveryRequests(d)[0].agentName,'削除済みAgent');q.requestGraph.nodes[0].state={kind:'withdrawn'};assert.equal(recoveryRequests(d).length,0);
 });
 test('each lost event is terminal, clears blocking and disallows automatic retry',()=>{
  for(const reason of ['session-changed','turn-ended-without-marker','timeout','agent-stopped']){
@@ -59,7 +60,7 @@ test('versioned corrupt outcome is rejected rather than treated as normal or rem
  const dir=await mkdtemp(join(tmpdir(),'run-corrupt-'));t.after(()=>rm(dir,{recursive:true,force:true}));const next=await migrateRunStore(dir,data({...oldRun('unknown'),blocksInput:false}));next.runs[0].runModel.state.outcome='invented';const before=await readFile(join(dir,'direct.json'),'utf8');await assert.rejects(migrateRunStore(dir,next),/Invalid run model/);assert.equal(await readFile(join(dir,'direct.json'),'utf8'),before);
 });
 test('recovery projection never leaks runtime error snippets from hidden report output',()=>{
- const d={agents:[{id:'a',tabId:'tab'}],runs:[{id:'r',agentId:'a',humanRequestId:'q',phase:'report',state:'failed',error:'SECRET report text'}],requests:[{id:'q',status:'active',reportMode:true,works:[{id:'w',agentId:'a',currentRunId:'r'}]}]};assert(!JSON.stringify(recoveryRequests(d)).includes('SECRET'));
+ const d={agents:[{id:'a',tabId:'tab'}],runs:[{id:'r',agentId:'a',humanRequestId:'q',phase:'report',state:'failed',error:'SECRET report text'}],requests:[{id:'q',status:'active',reportMode:true,works:[{id:'w',agentId:'a',currentRunId:'r'}]}]};d.requests.forEach(q=>fixtureGraph(q));assert(!JSON.stringify(recoveryRequests(d)).includes('SECRET'));
 });
 test('restart preserves overloaded retry budget instead of granting a new automatic budget',()=>{
  const r={...oldRun('failed'),humanRequestId:'q',workId:'w',errorCode:'server_overloaded',completedAt:'2026-11-11T00:00:00Z'};

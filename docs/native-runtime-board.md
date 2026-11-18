@@ -70,20 +70,20 @@ PurpleMuxの `agentSessionId` で対象セッションを限定し、同じ実�
 node scripts/village.mjs requests get HUMAN_REQUEST_ID
 node scripts/village.mjs requests delegate '{"humanRequestId":"HUMAN_REQUEST_ID","parentWorkId":"WORK_ID","actorRunId":"RUN_ID","agentId":"CHILD_AGENT_ID","operationId":"delegate-unique-001","instruction":"子作業の指示"}'
 node scripts/village.mjs requests results HUMAN_REQUEST_ID WORK_ID
-node scripts/village.mjs requests acknowledge '{"humanRequestId":"HUMAN_REQUEST_ID","workId":"WORK_ID","actorRunId":"CURRENT_RUN_ID","resultIds":["RESULT_ID"]}'
+node scripts/village.mjs requests respond '{"humanRequestId":"HUMAN_REQUEST_ID","workId":"WORK_ID","runId":"CURRENT_RUN_ID","operationId":"respond-unique-001","results":[{"requestId":"CHILD_REQUEST_ID","resultId":"RESULT_ID","version":1,"decision":"accept"}]}'
 node scripts/village.mjs requests get HUMAN_REQUEST_ID
-node scripts/village.mjs requests finish '{"humanRequestId":"HUMAN_REQUEST_ID","workId":"WORK_ID","runId":"CURRENT_RUN_ID","revision":3,"operationId":"finish-unique-001"}'
+node scripts/village.mjs requests finish '{"humanRequestId":"HUMAN_REQUEST_ID","workId":"WORK_ID","runId":"CURRENT_RUN_ID","operationId":"finish-unique-001","results":[]}'
 ```
 
-revision=3は例。必ずgetの最新revisionを使う。finishは**最終回答の直前**に登録し、その同じnative turnが正常終了して初めて確定する。子Agentも自分の最終回答前にfinishが必要。秘書は結果を確認・統合してから自身の最終報告runに対してfinishする。途中の「依頼しました」にはfinishしない。全ての直下の子が正常完了し、各最新結果をacknowledgeするまで親のfinishを拒否する。子自身にも同じ制約があるため、孫以下も含めた未完了を残せない。
+respond/finish はresults必須。上例のfinish results:[]は新たな対応申告なし（先のrespondで申告済み）を意味する。委任ありのまとめ役は最終回答直前にfinishを申告し、そのrunの正常終了と依存解決で確定する。委任なし・子の通常回答・報告runにはfinish不要。読取自体は状態を変えない。未解決依存があれば親は完了しない。詳細は [共通依頼モデル](unified-request-model.md)。
 
-同じ操作はPOST /api/direct/requests/{get,delegate,results,acknowledge,finish,retry,resume,cancel}で呼べる。getは{humanRequestId}、resultsは{humanRequestId,workId}、その他はCLIと同じJSON。GET /api/direct/requestsで一覧。Agent管理discoveryにも案内を掲載。
+Agent操作はPOST /api/direct/requests/{get,delegate,results,respond,finish}、人間の復旧・取消は /api/direct/human/requests/{retry,resume,cancel,complete}。getは{humanRequestId}、resultsは{humanRequestId,workId}、その他はCLIと同じJSON。GET /api/direct/requestsで一覧。
 
 ### 結果配送と競合
 
-子の正常確定・失敗/中断は永続受信箱へ記録する。結果IDは該当runのIDで一意。人間へ直接通知せず、parentWorkIdに指定された親Agentへ配送する。親Agentが他依頼も含めbusyなら待機する。新しい配送runは元の依頼/親作業へ属し、新しい券を作らない。配送意図を保存してから送信し、実native受付までdispatching、受付後accepted、結果確認後acknowledgedAtを記録。不明な配送は二重送信せず残す。
+子の正常確定・失敗/中断は永続受信箱へ記録する。結果IDは該当runのIDで一意。人間へ直接通知せず、parentWorkIdに指定された親Agentへ配送する。親Agentが他依頼も含めbusyなら待機する。新しい配送runは元の依頼/親作業へ属し、新しい券を作らない。配送意図を保存してから送信し、実native受付までdispatching、受付後accepted、正常終了後に依頼ノードの対応を確定。不明な配送は二重送信せず残す。
 
-結果はresultsで取得でき、親が稼働中に取得・確認した場合は不要な後続配送を抑止する。別依頼/別親作業の結果や別runのacknowledge/finishは拒否。複数秘書・同じAgentへの複数依頼もそれぞれのIDを維持する。旧/officeは複数秘書から勝手に先頭を選ばず、agentIdなしなら/agentsで対象を選ぶようエラーを返す。
+結果はresultsで取得でき、親が取得後にrespond/finishで申告し正常終了した場合は不要な後続配送を抑止する。別依頼/別親作業の結果や別runのrespond/finishは拒否。複数秘書・同じAgentへの複数依頼もそれぞれのIDを維持する。旧/officeは複数秘書から勝手に先頭を選ばず、agentIdなしなら/agentsで対象を選ぶようエラーを返す。
 
 依頼グラフ操作をサーバー内で直列化し、finishはrevisionと現在runを確認する。子追加と最終確定は競合しない。サーバーは状態ディレクトリを単一所有し、原子的置換とfsyncで保存。重複イベントや同一operationIdは二重子作成・二重finish・二重通知を起こさない。
 

@@ -5,17 +5,18 @@ export function recoveryReason(r){
  if(reason?.startsWith('legacy-'))return '旧データに完了を確認できない送信が残っています。既存の成果・副作用を確認してください。';
  return '実行が停止したか、完了登録を確認できません。既存の成果・副作用を確認してください。';
 }
-export const needsRunRecovery=(q,r,w)=>!q?.integrity&&!!w&&q?.requestModel?.state.kind==='active'&&q.requestModel.state.review.length>0;
+export const requestRootState=q=>q?.requestGraph?.nodes.find(n=>n.id===q.requestGraph.rootId)?.state;
+export const needsRunRecovery=(q,r,w)=>!q?.integrity&&!!w&&requestRootState(q)?.kind==='active'&&requestRootState(q).review.length>0;
 export function requestReviewReason(q,r){
- const reasons=q.requestModel?.state.kind==='active'?q.requestModel.state.review:[];
+ const state=requestRootState(q),reasons=state?.kind==='active'?state.review:[];
  return reasons.map(reason=>reason.startsWith('run-needs-review:')?'送信が失敗・中断・確認できずで終了しました。既存の成果・副作用を確認してください。':reason.startsWith('declaration-conflict:')?'完了申告と観察した事実が一致しません。':reason==='dependencies-unresolved'?'子依頼の結果への対応または現在の回の完了申告を待っています。':reason==='child-needs-review'?'子依頼に失敗・中断・確認できない結果があります。結果を確認してください。':reason==='needs-decision'||reason==='legacy-needs-decision'?'送信が終了しています。成果を確認し、次の扱いを決めてください。':reason).join(' / ')||recoveryReason(r);
 }
 export function recoveryRequests(data){
  return (data.requests||[]).flatMap(q=>{
   if(q.integrity)return [{id:q.id,revision:q.revision,agentName:data.agents.find(a=>a.id===q.originAgentId)?.name||'参照不整合',instruction:q.instruction,reason:'参照不整合のため隔離中: '+q.integrity.reasons.join(' / '),canRetry:false,quarantined:true}];
-  const w=q.works.find(w=>w.id===q.rootWorkId)||q.works.find(w=>!w.parentWorkId);
+  const w=q.requestGraph.nodes.find(w=>w.id===q.rootWorkId)||q.requestGraph.nodes.find(w=>!w.parentId);
   const r=data.runs.find(r=>r.id===w?.currentRunId);if(!r||!needsRunRecovery(q,r,w))return [];
-  const a=data.agents.find(a=>a.id===w.agentId);
-  return [{id:q.id,revision:q.revision,runId:r.id,workId:w.id,agentId:w.agentId,agentName:a?.name||'削除済みAgent',instruction:q.instruction,phase:r.phase||'work',state:r.state,reason:requestReviewReason(q,r),canRetry:!!a&&!a.deletedAt&&!['terminated','stopping'].includes(a.state)&&!!a.tabId&&['completed','failed','interrupted','terminated'].includes(r.state)}];
+  const a=data.agents.find(a=>a.id===w.assignee);
+  return [{id:q.id,revision:q.revision,runId:r.id,workId:w.id,agentId:w.assignee,agentName:a?.name||'削除済みAgent',instruction:q.instruction,phase:r.phase||'work',state:r.state,reason:requestReviewReason(q,r),canRetry:!!a&&!a.deletedAt&&!['terminated','stopping'].includes(a.state)&&!!a.tabId&&['completed','failed','interrupted','terminated'].includes(r.state)}];
  });
 }

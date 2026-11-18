@@ -5,11 +5,11 @@ import type {Run,Outcome} from './run.ts';
 export type RequestState={kind:'active';review:string[]}|{kind:'submitted';resultId:string}|{kind:'completed';by:'program'|'human'|'agent';reason:string}|{kind:'withdrawn';reason:string};
 export type Submission={id:string;version:number;runId:string;outcome:Outcome|'cancelled';requestId:string};
 export type Response={requestId:string;resultId:string;version:number;decision:'accept'|'rework'};
-export type Handling=Response&{actorRunId:string;actor:Actor;operationId:string};
-export type Claim=Handling&{legacy:boolean;invalidated?:string};
+export type Handling=Omit<Response,'decision'>&{decision:Response['decision']|'review';actorRunId:string;actor:Actor;operationId:string};
+export type Claim=Handling&{invalidated?:string};
 export type Replacement={replacementId:string;actorRunId:string;resultId:string;version:number};
-export type Node={claims:Claim[];replacements:Replacement[];invalidatedRuns:string[];replacementId?:string;id:string;parentId:string|null;requester:{kind:'human'}|{kind:'agent';agentId:string;requestId:string};assignee:string;runAgents:Record<string,string>;runIds:string[];currentRunId:string;reportRunId:string|null;reportMode:boolean;state:RequestState;submissions:Submission[];handling:Handling[];declarations:{id:string;runId:string;at:number;invalidated?:string}[];decisions:{actor:Actor;reason:string}[]};
-export type Graph={version:2;rootId:string;nodes:Node[];operations:{id:string;payload:string}[]};
+export type Node={metadata:Record<string,unknown>;claims:Claim[];replacements:Replacement[];invalidatedRuns:string[];replacementId?:string;id:string;parentId:string|null;requester:{kind:'human'}|{kind:'agent';agentId:string;requestId:string};assignee:string;runAgents:Record<string,string>;runIds:string[];currentRunId:string;reportRunId:string|null;reportMode:boolean;state:RequestState;submissions:Submission[];handling:Handling[];declarations:{id:string;runId:string;at:number;invalidated?:string}[];decisions:{actor:Actor;reason:string}[]};
+export type Graph={version:3;rootId:string;nodes:Node[];operations:{id:string;payload:string;acceptedPayload?:string;allowOmittedResults?:true}[]};
 export type Evidence={run:Run;ownerId:string;agentId:string}[];
 export const node=(g:Graph,id:string)=>g.nodes.find(n=>n.id===id);
 const owned=(n:Node,runs:Evidence)=>runs.filter(e=>e.ownerId===n.id).map(e=>e.run);
@@ -35,7 +35,7 @@ export function reconcileGraph(source:Graph,runs:Evidence):Graph{
   if(n.handling.some(h=>h.operationId===claim.operationId&&h.resultId===claim.resultId))continue;
   if(!resolved(g,c!))continue;
   n.handling.push({requestId:claim.requestId,resultId:claim.resultId,version:claim.version,decision:claim.decision,actor:'agent',actorRunId:claim.actorRunId,operationId:claim.operationId});committed=true;
-  if(claim.decision==='accept'&&(c!.state.kind==='submitted'||c!.state.kind==='active'&&!claim.legacy)){
+  if(claim.decision==='accept'&&(c!.state.kind==='submitted'||c!.state.kind==='active')){
    c!.state={kind:'completed',by:'agent',reason:'result-accepted:'+s.id};c!.decisions.push({actor:'agent',reason:'result-accepted:'+s.id});
   }
   if(claim.decision==='rework'){
@@ -67,7 +67,7 @@ export function reconcileGraph(source:Graph,runs:Evidence):Graph{
  for(const n of g.nodes)for(const r of owned(n,runs))if(n.state.kind!=='withdrawn'&&r.phase==='result'&&normal(r)&&correlated(r)&&!r.supersededBy&&!n.invalidatedRuns.includes(r.id)){
   const child=dependencies(g,n).find(c=>c.submissions.some(s=>s.id===r.resultOf)),s=child?.submissions.find(s=>s.id===r.resultOf);
   if(s&&!handled(n,s)){
-   n.handling.push({requestId:s.requestId,resultId:s.id,version:s.version,decision:'accept',actor:'program',actorRunId:r.id,operationId:'delivery:'+r.id});
+   n.handling.push({requestId:s.requestId,resultId:s.id,version:s.version,decision:s.outcome==='normal'?'accept':'review',actor:'program',actorRunId:r.id,operationId:'delivery:'+r.id});
    // Failed results require an explicit Agent/human decision, not mere normal receipt.
    if(child?.state.kind==='submitted'&&latest(child)?.id===s.id&&resolved(g,child))child.state={kind:'completed',by:'program',reason:'result-handled:'+r.id};
    changed=true;
@@ -78,7 +78,7 @@ export function reconcileGraph(source:Graph,runs:Evidence):Graph{
 export type Event=
  | {type:'add';actor:Actor;request:Node}
  | {type:'attempt';actor:Actor;requestId:string;runId:string;report:boolean;resolveReview?:boolean}
- | {type:'respond'|'finish';actor:'agent';requestId:string;runId:string;operationId:string;results:Response[];at:number;legacy?:boolean}
+ | {type:'respond'|'finish';actor:'agent';requestId:string;runId:string;operationId:string;results:Response[];at:number}
  | {type:'replace';actor:'agent';requestId:string;childId:string;replacementId:string}
  | {type:'assign';actor:'human';requestId:string;agentId:string}
  | {type:'review';actor:'program';requestId:string;reason:string}
@@ -110,9 +110,9 @@ export function transitionGraph(source:Graph,e:Event,runs:Evidence):Result<Graph
    for(const ref of e.results){
     const c=node(g,ref.requestId),s=c&&latest(c);
     if(!c||c.parentId!==n.id||!s||s.id!==ref.resultId||s.version!==ref.version||!['accept','rework'].includes(ref.decision))return reject('stale-or-foreign-result');
-    const existing=n.claims.find(h=>h.resultId===s.id&&h.actorRunId===r.id&&!h.invalidated);
+    const existing=n.claims.find(h=>h.resultId===s.id&&h.actorRunId===r.id&&!h.invalidated&&h.decision!=='review');
     if(existing&&existing.decision!==ref.decision)return reject('result-decision-conflict');
-    if(!existing)n.claims.push({...ref,actor:'agent',actorRunId:r.id,operationId:e.operationId,legacy:e.legacy===true});
+    if(!existing)n.claims.push({...ref,actor:'agent',actorRunId:r.id,operationId:e.operationId});
     if(ref.decision==='accept'&&!resolved(g,c))return reject('child-dependencies-unresolved');
    }
   }

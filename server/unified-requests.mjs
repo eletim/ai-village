@@ -1,45 +1,22 @@
-import {readFile,open} from 'node:fs/promises';
-import {resolve} from 'node:path';
-import {writeSnapshot} from './direct-store.mjs';
-import {node,reconcileGraph,graphSteps,transitionGraph,latest,handled} from './state/requests.ts';
+import {node,graphSteps,transitionGraph,latest,handled} from './state/requests.ts';
 export const evidence=(data,q)=>data.runs.filter(r=>r.humanRequestId===q.id).map(r=>({run:r.runModel,ownerId:r.workId,agentId:r.agentId}));
 export const rootNode=q=>node(q.requestGraph,q.rootWorkId);
-export function newNode(q,w){return {id:w.id,parentId:w.parentWorkId||null,requester:w.parentWorkId?{kind:'agent',agentId:q.works.find(p=>p.id===w.parentWorkId).agentId,requestId:w.parentWorkId}:{kind:'human'},assignee:w.agentId,runAgents:Object.fromEntries(w.runIds.map(id=>[id,w.agentId])),runIds:[...w.runIds],currentRunId:w.currentRunId,reportRunId:null,reportMode:!w.parentWorkId&&q.reportMode===true,state:{kind:'active',review:[]},submissions:[],claims:[],replacements:[],invalidatedRuns:[],handling:[],declarations:[],decisions:[]};}
-export function compatibilityModel(data,q){
- const n=rootNode(q);return {id:q.id,state:n.state,runs:evidence(data,q).map(e=>e.run),rootRunId:q.report?.sourceRunId||n.currentRunId,reportRunId:n.reportRunId,reportMode:n.reportMode,delegated:q.requestGraph.nodes.length>1,declarations:q.requestGraph.nodes.flatMap(n=>n.declarations),decisions:n.decisions};
-}
-export function attachGraph(data,q){
- if(!q.requestGraph){
-  const old=q.requestModel;
-  q.requestGraph={version:2,rootId:q.rootWorkId,nodes:q.works.map(w=>newNode(q,w)),operations:[]};
-  if(old)for(const w of q.works.filter(w=>w.operationId))q.requestGraph.operations.push({id:w.operationId,payload:JSON.stringify({type:'delegate',requestId:w.parentWorkId,runId:data.runs.find(r=>r.id===w.runIds[0])?.runModel.parentRunId,childId:w.id})});
-  for(const n of q.requestGraph.nodes){
-   n.declarations=(old?.declarations||[]).filter(d=>n.runIds.includes(d.runId));
-   for(const d of n.declarations)q.requestGraph.operations.push({id:d.id,payload:JSON.stringify({type:'finish',requestId:n.id,runId:d.runId,results:[]})});
-   if(old)for(const r of evidence(data,q).filter(e=>e.ownerId===n.id).map(e=>e.run))if(['ended','cancelled'].includes(r.state.kind))n.submissions.push({id:r.id,runId:r.id,requestId:n.id,version:n.submissions.length+1,outcome:r.state.kind==='ended'?r.state.outcome:'cancelled'});
-   n.reportRunId=evidence(data,q).find(e=>e.ownerId===n.id&&e.run.id===n.currentRunId&&e.run.phase==='report')?.run.id||null;
-   if(n.id===q.rootWorkId&&old){n.state=structuredClone(old.state);n.decisions=structuredClone(old.decisions);}
-  }
-  q.requestGraph=reconcileGraph(q.requestGraph,evidence(data,q));
-  // Preserve existing terminal judgments and active roots: migration is not new completion evidence.
-  if(old){const n=rootNode(q);n.state=structuredClone(old.state);if(n.state.kind==='active'&&!n.state.review.length&&evidence(data,q).every(e=>['ended','cancelled'].includes(e.run.state.kind))&&!graphSteps(q.requestGraph,evidence(data,q)).length)n.state.review.push('legacy-needs-decision');}
- }
- delete q.requestModel;
- Object.defineProperty(q,'requestModel',{configurable:true,enumerable:false,get:()=>compatibilityModel(data,q)});
- return q;
-}
+export function newNode(q,{id,parentId=null,assignee,metadata={}}){return {id,parentId,requester:parentId?{kind:'agent',agentId:node(q.requestGraph,parentId).assignee,requestId:parentId}:{kind:'human'},assignee,metadata,runAgents:{},runIds:[],currentRunId:null,reportRunId:null,reportMode:!parentId&&q.reportMode===true,state:{kind:'active',review:[]},submissions:[],claims:[],replacements:[],invalidatedRuns:[],handling:[],declarations:[],decisions:[]};}
 export function applyGraph(data,q,event){
  const changed=transitionGraph(q.requestGraph,event,evidence(data,q));
  if(!changed.ok)throw Object.assign(Error('request transition rejected: '+event.type+' '+changed.reason),{status:409});
- q.requestGraph=changed.value;return q;
+ // Keep references to the single canonical nodes valid across a transaction.
+ const prior=new Map(q.requestGraph.nodes.map(n=>[n.id,n]));
+ for(const n of changed.value.nodes){const existing=prior.get(n.id);if(existing){for(const key of Object.keys(existing))delete existing[key];Object.assign(existing,n);}}
+ q.requestGraph={...changed.value,nodes:changed.value.nodes.map(n=>prior.get(n.id)||n)};return q;
 }
 export const steps=(data,q)=>graphSteps(q.requestGraph,evidence(data,q));
 export function validateGraph(data,q){
- if(q.requestGraph?.version===1){const draft=structuredClone(q);upgradeGraph(data,draft);return validateGraph(data,draft);}
- const g=q.requestGraph;if(!g||g.version!==2||g.rootId!==q.rootWorkId||!Array.isArray(g.nodes)||g.nodes.length!==q.works.length||!Array.isArray(g.operations))throw Error('Invalid request graph version/shape: '+q.id);
+ const g=q.requestGraph;if(!g||g.version!==3||g.rootId!==q.rootWorkId||!Array.isArray(g.nodes)||Object.hasOwn(q,'works')||Object.hasOwn(q,'requestModel')||!Array.isArray(g.operations))throw Error('Invalid request graph version/shape: '+q.id);
  if(new Set(g.operations.map(o=>o.id)).size!==g.operations.length||g.operations.some(o=>typeof o.id!=='string'||typeof o.payload!=='string'))throw Error('Invalid operation registry');
+ if(g.nodes.filter(n=>n.parentId===null).length!==1||!node(g,g.rootId)||node(g,g.rootId).parentId!==null)throw Error('Invalid request root');
  const ids=new Set();for(const n of g.nodes){
-  const w=q.works.find(w=>w.id===n.id);if(ids.has(n.id)||!w||n.parentId!==(w.parentWorkId||null)||n.assignee!==w.agentId||n.currentRunId!==w.currentRunId||JSON.stringify(n.runIds)!==JSON.stringify(w.runIds)||!['active','submitted','completed','withdrawn'].includes(n.state?.kind)||!Array.isArray(n.submissions)||!Array.isArray(n.claims)||!Array.isArray(n.replacements)||!Array.isArray(n.invalidatedRuns)||!Array.isArray(n.handling)||!Array.isArray(n.declarations)||!Array.isArray(n.decisions))throw Error('Invalid request node: '+n.id);ids.add(n.id);
+  if(ids.has(n.id)||typeof n.assignee!=='string'||!Array.isArray(n.runIds)||!n.runIds.includes(n.currentRunId)||new Set(n.runIds).size!==n.runIds.length||!n.metadata||typeof n.metadata!=='object'||Array.isArray(n.metadata)||['agentId','parentWorkId','runIds','currentRunId'].some(key=>Object.hasOwn(n.metadata,key))||!['active','submitted','completed','withdrawn'].includes(n.state?.kind)||!Array.isArray(n.submissions)||!Array.isArray(n.claims)||!Array.isArray(n.replacements)||!Array.isArray(n.invalidatedRuns)||!Array.isArray(n.handling)||!Array.isArray(n.declarations)||!Array.isArray(n.decisions))throw Error('Invalid request node: '+n.id);ids.add(n.id);
   if(n.requester?.kind!==(n.parentId?'agent':'human')||n.parentId&&n.requester.requestId!==n.parentId||n.state.kind==='active'&&!Array.isArray(n.state.review)||!n.runAgents)throw Error('Invalid request authority/state');
   if(n.state.kind==='submitted'&&(!n.parentId||n.state.resultId!==latest(n)?.id||latest(n)?.outcome!=='normal'))throw Error('Invalid submitted result');
   if(n.replacementId){const replacement=node(g,n.replacementId);if(!replacement||replacement.parentId!==n.parentId)throw Error('Invalid replacement');const visited=new Set([n.id]);let next=n;while(next.replacementId){if(visited.has(next.replacementId))throw Error('Replacement cycle');visited.add(next.replacementId);next=node(g,next.replacementId);if(!next)throw Error('Missing replacement');}}
@@ -48,20 +25,20 @@ export function validateGraph(data,q){
   for(const s of n.submissions)if(!['normal','failed','interrupted','unconfirmed','cancelled'].includes(s.outcome)||s.requestId!==n.id||s.id!==s.runId||!n.runIds.includes(s.runId)||!Number.isInteger(s.version)||s.version<1)throw Error('Invalid result version/owner');
   for(const [i,s] of n.submissions.entries()){const r=data.runs.find(r=>r.id===s.runId)?.runModel;if(s.version!==i+1||!r||!['ended','cancelled'].includes(r.state.kind)||s.outcome!==(r.state.kind==='ended'?r.state.outcome:'cancelled'))throw Error('Result lacks native terminal evidence');}
   if(new Set(n.submissions.map(s=>s.id)).size!==n.submissions.length||new Set(n.submissions.map(s=>s.version)).size!==n.submissions.length)throw Error('Duplicate result');
-  for(const h of n.handling){const c=node(g,h.requestId),s=c?.submissions.find(s=>s.id===h.resultId&&s.version===h.version);if(c?.parentId!==n.id||!s||!n.runIds.includes(h.actorRunId)||!['agent','program','human'].includes(h.actor)||!['accept','rework'].includes(h.decision))throw Error('Invalid result handling');}
+  for(const h of n.handling){const c=node(g,h.requestId),s=c?.submissions.find(s=>s.id===h.resultId&&s.version===h.version);if(c?.parentId!==n.id||!s||!n.runIds.includes(h.actorRunId)||!['agent','program','human'].includes(h.actor)||!['accept','rework','review'].includes(h.decision))throw Error('Invalid result handling');}
   for(const h of [...n.claims,...n.handling]){
    const c=node(g,h.requestId),s=c?.submissions.find(s=>s.id===h.resultId&&s.version===h.version),r=data.runs.find(r=>r.id===h.actorRunId&&r.workId===n.id&&r.humanRequestId===q.id)?.runModel;
    if(!s||c.parentId!==n.id||!r)throw Error('Invalid response authority');
    if(n.handling.includes(h)&&h.actor!=='human'){
     if(r.state.kind!=='ended'||r.state.outcome!=='normal'||r.supersededBy||n.invalidatedRuns.includes(r.id)||!r.facts.some(f=>f.type==='input'))throw Error('Handling lacks normal native evidence');
     if(h.actor==='agent'&&!n.claims.some(c=>!c.invalidated&&c.actorRunId===h.actorRunId&&c.operationId===h.operationId&&c.resultId===h.resultId&&c.version===h.version&&c.decision===h.decision))throw Error('Handling lacks matching declaration');
-    if(h.actor==='program'&&(r.phase!=='result'||r.resultOf!==h.resultId||h.operationId!=='delivery:'+r.id||h.decision!=='accept'))throw Error('Handling lacks delivery evidence');
+    if(h.actor==='program'&&(r.phase!=='result'||r.resultOf!==h.resultId||h.operationId!=='delivery:'+r.id||h.decision!==(s.outcome==='normal'?'accept':'review')))throw Error('Handling lacks delivery evidence');
    }
    if(n.handling.includes(h)&&h.actor==='human'){const source=node(g,h.operationId?.startsWith('human-complete:')?h.operationId.slice('human-complete:'.length):'');if(source?.state.kind!=='completed'||source.state.by!=='human'||!source.decisions.some(d=>d.actor==='human')||h.decision!=='accept')throw Error('Human handling lacks closure decision');}
    if(n.claims.includes(h)){
     if(!r.facts.some(f=>f.type==='input'))throw Error('Claim lacks native input evidence');
     const op=g.operations.find(o=>o.id===h.operationId);let payload;try{payload=JSON.parse(op?.payload);}catch{}
-    if(h.actor!=='agent'||!['accept','rework'].includes(h.decision)||!payload||payload.requestId!==n.id||payload.runId!==r.id||!['respond','finish'].includes(payload.type)||!payload.results?.some(ref=>ref.requestId===h.requestId&&ref.resultId===h.resultId&&ref.version===h.version&&ref.decision===h.decision))throw Error('Claim lacks operation evidence');
+    if(h.actor!=='agent'||!['accept','rework','review'].includes(h.decision)||!payload||payload.requestId!==n.id||payload.runId!==r.id||!['respond','finish'].includes(payload.type)||!payload.results?.some(ref=>ref.requestId===h.requestId&&ref.resultId===h.resultId&&ref.version===h.version&&ref.decision===h.decision))throw Error('Claim lacks operation evidence');
    }
   }
   for(const reservation of n.replacements){const parent=node(g,n.parentId),replacement=node(g,reservation.replacementId);if(!parent||replacement?.parentId!==n.parentId||!parent.claims.some(c=>c.actorRunId===reservation.actorRunId&&c.resultId===reservation.resultId&&c.version===reservation.version&&c.decision==='rework'))throw Error('Invalid replacement reservation');}
@@ -70,41 +47,6 @@ export function validateGraph(data,q){
   if(n.invalidatedRuns.some(id=>!n.runIds.includes(id)))throw Error('Invalid supersession owner');
   for(const d of n.declarations)if(!n.runIds.includes(d.runId))throw Error('Invalid declaration owner');
  }
-}
-function upgradeGraph(data,q){
- if(!q.requestGraph||q.requestGraph.version===2)return;
- if(q.requestGraph.version!==1)throw Error('Unsupported request graph version');
- const g=q.requestGraph;g.version=2;
- for(const n of g.nodes){n.claims=[];n.replacements=[];n.invalidatedRuns=[];}
- let uncertain=false;
- for(const n of g.nodes){
-  const retained=[];
-  for(const h of n.handling){
-   if(h.actor!=='agent'){retained.push(h);continue;}
-   const r=data.runs.find(r=>r.id===h.actorRunId)?.runModel;
-   n.claims.push({...h,legacy:false,...(r?.supersededBy?{invalidated:'migration-superseded'}:{})});
-   if(r?.state.kind==='ended'&&r.state.outcome==='normal'&&!r.supersededBy)retained.push(h);
-   else {uncertain=true;const child=node(g,h.requestId);if(child?.state.kind==='completed'&&child.state.by==='agent')child.state={kind:'active',review:['migration-unconfirmed-response']};}
-  }
-  n.handling=retained;
-  if(n.replacementId){uncertain=true;delete n.replacementId;n.state={kind:'active',review:['migration-unconfirmed-replacement']};}
- }
- if(uncertain){const root=node(g,g.rootId);if(root.state.kind!=='withdrawn')root.state={kind:'active',review:['migration-unconfirmed-response']};}
-}
-export function unifiedData(source){
- if(source.unifiedRequestVersion!==undefined&&![1,2].includes(source.unifiedRequestVersion))throw Error('Unsupported unifiedRequestVersion');
- const data=structuredClone(source);
- for(const q of data.requests||[]){if(q.integrity)continue;if(source.unifiedRequestVersion!==undefined&&!q.requestGraph)throw Error('Missing unified request graph');upgradeGraph(data,q);attachGraph(data,q);validateGraph(data,q);}
- data.unifiedRequestVersion=2;return data;
-}
-export async function migrateUnifiedStore(dir,source){
- const data=unifiedData(source);if(source.unifiedRequestVersion===2)return data;
- let bytes;try{bytes=await readFile(resolve(dir,'direct.json'));}catch(e){if(e.code!=='ENOENT')throw e;}
- if(bytes){const path=resolve(dir,'direct.pre-unified-requests-v2.json');let f;
-  try{f=await open(path,'wx',0o600);await f.writeFile(bytes);await f.sync();}catch(e){if(e.code!=='EEXIST'||!bytes.equals(await readFile(path)))throw e;}finally{await f?.close();}
-  const folder=await open(dir,'r');try{await folder.sync();}finally{await folder.close();}
- }
- await writeSnapshot(dir,JSON.stringify(data,null,2));return data;
 }
 export function graphResults(data,q){
  if(q.integrity)return [];

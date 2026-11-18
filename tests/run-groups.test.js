@@ -16,12 +16,12 @@ test('only human-origin, external/native and unclassified-origin entries are nev
  assert.equal(isAlwaysVisible({origin:'agent'}),false);
 });
 test('a run that is the live head of its own request\'s root work is visible even with a non-human origin',()=>{
- const current=rootRunIds([{works:[{id:'w',parentWorkId:null,currentRunId:'retry-run'}]}]);
+ const current=rootRunIds([{requestGraph:{nodes:[{id:'w',parentId:null,currentRunId:'retry-run'}]}}]);
  assert.equal(isAlwaysVisible({id:'retry-run',origin:'retry'},current),true);
  assert.equal(isAlwaysVisible({id:'other-run',origin:'retry'},current),false);
 });
 test('rootRunIds never includes a delegated child work\'s current run, even though it is current for that work',()=>{
- const current=rootRunIds([{works:[{id:'root',parentWorkId:null,currentRunId:'r1'},{id:'child',parentWorkId:'root',currentRunId:'d1'}]}]);
+ const current=rootRunIds([{requestGraph:{nodes:[{id:'root',parentId:null,currentRunId:'r1'},{id:'child',parentId:'root',currentRunId:'d1'}]}}]);
  assert.equal(current.has('r1'),true);assert.equal(current.has('d1'),false);
 });
 test('a lone human entry renders ungrouped; a run of non-human entries folds into one collapsed details',()=>{
@@ -46,7 +46,7 @@ test('a native/PurpleMux external turn stays ungrouped between folded village-in
  assert.deepEqual(order,['group:s1','s1','n1','group:d1','d1']);
 });
 test('a retried answer on a non-human-origin run that is still the root work\'s current run stays unfolded',()=>{
- const current=rootRunIds([{works:[{id:'w',parentWorkId:null,currentRunId:'retry-run'}]}]);
+ const current=rootRunIds([{requestGraph:{nodes:[{id:'w',parentId:null,currentRunId:'retry-run'}]}}]);
  const entries=[{id:'h1',origin:'human',state:'failed'},{id:'retry-run',origin:'retry',state:'completed',finalOutput:'answer'}];
  const html=foldEntriesHTML(entries,render,current);
  assert(!html.includes('<details'));
@@ -63,7 +63,7 @@ test('an Agent-to-Agent independent request (origin agent) folds by default but 
  const folded=foldEntriesHTML([{id:'a1',origin:'agent'}],render);
  assert.match(folded,/^<details class="run-group" data-disclosure="group:a1">/);
  assert.match(folded,/他Agentからの依頼/);
- const current=rootRunIds([{works:[{id:'w',parentWorkId:null,currentRunId:'a1'}]}]);
+ const current=rootRunIds([{requestGraph:{nodes:[{id:'w',parentId:null,currentRunId:'a1'}]}}]);
  const unfolded=foldEntriesHTML([{id:'a1',origin:'agent'}],render,current);
  assert(!unfolded.includes('<details'));
 });

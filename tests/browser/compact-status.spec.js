@@ -1,3 +1,4 @@
+import {fixtureGraph} from '../model-fixtures.mjs';
 import {test,expect} from '@playwright/test';
 const fixture=()=>({agents:[{id:'a',name:'工房Agent',location:'workshop',workshopId:'w',state:'idle',connection:{},canSend:true}],workshops:[{id:'w',name:'工房'}],projects:[],reviews:{},notification:{enabled:false},requests:[{id:'q',status:'completed',works:[]}],runs:[{id:'r',agentId:'a',humanRequestId:'q',instruction:'依頼',output:'回答',state:'completed',reportStatus:'報告完了'}]});
 for(const theme of ['light','dark'])for(const width of [1440,390])test(`${theme} ${width}: normal icons retain accessible labels on both screens`,async({page})=>{
@@ -21,7 +22,7 @@ test('sending, queue, steering, failed request and disconnected states retain wo
 test('review keeps completion wording and recovery actions; merged success becomes a check',async({page},info)=>{
  const s=fixture();s.runs[0].reportStatus='作業完了（報告に統合済み）';
  await page.route('**/api/**',r=>r.fulfill({json:s}));await page.goto('/agents');await expect(page.locator('.run-status [aria-label="作業完了（報告に統合済み） · 依頼全体完了"]')).toBeVisible();
- Object.assign(s.requests[0],{status:'active',rootWorkId:'work',requestModel:{state:{kind:'active',review:['legacy-needs-decision']}},works:[{id:'work',currentRunId:'r',agentId:'a',parentWorkId:null}]});
+ Object.assign(s.requests[0],{status:'active',rootWorkId:'work',requestModel:{state:{kind:'active',review:['legacy-needs-decision']}},works:[{id:'work',currentRunId:'r',agentId:'a',parentWorkId:null}]});fixtureGraph(s.requests[0]);
  await expect(page.locator('.run-status')).toContainText('作業完了（報告に統合済み）');await expect(page.locator('.run-status .completion-icon')).toHaveCount(0);await expect(page.locator('.recovery').getByRole('button',{name:'再試行',exact:true})).toBeVisible();await expect(page.locator('.recovery').getByRole('button',{name:'完了扱い',exact:true})).toBeVisible();await expect(page.locator('.recovery').getByRole('button',{name:'取り下げ',exact:true})).toBeVisible();
  await page.screenshot({path:info.outputPath('review-text.png')});
 });

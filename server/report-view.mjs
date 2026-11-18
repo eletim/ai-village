@@ -39,7 +39,7 @@ export function humanProjection(data){
   if(archive){r.collapsedHistory=true;r.finalOutput=original.finalOutput||'';}
   r.suppressUser=!['human','steering'].includes(r.origin);
   if(r.suppressUser){r.instruction='';r.attachments=[];r.travelContexts=[];}
-  const current=q.works.find(w=>w.id===r.workId)?.currentRunId===r.id;
+  const current=q.requestGraph.nodes.find(w=>w.id===r.workId)?.currentRunId===r.id;
   r.hideEntry=r.suppressUser&&!current&&!show&&!r.collapsedHistory;
   r.reportStatus=q.status==='cancelled'?'依頼キャンセル':q.status==='completed'&&!show?'作業完了（報告に統合済み）':show?'報告完了':r.phase==='report'?
    ['failed','interrupted','terminated'].includes(r.state)?'報告生成に失敗しました。元回答を引き続き表示しています。':
