@@ -2,8 +2,8 @@
 export function bindSidebarOrder(root,{save,changed,error,activate}){
  let gesture=null,saving=false,suppressUntil=0,scrollFrame=0;
  const node=e=>e.closest('[data-order-kind]');
- const read=e=>({kind:e.dataset.orderKind,id:e.dataset.orderId,revision:Number(e.dataset.orderRevision),projectId:e.dataset.orderProject||undefined,pinned:e.dataset.orderPinned==='true'});
- const compatible=(a,b)=>a.kind===b.kind&&a.id!==b.id&&(a.kind==='projects'?a.pinned===b.pinned:a.projectId===b.projectId);
+ const read=e=>({kind:e.dataset.orderKind,id:e.dataset.orderId,revision:Number(e.dataset.orderRevision),projectId:e.dataset.orderProject||undefined});
+ const compatible=(a,b)=>a.kind===b.kind&&a.id!==b.id&&(a.kind==='projects'||a.projectId===b.projectId);
  const clear=()=>{root.querySelectorAll('[data-drop]').forEach(e=>delete e.dataset.drop);root.classList.remove('ordering');};
  const cancel=()=>{cancelAnimationFrame(scrollFrame);if(gesture&&root.hasPointerCapture(gesture.pointer))root.releasePointerCapture(gesture.pointer);gesture=null;clear();};
  const commit=async(source,target,position)=>{

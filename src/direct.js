@@ -243,7 +243,7 @@ function renderPlaces(){
  for(const {id} of places){const agents=scopeAgents(id,all);for(let page=0;page<Math.max(1,Math.ceil(agents.length/PAGE_SIZE));page++)entries.push({id,page,agents:agents.slice(page*PAGE_SIZE,(page+1)*PAGE_SIZE)});}
  const html=entries.map(({id,page,agents})=>{
   const project=isProject(id)?state.projects.find(p=>p.id===id.slice(8)):null;
-  const order=project?` data-order-kind="projects" data-order-id="${esc(project.id)}" data-order-revision="${project.revision}" data-order-pinned="${project.pinned===true}"`:'';
+  const order=project?` data-order-kind="projects" data-order-id="${esc(project.id)}" data-order-revision="${project.revision}"`:'';
   const dots=agents.map(agentDot).join('');
   const title=id==='all'?'<svg class="all-grid" viewBox="0 0 20 20" aria-hidden="true"><path d="M2 2h6v6H2zM12 2h6v6h-6zM2 12h6v6H2zM12 12h6v6h-6z"/></svg>':esc(groupTitle(id,page));
   return `<div class="place-row"${order}><button data-place="${esc(id)}" data-page="${page}" ${id==='all'?'aria-label="全体を表示" title="全体を表示"':''} ${selectedPlace===id&&(id==='all'||selectedPage===page)?'aria-current="page"':''}><span ${project?'data-project-handle title="ドラッグで並べ替え・Alt＋上下キー"':''}>${title}</span><span class="place-dots" aria-label="${id==='all'?'全体表示の現在ページ':'このグループ'}のAgent状態">${dots}</span></button>${id==='all'||id==='unassigned'?'':`<button class="add-agent" data-add="${esc(id)}" data-page="${page}" aria-label="${esc(groupTitle(id,page))}の操作">…</button>`}</div>`;
@@ -562,9 +562,11 @@ function renderSuspended(){
  const html=projects.map(p=>{const members=scopeAgents('project:'+p.id);return Array.from({length:Math.max(1,Math.ceil(members.length/PAGE_SIZE))},(_,page)=>`<div class="place-row"><button data-place="project:${esc(p.id)}" data-page="${page}" ${selectedPlace==='project:'+p.id&&selectedPage===page?'aria-current="page"':''}><span>${esc(p.name)}${page?' ('+(page+1)+')':''}</span><span class="place-dots">${members.slice(page*PAGE_SIZE,(page+1)*PAGE_SIZE).map(agentDot).join('')}</span></button><button data-add="project:${esc(p.id)}" aria-label="${esc(p.name)}の操作">…</button></div>`).join('');}).join('')||'<p>休止中のProjectはありません。</p>';
  const host=$('#suspended-list');if(host.innerHTML!==html){const active=document.activeElement?.dataset;host.innerHTML=html;if(active?.place||active?.add)[...host.querySelectorAll('button')].find(b=>b.dataset.place===active.place&&b.dataset.add===active.add&&b.dataset.page===active.page)?.focus({preventScroll:true});}
 }
-let projectActionTarget=null;
+let projectActionTarget=null,projectMoveSaving=false;
 function renderProjectOrder(){
- if(!$('#project-actions-dialog').open||!projectActionTarget||projectMemberOrder.busy())return;
+ if(!$('#project-actions-dialog').open||!projectActionTarget)return;
+ renderProjectMove();
+ if(projectMemberOrder.busy())return;
  const members=scopeAgents('project:'+projectActionTarget.id),root=$('#project-agent-order');
  const html=members.map(a=>`<button type="button" data-agent-handle data-order-kind="agents" data-order-id="${esc(a.id)}" data-order-project="${esc(projectActionTarget.id)}" data-order-revision="${a.metadataRevision||0}" aria-label="${esc(a.name||'Agent')}を並べ替え" title="${esc(a.name||'Agent')}・ドラッグで並べ替え" aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight">${agentDot(a)}</button>`).join('')||'<p>Agentはまだいません。</p>';
  if(root.innerHTML!==html){const focused=document.activeElement?.dataset.orderId;root.innerHTML=html;[...root.querySelectorAll('button')].find(b=>b.dataset.orderId===focused)?.focus({preventScroll:true});}
@@ -575,7 +577,6 @@ function openProjectActions(id){
  projectActionTarget={...p};
  $('#project-actions-title').textContent=p.name+' の操作';
  $('#project-rename-form').elements.name.value=p.name;
- $('#project-pin').textContent=p.pinned?'先頭固定を解除':'先頭に固定';
  $('#project-suspension').textContent=p.suspended?'再開':'休止する';
  $('#project-suspension-help').textContent=p.name+'：表示整理のみです。Agent・所属・会話・依頼・通知はそのまま継続します。';
  $('#project-actions-dialog .dialog-error').textContent='';
@@ -590,7 +591,30 @@ function patchProject(patch){
  });
 }
 $('#project-rename-form').onsubmit=e=>{e.preventDefault();patchProject({name:e.currentTarget.elements.name.value});};
-$('#project-pin').onclick=()=>patchProject({pinned:!projectActionTarget.pinned});
+function projectMoveList(){
+ const p=state.projects.find(p=>p.id===projectActionTarget?.id);
+ return p?orderedProjects(state.projects.filter(x=>!!x.suspended===!!p.suspended)):[];
+}
+function renderProjectMove(){
+ const list=projectMoveList(),index=list.findIndex(p=>p.id===projectActionTarget?.id);
+ $('#project-move-up').disabled=projectMoveSaving||index<=0;
+ $('#project-move-down').disabled=projectMoveSaving||index<0||index>=list.length-1;
+}
+async function moveProject(direction){
+ if(projectMoveSaving)return;
+ const target=projectActionTarget,list=projectMoveList(),index=list.findIndex(p=>p.id===target?.id),source=list[index],neighbor=list[index+direction];
+ if(!source||!neighbor)return;
+ projectMoveSaving=true;renderProjectMove();$('#project-actions-dialog .dialog-error').textContent='';
+ try{
+  await api('/reorder',{kind:'projects',id:source.id,targetId:neighbor.id,position:direction<0?'before':'after',revision:source.revision,targetRevision:neighbor.revision});
+  const synced=await refresh(true);
+  // Preserve a genuine stale rename conflict, but allow edits after our own move.
+  if(synced&&projectActionTarget===target&&target.revision===source.revision)target.revision=state.projects.find(p=>p.id===target.id)?.revision??target.revision;
+ }catch(e){if(projectActionTarget===target)$('#project-actions-dialog .dialog-error').textContent='並び替えを保存できません: '+e.message;await refresh(true);}
+ finally{projectMoveSaving=false;if($('#project-actions-dialog').open)renderProjectMove();}
+}
+$('#project-move-up').onclick=()=>moveProject(-1);
+$('#project-move-down').onclick=()=>moveProject(1);
 $('#project-suspension').onclick=()=>patchProject({suspended:!projectActionTarget.suspended});
 $('#project-add-agent').onclick=()=>{
  if(!state.workshops.length){$('#project-actions-dialog .dialog-error').textContent='利用できる工房がありません。右上の設定から工房を登録してください。';return;}
