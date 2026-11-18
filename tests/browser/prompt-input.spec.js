@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 for (const view of ['direct']) {
-    test(`${view}: Ctrl+Enter sends, Enter and Shift+Enter add newline, IME never sends`, async ({ page }) => {
+    test(`${view}: Enter and Ctrl+Enter send, Shift+Enter adds newline, IME Enter never sends`, async ({ page }) => {
         const state = { workshops: [], agents: [{ id: 'a', name: 'Agent', connection: { name: '工房' }, state: 'idle', canSend: true }], runs: [], notification: {} };
         const village = { workshops: [], jobs: [], secretary: { status: 'idle', capabilities: { attachments: true }, messages: [] } };
         let sends = 0;
@@ -13,20 +13,20 @@ for (const view of ['direct']) {
         await page.goto('/agents');
         const input = page.locator('[name=instruction]');
         await input.fill('日本語');
-        await input.press('Enter');
+        await input.press('Shift+Enter');
         await input.press('Shift+Enter');
         await expect(input).toHaveValue('日本語\n\n');
         expect(sends).toBe(0);
         await input.dispatchEvent('compositionstart');
         await input.dispatchEvent('compositionend');
         await input.press('Enter');
-        await expect(input).toHaveValue('日本語\n\n\n');
+        await expect(input).toHaveValue('日本語\n\n');
         expect(sends).toBe(0);
         await input.fill('日本語\n\n');
         // Blink/Gecko order, WebKit order, and missing/false isComposing.
         for (const order of ['normal', 'end-first', '229', 'flag']) {
             await input.evaluate((el, order) => {
-                const emit = (type, init = {}) => el.dispatchEvent(type.startsWith('composition') ? new CompositionEvent(type, { bubbles: true }) : new KeyboardEvent(type, { key: 'Enter', ctrlKey: true, bubbles: true, cancelable: true, ...init }));
+                const emit = (type, init = {}) => el.dispatchEvent(type.startsWith('composition') ? new CompositionEvent(type, { bubbles: true }) : new KeyboardEvent(type, { key: 'Enter', bubbles: true, cancelable: true, ...init }));
                 if (order !== 'flag' && order !== '229')
                     emit('compositionstart');
                 if (order === 'end-first')
@@ -63,16 +63,16 @@ test('direct input respects disabled sending, empty text and pending request', a
     await page.goto('/agents');
     const input = page.locator('[name=instruction]');
     await input.fill('draft');
-    await input.press('Control+Enter');
+    await input.press('Enter');
     expect(sends).toBe(0);
     state.agents[0].canSend = true;
     state.agents[0].state = 'idle';
     await expect(page.locator('[data-send] button').first()).toBeEnabled();
     await input.fill('   ');
-    await input.press('Control+Enter');
+    await input.press('Enter');
     expect(sends).toBe(0);
     await input.fill('send once');
-    await input.press('Control+Enter');
+    await input.press('Enter');
     await expect.poll(() => sends).toBe(1);
     await input.press('Control+Enter');
     expect(sends).toBe(1);
@@ -99,4 +99,26 @@ test('busy agent accepts consecutive additional instructions into queue', async 
     }
     expect(runs.map(r => r.instruction)).toEqual(['追加1', '追加2']);
     await expect(page.getByRole('button', { name: '待機キューへ', exact: true })).toBeEnabled();
+});
+
+for(const shortcut of ['send','newline'])test('IME shortcut waits for final input: '+shortcut,async({page})=>{
+ const state={workshops:[],agents:[{id:'a',name:'Agent',state:'idle',canSend:true,connection:{}}],runs:[],notification:{}};const sent=[];
+ await page.route('**/api/**',async route=>{if(route.request().method()==='POST'&&route.request().url().endsWith('/runs')){sent.push(route.request().postDataJSON().instruction);return route.fulfill({json:{state:'completed'}});}return route.fulfill({json:state});});
+ await page.goto('/agents');const input=page.locator('[name=instruction]');await input.fill('未確定');
+ await input.evaluate((el,shortcut)=>{
+  el.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true}));
+  el.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',ctrlKey:shortcut==='send',shiftKey:shortcut==='newline',isComposing:true,bubbles:true,cancelable:true}));
+ },shortcut);
+ expect(sent).toHaveLength(0);
+ await input.evaluate(el=>{el.dispatchEvent(new CompositionEvent('compositionend',{bubbles:true,data:'確定済み'}));el.value='確定済み';el.setSelectionRange(el.value.length,el.value.length);el.dispatchEvent(new Event('input',{bubbles:true}));});
+ if(shortcut==='send')await expect.poll(()=>sent).toEqual(['確定済み']);
+ else {await expect(input).toHaveValue('確定済み\n');expect(sent).toHaveLength(0);}
+});
+
+test('Chromium composition commits through blur before Ctrl+Enter sends',async({page,context})=>{
+ const state={workshops:[],agents:[{id:'a',name:'Agent',state:'idle',canSend:true,connection:{}}],runs:[],notification:{}};const sent=[];
+ await page.route('**/api/**',async route=>{if(route.request().method()==='POST'&&route.request().url().endsWith('/runs')){sent.push(route.request().postDataJSON().instruction);return route.fulfill({json:{state:'completed'}});}return route.fulfill({json:state});});
+ await page.goto('/agents');const input=page.locator('[name=instruction]');await input.focus();
+ const cdp=await context.newCDPSession(page);await cdp.send('Input.imeSetComposition',{text:'日本語',selectionStart:3,selectionEnd:3});await input.press('Control+Enter');
+ await expect.poll(()=>sent).toEqual(['日本語']);
 });
