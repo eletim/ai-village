@@ -231,6 +231,7 @@ function agentMarker(a,sidebar=true){
 }
 function agentDot(a){return agentMarker(a);}
 function renderPlaces(){
+ renderProjectOrder();
  if(sidebarOrder.busy())return;
  renderSuspended();
  const all=live().filter(a=>!isSuspended(state.projects||[],a)),places=sidebarMode==='projects'?orderedProjects((state.projects||[]).filter(p=>p.suspended!==true)).map(p=>({id:'project:'+p.id})):[{id:'mayor'},...state.workshops];
@@ -243,9 +244,9 @@ function renderPlaces(){
  const html=entries.map(({id,page,agents})=>{
   const project=isProject(id)?state.projects.find(p=>p.id===id.slice(8)):null;
   const order=project?` data-order-kind="projects" data-order-id="${esc(project.id)}" data-order-revision="${project.revision}" data-order-pinned="${project.pinned===true}"`:'';
-  const dots=agents.map(a=>project?`<span data-agent-handle data-order-kind="agents" data-order-id="${esc(a.id)}" data-order-project="${esc(project.id)}" data-order-revision="${a.metadataRevision||0}" tabindex="0" role="button" aria-label="${esc(a.name||'Agent')}を並べ替え" title="ドラッグで並べ替え・Alt＋矢印キー" aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight">${agentDot(a)}</span>`:agentDot(a)).join('');
+  const dots=agents.map(agentDot).join('');
   const title=id==='all'?'<svg class="all-grid" viewBox="0 0 20 20" aria-hidden="true"><path d="M2 2h6v6H2zM12 2h6v6h-6zM2 12h6v6H2zM12 12h6v6h-6z"/></svg>':esc(groupTitle(id,page));
-  return `<div class="place-row"${order}>${project?`<button class="order-grip" data-project-handle aria-label="${esc(project.name)}を並べ替え" title="ドラッグで並べ替え・Alt＋上下キー" aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown">⠿</button>`:''}<button data-place="${esc(id)}" data-page="${page}" ${id==='all'?'aria-label="全体を表示" title="全体を表示"':''} ${selectedPlace===id&&(id==='all'||selectedPage===page)?'aria-current="page"':''}><span>${title}</span><span class="place-dots" aria-label="${id==='all'?'全体表示の現在ページ':'このグループ'}のAgent状態">${dots}</span></button>${id==='all'||id==='unassigned'?'':`<button class="add-agent" data-add="${esc(id)}" data-page="${page}" aria-label="${esc(groupTitle(id,page))}の操作">…</button>`}</div>`;
+  return `<div class="place-row"${order}><button data-place="${esc(id)}" data-page="${page}" ${id==='all'?'aria-label="全体を表示" title="全体を表示"':''} ${selectedPlace===id&&(id==='all'||selectedPage===page)?'aria-current="page"':''}><span ${project?'data-project-handle title="ドラッグで並べ替え・Alt＋上下キー"':''}>${title}</span><span class="place-dots" aria-label="${id==='all'?'全体表示の現在ページ':'このグループ'}のAgent状態">${dots}</span></button>${id==='all'||id==='unassigned'?'':`<button class="add-agent" data-add="${esc(id)}" data-page="${page}" aria-label="${esc(groupTitle(id,page))}の操作">…</button>`}</div>`;
  }).join('');
  if($('#places').innerHTML!==html){const dataset=document.activeElement?.dataset;$('#places').innerHTML=html;if(dataset?.place||dataset?.add){const key=dataset.place?'place':'add';[...$('#places').querySelectorAll('button')].find(b=>b.dataset[key]===dataset[key]&&b.dataset.page===dataset.page)?.focus({preventScroll:true});}}
 }
@@ -332,7 +333,7 @@ function focusAgent(){
  if(zoomId!==id)toggleZoom(id);cards.get(id)?.focus({preventScroll:true});
 }
 window.addEventListener('hashchange',()=>{focusedHash='';focusAgent();});
-const sidebarOrder=bindSidebarOrder($('#places'),{save:input=>api('/reorder',input),changed:()=>{void refresh(true);},error:e=>{$('#error').textContent='並び替えを保存できません: '+e.message;}});
+const sidebarOrder=bindSidebarOrder($('#places'),{activate:handle=>{const b=handle.closest('[data-place]');choosePlace(b.dataset.place,Number(b.dataset.page));void refresh(true);},save:input=>api('/reorder',input),changed:()=>{void refresh(true);},error:e=>{$('#error').textContent='並び替えを保存できません: '+e.message;}});
 $('#places').onclick=e=>{const add=e.target.closest('[data-add]'),place=e.target.closest('[data-place]');if(add)openManagement(add.dataset.add);else if(place){choosePlace(place.dataset.place,place.dataset.place==='all'?undefined:Number(place.dataset.page));void refresh(true);}};
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&zoomId&&!document.querySelector('dialog[open]')){toggleZoom(zoomId);void refresh(true);}});
 let launcherProjectId=null;
@@ -562,6 +563,13 @@ function renderSuspended(){
  const host=$('#suspended-list');if(host.innerHTML!==html){const active=document.activeElement?.dataset;host.innerHTML=html;if(active?.place||active?.add)[...host.querySelectorAll('button')].find(b=>b.dataset.place===active.place&&b.dataset.add===active.add&&b.dataset.page===active.page)?.focus({preventScroll:true});}
 }
 let projectActionTarget=null;
+function renderProjectOrder(){
+ if(!$('#project-actions-dialog').open||!projectActionTarget||projectMemberOrder.busy())return;
+ const members=scopeAgents('project:'+projectActionTarget.id),root=$('#project-agent-order');
+ const html=members.map(a=>`<button type="button" data-agent-handle data-order-kind="agents" data-order-id="${esc(a.id)}" data-order-project="${esc(projectActionTarget.id)}" data-order-revision="${a.metadataRevision||0}" aria-label="${esc(a.name||'Agent')}を並べ替え" title="${esc(a.name||'Agent')}・ドラッグで並べ替え" aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight">${agentDot(a)}</button>`).join('')||'<p>Agentはまだいません。</p>';
+ if(root.innerHTML!==html){const focused=document.activeElement?.dataset.orderId;root.innerHTML=html;[...root.querySelectorAll('button')].find(b=>b.dataset.orderId===focused)?.focus({preventScroll:true});}
+}
+const projectMemberOrder=bindSidebarOrder($('#project-agent-order'),{save:input=>api('/reorder',input),changed:()=>{void refresh(true);},error:e=>{$('#project-actions-dialog .dialog-error').textContent='並び替えを保存できません: '+e.message;}});
 function openProjectActions(id){
  const p=(state.projects||[]).find(p=>p.id===id);if(!p)return;
  projectActionTarget={...p};
@@ -571,7 +579,7 @@ function openProjectActions(id){
  $('#project-suspension').textContent=p.suspended?'再開':'休止する';
  $('#project-suspension-help').textContent=p.name+'：表示整理のみです。Agent・所属・会話・依頼・通知はそのまま継続します。';
  $('#project-actions-dialog .dialog-error').textContent='';
- $('#project-actions-dialog').showModal();
+ $('#project-actions-dialog').showModal();renderProjectOrder();
 }
 function patchProject(patch){
  const target=projectActionTarget;

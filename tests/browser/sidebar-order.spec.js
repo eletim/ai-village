@@ -16,8 +16,10 @@ async function drag(page,source,target,{after=false}={}){
 test('sidebar drags projects and members across pages, survives reload and keeps all view without text',async({page})=>{
  const {writes}=await setup(page);
  await expect(page.getByRole('button',{name:'全体を表示',exact:true})).toBeVisible();await expect(page.locator('#places')).not.toContainText('全部表示');
- await drag(page,page.getByRole('button',{name:'Qを並べ替え',exact:true}),page.locator('.place-row[data-order-id="p"]').first());
+ await drag(page,page.locator('[data-place="project:q"] [data-project-handle]'),page.locator('.place-row[data-order-id="p"]').first());
  await expect.poll(()=>writes.length).toBe(1);await expect(page.locator('#places [data-place]').nth(1)).toHaveAttribute('data-place','project:q');
+ await expect(page.locator('#places [data-agent-handle]')).toHaveCount(0);
+ await page.locator('[data-add="project:p"]').first().click();await expect(page.locator('#project-agent-order [data-agent-handle]')).toHaveCount(11);
  await drag(page,page.locator('[data-agent-handle][data-order-id="a10"]'),page.locator('[data-agent-handle][data-order-id="a0"]'));
  await expect.poll(()=>writes.length).toBe(2);await expect(page.locator('[data-place="project:p"]').first().locator('[data-agent-dot]').first()).toHaveAttribute('data-agent-dot','a10');
  await page.reload();await expect(page.locator('#places [data-place]').nth(1)).toHaveAttribute('data-place','project:q');
@@ -25,24 +27,24 @@ test('sidebar drags projects and members across pages, survives reload and keeps
 });
 test('cross-project drop is ignored; conflict restores server order with an error',async({page})=>{
  const {writes}=await setup(page,{conflict:true});
- await drag(page,page.locator('[data-agent-handle][data-order-id="a0"]'),page.locator('[data-agent-handle][data-order-id="a11"]'));expect(writes).toHaveLength(0);
- await drag(page,page.getByRole('button',{name:'Qを並べ替え',exact:true}),page.locator('.place-row[data-order-id="p"]').first());
+ await drag(page,page.locator('[data-place="project:p"] [data-agent-dot="a0"]'),page.locator('[data-place="project:q"] [data-agent-dot="a11"]'));expect(writes).toHaveLength(0);
+ await drag(page,page.locator('[data-place="project:q"] [data-project-handle]'),page.locator('.place-row[data-order-id="p"]').first());
  await expect(page.locator('#error')).toContainText('一覧が更新');await expect(page.locator('#places [data-place]').nth(1)).toHaveAttribute('data-place','project:p');
 });
 test('keyboard ordering uses the same save and mobile handles do not overflow',async({page})=>{
- const {writes}=await setup(page);await page.setViewportSize({width:390,height:844});await page.getByRole('button',{name:'Qを並べ替え',exact:true}).focus();await page.keyboard.press('Alt+ArrowUp');await expect.poll(()=>writes.length).toBe(1);
+ const {writes}=await setup(page);await page.setViewportSize({width:390,height:844});await page.locator('[data-place="project:q"]').focus();await page.keyboard.press('Alt+ArrowUp');await expect.poll(()=>writes.length).toBe(1);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
 test('real sidebar reorder endpoint saves both projects together',async({page,request})=>{
  const created=[];
  for(const name of ['Drag HTTP A','Drag HTTP B']){const r=await request.post('/api/direct/projects',{data:{name,requestId:crypto.randomUUID()}});expect(r.ok()).toBe(true);created.push(await r.json());}
- await page.goto('/agents');await drag(page,page.getByRole('button',{name:'Drag HTTP Bを並べ替え',exact:true}),page.locator('.place-row[data-order-id="'+created[0].id+'"]').first());
+ await page.goto('/agents');await drag(page,page.locator('[data-project-handle]').filter({hasText:'Drag HTTP B'}),page.locator('.place-row[data-order-id="'+created[0].id+'"]').first());
  await expect.poll(async()=>{const r=await request.get('/api/direct');const s=await r.json();return s.projects.find(p=>p.id===created[1].id).displayOrder;}).toBe(0);
  await page.reload();await expect(page.locator('#places [data-place^="project:"]').first()).toHaveAttribute('data-place','project:'+created[1].id);
 });
 test('touch drag works and Escape cancels without saving',async({page,context})=>{
  const {writes}=await setup(page);await page.setViewportSize({width:390,height:844});
- const source=page.getByRole('button',{name:'Qを並べ替え',exact:true}),target=page.locator('.place-row[data-order-id="p"]').first();
+ const source=page.locator('[data-place="project:q"] [data-project-handle]'),target=page.locator('.place-row[data-order-id="p"]').first();
  const a=await source.boundingBox(),b=await target.boundingBox();
  await page.mouse.move(a.x+a.width/2,a.y+a.height/2);await page.mouse.down();await page.mouse.move(b.x+b.width/2,b.y+5,{steps:8});await page.keyboard.press('Escape');await page.mouse.up();expect(writes).toHaveLength(0);
  const cdp=await context.newCDPSession(page);await cdp.send('Emulation.setTouchEmulationEnabled',{enabled:true});
@@ -50,4 +52,14 @@ test('touch drag works and Escape cancels without saving',async({page,context})=
  await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:b.x+b.width/2,y:b.y+5}]});
  await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
  await expect.poll(()=>writes.length).toBe(1);
+});
+
+test('project name click still selects; settings order preserves rename draft and Escape keeps dialog open',async({page})=>{
+ const {writes}=await setup(page);
+ await page.locator('[data-place="project:q"] [data-project-handle]').click();await expect(page.locator('[data-place="project:q"]')).toHaveAttribute('aria-current','page');
+ await page.locator('[data-add="project:p"]').first().click();await page.locator('#project-rename-form input').fill('未保存の名前');
+ const first=page.locator('[data-agent-handle][data-order-id="a0"]'),last=page.locator('[data-agent-handle][data-order-id="a10"]');
+ const a=await first.boundingBox(),b=await last.boundingBox();await page.mouse.move(a.x+10,a.y+10);await page.mouse.down();await page.mouse.move(b.x+10,b.y+10,{steps:8});await page.keyboard.press('Escape');await page.mouse.up();await expect(page.locator('#project-actions-dialog')).toBeVisible();expect(writes).toHaveLength(0);
+ await last.focus();await page.keyboard.press('Alt+ArrowLeft');await expect.poll(()=>writes.length).toBe(1);await expect(page.locator('#project-rename-form input')).toHaveValue('未保存の名前');
+ await page.locator('#project-actions-dialog [data-close]').click();await page.locator('[data-add="project:q"]').click();await expect(page.locator('#project-agent-order [data-agent-handle]')).toHaveCount(1);
 });
