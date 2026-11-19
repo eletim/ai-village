@@ -28,7 +28,7 @@ async function fixture(t,{reportMode=false}={}){
   throw Error('unexpected '+args.slice(0,4));
  };
  const options={dir,remote:execute,localRun:(cmd,args)=>execute([cmd,...args]),notifier:{status:()=>({}),enqueue:async message=>{notifications.push(message);return {status:'sent'};}}};
- let service=new DirectAgents(options);await service.init({watch:false});await service.flow.configureReport(reportMode);
+ let service=new DirectAgents(options);await service.init({watch:false});service.flow.protocol=0;await service.flow.configureReport(reportMode);
  const agents=Array.from({length:4},(_,i)=>({id:randomUUID(),name:i<2?'Secretary '+i:'Worker '+i,location:i<2?'mayor':'workshop',workshopId:'w'+i,connection:{connectionType:i===3?'ssh':'local',sshHost:i===3?'remote':null,name:'PC'+i},workspaceId:'',tabId:'tab'+i,sessionName:'pane'+i,provider:'codex',state:'idle'}));
  for(const a of agents){a.workspaceId='ws-'+a.id;service.data.agents.push(a);runtimes.set(a.id,{available:true,sessionId:'session-'+a.id,fileIdentity:'file-'+a.id,cursor:0,inputs:[],turns:[]});}
  await service.save();await service.tick();
@@ -41,7 +41,7 @@ async function fixture(t,{reportMode=false}={}){
  const complete=async(r,outcome='completed')=>{const native=runtimes.get(r.agentId);Object.assign(native.turns.find(t=>t.id===r.turnId),{state:outcome,output:'Output '+r.id,finalOutput:'Final '+r.id,completionEvent:'event-'+r.id});await service.tick();};
  const finish=async(r,op=randomUUID())=>service.flow.finish({results:JSON.parse(service.flow.root(r.humanRequestId).requestGraph.operations.find(o=>o.id===op)?.payload||'null')?.results||service.flow.results(r.humanRequestId,r.workId).filter(e=>!e.handled&&!e.superseded&&e.outcome==='completed'&&!e.claims.some(c=>c.actorRunId===r.id&&!c.invalidated)).map(e=>({requestId:e.requestId,resultId:e.id,version:e.version,decision:'accept'})),humanRequestId:r.humanRequestId,workId:r.workId,runId:r.id,revision:service.flow.root(r.humanRequestId).revision,operationId:op});
  const delegate=async(r,target,op=randomUUID())=>service.flow.delegate({humanRequestId:r.humanRequestId,parentWorkId:r.workId,actorRunId:r.id,agentId:target.id,instruction:'Child work '+op,operationId:op});
- const restart=async()=>{service.close();service=new DirectAgents(options);await service.init({watch:false});return service;};
+ const restart=async()=>{service.close();service=new DirectAgents(options);await service.init({watch:false});service.flow.protocol=0;return service;};
  return {get service(){return service;},options,agents,runtimes,sent,notifications,promptState:v=>promptState=v,promptChecks:()=>promptChecks,submit,complete,finish,delegate,restart,offline:v=>offline=v,lose:v=>lose=v};
 }
 test('polling then finish handles both child results without redundant parent restart',async t=>{

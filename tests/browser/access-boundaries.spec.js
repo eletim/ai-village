@@ -33,7 +33,7 @@ for(const mode of ['PC','mobile','HTTPS'])test(`real human API and browser contr
   const help=await (await context.request.post(base+'/api/village',{data:{argv:['help']}})).json();
   for(const action of ['retry','resume','cancel','complete','cancel-queued'])expect(JSON.stringify(help)).not.toContain('requests '+action);
   const responses=[];page.on('response',r=>{if(r.url().includes('/human/'))responses.push(r);});
-  await page.locator('#run-recovery-inbox summary').click();
+  await expect(page.locator('#run-recovery-inbox')).toHaveCount(0);
   await page.locator(`[data-recovery-complete="${requests[0].id}"]`).click();
   await expect.poll(()=>responses.length).toBe(1);expect(responses[0].status()).toBe(200);
   await page.locator(`[data-recovery-cancel="${requests[1].id}"]`).click();

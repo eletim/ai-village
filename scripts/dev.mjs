@@ -61,7 +61,7 @@ const handleRequest = async (req, res) => {
           if(params.get('view')==='workspace'){
             let ranges;try{ranges=JSON.parse(params.get('ranges')||'{}');}catch{return json(res,400,{error:'Invalid history ranges'});}
             let focus=null;if(params.has('focus')){try{focus=JSON.parse(params.get('focus'));}catch{return json(res,400,{error:'Invalid focus agents'});}}
-            const snapshot=workspaceSnapshot(direct.snapshot(),ranges,focus);
+            const snapshot=workspaceSnapshot(direct.presentation(),ranges,focus);
             if(params.get('sync')==='1')return await syncResponse(req,res,workspaceSync.reply({client:params.get('client'),since:params.get('since'),scope:(params.get('ranges')||'{}')+'|'+(params.get('focus')||'')},snapshot));
             return json(res,200,snapshot);
           }
@@ -69,7 +69,7 @@ const handleRequest = async (req, res) => {
         }
         const history=pathname.match(/^\/api\/direct\/agents\/([^/]+)\/history$/);
         if(req.method==='GET'&&history){
-          const params=new URL(req.url,'http://localhost').searchParams,page=historyPage(direct.snapshot(),history[1],params.get('before'));
+          const params=new URL(req.url,'http://localhost').searchParams,page=historyPage(direct.presentation(),history[1],params.get('before'));
           return json(res,200,params.get('boundaryOnly')==='1'?{cursor:page.cursor,hasMore:page.hasMore}:page);
         }
         const deletion=pathname.match(/^\/api\/direct\/projects\/([0-9a-f-]{36})\/(delete-plan|delete)$/);
@@ -81,15 +81,15 @@ const handleRequest = async (req, res) => {
         if(!input || typeof input!=='object')return json(res,400,{error:'Object required'});
         const guide=pathname.match(/^\/api\/direct\/human\/projects\/([0-9a-f-]{36})\/guide$/);
         if(req.method==='PUT'&&guide)return json(res,200,await direct.putProjectGuide(guide[1],input));
-        const humanAction=pathname.match(/^\/api\/direct\/human\/requests\/(retry|resume|cancel|complete|cancel-queued)$/);
+        const humanAction=pathname.match(/^\/api\/direct\/human\/requests\/(retry|resume|cancel|complete|cancel-queued|supplement)$/);
         if(req.method==='POST'&&humanAction){
           const action=humanAction[1],flow=direct.flow;
           return json(res,200,action==='cancel-queued'?await flow.cancelQueued(input):action==='retry'||action==='resume'?await flow.continue(input,action==='retry'):await flow[action](input));
         }
-        const requestAction=pathname.match(/^\/api\/direct\/requests\/(get|results|delegate|respond|finish)$/);
+        const requestAction=pathname.match(/^\/api\/direct\/requests\/(get|results|inputs|delegate|amend|respond|finish)$/);
         if(req.method==='POST'&&requestAction){
           const action=requestAction[1],flow=direct.flow;
-          const result=action==='cancel-queued'?await flow.cancelQueued(input):action==='get'?flow.get(input.humanRequestId):action==='results'?flow.results(input.humanRequestId,input.workId):action==='retry'||action==='resume'?await flow.continue(input,action==='retry'):await flow[action](input);
+          const result=action==='cancel-queued'?await flow.cancelQueued(input):action==='get'?flow.get(input.humanRequestId):action==='inputs'?flow.inputs(input.humanRequestId,input.workId):action==='results'?flow.results(input.humanRequestId,input.workId):action==='retry'||action==='resume'?await flow.continue(input,action==='retry'):await flow[action](input);
           return json(res,200,result);
         }
         if(req.method==='POST' && pathname==='/api/direct/notifications/test'){if(input.agentId)direct.agent(input.agentId);return json(res,200,await notifier.test(input.agentId));}

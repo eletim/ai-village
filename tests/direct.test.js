@@ -26,7 +26,7 @@ async function fixture(t){
   throw Error('Unexpected operation '+args.slice(0,3));
  };
  const options={dir,remote,notifier:{status:()=>({}),enqueue:async()=>{notices++;return {status:'sent'};}}};
- const service=new DirectAgents(options);await service.init({watch:false});await service.flow.configureReport(false);
+ const service=new DirectAgents(options);await service.init({watch:false});service.flow.protocol=0;await service.flow.configureReport(false);
  const w=await service.putWorkshop({name:'w',sshHost:'host',baseUrl:'http://host',workplaces:['/tmp']});
  const a=await service.create({workshopId:w.id,cwd:'/tmp',requestId:'create-001'});await service.tick();
  const input=(instruction,id='turn-'+(data.turns.length+1))=>{data.cursor+=10;data.inputs.push({id:'input-'+id,turnId:id,text:deliveredInputs.get(instruction)||instruction,hash:service.data.runs.findLast(r=>r.instruction===instruction)?.inputHash||inputHash(instruction),offset:data.cursor});data.turns.push({id,state:'running',output:''});return data.turns.at(-1);};

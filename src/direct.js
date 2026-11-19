@@ -58,6 +58,7 @@ const pageKey=id=>sidebarMode+':'+id;
 const storageKey='ai-village-direct-drafts-v2';
 let saved={};try{saved=JSON.parse(sessionStorage.getItem(storageKey)||'{}');}catch{}
 const positions=new Map(Object.entries(saved.positions||{})),cards=new Map(),drafts=new Map(Object.entries(saved.drafts||{})),pending=new Map(Object.entries(saved.pending||{}));
+const inputTargets=new Map(Object.entries(saved.inputTargets||{}));
 const draftVersions=new Map(Object.entries(saved.draftVersions||{})),outbox=new Map(Object.entries(saved.outbox||{}).map(([id,m])=>[id,restorePendingMessage(m)]));
 for(const [id,receipt] of pending)if(!outbox.has(id))outbox.set(id,{...receipt,stage:'unknown',draftVersion:draftVersions.get(id)||0});
 const fileEditors=new Map(),scrolls=new Map(),historyRanges={},historyLoading=new Set(),historyErrors=new Map();
@@ -71,7 +72,7 @@ function capHistoryRanges(){
  }
 }
 const travelDrafts=new Map(Object.entries(saved.travelDrafts||{})),travelEditors=new Map();
-function storeDrafts(){try{sessionStorage.setItem(storageKey,JSON.stringify({travelDrafts:Object.fromEntries(travelDrafts),positions:Object.fromEntries(positions),drafts:Object.fromEntries(drafts),pending:Object.fromEntries(pending),outbox:Object.fromEntries(outbox),draftVersions:Object.fromEntries(draftVersions)}));}catch{}}
+function storeDrafts(){try{sessionStorage.setItem(storageKey,JSON.stringify({inputTargets:Object.fromEntries(inputTargets),travelDrafts:Object.fromEntries(travelDrafts),positions:Object.fromEntries(positions),drafts:Object.fromEntries(drafts),pending:Object.fromEntries(pending),outbox:Object.fromEntries(outbox),draftVersions:Object.fromEntries(draftVersions)}));}catch{}}
 window.addEventListener('pagehide',()=>{capturePositions();storeDrafts();});
 
 const live=()=>orderedAgents(state.agents);
@@ -105,10 +106,13 @@ function bubble(side,text,at,extra=''){return `<div class="message ${side}">${te
 function recoveryHTML(r){
  const q=state.requests?.find(q=>q.id===r.humanRequestId),w=q?.requestGraph?.nodes.find(w=>w.currentRunId===r.id);
  if(!needsRunRecovery(q,r,w))return '';
+ if(!w.parentId&&(state.recoveryRequests||[]).some(x=>x.id===q.id))return '';
+ if(w.parentId)return '<div class="recovery"><p>'+esc(requestReviewReason(q,r))+'</p><p>依頼全体の扱いは、取りまとめるAgentの画面で確認できます。</p></div>';
  const reason=q.requestGraph?requestReviewReason(q,r):r.recovery?.status==='scheduled'?'自動再試行予定: '+new Date(r.recovery.nextAt).toLocaleTimeString():r.recovery?.reason||(r.needsReview?'要確認: 実行結果を確認できません。副作用を確認してから再試行してください。':null)||'停止理由を確認し、未完了の作業を再開できます。';
- return `<div class="recovery"><p>${esc(reason)}</p>${!w.parentId?`<button data-retry-run="${esc(r.id)}">再試行</button>`:'<p>要確認の依頼一覧で人間が次の扱いを選べます。</p>'}<button data-complete-request="${esc(q.id)}">完了扱い</button><button data-cancel-request="${esc(q.id)}">取り下げ</button></div>`;
+ return `<div class="recovery"><p>${esc(reason)}</p><button data-retry-run="${esc(r.id)}">再試行</button><button data-complete-request="${esc(q.id)}">完了扱い</button><button data-cancel-request="${esc(q.id)}">取り下げ</button></div>`;
 }
 function entryHTML(a,r,divider){
+ if(r.inputReceipt)return `${divider(r.createdAt)}<div class="run" data-entry="${esc(r.id)}">${bubble('user',r.instruction,r.createdAt,travelSummary(r.travelContexts)+attachmentHTML(r.attachments)+`<small>補足 · ${esc(r.targetLabel)} · ${esc(r.inputStatus)}</small>`)}</div>`;
  const request=state.requests?.find(q=>q.id===r.humanRequestId),current=request?.requestGraph?.nodes.find(n=>n.id===r.workId)?.currentRunId===r.id;
  const waiting=current?requestWaitingText(request,r.workId):'';
  const normal=!r.error&&!r.errorCode&&!r.attachmentError&&!r.needsReview&&!requestRootState(state.requests?.find(q=>q.id===r.humanRequestId))?.review?.length;
@@ -133,11 +137,12 @@ function clearSubmittedDraft(id,receipt,message){
  fileEditors.get(id).clear();
 }
 function renderHistory(){
- options($('#history-agent'),state.agents.filter(a=>a.state==='terminated').map(a=>({id:a.id,name:placeName(a)+' / '+a.name+(state.reviews?.[a.id]?.attention?' · 依頼完了・要確認':unread.get(a.id)?' · 更新あり':'')})));
+ const orphaned=(state.recoveryRequests||[]).filter(q=>!state.agents.some(a=>a.id===q.agentId));
+ options($('#history-agent'),[...state.agents.filter(a=>a.state==='terminated').map(a=>({id:a.id,name:placeName(a)+' / '+a.name+(state.reviews?.[a.id]?.attention?' · 依頼完了・要確認':unread.get(a.id)?' · 更新あり':'')})),...(orphaned.length?[{id:'orphaned',name:'担当Agentがない依頼'}]:[])]);
  const a=state.agents.find(a=>a.id===$('#history-agent').value);
  // Terminated agents sit outside the board's focus set; viewing one in the dialog is its own focus.
  if($('#history-dialog').open&&a)focusIds.add(a.id);
- const html=a?runHTML(a)||'<p>会話履歴はありません。</p>':'<p>終了したAgentはありません。</p>';
+ const html=$('#history-agent').value==='orphaned'?recoveryListHTML(orphaned):a?agentRecoveryHTML(a.id)+(runHTML(a)||'<p>会話履歴はありません。</p>'):'<p>終了したAgentはありません。</p>';
  const host=$('#history-content'),anchor=[...host.querySelectorAll('[data-entry]')].find(n=>n.getBoundingClientRect().bottom>host.getBoundingClientRect().top),offset=anchor?.getBoundingClientRect().top,key=anchor?.dataset.entry;
  updateReportHTML(host,html);const next=key&&[...host.querySelectorAll('[data-entry]')].find(n=>n.dataset.entry===key);if(next)host.scrollTop+=next.getBoundingClientRect().top-offset;
 }
@@ -166,7 +171,7 @@ function renderBoard(){
   profileViewer.update(a);
   let card=cards.get(a.id);
   if(!card){card=document.createElement('article');card.className='agent-panel';card.id='agent-'+a.id;card.setAttribute('aria-labelledby','heading-'+a.id);card.tabIndex=0;card.hidden=true;
-   card.innerHTML=`<div class="panel-heading"><span class="dot"></span><h2></h2><span class="request-attention"></span><span class="unread-badge"></span><button data-zoom="${esc(a.id)}" title="このAgentを拡大" aria-label="このAgentを拡大">⤢</button><button data-manage-agent="${esc(a.id)}" title="Agentの操作" aria-label="Agentの操作">…</button></div><div class="panel-info"></div><p class="current-action"></p><div class="runs" tabindex="0" aria-label="会話履歴"></div><form data-send="${esc(a.id)}"><textarea name="instruction" aria-label="このAgentに直接指示" placeholder="" maxlength="16000" rows="1"></textarea><button type="submit">送信</button><button type="button" data-reconcile="${esc(a.id)}" hidden>送信結果を確認</button><div class="travel-slot"></div></form>`;
+   card.innerHTML=`<div class="panel-heading"><span class="dot"></span><h2></h2><span class="request-attention"></span><span class="unread-badge"></span><button data-zoom="${esc(a.id)}" title="このAgentを拡大" aria-label="このAgentを拡大">⤢</button><button data-manage-agent="${esc(a.id)}" title="Agentの操作" aria-label="Agentの操作">…</button></div><div class="panel-info"></div><p class="current-action"></p><div class="agent-recovery-host"></div><div class="runs" tabindex="0" aria-label="会話履歴"></div><form data-send="${esc(a.id)}"><select name="requestTarget" aria-label="依頼・補足先" hidden><option value="">新しい依頼</option></select><textarea name="instruction" aria-label="このAgentに直接指示" placeholder="" maxlength="16000" rows="1"></textarea><button type="submit">送信</button><button type="button" data-reconcile="${esc(a.id)}" hidden>送信結果を確認</button><div class="travel-slot"></div></form>`;
    const input=card.querySelector('textarea');input.value=drafts.get(a.id)||'';card.autogrow=autogrowInput(input,{panel:card});
    travelEditors.set(a.id,travelComposer(card.querySelector('.travel-slot'),travelDrafts.get(a.id)||[],value=>{travelDrafts.set(a.id,value);storeDrafts();}));
    fileEditors.set(a.id,attachmentComposer({host:card.querySelector('.travel-slot'),key:'agent:'+a.id,supported:()=>!!state?.capabilities?.attachments}));
@@ -198,15 +203,26 @@ function renderBoard(){
    if(!deliveryUnconfirmed(known))clearSubmittedDraft(a.id,receipt,outbox.get(a.id));
    pending.delete(a.id);outbox.delete(a.id);storeDrafts();
   }
+  updateReportHTML(card.querySelector('.agent-recovery-host'),agentRecoveryHTML(a.id));
   const area=card.querySelector('.runs'),html=runHTML(a),wasLoading=area.dataset.loading==='true';area.dataset.loading=String(!!state.conversations&&!state.conversations[a.id]);if(wasLoading){updateReportHTML(area,html);scrolls.get(a.id).loaded();}else scrolls.get(a.id).preserve(()=>updateReportHTML(area,html));
   const prompt=card.querySelector('textarea[name=instruction]'),promptLabel=(a.name||'Agent')+'に聞く';
   prompt.placeholder=promptLabel;prompt.title=promptLabel+(mobilePromptUI()?'（Enterで改行、送信ボタン / Ctrl+Enterで送信）':'（Enter / Ctrl+Enterで送信、Shift+Enterで改行、変換中のEnterは確定）');prompt.setAttribute('aria-label',prompt.title);
   const send=card.querySelector('[data-send] button:not([data-reconcile])');
+  const choice=card.querySelector('[name=requestTarget]');
+  if(state.capabilities?.requestInbox){
+   choice.hidden=false;const selected=inputTargets.get(a.id)||choice.value;
+   const options=(state.requests||[]).filter(q=>q.status==='active'&&!q.integrity).flatMap(q=>(q.requestGraph?.nodes||[]).filter(n=>n.assignee===a.id&&['active','submitted'].includes(n.state.kind)).map(n=>({value:q.id+':'+n.id,label:(n.metadata.instruction||q.instruction||'依頼').slice(0,50)})));
+   const unavailable=selected&&!options.some(x=>x.value===selected);
+   const html='<option value="">新しい依頼</option>'+(unavailable?`<option value="${esc(selected)}" disabled>補足先は終了済み・選び直してください</option>`:'')+options.map(x=>`<option value="${esc(x.value)}">補足：${esc(x.label)}</option>`).join('');
+   if(choice.innerHTML!==html){choice.innerHTML=html;choice.value=selected;}
+   choice.onchange=()=>{inputTargets.set(a.id,choice.value);storeDrafts();void refresh(true);};
+  }
+
   fileEditors.get(a.id).lock(card.dataset.pending==='true'||pending.has(a.id));
   travelEditors.get(a.id).lock(card.dataset.pending==='true'||pending.has(a.id));
-  send.disabled=!connected||(a.canSend!==true&&a.canSteer!==true&&a.canQueue!==true)||card.dataset.pending==='true'||pending.has(a.id);
+  send.disabled=!!choice.selectedOptions[0]?.disabled||(!choice.value&&!connected)||(!choice.value&&a.canSend!==true&&a.canSteer!==true&&a.canQueue!==true)||card.dataset.pending==='true'||pending.has(a.id);
   card.querySelector('[data-reconcile]').hidden=!pending.has(a.id)||card.dataset.pending==='true';
-  const sendLabel=send.form.dataset.sending==='true'?'送信中…':pending.has(a.id)?'送信結果を確認中':a.canSteer?'実行中に補足':a.canQueue&&!a.canSend?'待機キューへ':'送信';
+  const sendLabel=send.form.dataset.sending==='true'?'送信中…':pending.has(a.id)?'送信結果を確認中':choice.value?'補足を送信':!state.capabilities?.requestInbox&&a.canSteer?'実行中に補足':a.canQueue&&!a.canSend?'待機キューへ':'送信';
   send.innerHTML=sendLabel==='送信'?actionSVG('send'):esc(sendLabel);
   send.classList.toggle('icon-send',sendLabel==='送信');send.setAttribute('aria-label',sendLabel);
   const claudeSteering=a.canSteer&&a.provider==='claude'?'作業中か終了直後のどちらに反映されるかは保証されません。':'';
@@ -414,15 +430,14 @@ async function api(path,body,method='POST',signal){
 }
 async function action(form,fn){const buttons=[...form.querySelectorAll('button')],card=form.closest('.agent-panel');if(card)card.dataset.pending='true';if(form.matches('[data-send]')){form.dataset.sending='true';const send=form.querySelector('[type=submit]');send.textContent='送信中…';send.setAttribute('aria-label','送信中…');send.title='送信中…';}buttons.forEach(b=>b.disabled=true);$('#error').textContent='';document.querySelectorAll('.dialog-error').forEach(el=>el.textContent='');try{await fn();await refresh(true);}catch(e){const target=document.querySelector('dialog[open] .dialog-error')||$('#error');target.textContent=e.message;}finally{delete form.dataset.sending;if(card)card.dataset.pending='false';buttons.forEach(b=>b.disabled=false);if(state)renderBoard();}}
 function places(){const w=state?.workshops.find(w=>w.id===$('#agent-form [name=workshopId]').value);options($('#agent-form [name=cwd]'),(w?.workplaces||[]).map(p=>({id:p,name:p})));}
-function render(){
- let inbox=$('#run-recovery-inbox');
- if(!inbox){inbox=document.createElement('details');inbox.id='run-recovery-inbox';$('#agents').before(inbox);}
- const recovery=state.recoveryRequests||[];
- inbox.hidden=!recovery.length;
- inbox.innerHTML='<summary>要確認の依頼（'+recovery.length+'件）</summary>'+recovery.map(q=>`<article><strong>${esc(q.agentName)} · ${esc((q.instruction||'依頼').slice(0,100))}</strong><p>要確認: ${esc(q.reason)}</p>${q.quarantined?'<p>自動処理を停止しています。保存記録の参照を修復して再起動してください。</p>':`${q.canRetry?`<button data-recovery-retry="${esc(q.id)}">再試行</button>`:'<button disabled>再試行</button><p>実行中、または再試行先がありません。</p>'}<button data-recovery-complete="${esc(q.id)}">完了扱い</button><button data-recovery-cancel="${esc(q.id)}">取り下げ</button>`}</article>`).join('');
- inbox.onclick=async e=>{
+function recoveryListHTML(recovery){
+ if(!recovery.length)return '';
+ return '<section class="agent-recovery" aria-label="確認が必要な依頼"><h3>確認が必要な依頼</h3>'+recovery.map(q=>`<article><strong>${esc(q.agentName)} · ${esc((q.instruction||'依頼').slice(0,100))}</strong><p>要確認: ${esc(q.reason)}</p>${q.quarantined?'<p>自動処理を停止しています。保存記録の参照を修復して再起動してください。</p>':`${q.canRetry?`<button data-recovery-retry="${esc(q.id)}">再試行</button>`:'<button disabled>再試行</button><p>実行中、または再試行先がありません。</p>'}<button data-recovery-complete="${esc(q.id)}">完了扱い</button><button data-recovery-cancel="${esc(q.id)}">取り下げ</button>`}</article>`).join('')+'</section>';
+}
+function agentRecoveryHTML(id){return recoveryListHTML((state.recoveryRequests||[]).filter(q=>q.agentId===id));}
+document.addEventListener('click',async e=>{
   const button=e.target.closest('[data-recovery-retry],[data-recovery-cancel],[data-recovery-complete]');if(!button)return;
-  const id=button.dataset.recoveryRetry||button.dataset.recoveryCancel||button.dataset.recoveryComplete,q=recovery.find(q=>q.id===id);
+  const id=button.dataset.recoveryRetry||button.dataset.recoveryCancel||button.dataset.recoveryComplete,q=(state.recoveryRequests||[]).find(q=>q.id===id);
   if(!q||!confirm(button.dataset.recoveryRetry?'既存変更・外部操作・子結果を確認してから再試行しますか？':button.dataset.recoveryComplete?'成果を確認して完了扱いにしますか？':'依頼をキャンセルしますか？ 実行中のAgentは停止しません。'))return;
   await action(button.closest('article'),async()=>{
    const full=await api('/requests/get',{humanRequestId:id});
@@ -430,7 +445,8 @@ function render(){
    else if(button.dataset.recoveryCancel)await api('/human/requests/cancel',{humanRequestId:id,revision:full.revision});
    else await api(q.state==='completed'?'/human/requests/resume':'/human/requests/retry',{humanRequestId:id,workId:q.workId,revision:full.revision,operationId:newRequestId(),instruction:'実行結果を人間が確認した後の復旧です。既存変更・外部操作・子作業を確認し、未完了部分だけ進めてください。重複操作・再委任を避けてください。\n元の依頼:\n'+(full.instruction||'').slice(0,12000)});
   });
- };
+});
+function render(){
 
  $('#workshops').innerHTML=state.workshops.map(w=>`<div class="workshop"><strong>${esc(w.name)}</strong><div class="meta">${w.connectionType==='local'?'ローカル（村長PC）':'SSH · '+esc(w.sshHost)}</div><button class="secondary" data-edit="${esc(w.id)}">編集</button></div>`).join('')||'<p>工房を登録してください。</p>';
  options($('#agent-form [name=workshopId]'),state.workshops);if(!$('#agent-dialog').open)projectOptions($('#agent-form [name=projectId]'));places();
@@ -489,9 +505,10 @@ $('#agent-form').onsubmit=e=>{e.preventDefault();const f=e.currentTarget;f.datas
 $('#agents').onsubmit=async e=>{
  e.preventDefault();const f=e.target,id=f.dataset.send;if(!id||pending.has(id)||f.querySelector('button').disabled||(!f.elements.instruction.value.trim()&&!fileEditors.get(id).count))return;
  if(travelEditors.get(id).value.length&&!state.capabilities?.travelContexts){$('#error').textContent='出張先の送信にはサーバー更新の反映が必要です。下書きは保持しています。';return;}
- const target=state.agents.find(a=>a.id===id),steerTarget=target?.canSteer?structuredClone(target.steerTarget):null;
- const receipt={...(steerTarget?{steerTarget}:{}),instruction:f.elements.instruction.value,attachments:[],travelContexts:structuredClone(travelEditors.get(id).value),requestId:newRequestId()};
- const message={...receipt,createdAt:new Date().toISOString(),draftVersion:draftVersions.get(id)||0,files:fileEditors.get(id).summaries,mode:steerTarget?'steering':!target?.canSend?'queue':'direct',stage:fileEditors.get(id).count?'uploading':'preparing'};
+ const requestTarget=f.elements.requestTarget?.value;
+ const target=state.agents.find(a=>a.id===id),steerTarget=!state.capabilities?.requestInbox&&target?.canSteer?structuredClone(target.steerTarget):null;
+ const receipt={...(requestTarget?{requestTarget}:{}),...(steerTarget?{steerTarget}:{}),instruction:f.elements.instruction.value,attachments:[],travelContexts:structuredClone(travelEditors.get(id).value),requestId:newRequestId()};
+ const message={...receipt,createdAt:new Date().toISOString(),draftVersion:draftVersions.get(id)||0,files:fileEditors.get(id).summaries,mode:requestTarget||steerTarget?'steering':!target?.canSend?'queue':'direct',stage:fileEditors.get(id).count?'uploading':'preparing'};
  outbox.set(id,message);storeDrafts();scrolls.get(id).latest();
  action(f,async()=>{
   fileEditors.get(id).lock(true);travelEditors.get(id).lock(true);refreshMessageLog(id);
@@ -500,6 +517,7 @@ $('#agents').onsubmit=async e=>{
   }catch(error){message.stage='failed';message.error=error.message;storeDrafts();throw error;}
   pending.set(id,receipt);message.stage='posting';storeDrafts();refreshMessageLog(id);
   try{
+   if(receipt.requestTarget){const [humanRequestId,workId]=receipt.requestTarget.split(':');await api('/human/requests/supplement',{humanRequestId,workId,operationId:receipt.requestId,instruction:receipt.instruction,attachments:receipt.attachments,travelContexts:receipt.travelContexts});clearSubmittedDraft(id,receipt,message);pending.delete(id);outbox.delete(id);storeDrafts();await refresh(true);return;}
    const r=await api('/agents/'+id+'/runs',receipt);
    // Poll may have reconciled this request before the POST response arrived.
    if(pending.get(id)?.requestId===receipt.requestId){
@@ -533,7 +551,7 @@ $('#agents').onclick=e=>{
    else {const full=await api('/requests/get',{humanRequestId:q.id});await api(r.state==='completed'?'/human/requests/resume':'/human/requests/retry',{humanRequestId:q.id,workId:r.workId,revision:full.revision,operationId:newRequestId(),instruction:'失敗・中断からの復旧です。既存変更・PR・外部操作・requests get/resultsの子作業を確認し、未完了部分だけ進めてください。子作業の再委任や二重操作を避け、モデルは変更しないでください。委任ありのまとめ役だけfinishで申告してください。\n元の指示（全文はrequests getで確認）:\n'+(full.instruction||'').slice(0,12000)});}
   });return;
  }
- const reconcile=e.target.closest('[data-reconcile]');if(reconcile){const id=reconcile.dataset.reconcile,receipt=pending.get(id);if(receipt)action(reconcile.closest('article'),async()=>{await api('/agents/'+id+'/runs',receipt);await refresh();});return;}const manage=e.target.closest('[data-manage-agent]'),zoom=e.target.closest('[data-zoom]');if(manage)openMetadata(manage.dataset.manageAgent);if(zoom){toggleZoom(zoom.dataset.zoom);void refresh(true);}};
+ const reconcile=e.target.closest('[data-reconcile]');if(reconcile){const id=reconcile.dataset.reconcile,receipt=pending.get(id);if(receipt)action(reconcile.closest('article'),async()=>{if(receipt.requestTarget){const [humanRequestId,workId]=receipt.requestTarget.split(':');await api('/human/requests/supplement',{humanRequestId,workId,operationId:receipt.requestId,instruction:receipt.instruction,attachments:receipt.attachments,travelContexts:receipt.travelContexts});}else await api('/agents/'+id+'/runs',receipt);await refresh();});return;}const manage=e.target.closest('[data-manage-agent]'),zoom=e.target.closest('[data-zoom]');if(manage)openMetadata(manage.dataset.manageAgent);if(zoom){toggleZoom(zoom.dataset.zoom);void refresh(true);}};
 void refresh();setInterval(()=>{if(!document.hidden)void refresh();},2000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)restartSync();});
 window.addEventListener('pageshow',e=>{if(e.persisted)restartSync();});

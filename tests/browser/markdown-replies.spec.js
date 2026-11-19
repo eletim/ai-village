@@ -8,7 +8,7 @@ test('Direct Markdown, inert code/HTML/URLs, user text, streaming and unchanged 
  await report.locator('h1').evaluate(el=>window.heading=el);await page.waitForTimeout(2200);expect(await report.locator('h1').evaluate(el=>el===window.heading)).toBe(true);
  state.runs[0].output+='\n\n```js\nconst streaming = "<tag>";';await expect(report.locator('pre code')).toHaveCount(2);await expect(report.locator('pre code').last()).toHaveText('const streaming = "<tag>";');state.runs[0].output+='\n```\n\n## 完了';await expect(report.locator('h2')).toHaveText('完了');await page.screenshot({path:'/tmp/village-markdown-direct.png'});
  // Same renderer is used for retained Agent history.
- state.agents[0].state='terminated';await expect(page.locator('.agent-panel')).toHaveCount(0);await page.locator('#manage').click();await page.getByRole('button',{name:'終了Agentの履歴',exact:true}).click();await expect(page.locator('#history-content h1')).toHaveText('報告見出し');
+ state.agents[0].state='terminated';await expect(page.locator('.agent-panel')).toHaveCount(0);await page.locator('#manage').click();await page.getByRole('button',{name:'終了Agent・担当不在の履歴',exact:true}).click();await expect(page.locator('#history-content h1')).toHaveText('報告見出し');
 });
 test('narrow Markdown code and tables remain within the card; HTML/URL attack cases stay inert',async({page})=>{
  await page.setViewportSize({width:390,height:844});const state=fixture();state.runs[0].output='```txt\n'+('long-code-'.repeat(120))+'\n```\n\n|'+Array(12).fill('long column').join('|')+'|\n|'+Array(12).fill('---').join('|')+'|\n|'+Array(12).fill('data').join('|')+'|';

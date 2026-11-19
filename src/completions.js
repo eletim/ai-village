@@ -10,7 +10,8 @@ export function completionKey(agent,entry){
 export function agentEntries(state,agent){
  const runs=state.runs.filter(r=>r.agentId===agent.id);
  const external=(agent.nativeTurns||[]).map(t=>({...t,sessionId:t.sessionId||agent.observedSessionId,instruction:t.instruction,createdAt:t.startedAt,external:true})).filter(t=>!runs.some(r=>r.turnId===t.id&&(r.sessionId||r.agentSessionId)===t.sessionId));
- return [...runs,...external].filter(r=>!r.hideEntry).sort((a,b)=>(a.createdAt||'').localeCompare(b.createdAt||''));
+ const inputs=(state.requests||[]).flatMap(q=>(q.requestGraph?.nodes||[]).filter(n=>n.assignee===agent.id).flatMap(n=>(n.inbox||[]).filter(i=>i.kind==='supplement').map(i=>({id:'input:'+i.id,inputReceipt:true,inputStatus:i.handledBy?'対応済み':'受付済み',targetLabel:(n.metadata?.instruction||q.instruction||'').slice(0,100),origin:'human',agentId:agent.id,humanRequestId:q.id,workId:n.id,instruction:i.text,attachments:i.attachments||[],travelContexts:i.travelContexts||[],createdAt:i.createdAt}))));
+ return [...runs,...external,...inputs].filter(r=>!r.hideEntry).sort((a,b)=>(a.createdAt||'').localeCompare(b.createdAt||''));
 }
 export function completedEntries(state){
  const found=new Map();

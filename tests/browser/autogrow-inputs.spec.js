@@ -40,10 +40,10 @@ for (const mode of ['direct'])
         await input.evaluate(el => { el.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true })); el.value = '変換中\n'.repeat(8); el.dispatchEvent(new InputEvent('input', { bubbles: true, isComposing: true, inputType: 'insertCompositionText' })); el.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'Enter', ctrlKey: true, isComposing: true, keyCode: 229 })); });
         await expect.poll(() => height(input)).toBeGreaterThan(small);
         expect(f.sends()).toBe(0);
-        await input.evaluate(el => { el.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true })); el.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true })); });
         f.fail(true);
         const draft = await input.inputValue();
-        await input.press('Control+Enter');
+        // Ctrl+Enter during composition sends once after compositionend.
+        await input.evaluate(el => { el.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true })); el.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true })); });
         await expect.poll(() => f.sends()).toBe(1);
         await expect(input).toHaveValue(draft);
         const failedHeight = await height(input);

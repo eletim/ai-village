@@ -79,7 +79,7 @@ test('off-page and archived Agents are not reviewed merely by display',async({pa
  const state=fixture(11);state.agents[10].state='terminated';state.runs=[{id:'end',agentId:'a10',state:'completed',output:'archived completion'}];state.reviews={a9:{revision:'off',hasCompleted:true,unreviewed:true},a10:{revision:'archived',hasCompleted:true,unreviewed:true}};
  const requests=await mock(page,state);await page.locator('#next-page').click();await page.waitForTimeout(2200);expect(requests).toHaveLength(0);
  await page.locator('#agent-a9').focus();await expect.poll(()=>requests.length).toBe(1);
- await page.locator('#manage').click();await page.getByRole('button',{name:'終了Agentの履歴',exact:true}).click();await expect(page.locator('#history-content')).toContainText('archived completion');await page.waitForTimeout(2200);expect(state.reviews.a10.unreviewed).toBe(true);
+ await page.locator('#manage').click();await page.getByRole('button',{name:'終了Agent・担当不在の履歴',exact:true}).click();await expect(page.locator('#history-content')).toContainText('archived completion');await page.waitForTimeout(2200);expect(state.reviews.a10.unreviewed).toBe(true);
  await page.locator('#history-content').focus();await expect.poll(()=>state.reviews.a10.unreviewed).toBe(false);await expect(page.locator('#history-content [data-review]')).toHaveCount(0);
 });
 test('quiet selection preserves blue and muted green; unread turns alone have no wash or ring',async({page})=>{
@@ -103,5 +103,5 @@ test('strong green attention and favicon require finalized human request, and Ag
  await expect(page.locator('#village-favicon')).toHaveAttribute('data-unread','true');await expect(page.locator('#completion-count')).toHaveText('依頼完了・要確認 2件');expect(requests).toHaveLength(0);
  await page.locator('#next-page').click();await expect(page.locator('#agent-a9')).toHaveAttribute('data-attention','true');await expect(page.locator('#agent-a9 .request-attention')).toHaveText('依頼完了・要確認');await page.screenshot({path:'/tmp/ai-village-final-request-attention.png'});
  await page.locator('#agent-a9 h2').click();await expect(page.locator('#agent-a9')).toHaveAttribute('data-attention','false');await expect(page.locator('#completion-count')).toHaveText('依頼完了・要確認 1件');expect(state.requests[0].ticket.state).toBe('consumed');
- await page.locator('#manage').click();await page.getByRole('button',{name:'終了Agentの履歴',exact:true}).click();await expect(page.locator('#history-agent')).toContainText('依頼完了・要確認');await page.locator('#history-content').focus();await expect(page.locator('#village-favicon')).toHaveAttribute('data-unread','false');expect(requests.map(r=>r.id)).toEqual(['a9','a10']);
+ await page.locator('#manage').click();await page.getByRole('button',{name:'終了Agent・担当不在の履歴',exact:true}).click();await expect(page.locator('#history-agent')).toContainText('依頼完了・要確認');await page.locator('#history-content').focus();await expect(page.locator('#village-favicon')).toHaveAttribute('data-unread','false');expect(requests.map(r=>r.id)).toEqual(['a9','a10']);
 });

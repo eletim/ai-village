@@ -26,6 +26,7 @@ export function humanProjection(data){
 
  }
  for(const r of view.runs){
+  if(r.origin==='inbox'){r.suppressUser=true;r.instruction='';r.attachments=[];r.travelContexts=[];}
   const q=protectedRequests.get(r.humanRequestId);if(!q)continue;
   if(q.status!=='completed'&&r.phase!=='report'){r.hiddenCompletion=true;continue;}
   const original=data.runs.find(x=>x.id===r.id);

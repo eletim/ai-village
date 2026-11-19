@@ -2,6 +2,7 @@ import {fixtureModels} from './model-fixtures.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {workspaceSnapshot,historyPage} from '../server/conversation-pages.mjs';
+import {matchingRun} from '../src/pending-message.js';
 import {humanProjection} from '../server/report-view.mjs';
 export function fixture(n=230){return {agents:[{id:'a',state:'idle',name:'Fixture',location:'mayor',connection:{},nativeTurns:[]}],workshops:[],projects:[],reviews:{a:{unreviewed:true,attention:true}},notification:{enabled:false},requests:[],runs:Array.from({length:n},(_,i)=>({id:'r'+i,agentId:'a',createdAt:new Date(1700000000000+i*1000).toISOString(),state:'completed',instruction:'question '+i,output:'answer '+i+' '+ 'word '.repeat(400),finalOutput:'final '+i}))};}
 test('100 boundary, agent-bound stable cursors, no native duplicate, repeated legitimate text preserved',()=>{
@@ -56,4 +57,13 @@ test('invalid focus is rejected',()=>{
  assert.throws(()=>workspaceSnapshot(v,{},'a'),{status:400});
  assert.throws(()=>workspaceSnapshot(v,{},[1]),{status:400});
  assert.throws(()=>workspaceSnapshot(v,{},['x'.repeat(201)]),{status:400});
+});
+test('supplements obey history window while compact receipts survive and older pages retain attachments',()=>{
+ const v=fixture(0);const inbox=Array.from({length:150},(_,i)=>({id:'i'+i,operationId:'op'+i,kind:'supplement',text:'BODY'+i,createdAt:new Date(1700000000000+i*1000).toISOString(),handledBy:'done',attachments:[{id:'file',name:'file'+i}]}));
+ v.requests=[{id:'q',status:'active',requestGraph:{nodes:[{id:'w',assignee:'a',inbox}]}}];
+ const s=workspaceSnapshot(v,{},['a']);assert.equal(s.conversations.a.entries.length,100);assert(s.conversations.a.hasMore);assert(!JSON.stringify(s).includes('"BODY0"'));
+ assert.deepEqual(s.requests[0].requestGraph.nodes[0].inbox[0],{id:'i0',operationId:'op0'});
+ assert.equal(matchingRun(s,'a','op0').id,'i0');
+ const p=historyPage(v,'a',s.conversations.a.cursor);assert.equal(p.entries.length,50);assert.equal(p.entries[0].instruction,'BODY0');assert.equal(p.entries[0].attachments[0].name,'file0');
+ const expanded=workspaceSnapshot(v,{a:p.cursor},['a']);assert.equal(expanded.conversations.a.entries.length,150);assert.equal(new Set(expanded.conversations.a.entries.map(x=>x.id)).size,150);
 });

@@ -1,7 +1,7 @@
 import {matchesRunInput} from './input-envelope.mjs';
 import {runView} from './state/projection.ts';
 // Model transitions only. Display labels are generated separately, never saved.
-import {transitionRun,newRun,retryRun,supplementRun} from './state/run.ts';
+import {transitionRun,newRun,retryRun,supplementRun,resumeRun} from './state/run.ts';
 import {resolveInputPosition} from './runtime-events.mjs';
 
 function commit(r,model){r.runModel=model;return r;}
@@ -14,6 +14,7 @@ export function initializeRun(r,{actor='human',parentRunId=null,resultOf=null,re
  return commit(r,result.value);
 }
 export function importRun(r,model){return commit(r,model);}
+export function initializeResume(r,previous){const result=resumeRun(modelOf(previous),r.id);if(!result.ok)throw Error(result.reason);return commit(r,result.value);}
 // Missing models are invalid; legacy data is handled only by the explicit migration.
 export function modelOf(r){if(!r?.runModel)throw Error('Missing run model: '+r?.id);return r.runModel;}
 export function changeRun(r,event){
