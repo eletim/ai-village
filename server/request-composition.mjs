@@ -9,7 +9,6 @@ const fail=message=>{throw Object.assign(Error(message),{status:409});};
 export async function compose(flow,x,action,actor){
  return flow.d.locked('request-graph',()=>flow.d.persist(async()=>{
   const q=flow.root(x.humanRequestId),creating=['plan','delegate'].includes(action);
-  if(!q.commonRequests)fail('この依頼は旧形式です。新しい依頼で分割してください');
   if(typeof x.operationId!=='string'||!/^[\w-]{8,100}$/.test(x.operationId))fail('operationIdを指定してください');
   const payload=JSON.stringify({type:action,actor,parentWorkId:x.parentWorkId||null,workId:x.workId||null,actorRunId:x.actorRunId||null,instruction:x.instruction||null,reportAt:x.reportAt||null,completionAt:x.completionAt||null,agentId:x.agentId||null,replacesRequestId:x.replacesRequestId||null});
   const old=q.requestGraph.operations.find(o=>o.id===x.operationId);

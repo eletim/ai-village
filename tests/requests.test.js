@@ -293,7 +293,7 @@ test('two-stage report replaces visible work after completion, waits for accepta
  assert(s.flow.get(q.id).runs[0].output.includes('SECRET DRAFT'));
  await f.finish(source);await f.complete(source);
  assert.equal(testView(q).status,'active');assert.equal(testView(q).status,'active');assert.equal(f.notifications.length,0);
- let report=s.flow.run(q.requestGraph.nodes[0].currentRunId);assert.equal(report.phase,'report');assert.equal(report.workId,source.workId);
+ let report=s.flow.run(q.requestGraph.nodes[0].reportRunId);assert.equal(report.phase,'report');assert.equal(report.workId,source.workId);
  assert.match(report.instruction,/元の質問/);assert.match(s.flow.context(report),/追加作業/);
  // finish must come before the report body is written, so a trailing habitual remark can
  // never become the run's last message and clobber the report in finalOutput.
@@ -304,9 +304,9 @@ test('two-stage report replaces visible work after completion, waits for accepta
  assert.equal(s.snapshot().reviews[source.agentId].attention,false);
  const count=f.sent.length;await s.tick();await s.tick();assert.equal(f.sent.length,count);
  s=await f.restart();await s.tick();assert.equal(f.sent.length,count);
- report=s.flow.run(report.id);await f.finish(report);
+ report=s.flow.run(report.id);await assert.rejects(f.finish(report));
  await f.submit(report);assert.equal(testView(s.agent(report.agentId)).canSteer,true);
- await assert.rejects(f.delegate(report,f.agents[2]),/報告工程/);
+ await assert.rejects(f.delegate(report,f.agents[2]),/現在の作業run/);
  await f.finish(report);assert.equal(f.notifications.length,0);await f.complete(report);
  assert.equal(f.notifications.length,1);assert.match(f.notifications[0].content,new RegExp('Final '+report.id));
  assert.equal(testView(s.flow.root(q.id)).status,'completed');assert.equal(s.snapshot().reviews[source.agentId].attention,true);
@@ -317,7 +317,7 @@ test('two-stage report replaces visible work after completion, waits for accepta
 test('report failure retries only report; cancelled or unknown reports never redispatch/notify',async t=>{
  const f=await fixture(t,{reportMode:true}),s=f.service;
  const source=await s.send(f.agents[0].id,{requestId:'report-failed-request',instruction:'work'});await f.submit(source);await f.finish(source);await f.complete(source);
- const q=s.flow.root(source.humanRequestId),report=s.flow.run(q.requestGraph.nodes[0].currentRunId);
+ const q=s.flow.root(source.humanRequestId),report=s.flow.run(q.requestGraph.nodes[0].reportRunId);
  await f.submit(report);await f.finish(report);await f.complete(report,'failed');
  assert.equal(testView(q).status,'active');assert.equal(testView(q).status,'active');assert.equal(f.notifications.length,0);
  assert(JSON.stringify(s.snapshot()).includes('Output '+source.id));
@@ -342,7 +342,7 @@ test('report snapshot is pinned, supplements stay same work until report, new re
  const f=await fixture(t,{reportMode:true}),s=f.service;
  const r=await s.send(f.agents[0].id,{requestId:'report-queue-root',instruction:'元質問'});await f.submit(r);
  await s.flow.configureReport(false);
- await f.finish(r);await f.complete(r);const q=s.flow.root(r.humanRequestId),report=s.flow.run(q.requestGraph.nodes[0].currentRunId);
+ await f.finish(r);await f.complete(r);const q=s.flow.root(r.humanRequestId),report=s.flow.run(q.requestGraph.nodes[0].reportRunId);
  await f.submit(report);
  const supplement=await s.send(r.agentId,{requestId:'report-valid-steer',instruction:'補足',steerTarget:{runId:report.id,sessionId:report.sessionId,turnId:report.turnId}});assert.equal(supplement.phase,'report');await acceptSteer(f,supplement);
  const later=await s.send(r.agentId,{requestId:'report-next-request',instruction:'次の独立依頼'});
@@ -360,14 +360,14 @@ test('cancel before source completion or queued report prevents creation/dispatc
  // A native completion can be observed and settled while dispatch remains withheld.
  const native=f.runtimes.get(r2.agentId);native.turns.at(-1).state='completed';
  await s.observe(s.agent(r2.agentId));await s.flow.settle();
- const q2=s.flow.root(r2.humanRequestId),report=s.flow.run(q2.requestGraph.nodes[0].currentRunId);assert.equal(testView(report).state,'queued');
+ const q2=s.flow.root(r2.humanRequestId),report=s.flow.run(q2.requestGraph.nodes[0].reportRunId);assert.equal(testView(report).state,'queued');
  await s.flow.cancel({humanRequestId:q2.id,revision:q2.revision});const count=f.sent.length;await s.tick();await f.restart();await f.service.tick();
  assert.equal(f.sent.length,count);assert.equal(f.notifications.length,0);
 });
 test('report completed without finish becomes visible and completes; disabled notifications do not skip report',async t=>{
  const f=await fixture(t,{reportMode:true}),s=f.service;s.notifier.enqueue=async()=>({status:'disabled'});
  const r=await s.send(f.agents[0].id,{requestId:'report-no-finish',instruction:'question'});await f.submit(r);await f.complete(r);
- const q=s.flow.root(r.humanRequestId),report=s.flow.run(q.requestGraph.nodes[0].currentRunId);assert.equal(report.phase,'report');
+ const q=s.flow.root(r.humanRequestId),report=s.flow.run(q.requestGraph.nodes[0].reportRunId);assert.equal(report.phase,'report');
  await f.submit(report);await f.complete(report);assert.equal(testView(q).status,'completed');assert(JSON.stringify(s.snapshot()).includes('Final '+report.id));assert.equal(testView(q.notification).status,'disabled');
  await assert.rejects(s.flow.continue({humanRequestId:q.id,workId:r.workId,revision:q.revision,operationId:'no-resume-report',instruction:'resume'}),/受付中では/);
 });
@@ -455,7 +455,7 @@ test('startup envelope retains literal human input and dynamic identity; report 
  assert(s.startupInstructions().includes('requests finish'));assert(s.startupInstructions().includes('phase=report'));
  assert(s.startupInstructions().includes('projects guide PROJECT_ID'));
  await f.submit(r);await f.finish(r);await f.complete(r);await s.tick();
- const q=s.flow.get(r.humanRequestId),report=s.flow.run(q.requestGraph.nodes[0].currentRunId);
+ const q=s.flow.get(r.humanRequestId),report=s.flow.run(q.requestGraph.nodes[0].reportRunId);
  assert.equal(report.phase,'report');assert(report.instruction.startsWith('報告資料'));
  assert(!s.flow.context(report).includes('requests finish'));
  a.inputEnvelope={mode:'legacy'};
@@ -489,7 +489,7 @@ test('queued compact report restores full report rules when prompt disappears be
  const f=await fixture(t,{reportMode:true}),s=f.service,a=f.agents[0];a.inputEnvelope={mode:'startup-v1',hash:inputHash(s.startupInstructions())};
  const r=await s.send(a.id,{instruction:'work',requestId:randomUUID()});await f.submit(r);await f.finish(r);
  f.promptState('missing');await f.complete(r);await s.tick();
- const report=s.flow.run(s.flow.root(r.humanRequestId).requestGraph.nodes[0].currentRunId);
+ const report=s.flow.run(s.flow.root(r.humanRequestId).requestGraph.nodes[0].reportRunId);
  assert.equal(report.phase,'report');assert.equal(report.inputEnvelopeMode,'legacy');
  assert.match(f.sent.at(-1).text,/追加作業・ファイル変更・PR操作/);assert.match(f.sent.at(-1).text,/finishは不要/);
 });
@@ -560,7 +560,7 @@ for(const nextTurn of [false,true])test('Claude steering keeps request, finish a
  if(nextTurn)n.turns.push({id:tid,state:'running',output:'',messageOffsets:true,messages:[]});
  n.inputs.push({id:'supplement-input',turnId:tid,offset:n.cursor,text:'\n<pasted_content id="steer">\n'+f.sent.at(-1).text+'\n</pasted_content id="steer">\n',explicitTurn:true,source:nextTurn?'claude-user':'claude-queued'});
  await s.tick();assert.equal(receipt(r).acceptance,'accepted');assert.equal(r.turnId,tid);await f.finish(r);n.cursor+=10;n.turns.find(t=>t.id===tid).completionOffset=n.cursor;await f.complete(r);await s.tick();
- const q=s.flow.root(root.humanRequestId),report=s.flow.run(q.requestGraph.nodes[0].currentRunId);assert.equal(report.phase,'report');await f.submit(report);assert.equal(testView(s.agent(root.agentId)).canSteer,false);await f.complete(report);await s.tick();
+ const q=s.flow.root(root.humanRequestId),report=s.flow.run(q.requestGraph.nodes[0].reportRunId);assert.equal(report.phase,'report');await f.submit(report);assert.equal(testView(s.agent(root.agentId)).canSteer,false);await f.complete(report);await s.tick();
  assert.equal(testView(q).status,'completed');assert.equal(s.data.requests.length,1);assert.equal(f.notifications.length,1);
 });
 
@@ -702,7 +702,7 @@ for(const mode of ['startup-v1','legacy'])test('lean '+mode+' input fields and s
   assert.equal(r.inputMarker,undefined);assert.equal(r.inputCorrelation.version,1);
  };
  check(r,f.sent.at(-1).text);await f.submit(r);await f.complete(r);
- const report=f.service.flow.run(f.service.flow.root(r.humanRequestId).requestGraph.nodes[0].currentRunId);
+ const report=f.service.flow.run(f.service.flow.root(r.humanRequestId).requestGraph.nodes[0].reportRunId);
  check(report,f.sent.at(-1).text);await f.submit(report);await f.complete(report);
  const next=await f.service.send(a.id,{instruction:'repeat',requestId:randomUUID()});
  assert.notDeepEqual(next.inputCorrelation,r.inputCorrelation);

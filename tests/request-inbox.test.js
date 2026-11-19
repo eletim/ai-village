@@ -121,7 +121,7 @@ test('previously saved orphan report reservation recovers without a second repor
  const f=await fixture(t,{reportMode:true}),s=f.service,r=await send(s,f.agents[0],'A');await f.submit(r);await handle(s,r);
  s.flow.dispatchQueued=async()=>{};await f.complete(r);const q=s.flow.root(r.humanRequestId),w=s.flow.work(q,r.workId),report=s.flow.run(q.report.initialRunId);
  // Saved shape produced by the previous version: report metadata removed, queued head remains.
- delete q.report;w.reportRunId=null;w.inbox.push({id:randomUUID(),kind:'supplement',text:'legacy late input',createdAt:new Date().toISOString(),attempts:[]});await s.save();
+ delete q.report;q.commonRequests=false;delete s.data.commonRequestVersion;delete w.recipient;delete w.createdBy;delete w.planned;w.currentRunId=report.id;w.reportRunId=report.id;w.state={kind:'active',review:[]};w.inbox.push({id:randomUUID(),kind:'supplement',text:'legacy late input',createdAt:new Date().toISOString(),attempts:[]});await s.save();
  const restored=await f.restart();await restored.tick();const node=restored.flow.work(restored.flow.root(q.id),w.id);assert.equal(restored.flow.run(report.id).runModel.state.kind,'cancelled');assert.notEqual(node.currentRunId,report.id);assert(!f.sent.some(x=>x.text.includes(report.id)));
 });
 

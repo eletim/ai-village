@@ -1,3 +1,4 @@
+import {migrateCommonRequests} from './common-request-migration.mjs';
 import {PartitionStore} from './partition-store.mjs';
 import {RequestUnits} from './request-units.mjs';
 import {EventEmitter} from 'node:events';
@@ -78,6 +79,7 @@ export class DirectAgents {
     if(!this.data.unifiedRequestVersion)this.data=await migrateCanonicalStore(this.dir,this.data);
     if(!this.data.unifiedRequestVersion)this.data=await migrateMarkerStore(this.dir,this.data);
     this.data=await migrateUnifiedStore(this.dir,this.data);
+    this.data=migrateCommonRequests(this.data);
     this.data.projects ||= [];
     migrateProjectOrder(this.data.projects);
     for(const p of this.data.projects)if(p.deletion?.status==='running'){p.deletion.status='partial';p.deletion.interruptedAt=now();}

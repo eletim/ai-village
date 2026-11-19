@@ -2,6 +2,12 @@
 
 Scope: request-scoped persistence and timer recovery on PR #104.
 
+Follow-up: the common-request migration and auxiliary transition functions now
+address findings 1 and 2 below. See state-management.md for current ownership.
+The original review is retained as rationale; these findings describe the code
+before that follow-up. Command-scoping/index contracts still need continued
+regression coverage as described in finding 3.
+
 ## Working boundaries
 
 The core models separate request acceptance (`state/requests.ts`), native

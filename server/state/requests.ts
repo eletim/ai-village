@@ -11,7 +11,7 @@ export type Replacement={replacementId:string;actorRunId:string;resultId:string;
 export type InboxItem={id:string;kind:'request'|'supplement'|'result';text:string;createdAt:string;result?:Omit<Response,'decision'>&{outcome?:string;reason?:string|null};attempts:string[];handledBy?:string;retiredBy?:string};
 export type InputClaim={runId:string;ids:string[];operationId:string};
 export type Recipient={kind:'human'}|{kind:'request';requestId:string};
-export type Node={recipient?:Recipient;createdBy?:Actor;planned?:boolean;inbox?:InboxItem[];inputClaims?:InputClaim[];metadata:Record<string,unknown>;claims:Claim[];replacements:Replacement[];invalidatedRuns:string[];replacementId?:string;id:string;parentId:string|null;requester:{kind:'human'}|{kind:'agent';agentId:string;requestId:string};assignee:string|null;runAgents:Record<string,string>;runIds:string[];currentRunId:string|null;reportRunId:string|null;reportMode:boolean;state:RequestState;submissions:Submission[];handling:Handling[];declarations:{id:string;runId:string;at:number;invalidated?:string}[];decisions:{actor:Actor;reason:string}[]};
+export type Node={recipient:Recipient;createdBy:Actor;planned:boolean;inbox?:InboxItem[];inputClaims?:InputClaim[];metadata:Record<string,unknown>;claims:Claim[];replacements:Replacement[];invalidatedRuns:string[];replacementId?:string;id:string;parentId:string|null;requester:{kind:'human'}|{kind:'agent';agentId:string;requestId:string};assignee:string|null;runAgents:Record<string,string>;runIds:string[];currentRunId:string|null;reportRunId:string|null;reportMode:boolean;state:RequestState;submissions:Submission[];handling:Handling[];declarations:{id:string;runId:string;at:number;invalidated?:string}[];decisions:{actor:Actor;reason:string}[]};
 export type Graph={version:3;rootId:string;nodes:Node[];operations:{id:string;payload:string;acceptedPayload?:string;allowOmittedResults?:true}[]};
 export type Evidence={run:Run;ownerId:string;agentId:string}[];
 export const node=(g:Graph,id:string)=>g.nodes.find(n=>n.id===id);
@@ -19,7 +19,7 @@ const owned=(n:Node,runs:Evidence)=>runs.filter(e=>e.ownerId===n.id).map(e=>e.ru
 const current=(n:Node,runs:Evidence)=>owned(n,runs).find(r=>r.id===n.currentRunId);
 const normal=(r:Run|undefined)=>r?.state.kind==='ended'&&r.state.outcome==='normal';
 const correlated=(r:Run|undefined)=>!!r?.facts.some(f=>f.type==='input')&&(r.state.kind==='running'||normal(r));
-export const latest=(n:Node)=>n.submissions.find(s=>s.runId===(n.recipient?n.currentRunId:n.reportRunId||n.currentRunId));
+export const latest=(n:Node)=>n.submissions.find(s=>s.runId===n.currentRunId);
 export const handled=(parent:Node,s:Submission)=>parent.handling.some(h=>h.requestId===s.requestId&&h.resultId===s.id&&h.version===s.version);
 const inputBlocksAcceptance=(n:Node,s:Submission)=>n.inbox?.some(i=>!i.handledBy&&!i.retiredBy&&(s.outcome==='normal'||i.kind!=='request'));
 export function dependencies(g:Graph,n:Node){return g.nodes.filter(c=>c.parentId===n.id);}
@@ -36,7 +36,6 @@ export function waitingReason(g:Graph,n:Node,runs:Evidence):string|null{
  if(r&&!r.supersededBy&&!isTerminal(r))return r.phase==='result'?'result-processing':r.phase==='report'?'report-processing':r.state.kind==='queued'?'queued':r.state.kind==='sent'?'awaiting-input':'running';
  if(n.inbox?.some(i=>!i.handledBy&&!i.retiredBy&&i.attempts.length<2))return 'input-pending';
  if(graphSteps(g,runs).some(step=>step.requestId===n.id&&step.type==='deliver-result'))return 'result-delivery';
- if(!n.recipient&&n.reportMode&&!n.reportRunId&&ready(g,n,runs))return 'report-preparation';
  if(dependencies(g,n).some(c=>!c.replacementId&&c.planned&&c.state.kind==='active'))return 'children-planned';
  if(dependencies(g,n).some(c=>!c.replacementId&&c.state.kind==='active'&&waitingReason(g,c,runs)))return 'dependencies';
  return null;
@@ -90,7 +89,7 @@ export function reconcileGraph(source:Graph,runs:Evidence):Graph{
    if(isTerminal(r)&&!normal(r)||normal(r)&&(!n.inbox&&!dependencies(g,n).length||ready(g,n,runs))){
     if(!n.submissions.some(s=>s.runId===r.id))n.submissions.push({id:r.id,runId:r.id,requestId:n.id,version:n.submissions.length+1,outcome:r.state.kind==='ended'?r.state.outcome:'cancelled'});
    }
-   if(ready(g,n,runs)&&review.length===0&&(n.recipient||!n.reportMode||r.phase==='report'))n.state=n.recipient||n.parentId?{kind:'submitted',resultId:r.id}:{kind:'completed',by:'program',reason:r.phase==='report'?'normal-report':'normal-work'};
+   if(ready(g,n,runs)&&review.length===0)n.state={kind:'submitted',resultId:r.id};
    else {
     if(normal(r)&&!ready(g,n,runs)&&!waitingReason(g,n,runs))review.push('progress-stalled');
     n.state={kind:'active',review:[...new Set(review)]};
@@ -118,14 +117,13 @@ export type Event=
  | {type:'attempt';actor:Actor;requestId:string;runId:string;report:boolean;resolveReview?:boolean}
  | {type:'respond'|'finish';actor:'agent';requestId:string;runId:string;operationId:string;results:Response[];inputs?:string[];at:number}
  | {type:'replace';actor:'agent';requestId:string;childId:string;replacementId:string}
- | {type:'invalidate-report';actor:'program';requestId:string;sourceRunId:string}
- | {type:'supplement';actor:Actor;requestId:string;input:InboxItem;resumeFrom?:string}
+ | {type:'supplement';actor:Actor;requestId:string;input:InboxItem}
  | {type:'assign';actor:'human';requestId:string;agentId:string}
  | {type:'review';actor:'program';requestId:string;reason:string}
  | {type:'withdraw'|'complete';actor:'human';requestId:string;reason:string}
  | {type:'observe';actor:'program'};
 export function transitionGraph(source:Graph,e:Event,runs:Evidence):Result<Graph>{
- const authorities:Record<Event['type'],Actor[]>={add:['agent','human'],'deliver-human':['program'],'plan-assign':['human','agent'],'discard-plan':['human','agent'],supplement:['human','agent','program'],'invalidate-report':['program'],attempt:['agent','human','program'],respond:['agent'],finish:['agent'],review:['program'],withdraw:['human'],complete:['human'],observe:['program'],assign:['human'],replace:['agent']};
+ const authorities:Record<Event['type'],Actor[]>={add:['agent','human'],'deliver-human':['program'],'plan-assign':['human','agent'],'discard-plan':['human','agent'],supplement:['human','agent','program'],attempt:['agent','human','program'],respond:['agent'],finish:['agent'],review:['program'],withdraw:['human'],complete:['human'],observe:['program'],assign:['human'],replace:['agent']};
  if(!authorities[e.type]?.includes(e.actor))return reject('actor-forbidden');
  let g=structuredClone(source);
  if(e.type==='observe')return accept(reconcileGraph(g,runs));
@@ -142,14 +140,9 @@ export function transitionGraph(source:Graph,e:Event,runs:Evidence):Result<Graph
  }
  if(e.type==='plan-assign'){if(!n.planned||n.state.kind!=='active')return reject('request-already-started');n.assignee=e.agentId;return accept(g);}
  if(e.type==='discard-plan'){if(!n.planned||n.state.kind!=='active')return reject('request-already-started');n.state={kind:'withdrawn',reason:'plan-discarded'};n.decisions.push({actor:e.actor,reason:'plan-discarded'});return accept(g);}
- if(e.type==='invalidate-report'){
-  const previous=owned(n,runs).find(r=>r.id===e.sourceRunId);
-  if(n.parentId||n.state.kind!=='active'||current(n,runs)?.phase!=='report'||!normal(previous)||previous?.phase==='report'||!n.inbox?.some(i=>i.kind==='supplement'&&!i.handledBy))return reject('report-not-obsolete');
-  n.currentRunId=e.sourceRunId;n.reportRunId=null;return accept(reconcileGraph(g,runs));
- }
  if(e.type==='supplement'){
   if(!['active','submitted'].includes(n.state.kind)||e.input.kind!=='supplement'||n.inbox?.some(i=>i.id===e.input.id))return reject('invalid-supplement');
-  if(e.resumeFrom){const previous=owned(n,runs).find(r=>r.id===e.resumeFrom);if(n.parentId||!normal(previous)||previous?.phase==='report')return reject('invalid-report-source');n.currentRunId=e.resumeFrom;n.reportRunId=null;}
+  if(!n.parentId)n.reportRunId=null;
   (n.inbox ||= []).push(e.input);n.inputClaims ||= [];
   n.state={kind:'active',review:n.state.kind==='active'?n.state.review:[]};
   return accept(reconcileGraph(g,runs));
@@ -195,13 +188,12 @@ export function transitionGraph(source:Graph,e:Event,runs:Evidence):Result<Graph
   case 'attempt':{
    const r=runs.find(x=>x.run.id===e.runId&&x.ownerId===n.id&&x.agentId===n.assignee)?.run;
    if(!n.assignee||!r||r.createdBy!==e.actor||r.state.kind!=='queued'||n.runIds.includes(r.id)||e.report!==(r.phase==='report'))return reject('invalid-new-run');
-   if(n.recipient&&e.report){
+   if(e.report){
     if(n.state.kind!=='submitted'||n.recipient.kind!=='human')return reject('report-not-ready');
     n.runAgents[r.id]=n.assignee;n.runIds.push(r.id);n.reportRunId=r.id;return accept(g);
    }
    if(e.resolveReview&&(e.actor!=='human'||!r.retryOf))return reject('invalid-review-resolution');
    if(r.retryOf&&!n.runIds.includes(r.retryOf))return reject('foreign-predecessor');
-   if(r.phase==='report'&&(!n.reportMode||n.parentId||!(n.reportRunId?r.retryOf===n.reportRunId:ready(g,n,runs)&&n.state.kind==='active'&&!n.state.review.length)))return reject('report-not-ready');
    if(r.phase==='result'){
     const child=dependencies(g,n).find(c=>latest(c)?.id===r.resultOf),s=child&&latest(child),previous=r.retryOf&&owned(n,runs).find(p=>p.id===r.retryOf);
     const retry=previous&&previous.phase==='result'&&previous.resultOf===r.resultOf&&previous.state.kind==='ended'&&previous.state.outcome!=='normal';
@@ -216,7 +208,7 @@ export function transitionGraph(source:Graph,e:Event,runs:Evidence):Result<Graph
     for(const d of n.declarations.filter(d=>d.runId===previous.id))d.invalidated='superseded-by:'+r.id;
     for(const claim of n.claims.filter(c=>c.actorRunId===previous.id))claim.invalidated='superseded-by:'+r.id;
    }
-   if(n.recipient)n.planned=false;n.runAgents[r.id]=n.assignee;
+   n.planned=false;n.runAgents[r.id]=n.assignee;
    n.runIds.push(r.id);n.currentRunId=r.id;if(e.report)n.reportRunId=r.id;
    n.state={kind:'active',review:e.resolveReview?[]:n.state.kind==='active'?n.state.review.filter(x=>!['needs-decision','dependencies-unresolved','progress-stalled','child-needs-review'].includes(x)):[]};
    return accept(reconcileGraph(g,runs));
@@ -245,7 +237,6 @@ export function graphSteps(g:Graph,runs:Evidence){
   for(const c of dependencies(g,n)){
    const s=latest(c);if(!n.inbox&&!c.replacementId&&s&&(c.state.kind==='submitted'||c.state.kind==='completed'||c.state.kind==='withdrawn'||s.outcome!=='normal')&&!handled(n,s)&&!runs.some(e=>e.run.phase==='result'&&e.run.resultOf===s.id))steps.push({type:'deliver-result',childRunId:s.runId,requestId:n.id});
   }
-  if(!n.recipient&&n.reportMode&&!n.reportRunId&&ready(g,n,runs)&&!n.state.review.length)steps.push({type:'prepare-report',requestId:n.id});
  }
  return steps;
 }

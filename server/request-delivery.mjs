@@ -1,3 +1,4 @@
+import {transitionReportDelivery} from './state/auxiliary.ts';
 import {rootNode,applyGraph} from './unified-requests.mjs';
 import {latest} from './state/requests.ts';
 import {runState} from './run-lifecycle.mjs';
@@ -9,8 +10,8 @@ export async function settleHumanDelivery(flow,q){
  if(q.reportMode){
   if(!q.report){
    if(!flow.d.data.agents.some(a=>a.id===w.assignee))return;
-   q.report={sourceRunId:s.runId,createdAt:new Date().toISOString()};
-   const r=flow.enqueue(q,w,flow.reportPrompt(q),'final-report:'+s.id,'report',{phase:'report',attachments:[],travelContexts:[]});q.report.initialRunId=r.id;
+   q.report=transitionReportDelivery(q.report,{type:'prepare',sourceRunId:s.runId,at:new Date().toISOString()});
+   const r=flow.enqueue(q,w,flow.reportPrompt(q),'final-report:'+s.id,'report',{phase:'report',attachments:[],travelContexts:[]});q.report=transitionReportDelivery(q.report,{type:'assign',runId:r.id});
   }
   const report=flow.run(w.reportRunId);
   if(!report||runState(report)!=='completed')return;

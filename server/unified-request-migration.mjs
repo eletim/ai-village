@@ -1,3 +1,4 @@
+import {migrateCommonRequests} from './common-request-migration.mjs';
 import {readFile,open} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {writeSnapshot} from './direct-store.mjs';
@@ -74,6 +75,7 @@ export function unifiedData(source){
    for(const op of g.operations)if(['finish','respond'].includes(JSON.parse(op.payload).type))op.allowOmittedResults=true;
    g.version=3;delete q.works;delete q.requestModel;
   }
+  migrateCommonRequests({requests:[q],runs:data.runs});
   validateGraph(data,q);
   refreshProgressReviews(q.requestGraph,evidence(data,q));
  }

@@ -3,8 +3,8 @@
 The writable authority is `village.sqlite` (Node 22 SQLite, WAL, synchronous FULL).
 `direct.json` is a one-time import source, not a live mirror. On first startup,
 existing migrations validate/import the complete history. Subsequent startups
-load SQLite. Historical request protocols remain readable; new requests use the
-common request protocol. Import does not delete or re-execute old history.
+load SQLite. Historical records are converted to the common request contract; old input
+and operation evidence remains readable for audit validation. Import does not delete or re-execute old history.
 
 One human request, including its work tree and runs, is the mutation boundary.
 Request commands establish that boundary before taking a rollback checkpoint.
@@ -35,7 +35,7 @@ and export the current database records into the legacy full snapshot shape
 (`readPartitionSnapshot`), or restore a complete pre-upgrade backup with explicit
 awareness of subsequent work. Never silently discard work done after the upgrade.
 
-The remaining historical protocol branches can be retired separately after a
-semantic migration; they do not require old JSON writes. This change intentionally
+The common request semantic migration now isolates old report/work ownership
+at import; normal execution uses one contract. This change intentionally
 breaks direct consumers of the writable JSON file. Operational clients should use
 the village API.

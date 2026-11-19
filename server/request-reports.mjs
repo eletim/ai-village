@@ -1,3 +1,4 @@
+import {transitionReporting} from './state/auxiliary.ts';
 import {randomUUID} from 'node:crypto';
 import {applyGraph} from './unified-requests.mjs';
 const fail=message=>{throw Object.assign(Error(message),{status:409});};
@@ -21,12 +22,10 @@ export class RequestReports {
   else {if(parent)fail('子依頼の期限は管理する秘書が変更します');this.flow.version(q,x.revision);}
   if(typeof x.reason!=='string'||!x.reason.trim()||x.reason.length>4000)fail('期限変更の理由が必要です');
   const current=w.metadata.reporting||initialDeadlines({});
-  if(x.expectedVersion!==current.version)fail('期限が更新されています。再取得してください');
   if(!Object.hasOwn(x,'completionAt')||!Object.hasOwn(x,'reportAt'))fail('完成期限・報告期限を明示してください。指定なしはnullです');
   const dates={completionAt:deadline(x.completionAt),reportAt:deadline(x.reportAt)};
-  for(const [key,at] of Object.entries(dates))if(at!==current[key]&&at&&Date.parse(at)<=this.clock())fail('新しい期限は未来を指定してください');
   const event={id:randomUUID(),kind:'deadline-changed',workId:w.id,at:new Date(this.clock()).toISOString(),actor,actorRunId:x.actorRunId||null,reason:x.reason,...dates};
-  w.metadata.reporting={...current,...dates,version:current.version+1,reportReceivedAt:dates.reportAt===current.reportAt?current.reportReceivedAt:null,expired:Object.fromEntries(Object.entries(current.expired||{}).filter(([kind])=>dates[kind+'At']===current[kind+'At'])),history:[...current.history,event]};
+  w.metadata.reporting=transitionReporting(current,{type:'change',expectedVersion:x.expectedVersion,...dates,now:this.clock(),event});
   if(!w.planned)notify(this.flow,q,w,event);
   return event;
  });}
@@ -35,7 +34,7 @@ export class RequestReports {
   if(!['progress','question','extension'].includes(x.kind)||typeof x.text!=='string'||!x.text.trim()||x.text.length>16000)fail('報告の種類と本文を指定してください');
   const event={id:randomUUID(),kind:x.kind,workId:w.id,at:new Date(this.clock()).toISOString(),actorRunId:x.actorRunId,text:x.text,proposedCompletionAt:deadline(x.proposedCompletionAt),proposedReportAt:deadline(x.proposedReportAt)};
   const current=w.metadata.reporting||initialDeadlines({});
-  w.metadata.reporting={...current,reportReceivedAt:event.at,reports:[...current.reports,event]};
+  w.metadata.reporting=transitionReporting(current,{type:'report',event});
   // Persisted immediately, independently of a later native execution outcome.
   if(w.parentId)notify(this.flow,q,this.flow.work(q,w.parentId),event);
   return event;
@@ -45,7 +44,7 @@ export class RequestReports {
   const q=f.root(x.humanRequestId),w=f.work(q,x.workId),payload=JSON.stringify({type,actor,workId:x.workId,actorRunId:x.actorRunId,revision:x.revision,kind:x.kind,text:x.text,proposedCompletionAt:x.proposedCompletionAt,proposedReportAt:x.proposedReportAt,expectedVersion:x.expectedVersion,completionAt:x.completionAt,reportAt:x.reportAt,reason:x.reason});
   const old=q.requestGraph.operations.find(o=>o.id===x.operationId);
   if(old){if(old.payload!==payload)fail('operationIdの再利用です');return structuredClone(old.receipt);}
-  f.active(q);if(!q.commonRequests||w.state.kind!=='active'||q.report)fail('作業受付中の依頼にだけ操作できます');
+  f.active(q);if(w.state.kind!=='active'||q.report)fail('作業受付中の依頼にだけ操作できます');
   const receipt=await action(q,w);q.requestGraph.operations.push({id:x.operationId,payload,receipt});q.revision++;
   await f.d.save();return structuredClone(receipt);
  }));}
@@ -70,7 +69,7 @@ export class RequestReports {
    const q=f.root(id),due=this.pending([q]).filter(e=>e.at<=this.clock());if(!due.length)return;
    for(const {w,kind,version} of due){
     const s=w.metadata.reporting,event={id:randomUUID(),kind:'deadline-exceeded',deadlineKind:kind,workId:w.id,version,at:new Date(this.clock()).toISOString(),deadline:s[kind+'At']};
-    s.expired={...s.expired,[kind]:event};s.history.push(event);q.revision++;
+    w.metadata.reporting=transitionReporting(s,{type:'expire',kind,version,now:this.clock(),event});q.revision++;
     if(w.parentId)notify(f,q,f.work(q,w.parentId),event);
    }
    await f.d.save();
