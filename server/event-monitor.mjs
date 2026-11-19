@@ -47,7 +47,7 @@ export class EventMonitor {
    }
   }catch(error){this.error=error.message;}finally{this.running.delete(id);}
  }
- reserveRecovery(){
+ reserveRecovery(retryDelay=0){
   clearTimeout(this.timer);
   const candidates=this.d.data.runs.flatMap(r=>[
    ...(r.unknownSince&&!r.unknownResolvedAt?[{r,kind:'unknown',at:Date.parse(r.unknownSince)+600000}]:[]),
@@ -56,9 +56,13 @@ export class EventMonitor {
   ]).map(e=>({...e,key:e.r.id+':'+e.kind+':'+e.at})).filter(e=>!this.fired.has(e.key));
   const first=candidates.sort((a,b)=>a.at-b.at)[0];if(!first)return;
   this.timer=setTimeout(()=>{
-   this.fired.add(first.key);
-   void this.d.units.agent(first.r.agentId,()=>this.d.persist(async()=>{this.d.releaseStuckRuns({id:first.r.agentId});await this.d.save();})).then(()=>this.d.progress()).catch(error=>{this.error=error.message;}).finally(()=>{if(!this.closed)this.reserveRecovery();});
-  },Math.max(0,Math.min(2147483647,first.at-Date.now())));this.timer.unref();
+   let saved=false;
+   void this.d.units.agent(first.r.agentId,()=>this.d.persist(async()=>{
+    this.d.releaseStuckRuns({id:first.r.agentId});
+    await this.d.save({wakeups:first.r.humanRequestId?[first.r.humanRequestId]:[]});
+    this.fired.add(first.key);saved=true;
+   })).then(()=>this.d.progress()).catch(error=>{this.error=error.message;}).finally(()=>{if(!this.closed)this.reserveRecovery(saved?0:1000);});
+  },Math.max(retryDelay,Math.min(2147483647,Math.max(0,first.at-Date.now()))));this.timer.unref();
  }
  close(){this.closed=true;clearTimeout(this.timer);for(const h of this.hosts.values())h.close();this.hosts.clear();}
 }

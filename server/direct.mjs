@@ -234,9 +234,9 @@ export class DirectAgents {
       throw error;
     }
   });}
-  async save(){return this.persistence.run(async()=>{
+  async save(options){return this.persistence.run(async()=>{
     const restore=this.units.checkpoint()||checkpoint(this.persistence.context.getStore()?.roots||this.data);
-    try{const task=this.store.save();this.queue=task;await task;this.presentationCache=null;this.flow.reporting.schedule(this.store.lastChanges.filter(c=>c.kind==='requests').map(c=>c.id));
+    try{const task=this.store.save(options);this.queue=task;await task;this.presentationCache=null;this.flow.reporting.schedule(this.store.lastChanges.filter(c=>c.kind==='requests').map(c=>c.id));
       if(this.publishedFingerprint!==this.store.fingerprint){this.publishedFingerprint=this.store.fingerprint;setImmediate(()=>{this.events.emit('change');if(this.monitor&&!this.monitor.closed){this.monitor.update();void this.progress().catch(()=>{});}});}
       const scope=this.persistence.context.getStore();if(scope.restore)scope.restore=restore;
     }catch(error){error.persistenceFailure=true;if(error.persistenceUncertain)this.persistence.failure=error;throw error;}

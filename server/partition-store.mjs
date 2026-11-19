@@ -16,15 +16,15 @@ export class PartitionStore {
   this.reloadJobs();return data;
  }
  reloadJobs(){this.jobs=new Map(this.db.prepare('SELECT * FROM wakeups').all().map(r=>[r.id,r.version]));}
- async save(){
+ async save({wakeups:requested=[]}={}){
   this.lastChanges=[];const data=this.capture(),selected=this.selection(),changes=[];
   const meta=Object.fromEntries(Object.entries(data).filter(([k])=>!collections.includes(k)));
   const add=(kind,id,value)=>{const body=encode(kind,value);if(this.cache.get(kind+':'+id)!==body)changes.push({kind,id,body});};
   add('meta','village',meta);
   for(const kind of collections)for(const value of selected?.[kind]||(!selected?data[kind]||[]:[]))add(kind,value.id,value);
   if(!selected)for(const key of this.cache.keys()){const colon=key.indexOf(':'),kind=key.slice(0,colon),id=key.slice(colon+1);if(collections.includes(kind)&&!(data[kind]||[]).some(r=>r.id===id))changes.push({kind,id,body:null});}
-  if(!changes.length)return;
-  const wakeups=this.affected(changes);
+  const wakeups=[...new Set([...this.affected(changes),...requested])];
+  if(!changes.length&&!wakeups.length)return;
   await this.write({changes,wakeups});
   for(const c of changes){const key=c.kind+':'+c.id;c.body===null?this.cache.delete(key):this.cache.set(key,c.body);}
   this.fingerprint++;this.reloadJobs();this.lastChanges=changes;
