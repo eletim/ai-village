@@ -1,6 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
+import {changeRun} from '../server/run-lifecycle.mjs';
 import {fixture} from './inbox-fixture.js';
 const handle=(s,r,{ids,results=[],finish=true}={})=>s.flow[finish?'finish':'respond']({humanRequestId:r.humanRequestId,workId:r.workId,runId:r.id,operationId:randomUUID(),inputs:ids??s.flow.inputs(r.humanRequestId,r.workId).filter(i=>!i.handledBy&&i.attempts.includes(r.id)).map(i=>i.id),results});
 const send=(s,a,text)=>s.send(a.id,{instruction:text,requestId:randomUUID()});
@@ -28,10 +29,10 @@ test('waiting A frees secretary for B; supplement and child result batch into A;
  // A result arriving after batch reservation remains pending for another turn, never lost.
  const items=s.flow.inputs(r.humanRequestId,r.workId).filter(i=>!i.handledBy&&i.attempts.includes(ar.id));
  assert(items.some(i=>i.id===input.id));
- const refs=items.filter(i=>i.result).map(i=>i.result);
+ const refs=items.filter(i=>i.result).map(i=>({...i.result,decision:'accept'}));
  await handle(s,ar,{results:refs});await f.complete(ar);
  const next=s.flow.run(s.flow.work(s.flow.root(r.humanRequestId),r.workId).currentRunId);
- if(next.id!==ar.id){await f.submit(next);const items=s.flow.inputs(r.humanRequestId,r.workId).filter(i=>!i.handledBy&&i.attempts.includes(next.id));await handle(s,next,{results:items.filter(i=>i.result).map(i=>i.result)});await f.complete(next);}
+ if(next.id!==ar.id){await f.submit(next);const items=s.flow.inputs(r.humanRequestId,r.workId).filter(i=>!i.handledBy&&i.attempts.includes(next.id));await handle(s,next,{results:items.filter(i=>i.result).map(i=>({...i.result,decision:'accept'}))});await f.complete(next);}
  assert.equal(s.flow.root(r.humanRequestId).requestGraph.nodes[0].state.kind,'completed',JSON.stringify(s.flow.get(r.humanRequestId)));
  assert.equal(s.flow.inputs(r.humanRequestId,r.workId).filter(i=>!i.handledBy).length,0);
 });
@@ -122,4 +123,18 @@ test('previously saved orphan report reservation recovers without a second repor
  // Saved shape produced by the previous version: report metadata removed, queued head remains.
  delete q.report;w.reportRunId=null;w.inbox.push({id:randomUUID(),kind:'supplement',text:'legacy late input',createdAt:new Date().toISOString(),attempts:[]});await s.save();
  const restored=await f.restart();await restored.tick();const node=restored.flow.work(restored.flow.root(q.id),w.id);assert.equal(restored.flow.run(report.id).runModel.state.kind,'cancelled');assert.notEqual(node.currentRunId,report.id);assert(!f.sent.some(x=>x.text.includes(report.id)));
+});
+
+for(const outcome of ['completed','failed','interrupted','unconfirmed'])test('result delivery carries facts without an implied decision: '+outcome,async t=>{
+ const f=await fixture(t),s=f.service,r=await send(s,f.agents[0],'parent');await f.submit(r);
+ const c=await f.delegate(r,f.agents[2]);await handle(s,r,{finish:false});await f.complete(r);
+ const cr=s.flow.run(c.currentRunId);await f.submit(cr);if(outcome==='completed')await handle(s,cr);if(outcome==='unconfirmed'){changeRun(cr,{type:'lost',actor:'program',reason:'turn-ended-without-marker'});await s.save();await s.flow.pump();}else await f.complete(cr,outcome);
+ const items=s.flow.inputs(r.humanRequestId,r.workId),item=items.find(i=>i.result);assert(item);assert.equal(item.result.outcome,outcome);assert.equal(item.result.decision,undefined);
+ const w=s.flow.work(s.flow.root(r.humanRequestId),r.workId),ar=s.flow.run(w.currentRunId);await f.submit(ar);
+ assert(s.flow.context(ar).includes('"outcome":"'+outcome+'"'));assert(!s.flow.context(ar).includes('"decision":"accept"'));
+ await assert.rejects(handle(s,ar,{ids:[item.id],results:[item.result]}));assert(!s.flow.inputs(r.humanRequestId,r.workId).find(i=>i.id===item.id).handledBy);
+ // Old saved input hints are stripped on read and persisted on reconciliation; actual claims are untouched.
+ const old=w.inbox.find(i=>i.id===item.id);old.result={...item.result,decision:'accept'};delete old.result.outcome;await s.save();
+ const restored=await f.restart();assert.equal(restored.flow.inputs(r.humanRequestId,r.workId).find(i=>i.id===item.id).result.outcome,outcome);await restored.flow.settle();
+ assert.equal(restored.flow.work(restored.flow.root(r.humanRequestId),r.workId).inbox.find(i=>i.id===item.id).result.decision,undefined);
 });

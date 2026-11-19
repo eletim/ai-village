@@ -58,7 +58,7 @@ export class RequestFlow {
   if(w.inbox&&['retry','continuation'].includes(origin)){for(const i of w.inbox.filter(i=>!i.handledBy&&!i.retiredBy))i.attempts.push(r.id);}
   return r;
  }
- context(r){const q=this.root(r.humanRequestId),w=this.work(q,r.workId);return this.d.rules.dynamic(r)+(w.inbox&&r.phase!=='report'?'\n今回の対象入力: '+JSON.stringify(w.inbox.filter(i=>i.attempts.includes(r.id)).map(({id,kind,text,result})=>({id,kind,text:text.slice(0,2000),truncated:text.length>2000,result})))+'\ninputProtocol=1: truncatedの入力はrequests inputsで全文を確認する。通常回答でも requests finish または respond に inputs:[対応した入力ID] と results を明示する。委任して結果待ちならrespondして応答を終え、村の再開を待つ。本文の完了宣言は状態を変えない。今回以外の依頼を操作しない。':'')+this.d.rules.context({humanRequestId:q.id,workId:w.id,runId:r.id,origin:r.origin,phase:r.phase||'work'},this.d.agent(r.agentId).inputEnvelope?.mode==='startup-v1');}
+ context(r){const q=this.root(r.humanRequestId),w=this.work(q,r.workId);return this.d.rules.dynamic(r)+(w.inbox&&r.phase!=='report'?'\n今回の対象入力: '+JSON.stringify(this.inputs(q.id,w.id).filter(i=>i.attempts.includes(r.id)).map(({id,kind,text,result})=>({id,kind,text:text.slice(0,2000),truncated:text.length>2000,result})))+'\ninputProtocol=1: truncatedの入力はrequests inputsで全文を確認する。通常回答でも requests finish または respond に inputs:[対応した入力ID] と results を明示する。委任して結果待ちならrespondして応答を終え、村の再開を待つ。本文の完了宣言は状態を変えない。今回以外の依頼を操作しない。result.outcomeは実行の事実で、成果の採否ではない。resultsのdecisionは内容を確認してacceptまたはreworkを明示する。':'')+this.d.rules.context({humanRequestId:q.id,workId:w.id,runId:r.id,origin:r.origin,phase:r.phase||'work'},this.d.agent(r.agentId).inputEnvelope?.mode==='startup-v1');}
  // originKind tags who actually dispatched this independent new request. The browser's own
  // /api/direct/agents/:id/runs route does not pass
  // a third argument, so it keeps the default 'human'; the generic CLI/API 'requests start'
@@ -124,7 +124,8 @@ export class RequestFlow {
   return r;
  }
  async amend(x){if(!x.actorRunId)fail('actorRunIdが必要です',400);return this.supplement(x);}
- inputs(id,workId){const q=this.root(id);return structuredClone(this.work(q,workId).inbox||[]);}
+ resultReference(e){const state=this.run(e.resultRunId)?.runModel?.state;return {requestId:e.requestId,resultId:e.id,version:e.version,outcome:state?.kind==='ended'?(state.outcome==='normal'?'completed':state.outcome):e.outcome,reason:state?.reason||null};}
+ inputs(id,workId){const q=this.root(id),entries=resultEntries(this.d.data,q);return structuredClone((this.work(q,workId).inbox||[]).map(i=>{if(!i.result)return i;const {requestId,resultId,version}=i.result,e=entries.find(e=>e.id===resultId&&e.version===version&&e.requestId===requestId);return {...i,result:e?this.resultReference(e):{requestId,resultId,version,outcome:'unknown'}};}));}
  async supplement(x){
   if(x.attachments!==undefined&&(!Array.isArray(x.attachments)||x.attachments.length>4))fail('添付は4件まで',400);
   const attachments=x.attachments?.length?await this.d.attachments.select(x.attachments):[];
@@ -254,6 +255,7 @@ export class RequestFlow {
   for(const q of this.requests){
    if(q.integrity||requestStatus(q)!=='active'&&(requestStatus(q)!=='completed'||q.completedAt))continue;
    const before=JSON.stringify(q);
+   for(const w of q.requestGraph.nodes)if(w.inbox?.some(i=>i.result&&('decision' in i.result||!i.result.outcome)))w.inbox=this.inputs(q.id,w.id);
    const root=rootNode(q),head=this.run(root.currentRunId);
    // Repair reservations left by the earlier supplement/report split, without replaying a sent report.
    if(!q.report&&root.state.kind==='active'&&head?.phase==='report'&&root.inbox?.some(i=>i.kind==='supplement'&&!i.handledBy)){
@@ -264,7 +266,7 @@ export class RequestFlow {
    if(requestStatus(q)==='active'){
     for(const e of resultEntries(this.d.data,q).filter(e=>!e.superseded&&!e.handled)){
      const parent=this.work(q,e.parentWorkId);if(!parent.inbox||parent.inbox.some(i=>i.result?.resultId===e.id))continue;
-     parent.inbox.push({id:randomUUID(),kind:'result',text:(this.run(e.resultRunId)?.output||this.run(e.resultRunId)?.error||'出力なし').slice(0,8000),createdAt:now(),attempts:[],result:{requestId:e.requestId,resultId:e.id,version:e.version,decision:'accept'}});
+     parent.inbox.push({id:randomUUID(),kind:'result',text:(this.run(e.resultRunId)?.output||this.run(e.resultRunId)?.error||'出力なし').slice(0,8000),createdAt:now(),attempts:[],result:this.resultReference(e)});
     }
     for(const step of steps(this.d.data,q)){
      const child=step.type==='deliver-result'?this.run(step.childRunId):null;
