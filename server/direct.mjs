@@ -90,13 +90,18 @@ export class DirectAgents {
     for(const p of this.data.projects)if(!p.deletedAt)await this.projectGuides.initialize(p);
     this.flow.init();
     await this.save();
-    if(watch){this.timer=setInterval(()=>this.tick().catch(()=>{}),this.pollMs);this.timer.unref();void this.tick();}
+    if(watch){this.timer=setInterval(()=>this.tick().catch(()=>{}),this.pollMs);this.timer.unref();void this.tick().catch(()=>{});}
   }
   close(){clearInterval(this.timer);this.owner?.close();}
-  snapshot(){return structuredClone({...humanProjection(this.data),projects:this.data.projects.filter(p=>!p.deletedAt),capabilities:{requestInbox:true,steering:true,travelContexts:true,attachments:!!this.attachments},reviews:this.reviewStates(),notification:this.notifier.status()});}
-  reviewStates(){
+  presentation(){
+    if(!this.presentationCache){const view=humanProjection(this.data);this.presentationCache={...view,projects:view.projects.filter(p=>!p.deletedAt),capabilities:{requestInbox:true,steering:true,travelContexts:true,attachments:!!this.attachments},reviews:this.reviewStates(view)};}
+    const live=new Map(this.data.agents.map(a=>[a.id,a]));
+    return {...this.presentationCache,agents:this.presentationCache.agents.map(a=>({...a,lastCheckedAt:live.get(a.id)?.lastCheckedAt,runtime:live.get(a.id)?.runtime})),notification:this.notifier.status()};
+  }
+  snapshot(){return structuredClone(this.presentation());}
+  reviewStates(view=humanProjection(this.data)){
     const keys=new Map(this.data.agents.map(a=>[a.id,[]]));
-    for(const entry of completedEntries(humanProjection(this.data)))keys.get(entry.agentId)?.push(entry.key);
+    for(const entry of completedEntries(view))keys.get(entry.agentId)?.push(entry.key);
     const finalRequests=(this.data.requests||[]).filter(q=>requestStatus(q)==='completed');
     for(const q of finalRequests)keys.get(q.finalAgentId)?.push('request:'+q.id+':'+q.finalRunId);
     const legacy=new Set(this.data.reviewedCompletions||[]);
@@ -213,10 +218,10 @@ export class DirectAgents {
   }
   // Only synchronous model edits and save() belong inside this boundary.
   // Read remote evidence first; dispatch external effects only after it commits.
-  async persist(change){return this.persistence.run(async()=>{
+  async persist(change,roots=this.data){return this.persistence.run(async()=>{
     const scope=this.persistence.context.getStore();
     if(scope.restore)return change();
-    scope.restore=checkpoint(this.data);
+    scope.roots=roots;scope.restore=checkpoint(roots);
     try{return await change();}
     catch(error){
       if(error.persistenceUncertain)this.persistence.failure=error;
@@ -225,8 +230,8 @@ export class DirectAgents {
     }
   });}
   async save(){return this.persistence.run(async()=>{
-    const restore=checkpoint(this.data);
-    try{const task=this.store.save();this.queue=task;await task;
+    const restore=checkpoint(this.persistence.context.getStore()?.roots||this.data);
+    try{const task=this.store.save();this.queue=task;await task;this.presentationCache=null;
       const scope=this.persistence.context.getStore();if(scope.restore)scope.restore=restore;
     }catch(error){error.persistenceFailure=true;if(error.persistenceUncertain)this.persistence.failure=error;throw error;}
   });}
@@ -364,6 +369,7 @@ export class DirectAgents {
     if(this.agentDeleting(a)&&a.agentModel.intent!=='stop')agentChange(a,{type:'stop',actor:'human'});
     projectControls(a,this.data.runs);
   }
+  observationKey(a,runs){const {lastCheckedAt,runtime,...durable}=a;return JSON.stringify([durable,runs]);}
   async observe(a){
     if(this.agentDeleting(a))return this.persist(async()=>{this.releaseStuckRuns(a);this.updateAvailability(a);await this.save();return {available:false,turns:[],inputs:[]};});
     try{
@@ -376,7 +382,9 @@ export class DirectAgents {
       const snapshot=await this.runtime(a,s);
       let setupRequired=false;
       if(s.alive&&!s.agentSessionId){const capture=await this.pmux(a,'tab','capture','-w',a.workspaceId,a.tabId);setupRequired=/Do you trust|trust this|trust the contents/i.test(capture.content||'');}
+      const roots={agent:a,runs:this.data.runs.filter(r=>r.agentId===a.id)};
       return await this.persist(async()=>{
+      const before=this.observationKey(a,roots.runs);
       if(!a.agentModel)bindAgent(a);
       const freshClaude=a.provider==='claude'&&snapshot.unrecorded===true&&s.alive&&ready(s)&&s.lastEvent?.name==='session-start'&&!s.lastUserMessage&&!this.data.runs.some(r=>r.agentId===a.id&&r.dispatchAttemptedAt);
       a.error=null;a.lastCheckedAt=now();a.runtime=s;
@@ -438,42 +446,60 @@ export class DirectAgents {
           if(observation.state==='unknown'&&snapshot.available&&((oldSession&&snapshot.sessionId&&oldSession!==snapshot.sessionId)||observation.reason==='session-changed'||(boundary&&agentControls(a).activityState==='idle'))){changeRun(r,{type:'lost',actor:'program',at:Date.now(),reason:oldSession&&snapshot.sessionId&&oldSession!==snapshot.sessionId?'session-changed':'turn-ended-without-marker'});r.inputReleasedAt ||= now();}
         }
       }
-      this.releaseStuckRuns(a);this.updateAvailability(a);await this.save();return snapshot;
-      });
+      this.releaseStuckRuns(a);this.updateAvailability(a);const changed=before!==this.observationKey(a,roots.runs);if(changed)await this.save();return {...snapshot,changed};
+      },roots);
     }catch(error){
       if(error.persistenceFailure)throw error;
+      const roots={agent:a,runs:this.data.runs.filter(r=>r.agentId===a.id)};
       return this.persist(async()=>{
+      const before=this.observationKey(a,roots.runs);
       for(const r of this.data.runs.filter(r=>r.agentId===a.id&&active(r)&&!quarantinedRun(this.data,r)))r.error ||= 'runtime-unavailable';
-      a.modelInfo={available:false};agentChange(a,{type:'observe',actor:'program',observation:{connected:false,process:'unknown',activity:'unknown',canSteer:false}});a.error='接続・状態取得ができません。監視を継続します。';this.releaseStuckRuns(a);this.updateAvailability(a);await this.save();return {available:false,turns:[],inputs:[]};
-      });
+      a.modelInfo={available:false};agentChange(a,{type:'observe',actor:'program',observation:{connected:false,process:'unknown',activity:'unknown',canSteer:false}});a.error='接続・状態取得ができません。監視を継続します。';this.releaseStuckRuns(a);this.updateAvailability(a);const changed=before!==this.observationKey(a,roots.runs);if(changed)await this.save();return {available:false,turns:[],inputs:[],changed};
+      },roots);
     }
   }
   async poll(a){
     if(this.locks.has(a.id)||!a.tabId||a.agentModel?.intent==='stop'&&a.agentModel.observation?.process==='absent')return;
-    await this.locked(a.id,()=>this.observe(a));
+    return this.locked(a.id,()=>this.observe(a));
+  }
+  async progress(){
+    this.progressDirty=true;
+    if(this.progressTask)return this.progressTask;
+    const task=(async()=>{
+      // Merge observations which become ready in the same event-loop turn.
+      await new Promise(resolve=>setImmediate(resolve));
+      while(this.progressDirty){this.progressDirty=false;await this.flow.pump(false);await this.flow.notifications();}
+    })();
+    this.progressTask=task;
+    try{await task;}finally{if(this.progressTask===task)this.progressTask=null;}
   }
   async tick(){
-    // Poll independent connections concurrently before advancing durable requests.
-    await Promise.allSettled(this.data.agents.map(a=>{
-      if(this.monitors.has(a.id))return this.monitors.get(a.id);
-      const task=this.poll(a).then(async()=>{await this.flow.pump(false);await this.flow.notifications();});
+    const tasks=[];
+    for(const a of this.data.agents){
+      // A slow connection must not accumulate waiter cycles or block other connections.
+      if(this.monitors.has(a.id))continue;
+      const task=this.poll(a).then(async observation=>{if(observation?.changed)await this.progress();});
       this.monitors.set(a.id,task);
-      const clear=()=>this.monitors.delete(a.id);task.then(clear,clear);
-      return task;
-    }));
-    await this.persist(async()=>{
-    // A queued supplement may fail before sending; its superseded owner must not
-    // remain a dormant nonterminal record forever. Cancellation restores ownership
-    // in cancelQueued; all other settled successors close the old human boundary.
-    for(const r of this.data.runs){
-      if(quarantinedRun(this.data,r))continue;
-      if(r.runModel?.supersededBy&&r.runModel.state.kind==='running'&&this.flow.run(r.runModel.supersededBy)?.runModel.state.kind!=='queued')changeRun(r,{type:'close-tracking',actor:'human',reason:'steering-successor-settled'});
-      if(active(r)&&!this.data.agents.some(a=>a.id===r.agentId&&a.tabId&&!['terminated','stopping'].includes(agentControls(a).state))){r.error ||= 'agent-unavailable';this.releaseStuckRuns({id:r.agentId});}
+      const clear=()=>this.monitors.delete(a.id);task.then(clear,clear);tasks.push(task);
     }
-    await this.save();
-    });
-    await this.flow.pump();await this.flow.notifications();
+    const orphaned=this.data.runs.filter(r=>!quarantinedRun(this.data,r)&&(
+      r.runModel?.supersededBy&&r.runModel.state.kind==='running'&&this.flow.run(r.runModel.supersededBy)?.runModel.state.kind!=='queued'||
+      active(r)&&!this.data.agents.some(a=>a.id===r.agentId&&a.tabId&&!['terminated','stopping'].includes(agentControls(a).state))));
+    if(orphaned.length)await this.persist(async()=>{
+      const before=JSON.stringify(orphaned);
+      for(const r of orphaned){
+        if(r.runModel?.supersededBy&&r.runModel.state.kind==='running')changeRun(r,{type:'close-tracking',actor:'human',reason:'steering-successor-settled'});
+        if(active(r)){r.error ||= 'agent-unavailable';this.releaseStuckRuns({id:r.agentId});}
+      }
+      if(JSON.stringify(orphaned)!==before)await this.save();
+    },{runs:this.data.runs.filter(r=>orphaned.some(o=>o.agentId===r.agentId))});
+    // Queued sends/retry deadlines and API changes also need progress without a new observation.
+    await this.progress();
+    const observations=await Promise.allSettled(tasks);
+    const failed=observations.find(x=>x.status==='rejected'&&x.reason?.persistenceFailure);if(failed)throw failed.reason;
+    await Promise.allSettled([...this.flow.dispatching.values()]);
   }
+
   async stop(id,{requireProcessEvidence=false}={}){return this.locked(id,async()=>{
     const a=this.agent(id);if(agentControls(a).state==='terminated'&&(!requireProcessEvidence||a.processVerification?.remainingOwned===0))return a;
     if(!a.tabId)fail('tab識別情報がないため、PurpleMuxで確認してください');

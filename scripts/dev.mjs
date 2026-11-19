@@ -61,7 +61,7 @@ const handleRequest = async (req, res) => {
           if(params.get('view')==='workspace'){
             let ranges;try{ranges=JSON.parse(params.get('ranges')||'{}');}catch{return json(res,400,{error:'Invalid history ranges'});}
             let focus=null;if(params.has('focus')){try{focus=JSON.parse(params.get('focus'));}catch{return json(res,400,{error:'Invalid focus agents'});}}
-            const snapshot=workspaceSnapshot(direct.snapshot(),ranges,focus);
+            const snapshot=workspaceSnapshot(direct.presentation(),ranges,focus);
             if(params.get('sync')==='1')return await syncResponse(req,res,workspaceSync.reply({client:params.get('client'),since:params.get('since'),scope:(params.get('ranges')||'{}')+'|'+(params.get('focus')||'')},snapshot));
             return json(res,200,snapshot);
           }
@@ -69,7 +69,7 @@ const handleRequest = async (req, res) => {
         }
         const history=pathname.match(/^\/api\/direct\/agents\/([^/]+)\/history$/);
         if(req.method==='GET'&&history){
-          const params=new URL(req.url,'http://localhost').searchParams,page=historyPage(direct.snapshot(),history[1],params.get('before'));
+          const params=new URL(req.url,'http://localhost').searchParams,page=historyPage(direct.presentation(),history[1],params.get('before'));
           return json(res,200,params.get('boundaryOnly')==='1'?{cursor:page.cursor,hasMore:page.hasMore}:page);
         }
         const deletion=pathname.match(/^\/api\/direct\/projects\/([0-9a-f-]{36})\/(delete-plan|delete)$/);

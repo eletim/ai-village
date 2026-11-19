@@ -252,7 +252,7 @@ export class RequestFlow {
  async settleChanges(){
   let changed=false;
   for(const q of this.requests){
-   if(q.integrity)continue;
+   if(q.integrity||requestStatus(q)!=='active'&&(requestStatus(q)!=='completed'||q.completedAt))continue;
    const before=JSON.stringify(q);
    const root=rootNode(q),head=this.run(root.currentRunId);
    // Repair reservations left by the earlier supplement/report split, without replaying a sent report.
