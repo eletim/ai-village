@@ -1,4 +1,5 @@
-import {test,expect} from '@playwright/test';
+import {notifySnapshot} from './helpers/change-events.js';
+import {test,expect} from './helpers/change-events.js';
 import sharp from 'sharp';import {writeFile,mkdir} from 'node:fs/promises';import {dirname} from 'node:path';import {execFile} from 'node:child_process';import {promisify} from 'node:util';
 test('local upload CLI, real Mermaid, inline image zoom, safe fallback and poll stability',async({page,baseURL},info)=>{
  const file=info.outputPath('report.png');await mkdir(dirname(file),{recursive:true});await writeFile(file,await sharp({create:{width:320,height:160,channels:3,background:'#3183a8'}}).png().toBuffer());
@@ -12,12 +13,12 @@ test('local upload CLI, real Mermaid, inline image zoom, safe fallback and poll 
  await expect(diagram).toBeVisible();await expect.poll(()=>diagram.evaluate(i=>i.naturalWidth)).toBeGreaterThan(0);await expect(image).toBeVisible();
  await diagram.evaluate(el=>window.reportDiagram=el);await image.evaluate(el=>window.reportImage=el);
  await page.waitForTimeout(2200);expect(await diagram.evaluate(el=>el===window.reportDiagram)).toBe(true);
- state.runs[0].output+='\n追加の説明';await expect(page.locator('.runs')).toContainText('追加の説明');expect(await diagram.evaluate(el=>el===window.reportDiagram)).toBe(true);expect(await image.evaluate(el=>el===window.reportImage)).toBe(true);await expect(diagram).toHaveCount(1);
+ state.runs[0].output+='\n追加の説明';await notifySnapshot(page);await expect(page.locator('.runs')).toContainText('追加の説明');expect(await diagram.evaluate(el=>el===window.reportDiagram)).toBe(true);expect(await image.evaluate(el=>el===window.reportImage)).toBe(true);await expect(diagram).toHaveCount(1);
  await image.click();await expect(page.getByRole('dialog')).toBeVisible();await page.keyboard.press('Escape');await expect(page.getByRole('dialog')).not.toBeVisible();await expect(image.locator('..')).toBeFocused();
  await diagram.locator('..').focus();await page.keyboard.press('Enter');await expect(page.getByRole('dialog')).toBeVisible();await page.getByRole('button',{name:'閉じる',exact:true}).click();
  await page.screenshot({path:'/tmp/village-visual-reports.png'});
  let externalImages=0;await page.route('https://evil.test/**',r=>{externalImages++;return r.abort();});
- state.runs[0].output+='\n![unsafe](https://evil.test/x.png)\n```mermaid\nnot a diagram\n```\n```mermaid\nflowchart LR\n A[<img src=x onerror=alert(1)>]\n```\n```mermaid\nflowchart LR\n A-->';
+ state.runs[0].output+='\n![unsafe](https://evil.test/x.png)\n```mermaid\nnot a diagram\n```\n```mermaid\nflowchart LR\n A[<img src=x onerror=alert(1)>]\n```\n```mermaid\nflowchart LR\n A-->';await notifySnapshot(page);
  await expect(page.locator('.runs')).toContainText('not a diagram');await expect(page.locator('.runs script')).toHaveCount(0);await expect(page.locator('[data-visual=mermaid]')).toHaveCount(2);expect(externalImages).toBe(0);await expect(diagram).toHaveCount(1);
 
 });

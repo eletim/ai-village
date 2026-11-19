@@ -1,4 +1,5 @@
-import {test,expect} from '@playwright/test';
+import {notifySnapshot} from './helpers/change-events.js';
+import {test,expect} from './helpers/change-events.js';
 const snapshot={projects:[{id:'p1',name:'村実装'},{id:'p2',name:'別Project'}],workshops:[],agents:[{id:'unknown',name:'役割未確認',role:'other',projectId:'missing',provider:'other',state:'unknown',connection:{}},{id:'a',name:'秘書（村実装）',provider:'codex',cwd:'/private/internal',location:'mayor',projectId:'p1',state:'idle',connection:{},canSend:true},{id:'b',name:'工房',provider:'claude',location:'workshop',projectId:'p1',state:'idle',connection:{name:'登録工房'},canSend:true},{id:'d',name:'別の秘書',location:'mayor',projectId:'p2',provider:'claude',state:'idle',connection:{},canSend:true},{id:'c',name:'未所属秘書',location:'mayor',state:'idle',connection:{},canSend:true}],runs:[],reviews:{},notification:{enabled:false}};
 async function fixture(page,handler){await page.route('**/api/**',async r=>{if(r.request().url().endsWith('/api/village'))return handler(r,r.request().postDataJSON().argv[2]);return r.fulfill({json:snapshot});});await page.goto('/agents');}
 const dialog=page=>page.locator('#agent-profile-dialog');
@@ -9,7 +10,7 @@ test('project and secretary entries, safe Markdown, latest reload, draft and mob
  await expect(page.locator('#agent-b [data-profile-agent]')).toHaveCount(1);await expect(page.locator('#project-guide,.agent-guide')).toHaveCount(0);
  await page.locator('#agent-a [data-profile-agent]').focus();await page.keyboard.press('Enter');await expect(dialog(page).locator('h1')).toHaveText('方針 1');await expect(dialog(page)).toContainText('対象Project: 村実装');await expect(dialog(page).locator('dl:not([data-model-fields])')).toContainText('秘書（村実装）');await expect(dialog(page).locator('dl:not([data-model-fields])')).toContainText('Codex');await expect(dialog(page)).not.toContainText('/private/internal');
  expect(await page.evaluate(()=>window.xss)).toBeUndefined();await expect(dialog(page).locator('script,a[href^="javascript:"]')).toHaveCount(0);
- version=2;await dialog(page).getByRole('button',{name:'再読込'}).click();await expect(dialog(page).locator('h1')).toHaveText('方針 2');
+ version=2;await notifySnapshot(page);await dialog(page).getByRole('button',{name:'再読込'}).click();await expect(dialog(page).locator('h1')).toHaveText('方針 2');
  await page.keyboard.press('Escape');await expect(input).toHaveValue('保持する下書き');
  await page.locator('[data-mode=places]').click();await page.locator('#agent-a [data-profile-agent]').click();await expect(dialog(page).locator('h1')).toHaveText('方針 2');await page.keyboard.press('Escape');await page.locator('[data-mode=projects]').click();
  await page.locator('[data-place="project:p1"]').click();await page.locator('[data-profile-agent]:visible').first().click();await expect(dialog(page).locator('h1')).toHaveText('方針 2');
@@ -20,7 +21,7 @@ test('project and secretary entries, safe Markdown, latest reload, draft and mob
 test('unset, errors, loading and no use of another Project guide',async({page})=>{
  let fail=true;await fixture(page,(r,id)=>fail?r.fulfill({status:503,json:{error:'failure'}}):r.fulfill({json:{ok:true,result:{available:false}}}));
  await page.locator('[data-place="project:p2"]').click();await page.locator('[data-profile-agent]:visible').first().click();await expect(dialog(page)).toContainText('対象Project: 別Project');await expect(dialog(page).locator('dl:not([data-model-fields])')).toContainText('Claude');await expect(dialog(page)).toContainText('取得できません');
- fail=false;await dialog(page).getByRole('button',{name:'再読込'}).click();await expect(dialog(page)).toContainText('未設定です');await page.keyboard.press('Escape');
+ fail=false;await notifySnapshot(page);await dialog(page).getByRole('button',{name:'再読込'}).click();await expect(dialog(page)).toContainText('未設定です');await page.keyboard.press('Escape');
  await page.locator('[data-place="all"]').click();await page.locator('#agent-c [data-profile-agent]').click();await expect(dialog(page)).toContainText('Project未所属');
 });
 test('late responses after closing/switching cannot replace current document',async({page})=>{

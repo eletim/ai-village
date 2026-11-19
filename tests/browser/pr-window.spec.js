@@ -1,4 +1,4 @@
-import {test,expect} from '@playwright/test';
+import {test,expect} from './helpers/change-events.js';
 test('Workspace serves shared PR registry and health without remote mutations',async({page,request})=>{
  await page.goto('/agents');await expect(page.locator('#sidebar-toggle')).toBeVisible();
  const health=await (await request.get('/api/health')).json();expect(health.commit).toMatch(/^[a-f0-9]{40}$/);expect(health.instanceId).toBeTruthy();

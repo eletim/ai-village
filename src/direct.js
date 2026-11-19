@@ -1,3 +1,4 @@
+import {subscribeChanges} from './change-stream.js';
 import {bindRequestComposition} from './request-composition.js';
 import {bindSidebarOrder} from './sidebar-order.js';
 import {boardProjectTitle,mobileWorkspace} from './mobile-workspace.js';
@@ -104,6 +105,14 @@ $('#sidebar-toggle').onclick=()=>{
 function capturePositions(){for(const [id,card] of cards)if(!card.hidden)scrolls.get(id)?.capture();}
 function timeHTML(value){if(!value)return '';const date=new Date(value);return Number.isNaN(date.getTime())?'':`<time datetime="${esc(value)}" title="${esc(date.toLocaleString())}">${esc(date.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}))}</time>`;}
 function bubble(side,text,at,extra=''){return `<div class="message ${side}">${text?(side==='assistant'?reportHTML(text):`<pre>${linkedText(text)}</pre>`):''}${extra}${timeHTML(at)}</div>`;}
+function requestSignalsHTML(agentId){
+ return (state.requests||[]).filter(q=>q.status==='active').flatMap(q=>(q.requestGraph?.nodes||[]).filter(n=>n.assignee===agentId&&n.state.kind==='active'&&n.metadata?.reporting).map(n=>{
+  const r=n.metadata.reporting,latest=r.latestReport||r.reports?.at(-1),overdue=Object.keys(r.expired||{}).length;
+  if(!latest&&!overdue&&!r.reportAt&&!r.completionAt)return '';
+  const date=at=>at?new Date(at).toLocaleString():'指定なし';
+  return `<div class="request-reporting"><p>${esc((n.metadata.instruction||q.instruction||'依頼').slice(0,100))}</p><p>完成期限: ${esc(date(r.completionAt))} · 次回報告: ${esc(date(r.reportAt))}${r.reportReceivedAt?'（報告済み）':''}</p>${overdue?'<p>期限超過：依頼元の判断待ち</p>':''}${latest?`<p>${esc(latest.text.slice(0,1000))}</p>`:''}<button data-request-composition="${esc(agentId)}">期限・報告の詳細</button></div>`;
+ })).join('');
+}
 function recoveryHTML(r){
  const q=state.requests?.find(q=>q.id===r.humanRequestId),w=q?.requestGraph?.nodes.find(w=>w.currentRunId===r.id);
  if(!needsRunRecovery(q,r,w))return '';
@@ -204,7 +213,7 @@ function renderBoard(){
    if(!deliveryUnconfirmed(known))clearSubmittedDraft(a.id,receipt,outbox.get(a.id));
    pending.delete(a.id);outbox.delete(a.id);storeDrafts();
   }
-  updateReportHTML(card.querySelector('.agent-recovery-host'),agentRecoveryHTML(a.id));
+  updateReportHTML(card.querySelector('.agent-recovery-host'),agentRecoveryHTML(a.id)+requestSignalsHTML(a.id));
   const area=card.querySelector('.runs'),html=runHTML(a),wasLoading=area.dataset.loading==='true';area.dataset.loading=String(!!state.conversations&&!state.conversations[a.id]);if(wasLoading){updateReportHTML(area,html);scrolls.get(a.id).loaded();}else scrolls.get(a.id).preserve(()=>updateReportHTML(area,html));
   const prompt=card.querySelector('textarea[name=instruction]'),promptLabel=(a.name||'Agent')+'に聞く';
   prompt.placeholder=promptLabel;prompt.title=promptLabel+(mobilePromptUI()?'（Enterで改行、送信ボタン / Ctrl+Enterで送信）':'（Enter / Ctrl+Enterで送信、Shift+Enterで改行、変換中のEnterは確定）');prompt.setAttribute('aria-label',prompt.title);
@@ -554,7 +563,7 @@ $('#agents').onclick=e=>{
   });return;
  }
  const reconcile=e.target.closest('[data-reconcile]');if(reconcile){const id=reconcile.dataset.reconcile,receipt=pending.get(id);if(receipt)action(reconcile.closest('article'),async()=>{if(receipt.requestTarget){const [humanRequestId,workId]=receipt.requestTarget.split(':');await api('/human/requests/supplement',{humanRequestId,workId,operationId:receipt.requestId,instruction:receipt.instruction,attachments:receipt.attachments,travelContexts:receipt.travelContexts});}else await api('/agents/'+id+'/runs',receipt);await refresh();});return;}const manage=e.target.closest('[data-manage-agent]'),zoom=e.target.closest('[data-zoom]');if(manage)openMetadata(manage.dataset.manageAgent);if(zoom){toggleZoom(zoom.dataset.zoom);void refresh(true);}};
-void refresh();setInterval(()=>{if(!document.hidden)void refresh();},2000);
+void refresh();subscribeChanges(()=>refresh(true),{onDisconnect:()=>{connected=false;connectionStatus($('#connection'),'変更通知に再接続しています');if(state)renderBoard();}});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)restartSync();});
 window.addEventListener('pageshow',e=>{if(e.persisted)restartSync();});
 window.addEventListener('online',()=>{if(!document.hidden)restartSync();});

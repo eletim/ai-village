@@ -1,5 +1,6 @@
+import {notifySnapshot} from './helpers/change-events.js';
 import {runFixture,requestFixture,setRequestState} from './helpers/direct-fixtures.js';
-import {test,expect} from '@playwright/test';
+import {test,expect} from './helpers/change-events.js';
 test('failed runtime displays model review reason and explicit revision-safe retry/cancel',async({page})=>{
  const r=runFixture({id:'run',agentId:'a',sessionId:'s',turnId:'t',workId:'w',humanRequestId:'q',state:'failed',instruction:'original task',errorCode:'server_overloaded',error:'Selected model is at capacity. <script>bad()</script>',recovery:{status:'scheduled',nextAt:Date.now()+30000}},{kind:'ended',outcome:'failed',reason:'native-error',errorCode:'server_overloaded'});
  const q=requestFixture({id:'q',status:'active',revision:4,instruction:r.instruction,works:[{id:'w',currentRunId:'run',parentWorkId:null}]},[r],{kind:'active',review:['run-needs-review:run']});
@@ -34,11 +35,11 @@ test('shared graph normal waits explain progress without recovery controls, stal
  const state={agents:[{id:'a',name:'工房',state:'idle',canSend:true,canQueue:true,connection:{name:'Local'}}],workshops:[],runs:[parent],requests:[q],reviews:{},notification:{}};
  await page.route('**/api/direct**',route=>route.fulfill({json:state}));await page.goto('/agents');
  await expect(page.locator('.request-waiting')).toHaveText('子依頼の実行を待っています。');await expect(page.locator('.recovery')).toHaveCount(0);
- child.runModel.state={kind:'ended',outcome:'normal',reason:'native'};project();await page.reload();
+ child.runModel.state={kind:'ended',outcome:'normal',reason:'native'};await notifySnapshot(page);project();await page.reload();
  await expect(page.locator('.request-waiting')).toHaveText('子依頼の結果配送を待っています。');await expect(page.locator('.recovery')).toHaveCount(0);
- child.runModel.state={kind:'ended',outcome:'unconfirmed',reason:'timeout'};q.requestGraph.nodes[1].state={kind:'active',review:[]};project();await page.reload();
+ child.runModel.state={kind:'ended',outcome:'unconfirmed',reason:'timeout'};await notifySnapshot(page);q.requestGraph.nodes[1].state={kind:'active',review:[]};await notifySnapshot(page);project();await page.reload();
  await expect(page.locator('.recovery')).toContainText('子依頼に失敗');await expect(page.locator('.request-waiting')).toHaveCount(0);
  // No runnable dependency or result delivery remains; a missing parent declaration needs judgment.
- q.requestGraph.nodes[1].replacementId='replacement';project();await page.reload();
+ q.requestGraph.nodes[1].replacementId='replacement';await notifySnapshot(page);project();await page.reload();
  await expect(page.locator('.recovery')).toContainText('実行と自動で進む手順が終了');
 });

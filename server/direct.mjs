@@ -1,3 +1,5 @@
+import {EventEmitter} from 'node:events';
+import {EventMonitor} from './event-monitor.mjs';
 import {migrateProjectOrder} from './project-order-migration.mjs';
 import {orderedProjects,orderedProjectAgents} from '../src/board-state.js';
 import {migrateUnifiedStore} from './unified-request-migration.mjs';
@@ -46,11 +48,11 @@ const STUCK_RUN_TIMEOUT_MS = 10*60*1000;
 // Human and future secretary callers share this service. No model-generated
 // instruction, approval, or report is required. One server owns a state directory.
 export class DirectAgents {
-  constructor({dir, remote, notifier, attachments, transferAttachment=stageAttachment, localRun=run, localBin=process.env.VILLAGE_PMUX_BIN || 'purplemux', pollMs=2000, villageUrl='http://127.0.0.1:5173'}) {
-    Object.assign(this,{dir,remote,notifier,attachments,transferAttachment,localRun,localBin,pollMs,villageUrl});
+  constructor({dir, remote, notifier, attachments, transferAttachment=stageAttachment, localRun=run, localBin=process.env.VILLAGE_PMUX_BIN || 'purplemux', pollMs=2000, hostFactory, villageUrl='http://127.0.0.1:5173'}) {
+    Object.assign(this,{dir,remote,notifier,attachments,transferAttachment,localRun,localBin,pollMs,hostFactory,villageUrl});
     this.data={version:1,workshops:[],projects:[],agents:[],runs:[]};
     this.projectGuides=new ProjectGuides(undefined,this);
-    this.flow=new RequestFlow(this);
+    this.flow=new RequestFlow(this);this.events=new EventEmitter();
     this.persistence=new PersistenceBoundary();
     this.queue=Promise.resolve(); this.locks=new Map(); this.monitors=new Map();
     this.store=new DirectStore({capture:()=>this.data,write:value=>writeSnapshot(this.dir,value)});
@@ -90,9 +92,9 @@ export class DirectAgents {
     for(const p of this.data.projects)if(!p.deletedAt)await this.projectGuides.initialize(p);
     this.flow.init();
     await this.save();
-    if(watch){this.timer=setInterval(()=>this.tick().catch(()=>{}),this.pollMs);this.timer.unref();void this.tick().catch(()=>{});}
+    if(watch){this.flow.reporting.start();this.monitor=new EventMonitor(this,this.hostFactory?{hostFactory:this.hostFactory}:{});this.monitor.start();void this.progress().catch(()=>{});}
   }
-  close(){clearInterval(this.timer);this.owner?.close();}
+  close(){this.monitor?.close();this.flow.reporting.close();clearInterval(this.timer);this.owner?.close();}
   presentation(){
     if(!this.presentationCache){const view=humanProjection(this.data);this.presentationCache={...view,projects:view.projects.filter(p=>!p.deletedAt),capabilities:{requestSplitting:true,requestInbox:true,steering:true,travelContexts:true,attachments:!!this.attachments},reviews:this.reviewStates(view)};}
     const live=new Map(this.data.agents.map(a=>[a.id,a]));
@@ -231,7 +233,8 @@ export class DirectAgents {
   });}
   async save(){return this.persistence.run(async()=>{
     const restore=checkpoint(this.persistence.context.getStore()?.roots||this.data);
-    try{const task=this.store.save();this.queue=task;await task;this.presentationCache=null;
+    try{const task=this.store.save();this.queue=task;await task;this.presentationCache=null;this.flow.reporting.schedule();
+      if(this.publishedFingerprint!==this.store.fingerprint){this.publishedFingerprint=this.store.fingerprint;setImmediate(()=>{this.events.emit('change');if(this.monitor&&!this.monitor.closed){this.monitor.update();void this.progress().catch(()=>{});}});}
       const scope=this.persistence.context.getStore();if(scope.restore)scope.restore=restore;
     }catch(error){error.persistenceFailure=true;if(error.persistenceUncertain)this.persistence.failure=error;throw error;}
   });}
@@ -271,7 +274,7 @@ export class DirectAgents {
     return this.localRun(args[0]==='purplemux'?this.localBin:args[0],args.slice(1));
   }
   async pmux(a,...args){return JSON.parse(await this.execute(a,['purplemux',...args]));}
-  async runtime(a,status){this.runtimeReader ||= new RuntimeReader(this.dir);return this.runtimeReader.read(a,status,(agent,args)=>this.execute(agent,args));}
+  async runtime(a,status){this.runtimeReader ||= new RuntimeReader(this.dir);return this.runtimeReader.read(a,status,(agent,args)=>this.observationCommand(agent,args));}
   async create(input){return this.locked('projects',()=>this.locked('create:'+input.requestId,()=>this.createOnce(input)));}
   async createOnce({workshopId,cwd,name='Agent',requestId,provider='codex',location='workshop',projectId=null}){
     if(typeof requestId!=='string'||! /^[\w-]{8,100}$/.test(requestId))fail('requestIdが必要です',400);
@@ -370,18 +373,20 @@ export class DirectAgents {
     projectControls(a,this.data.runs);
   }
   observationKey(a,runs){const {lastCheckedAt,runtime,...durable}=a;return JSON.stringify([durable,runs]);}
+  async observationPmux(a,...args){return this.monitor?(args[0]==='tab'&&args[1]==='status'?this.monitor.status(a):JSON.parse(await this.monitor.execute(a,['purplemux',...args]))):this.pmux(a,...args);}
+  observationCommand(a,args){return this.monitor?this.monitor.execute(a,args):this.execute(a,args);}
   async observe(a){
     if(this.agentDeleting(a))return this.persist(async()=>{this.releaseStuckRuns(a);this.updateAvailability(a);await this.save();return {available:false,turns:[],inputs:[]};});
     try{
       let s;
-      try{s=await this.pmux(a,'tab','status','-w',a.workspaceId,a.tabId);}catch(error){
-        const {tabs}=await this.pmux(a,'tab','list','-w',a.workspaceId);
+      try{s=await this.observationPmux(a,'tab','status','-w',a.workspaceId,a.tabId);}catch(error){
+        const {tabs}=await this.observationPmux(a,'tab','list','-w',a.workspaceId);
         if(!Array.isArray(tabs)||tabs.some(t=>t.tabId===a.tabId))throw error;
         s={alive:false,cliState:'inactive'};
       }
       const snapshot=await this.runtime(a,s);
       let setupRequired=false;
-      if(s.alive&&!s.agentSessionId){const capture=await this.pmux(a,'tab','capture','-w',a.workspaceId,a.tabId);setupRequired=/Do you trust|trust this|trust the contents/i.test(capture.content||'');}
+      if(s.alive&&!s.agentSessionId){const capture=await this.observationPmux(a,'tab','capture','-w',a.workspaceId,a.tabId);setupRequired=/Do you trust|trust this|trust the contents/i.test(capture.content||'');}
       const roots={agent:a,runs:this.data.runs.filter(r=>r.agentId===a.id)};
       return await this.persist(async()=>{
       const before=this.observationKey(a,roots.runs);

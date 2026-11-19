@@ -1,4 +1,5 @@
-import { test, expect } from '@playwright/test';
+import {notifySnapshot} from './helpers/change-events.js';
+import { test, expect } from './helpers/change-events.js';
 for (const view of ['direct']) {
     test(`${view}: Enter and Ctrl+Enter send, Shift+Enter adds newline, IME Enter never sends`, async ({ page }) => {
         const state = { workshops: [], agents: [{ id: 'a', name: 'Agent', connection: { name: '工房' }, state: 'idle', canSend: true }], runs: [], notification: {} };
@@ -65,8 +66,8 @@ test('direct input respects disabled sending, empty text and pending request', a
     await input.fill('draft');
     await input.press('Enter');
     expect(sends).toBe(0);
-    state.agents[0].canSend = true;
-    state.agents[0].state = 'idle';
+    state.agents[0].canSend = true;await notifySnapshot(page);
+    state.agents[0].state = 'idle';await notifySnapshot(page);
     await expect(page.locator('[data-send] button').first()).toBeEnabled();
     await input.fill('   ');
     await input.press('Enter');

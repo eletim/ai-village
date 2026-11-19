@@ -1,4 +1,5 @@
-import {test,expect} from '@playwright/test';
+import {notifySnapshot} from './helpers/change-events.js';
+import {test,expect} from './helpers/change-events.js';
 test('date separators and explicit notification test with saved destination, failure and disabled handling',async({page})=>{
  let calls=0,enabled=true,fail=false;
  const now=new Date(),yesterday=new Date(now);yesterday.setDate(now.getDate()-1);
@@ -17,6 +18,6 @@ test('date separators and explicit notification test with saved destination, fai
  await page.getByRole('button',{name:'設定',exact:true}).click();
  const button=page.getByRole('button',{name:'テスト通知を送る'});await expect(button).toBeEnabled();expect(calls).toBe(0);
  await button.click();await expect(button).toBeDisabled();await expect(page.locator('[data-test-status]')).toContainText('通知サーバーが受理');await expect(button).toBeEnabled();expect(calls).toBe(1);
- fail=true;await button.click();await expect(page.locator('[data-test-status]')).toContainText('送信に失敗');await expect(button).toBeEnabled();
+ fail=true;await notifySnapshot(page);await button.click();await expect(page.locator('[data-test-status]')).toContainText('送信に失敗');await expect(button).toBeEnabled();
  await page.getByLabel('完了通知を有効にする').uncheck();await expect(button).toBeDisabled();expect(calls).toBe(2);
 });

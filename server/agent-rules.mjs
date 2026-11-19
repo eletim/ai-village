@@ -1,12 +1,14 @@
 import {resolve} from 'node:path';
 // The only source of Agent-facing policy and Agent decision-operation schemas.
 export const agentActions=Object.freeze({
- plan:{fields:'{humanRequestId,parentWorkId,actorRunId,operationId,instruction,agentId?}',description:'子依頼を開始前として保存。結果は親へ返る。担当は後から選べる。'},
+ report:{fields:'{humanRequestId,workId,actorRunId,operationId,kind:progress|question|extension,text,proposedCompletionAt?,proposedReportAt?}',description:'途中報告を保存して即時配送。延長は提案のみ。'},
+ deadline:{fields:'{humanRequestId,workId,actorRunId,operationId,expectedVersion,completionAt,reportAt,reason}',description:'管理する直接の子依頼の期限を変更。日時はタイムゾーン付き、期限なしはnull。'},
+ plan:{fields:'{humanRequestId,parentWorkId,actorRunId,operationId,instruction,agentId?,reportAt?,completionAt?}',description:'子依頼を開始前として保存。結果は親へ返る。担当は後から選べる。'},
  launch:{fields:'{humanRequestId,workId,actorRunId,operationId,agentId?}',description:'開始前の直接の子依頼を担当Agentへ実行予約。親の現在runから操作する。'},
  assignPlan:{fields:'{humanRequestId,workId,actorRunId,operationId,agentId}',description:'開始前の直接の子依頼の担当を選ぶ。実行は開始しない。'},
  discard:{fields:'{humanRequestId,workId,actorRunId,operationId}',description:'開始前の直接の子依頼を取り下げる。実行済みは対象外。'},
  amend:{fields:'{humanRequestId,workId,actorRunId,operationId,instruction}',description:'直接の子依頼へ補足。'},
- delegate:{fields:'{humanRequestId,parentWorkId,actorRunId,agentId,operationId,instruction,replacesRequestId?}',description:'子依頼を作成・開始。再作業はrework後replacesRequestIdで置換予約。'},
+ delegate:{fields:'{humanRequestId,parentWorkId,actorRunId,agentId,operationId,instruction,replacesRequestId?,reportAt?,completionAt?}',description:'子依頼を作成・開始。再作業はrework後replacesRequestIdで置換予約。'},
  respond:{fields:'{humanRequestId,workId,runId,operationId,inputs?:[入力ID],results:[{requestId,resultId,version,decision:accept|rework}]}',description:'入力と直接の子結果への対応を申告。'},
  finish:{fields:'{humanRequestId,workId,runId,operationId,inputs?:[入力ID],results}',description:'対応と完了を申告。正常終了・子の解決を照合。'}
 });

@@ -1,4 +1,5 @@
-import { test, expect } from '@playwright/test';
+import {notifySnapshot} from './helpers/change-events.js';
+import { test, expect } from './helpers/change-events.js';
 const bottom = locator => locator.evaluate(el => el.scrollHeight - el.scrollTop - el.clientHeight < 3);
 for (const mode of ['direct'])
     test(`${mode} attachment-only sends keep draft and request identity; history follows only near bottom`, async ({ page }) => {
@@ -29,7 +30,7 @@ for (const mode of ['direct'])
         await log.evaluate(el => el.scrollTop = 100);
         await page.waitForTimeout(100);
         await expect(page.locator('.latest-message')).toBeVisible();
-        state.runs.at(-1).output += 'new content\n'.repeat(20);
+        state.runs.at(-1).output += 'new content\n'.repeat(20);await notifySnapshot(page);
         await expect(log).toContainText('new content');
         const latest = page.locator('.latest-message');
         await expect(latest).toBeVisible();
@@ -66,7 +67,7 @@ test('unsupported server prevents upload without losing existing binary draft', 
     await page.goto('/agents');
     await page.locator('[data-file]').setInputFiles({ name: 'draft.txt', mimeType: 'text/plain', buffer: Buffer.from('abc') });
     await expect(page.locator('.file-composer')).toContainText('draft.txt');
-    supported = false;
+    supported = false;await notifySnapshot(page);
     await page.reload();
     await expect(page.locator('.file-composer')).toContainText('draft.txt');
     await page.locator('[name=instruction]').press('Control+Enter');

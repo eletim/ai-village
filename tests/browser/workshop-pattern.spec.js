@@ -1,4 +1,4 @@
-import {test,expect} from '@playwright/test';
+import {test,expect} from './helpers/change-events.js';
 const pattern=['line','line','line','line','diamond','none','none','diamond'];
 const id='11111111-1111-4111-8111-111111111111';
 async function setup(page,theme='dark'){

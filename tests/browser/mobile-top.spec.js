@@ -1,4 +1,4 @@
-import {test,expect,devices} from '@playwright/test';
+import {test,expect,devices} from './helpers/change-events.js';
 const {defaultBrowserType,...iphone}=devices['iPhone 13'];
 const baseline=!!process.env.MOBILE_BASELINE;
 for(const device of ['android','iphone','pc'])for(const theme of ['light','dark'])test.describe(`${device} ${theme}`,()=>{

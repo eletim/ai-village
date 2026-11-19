@@ -1,4 +1,5 @@
-import {test,expect} from '@playwright/test';
+import {notifySnapshot} from './helpers/change-events.js';
+import {test,expect} from './helpers/change-events.js';
 import {WorkspaceSync} from '../../server/workspace-sync.mjs';
 import {workspaceSnapshot,historyPage} from '../../server/conversation-pages.mjs';
 test('scoped HTTP conversations: summary, switch, paging, race, unread, drafts and reconnect',async({page})=>{
@@ -26,7 +27,7 @@ test('scoped HTTP conversations: summary, switch, paging, race, unread, drafts a
  expect(JSON.stringify(seen)).not.toContain('HIDDEN_OLD_BODY');
  await page.locator('[data-place="project:p1"]').click();await expect(page.locator('#agent-a .run')).toHaveCount(180);await expect(page.locator('#agent-a textarea')).toHaveValue('retained draft');
  ;await expect.poll(()=>log.evaluate(e=>e.scrollTop)).toBeCloseTo(before,0);
- hold=true;await page.locator('[data-place="project:p2"]').click();await expect.poll(()=>blocked).toBe(true);await page.locator('[data-place="project:p1"]').click();release();
+ hold=true;await notifySnapshot(page);await page.locator('[data-place="project:p2"]').click();await expect.poll(()=>blocked).toBe(true);await page.locator('[data-place="project:p1"]').click();release();
  await expect(page.locator('#agent-a')).toBeVisible();await expect(page.locator('#agent-a .run')).toHaveCount(180);await expect(page.locator('#agent-b')).toBeHidden();
- server=new WorkspaceSync();await page.waitForTimeout(2500);await expect(page.locator('#agent-a textarea')).toHaveValue('retained draft');await expect(page.locator('#agent-a .run')).toHaveCount(180);
+ server=new WorkspaceSync();await notifySnapshot(page);await page.waitForTimeout(2500);await expect(page.locator('#agent-a textarea')).toHaveValue('retained draft');await expect(page.locator('#agent-a .run')).toHaveCount(180);
 });

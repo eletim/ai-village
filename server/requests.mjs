@@ -1,3 +1,4 @@
+import {RequestReports,initialDeadlines,deadline} from './request-reports.mjs';
 import {compose} from './request-composition.mjs';
 import {settleHumanDelivery} from './request-delivery.mjs';
 import {workDTO} from './request-compatibility.mjs';
@@ -19,7 +20,7 @@ const operation=id=>{if(typeof id!=='string'||!/^[\w-]{8,100}$/.test(id))fail('o
 const instruction=text=>{if(typeof text!=='string'||!text.trim()||text.length>16000)fail('指示を1〜16000文字で指定してください',400);return text;};
 const runKey=(root,op)=>'flow-'+createHash('sha256').update(root+':'+op).digest('hex');
 export class RequestFlow {
- constructor(direct){this.d=direct;this.protocol=1;this.commonRequests=true;this.dispatching=new Map();}
+ constructor(direct){this.d=direct;this.protocol=1;this.commonRequests=true;this.dispatching=new Map();this.reporting=new RequestReports(this);}
  init(){
   this.d.data.requests ||= [];
   // Never mint tickets or replay notifications for historical/untracked turns.
@@ -60,7 +61,7 @@ export class RequestFlow {
   if(w.inbox&&['retry','continuation'].includes(origin)){for(const i of w.inbox.filter(i=>!i.handledBy&&!i.retiredBy))i.attempts.push(r.id);}
   return r;
  }
- context(r){const q=this.root(r.humanRequestId),w=this.work(q,r.workId);return this.d.rules.dynamic(r)+(w.inbox&&r.phase!=='report'?'\n今回の対象入力: '+JSON.stringify(this.inputs(q.id,w.id).filter(i=>i.attempts.includes(r.id)).map(({id,kind,text,result,textSourceUnavailable})=>({id,kind,text:text.slice(0,2000),truncated:text.length>2000,textSourceUnavailable,result})))+'\ninputProtocol=1: truncatedの入力はrequests inputsで全文を確認する。textSourceUnavailable=trueは元結果を取得できないため、抜粋を全文と扱わない。通常回答でも requests finish または respond に inputs:[対応した入力ID] と results を明示する。委任して結果待ちならrespondして応答を終え、村の再開を待つ。本文の完了宣言は状態を変えない。今回以外の依頼を操作しない。result.outcomeは実行の事実で、成果の採否ではない。resultsのdecisionは内容を確認してacceptまたはreworkを明示する。':'')+this.d.rules.context({humanRequestId:q.id,workId:w.id,runId:r.id,origin:r.origin,phase:r.phase||'work'},this.d.agent(r.agentId).inputEnvelope?.mode==='startup-v1');}
+ context(r){const q=this.root(r.humanRequestId),w=this.work(q,r.workId);return this.d.rules.dynamic(r)+(w.metadata.reporting?'\n依頼の期限と最新報告: '+JSON.stringify({version:w.metadata.reporting.version,completionAt:w.metadata.reporting.completionAt,reportAt:w.metadata.reporting.reportAt,expired:w.metadata.reporting.expired,latestReport:w.metadata.reporting.reports.at(-1)})+'\n期限延長は依頼元の判断。子依頼には報告期限を指定し、未報告の期限通知が届いたら状況確認・期限変更を判断する。完了前でもreportで進捗・相談を届ける。':'')+(w.inbox&&r.phase!=='report'?'\n今回の対象入力: '+JSON.stringify(this.inputs(q.id,w.id).filter(i=>i.attempts.includes(r.id)).map(({id,kind,text,result,textSourceUnavailable})=>({id,kind,text:text.slice(0,2000),truncated:text.length>2000,textSourceUnavailable,result})))+'\ninputProtocol=1: truncatedの入力はrequests inputsで全文を確認する。textSourceUnavailable=trueは元結果を取得できないため、抜粋を全文と扱わない。通常回答でも requests finish または respond に inputs:[対応した入力ID] と results を明示する。委任して結果待ちならrespondして応答を終え、村の再開を待つ。本文の完了宣言は状態を変えない。今回以外の依頼を操作しない。result.outcomeは実行の事実で、成果の採否ではない。resultsのdecisionは内容を確認してacceptまたはreworkを明示する。':'')+this.d.rules.context({humanRequestId:q.id,workId:w.id,runId:r.id,origin:r.origin,phase:r.phase||'work'},this.d.agent(r.agentId).inputEnvelope?.mode==='startup-v1');}
  // originKind tags who actually dispatched this independent new request. The browser's own
  // /api/direct/agents/:id/runs route does not pass
  // a third argument, so it keeps the default 'human'; the generic CLI/API 'requests start'
@@ -92,7 +93,7 @@ export class RequestFlow {
     const previous=this.run(a.steerTarget.runId);let q=this.root(previous.humanRequestId),w=this.work(q,previous.workId);
     if(requestStatus(q)!=='active'){
      if(a.provider==='claude')fail('補足対象の依頼は受付中ではありません');
-     q={commonRequests:this.commonRequests&&this.protocol===1,inputProtocol:this.protocol,projectId:a.projectId||null,reportMode:this.reportStatus().enabled,id:randomUUID(),clientRequestId:input.requestId,instruction:input.instruction,travelContexts,attachments,originAgentId:agentId,finalAgentId:agentId,revision:0,createdAt:now(),requestGraph:{version:3,nodes:[],operations:[]}};
+     q={commonRequests:this.commonRequests&&this.protocol===1,inputProtocol:this.protocol,projectId:a.projectId||null,reportMode:this.reportStatus().enabled,id:randomUUID(),clientRequestId:input.requestId,instruction:input.instruction,travelContexts,attachments,originAgentId:agentId,finalAgentId:agentId,initialDeadlines:{completionAt:deadline(input.completionAt),reportAt:deadline(input.reportAt)},revision:0,createdAt:now(),requestGraph:{version:3,nodes:[],operations:[]}};
      w=newNode(q,{id:randomUUID(),assignee:agentId});q.rootWorkId=w.id;q.requestGraph.rootId=w.id;this.requests.push(q);
     }
 
@@ -108,11 +109,11 @@ export class RequestFlow {
    const legacy=this.d.data.runs.find(r=>r.requestId===input.requestId&&!r.humanRequestId);
    if(legacy){if(legacy.agentId!==agentId||legacy.instruction!==input.instruction||!sameTravelContexts(legacy.travelContexts,travelContexts)||JSON.stringify((legacy.attachments||[]).map(a=>a.id))!==JSON.stringify(attachments.map(a=>a.id)))fail('requestIdの再利用です');return legacy;}
    let q=this.requests.find(q=>q.clientRequestId===input.requestId);
-   if(q){if(q.originAgentId!==agentId||q.instruction!==input.instruction||!sameTravelContexts(q.travelContexts,travelContexts)||JSON.stringify((q.attachments||[]).map(a=>a.id))!==JSON.stringify(attachments.map(a=>a.id)))fail('requestIdの再利用です');return this.run(q.initialRunId);}
+   if(q){if(JSON.stringify(q.initialDeadlines||{completionAt:null,reportAt:null})!==JSON.stringify({completionAt:deadline(input.completionAt),reportAt:deadline(input.reportAt)})||q.originAgentId!==agentId||q.instruction!==input.instruction||!sameTravelContexts(q.travelContexts,travelContexts)||JSON.stringify((q.attachments||[]).map(a=>a.id))!==JSON.stringify(attachments.map(a=>a.id)))fail('requestIdの再利用です');return this.run(q.initialRunId);}
    const a=this.d.writableAgent(this.d.agent(agentId));if(!a.tabId||['terminated','stopping'].includes(agentControls(a).state))fail('Agentは送信可能ではありません');
    const r=await this.d.persist(async()=>{
-   q={commonRequests:this.commonRequests&&this.protocol===1,inputProtocol:this.protocol,projectId:a.projectId||null,reportMode:this.reportStatus().enabled,id:randomUUID(),clientRequestId:input.requestId,instruction:input.instruction,travelContexts,attachments,originAgentId:agentId,finalAgentId:agentId,revision:0,createdAt:now(),requestGraph:{version:3,nodes:[],operations:[]}};
-   const w=newNode(q,{id:randomUUID(),assignee:agentId});q.rootWorkId=w.id;q.requestGraph.rootId=w.id;this.requests.push(q);
+   q={commonRequests:this.commonRequests&&this.protocol===1,inputProtocol:this.protocol,projectId:a.projectId||null,reportMode:this.reportStatus().enabled,id:randomUUID(),clientRequestId:input.requestId,instruction:input.instruction,travelContexts,attachments,originAgentId:agentId,finalAgentId:agentId,initialDeadlines:{completionAt:deadline(input.completionAt),reportAt:deadline(input.reportAt)},revision:0,createdAt:now(),requestGraph:{version:3,nodes:[],operations:[]}};
+   const w=newNode(q,{id:randomUUID(),assignee:agentId,metadata:{reporting:initialDeadlines(input)}});q.rootWorkId=w.id;q.requestGraph.rootId=w.id;this.requests.push(q);
    const r=this.enqueue(q,w,input.instruction,'human',originKind);r.requestId=input.requestId;q.initialRunId=r.id;
    await this.d.save();return r;
    });
@@ -125,6 +126,9 @@ export class RequestFlow {
   try{await this.d.attemptRun(r);}catch(error){if(!error.persistenceFailure)throw error;}
   return r;
  }
+ report(x){return this.reporting.report(x);}
+ deadline(x){return this.reporting.change(x);}
+ humanDeadline(x){return this.reporting.change(x,'human');}
  plan(x){return compose(this,x,'plan','agent');}
  launch(x){return compose(this,x,'launch','agent');}
  assignPlan(x){return compose(this,x,'assignPlan','agent');}

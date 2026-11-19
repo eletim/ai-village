@@ -1,4 +1,4 @@
-import {test,expect} from '@playwright/test';
+import {test,expect} from './helpers/change-events.js';
 const output='# 見出し\n\n本文 **強調**\n\n```js\nconst x = 1;\n```\n\n'+Array.from({length:70},(_,i)=>`段落${i} 読み返す文章です。`).join('\n\n');
 async function setup(page){
  await page.route('**/api/**',r=>r.fulfill({json:r.request().url().endsWith('/api/village')?{ok:true,result:{enabled:false}}:{agents:[{id:'a',name:'Agent',state:'idle',connection:{},canSend:true}],workshops:[],runs:[{id:'r',agentId:'a',instruction:'人間の入力',output,state:'completed'}],reviews:{},notification:{enabled:false}}}));

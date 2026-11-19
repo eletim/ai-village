@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './helpers/change-events.js';
 async function attach(page, name = '出張先PC') {
     await page.getByRole('button', { name: '添付を追加', exact: true }).click();
     await page.getByRole('button', { name: '出張先を追加', exact: true }).click();

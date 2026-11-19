@@ -1,4 +1,4 @@
-import {test,expect} from '@playwright/test';
+import {test,expect} from './helpers/change-events.js';
 async function setup(page){
  const project={id:'p',name:'削除対象Project',revision:3};
  const state={projects:[project],workshops:[],agents:[{id:'a',name:'秘書',projectId:'p',state:'busy',tabId:'tab-a',connection:{}},{id:'b',name:'工房',projectId:'p',state:'unknown',tabId:'tab-b',connection:{}}],runs:[{id:'old',agentId:'a',state:'completed',output:'保存された会話履歴'}],notification:{}};

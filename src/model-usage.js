@@ -1,3 +1,4 @@
+import {subscribeChanges} from './change-stream.js';
 import {providerIcons} from './provider-icons.js';
 export function modelFields(agent){
  const m=agent.modelInfo;
@@ -50,7 +51,8 @@ export function weeklyUsagePanel(host){
    row.append(detail);host.append(row);
   }
  };
- async function refresh(){if(pending||document.hidden)return;pending=true;try{const r=await fetch('/api/direct/usage',{signal:AbortSignal.timeout(5000)});if(!r.ok)throw Error();render(await r.json());}catch{render(null);}finally{pending=false;}}
- render(null);void refresh();const timer=setInterval(refresh,60000);document.addEventListener('visibilitychange',refresh);
- return ()=>{clearInterval(timer);document.removeEventListener('visibilitychange',refresh);};
+ let refreshedAt=0;
+ async function refresh(){if(pending||document.hidden)return;pending=true;refreshedAt=Date.now();try{const r=await fetch('/api/direct/usage',{signal:AbortSignal.timeout(5000)});if(!r.ok)throw Error();render(await r.json());}catch{render(null);}finally{pending=false;}}
+ render(null);void refresh();const unsubscribe=subscribeChanges(()=>Date.now()-refreshedAt>=60000?refresh():undefined);document.addEventListener('visibilitychange',refresh);
+ return ()=>{unsubscribe();document.removeEventListener('visibilitychange',refresh);};
 }

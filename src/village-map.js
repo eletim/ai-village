@@ -1,3 +1,4 @@
+import {subscribeChanges} from './change-stream.js';
 import {compactStatus,connectionStatus} from './compact-status.js';
 import {villageModel,reconcileSelection,workspaceLink} from './village-model.js';
 import {faviconHref} from './completions.js';
@@ -41,6 +42,6 @@ window.addEventListener('hashchange',()=>{readHash();render();});
 async function poll(){
  try{const response=await fetch('/api/direct',{signal:AbortSignal.timeout(10000)});if(!response.ok)throw Error('offline');const data=await response.json();if(!Array.isArray(data.agents)||!Array.isArray(data.workshops))throw Error('invalid snapshot');snapshot=data;hasSnapshot=true;online=true;connectionStatus($('#map-connection'),new Date().toLocaleTimeString(),{normal:true,label:'接続中 · 登録情報から表示'});}
  catch{online=false;connectionStatus($('#map-connection'),'接続未確認 · 再接続を待っています');}
- render();setTimeout(poll,3000);
+ render();return online;
 }
-initTheme();initDisplaySettings($('#map-settings'));poll();
+initTheme();initDisplaySettings($('#map-settings'));poll();subscribeChanges(poll,{onDisconnect:()=>{online=false;connectionStatus($('#map-connection'),'接続未確認 · 再接続を待っています');render();}});

@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './helpers/change-events.js';
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 const bytes = await readFile(new URL('../fixtures/attachment.docx', import.meta.url));

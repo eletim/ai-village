@@ -381,7 +381,7 @@ test('both report settings survive restart; failed persistence does not falsely 
 test('compact work context retains completion and receipt rules with discoverable detailed operations',async t=>{
  const f=await fixture(t),r=await f.service.send(f.agents[0].id,{instruction:'context test',requestId:'compact-context-test'});
  const text=f.service.flow.context(r);
- assert(text.length<3000);
+ assert(text.length<4000);
  for(const token of ['requests finish','operationId','正常終了','委任','受付不明','/api/direct/requests/get','village-image:UUID'])assert(text.includes(token),token);
  assert(text.includes(r.id));assert(text.includes(r.workId));assert(text.includes(r.humanRequestId));
 });

@@ -1,5 +1,6 @@
+import {notifySnapshot} from './helpers/change-events.js';
 import {runFixture,requestFixture} from './helpers/direct-fixtures.js';
-import {test,expect} from '@playwright/test';
+import {test,expect} from './helpers/change-events.js';
 import {workspaceSnapshot,historyPage} from '../../server/conversation-pages.mjs';
 function fixture(n=230){return {agents:[{id:'a',name:'Fixture',location:'mayor',state:'idle',connection:{},canSend:true,nativeTurns:[]}],projects:[],workshops:[],reviews:{},requests:[],notification:{enabled:false},capabilities:{attachments:true},runs:Array.from({length:n},(_,i)=>({id:'r'+i,agentId:'a',createdAt:new Date(1700000000000+i*1000).toISOString(),state:'completed',instruction:'question '+i,output:'answer '+i,finalOutput:'final '+i}))};}
 test('100 initial entries; older fetch, stable scroll and polling updates',async({page})=>{
@@ -11,8 +12,8 @@ test('100 initial entries; older fetch, stable scroll and polling updates',async
  await page.getByRole('button',{name:'古い会話を読み込む'}).click();await expect(runs).toHaveCount(200);expect(pages).toBe(1);
  const restored=await log.locator('[data-entry*=r130]').evaluate(n=>n.getBoundingClientRect().top);expect(Math.abs(restored-before)).toBeLessThan(3);
  expect(pages).toBe(1);await page.locator('textarea[name=instruction]').fill('draft retained');
- s.runs.push({id:'new',agentId:'a',createdAt:'2030-01-01',instruction:'new input',output:'growing',state:'running'});
- await expect(runs).toHaveCount(201);s.runs.at(-1).output='growing updated';await expect(log).toContainText('growing updated');await expect(runs.first()).toContainText('question 30');expect(snapshots).toBeGreaterThan(1);await expect(page.locator('textarea[name=instruction]')).toHaveValue('draft retained');
+ s.runs.push({id:'new',agentId:'a',createdAt:'2030-01-01',instruction:'new input',output:'growing',state:'running'});await notifySnapshot(page);
+ await expect(runs).toHaveCount(201);s.runs.at(-1).output='growing updated';await notifySnapshot(page);await expect(log).toContainText('growing updated');await expect(runs.first()).toContainText('question 30');expect(snapshots).toBeGreaterThan(1);await expect(page.locator('textarea[name=instruction]')).toHaveValue('draft retained');
  await page.screenshot({path:'/tmp/paged-desktop.png'});await page.setViewportSize({width:390,height:844});await page.screenshot({path:'/tmp/paged-mobile.png'});
  const more=page.getByRole('button',{name:'古い会話を読み込む'});await more.focus();await page.keyboard.press('Enter');await expect(runs).toHaveCount(231);await expect(more).toHaveCount(0);expect(pages).toBe(2);
 });
@@ -32,12 +33,12 @@ test('successful delayed submit shows acceptance status then clears draft, icons
  const summary=page.locator('[data-provider=codex] summary');await expect(page.locator('.usage-provider-icon')).toHaveCount(2);await expect(summary).toHaveAttribute('aria-label','Codex 週次使用状況・詳細');await summary.focus();await page.keyboard.press('Enter');await expect(page.getByText('コアPCのPurpleMuxを参照').first()).toBeVisible();
 });
 test('history failure retains rendered entries, can retry; terminated Agent history pages independently',async({page})=>{
- const s=fixture(130);s.agents[0].state='terminated';let fail=true;
+ const s=fixture(130);s.agents[0].state='terminated';await notifySnapshot(page);let fail=true;
  await page.route('**/api/**',r=>{const u=new URL(r.request().url());if(u.pathname.endsWith('/history'))return fail?r.fulfill({status:503,json:{error:'history offline'}}):r.fulfill({json:historyPage(s,'a',u.searchParams.get('before'))});if(u.pathname==='/api/direct')return r.fulfill({json:workspaceSnapshot(s,JSON.parse(u.searchParams.get('ranges')||'{}'))});return r.fulfill({json:{providers:{}}});});
- await page.goto('/agents');await page.getByRole('button',{name:'設定',exact:true}).click();await page.getByRole('button',{name:'終了Agent・担当不在の履歴',exact:true}).click();const history=page.locator('#history-dialog');await expect(history).toBeVisible();await expect(history.locator('.run')).toHaveCount(100);const more=history.getByRole('button',{name:'古い会話を読み込む'});await more.click();await expect(history.getByRole('alert')).toContainText('history offline');await expect(history.locator('.run')).toHaveCount(100);fail=false;await more.click();await expect(history.locator('.run')).toHaveCount(130);
+ await page.goto('/agents');await page.getByRole('button',{name:'設定',exact:true}).click();await page.getByRole('button',{name:'終了Agent・担当不在の履歴',exact:true}).click();const history=page.locator('#history-dialog');await expect(history).toBeVisible();await expect(history.locator('.run')).toHaveCount(100);const more=history.getByRole('button',{name:'古い会話を読み込む'});await more.click();await expect(history.getByRole('alert')).toContainText('history offline');await expect(history.locator('.run')).toHaveCount(100);fail=false;await notifySnapshot(page);await more.click();await expect(history.locator('.run')).toHaveCount(130);
 });
 test('recovery fetches full request only on explicit retry and uses current revision',async({page})=>{
- const s=fixture(1);s.runs[0].state='failed';Object.assign(s.runs[0],{humanRequestId:'q',workId:'w',origin:'human'});s.requests=[{id:'q',revision:1,status:'active',instruction:'original instruction',works:[{id:'w',currentRunId:'r0'}]}];s.runs[0]=runFixture(s.runs[0],{kind:'ended',outcome:'failed',reason:'fixture'});s.requests[0]=requestFixture(s.requests[0],s.runs,{kind:'active',review:['run-needs-review:r0']});let gets=0,retries=0;
+ const s=fixture(1);s.runs[0].state='failed';await notifySnapshot(page);Object.assign(s.runs[0],{humanRequestId:'q',workId:'w',origin:'human'});await notifySnapshot(page);s.requests=[{id:'q',revision:1,status:'active',instruction:'original instruction',works:[{id:'w',currentRunId:'r0'}]}];await notifySnapshot(page);s.runs[0]=runFixture(s.runs[0],{kind:'ended',outcome:'failed',reason:'fixture'});await notifySnapshot(page);s.requests[0]=requestFixture(s.requests[0],s.runs,{kind:'active',review:['run-needs-review:r0']});await notifySnapshot(page);let gets=0,retries=0;
  await page.route('**/api/**',r=>{const u=new URL(r.request().url());if(u.pathname.endsWith('/requests/get')){gets++;return r.fulfill({json:{...s.requests[0],revision:2}});}if(u.pathname==='/api/direct/human/requests/retry'){retries++;const body=r.request().postDataJSON();expect(r.request().headers()['x-village-human-ui']).toBe('1');expect(body.revision).toBe(2);expect(body.instruction).toContain('original instruction');return r.fulfill({json:{}});}if(u.pathname==='/api/direct')return r.fulfill({json:workspaceSnapshot(s)});return r.fulfill({json:{providers:{}}});});
  page.on('dialog',d=>d.accept());await page.goto('/agents');expect(gets).toBe(0);await page.getByRole('button',{name:'再試行',exact:true}).click();await expect.poll(()=>retries).toBe(1);expect(gets).toBe(1);
 });

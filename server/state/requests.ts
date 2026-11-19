@@ -119,13 +119,13 @@ export type Event=
  | {type:'respond'|'finish';actor:'agent';requestId:string;runId:string;operationId:string;results:Response[];inputs?:string[];at:number}
  | {type:'replace';actor:'agent';requestId:string;childId:string;replacementId:string}
  | {type:'invalidate-report';actor:'program';requestId:string;sourceRunId:string}
- | {type:'supplement';actor:'human'|'agent';requestId:string;input:InboxItem;resumeFrom?:string}
+ | {type:'supplement';actor:Actor;requestId:string;input:InboxItem;resumeFrom?:string}
  | {type:'assign';actor:'human';requestId:string;agentId:string}
  | {type:'review';actor:'program';requestId:string;reason:string}
  | {type:'withdraw'|'complete';actor:'human';requestId:string;reason:string}
  | {type:'observe';actor:'program'};
 export function transitionGraph(source:Graph,e:Event,runs:Evidence):Result<Graph>{
- const authorities:Record<Event['type'],Actor[]>={add:['agent','human'],'deliver-human':['program'],'plan-assign':['human','agent'],'discard-plan':['human','agent'],supplement:['human','agent'],'invalidate-report':['program'],attempt:['agent','human','program'],respond:['agent'],finish:['agent'],review:['program'],withdraw:['human'],complete:['human'],observe:['program'],assign:['human'],replace:['agent']};
+ const authorities:Record<Event['type'],Actor[]>={add:['agent','human'],'deliver-human':['program'],'plan-assign':['human','agent'],'discard-plan':['human','agent'],supplement:['human','agent','program'],'invalidate-report':['program'],attempt:['agent','human','program'],respond:['agent'],finish:['agent'],review:['program'],withdraw:['human'],complete:['human'],observe:['program'],assign:['human'],replace:['agent']};
  if(!authorities[e.type]?.includes(e.actor))return reject('actor-forbidden');
  let g=structuredClone(source);
  if(e.type==='observe')return accept(reconcileGraph(g,runs));

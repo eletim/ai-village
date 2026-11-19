@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './helpers/change-events.js';
 const height = input => input.evaluate(el => el.getBoundingClientRect().height);
 async function setup(page, mode) {
     const state = { workshops: [], agents: [{ id: 'a', name: 'Agent', connection: {}, state: 'idle', canSend: true }], runs: Array.from({ length: 20 }, (_, i) => ({ id: 'r' + i, agentId: 'a', instruction: 'past', output: '応答\n'.repeat(10), state: 'completed' })), notification: {} };
