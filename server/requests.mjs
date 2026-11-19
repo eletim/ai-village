@@ -58,7 +58,7 @@ export class RequestFlow {
   if(w.inbox&&['retry','continuation'].includes(origin)){for(const i of w.inbox.filter(i=>!i.handledBy&&!i.retiredBy))i.attempts.push(r.id);}
   return r;
  }
- context(r){const q=this.root(r.humanRequestId),w=this.work(q,r.workId);return this.d.rules.dynamic(r)+(w.inbox&&r.phase!=='report'?'\n今回の対象入力: '+JSON.stringify(this.inputs(q.id,w.id).filter(i=>i.attempts.includes(r.id)).map(({id,kind,text,result})=>({id,kind,text:text.slice(0,2000),truncated:text.length>2000,result})))+'\ninputProtocol=1: truncatedの入力はrequests inputsで全文を確認する。通常回答でも requests finish または respond に inputs:[対応した入力ID] と results を明示する。委任して結果待ちならrespondして応答を終え、村の再開を待つ。本文の完了宣言は状態を変えない。今回以外の依頼を操作しない。result.outcomeは実行の事実で、成果の採否ではない。resultsのdecisionは内容を確認してacceptまたはreworkを明示する。':'')+this.d.rules.context({humanRequestId:q.id,workId:w.id,runId:r.id,origin:r.origin,phase:r.phase||'work'},this.d.agent(r.agentId).inputEnvelope?.mode==='startup-v1');}
+ context(r){const q=this.root(r.humanRequestId),w=this.work(q,r.workId);return this.d.rules.dynamic(r)+(w.inbox&&r.phase!=='report'?'\n今回の対象入力: '+JSON.stringify(this.inputs(q.id,w.id).filter(i=>i.attempts.includes(r.id)).map(({id,kind,text,result,textSourceUnavailable})=>({id,kind,text:text.slice(0,2000),truncated:text.length>2000,textSourceUnavailable,result})))+'\ninputProtocol=1: truncatedの入力はrequests inputsで全文を確認する。textSourceUnavailable=trueは元結果を取得できないため、抜粋を全文と扱わない。通常回答でも requests finish または respond に inputs:[対応した入力ID] と results を明示する。委任して結果待ちならrespondして応答を終え、村の再開を待つ。本文の完了宣言は状態を変えない。今回以外の依頼を操作しない。result.outcomeは実行の事実で、成果の採否ではない。resultsのdecisionは内容を確認してacceptまたはreworkを明示する。':'')+this.d.rules.context({humanRequestId:q.id,workId:w.id,runId:r.id,origin:r.origin,phase:r.phase||'work'},this.d.agent(r.agentId).inputEnvelope?.mode==='startup-v1');}
  // originKind tags who actually dispatched this independent new request. The browser's own
  // /api/direct/agents/:id/runs route does not pass
  // a third argument, so it keeps the default 'human'; the generic CLI/API 'requests start'
@@ -125,7 +125,7 @@ export class RequestFlow {
  }
  async amend(x){if(!x.actorRunId)fail('actorRunIdが必要です',400);return this.supplement(x);}
  resultReference(e){const state=this.run(e.resultRunId)?.runModel?.state;return {requestId:e.requestId,resultId:e.id,version:e.version,outcome:state?.kind==='ended'?(state.outcome==='normal'?'completed':state.outcome):e.outcome,reason:state?.reason||null};}
- inputs(id,workId){const q=this.root(id),entries=resultEntries(this.d.data,q);return structuredClone((this.work(q,workId).inbox||[]).map(i=>{if(!i.result)return i;const {requestId,resultId,version}=i.result,e=entries.find(e=>e.id===resultId&&e.version===version&&e.requestId===requestId);return {...i,result:e?this.resultReference(e):{requestId,resultId,version,outcome:'unknown'}};}));}
+ inputs(id,workId){const q=this.root(id),entries=resultEntries(this.d.data,q);return structuredClone((this.work(q,workId).inbox||[]).map(i=>{if(!i.result)return i;const {requestId,resultId,version}=i.result,e=entries.find(e=>e.id===resultId&&e.version===version&&e.requestId===requestId);const r=e&&this.run(e.resultRunId);return {...i,text:r?(r.output||r.finalOutput||r.error||'出力なし'):i.text,textSourceUnavailable:!r,result:e?this.resultReference(e):{requestId,resultId,version,outcome:'unknown'}};}));}
  async supplement(x){
   if(x.attachments!==undefined&&(!Array.isArray(x.attachments)||x.attachments.length>4))fail('添付は4件まで',400);
   const attachments=x.attachments?.length?await this.d.attachments.select(x.attachments):[];
@@ -255,7 +255,7 @@ export class RequestFlow {
   for(const q of this.requests){
    if(q.integrity||requestStatus(q)!=='active'&&(requestStatus(q)!=='completed'||q.completedAt))continue;
    const before=JSON.stringify(q);
-   for(const w of q.requestGraph.nodes)if(w.inbox?.some(i=>i.result&&('decision' in i.result||!i.result.outcome)))w.inbox=this.inputs(q.id,w.id);
+   for(const w of q.requestGraph.nodes)if(w.inbox?.some(i=>i.result&&('decision' in i.result||!i.result.outcome))){const inputs=this.inputs(q.id,w.id);for(const i of w.inbox)if(i.result)i.result=inputs.find(x=>x.id===i.id).result;}
    const root=rootNode(q),head=this.run(root.currentRunId);
    // Repair reservations left by the earlier supplement/report split, without replaying a sent report.
    if(!q.report&&root.state.kind==='active'&&head?.phase==='report'&&root.inbox?.some(i=>i.kind==='supplement'&&!i.handledBy)){
@@ -263,6 +263,7 @@ export class RequestFlow {
     if(source){applyGraph(this.d.data,q,{type:'invalidate-report',actor:'program',requestId:root.id,sourceRunId:source.id});if(runState(head)==='queued'){changeRun(head,{type:'cancel-report-reservation',actor:'program'});head.queueCancelledAt=now();}}
    }
    observeRequest(this.d.data,q);
+   for(const w of q.requestGraph.nodes)if(w.state.kind==='active'&&!this.d.data.agents.some(a=>a.id===w.assignee))applyGraph(this.d.data,q,{type:'review',actor:'program',requestId:w.id,reason:'next-step-agent-unavailable'});
    if(requestStatus(q)==='active'){
     for(const e of resultEntries(this.d.data,q).filter(e=>!e.superseded&&!e.handled)){
      const parent=this.work(q,e.parentWorkId);if(!parent.inbox||parent.inbox.some(i=>i.result?.resultId===e.id))continue;
@@ -274,7 +275,7 @@ export class RequestFlow {
      const agent=this.d.data.agents.find(a=>a.id===target.assignee);
      if(!agent||this.d.agentDeleting(agent)||['terminated','stopping'].includes(agentControls(agent).state))applyGraph(this.d.data,q,{type:'review',actor:'program',requestId:target.id,reason:'next-step-agent-unavailable'});
     }
-    if(steps(this.d.data,q).some(step=>step.type==='prepare-report')){
+    if(this.d.data.agents.some(a=>a.id===root.assignee)&&steps(this.d.data,q).some(step=>step.type==='prepare-report')){
      const w=this.work(q,q.rootWorkId),r=this.run(rootNode(q).currentRunId);
      q.report={sourceRunId:r.id,createdAt:now()};
 
@@ -302,6 +303,7 @@ export class RequestFlow {
  async recover(){
   // Read-only host observations stay outside the short persistence boundary.
   for(const q of this.requests.filter(q=>requestStatus(q)==='active'))for(const w of q.requestGraph.nodes){
+   const a=this.d.data.agents.find(a=>a.id===w.assignee);if(!a||this.d.agentDeleting(a))continue;
    const r=this.run(w.currentRunId);if((r&&runState(r))!=='failed'||r.recovery?.status==='enqueued')continue;
    let reason=r.phase==='report'?'報告生成に失敗しました。元回答は非表示です。確認して報告のみ再試行してください':r.steerTarget?'補足を含む作業は内容・副作用を確認して手動で復旧してください':r.recoveryPolicy!==1?'このrunは自動復旧導入前です':r.errorCode!=='server_overloaded'?'自動再試行対象外のエラーです':
     !accepted(r)||!r.inputId||!r.sessionId||!r.turnId?'受付照合が不完全です':
@@ -314,7 +316,7 @@ export class RequestFlow {
     r.recovery ||= {status:'scheduled',nextAt:Date.now()+[30000,120000][w.metadata.autoRetry.attempts]};await this.d.save();
    });
    if(r.recovery.status!=='scheduled'||r.recovery.nextAt>Date.now())continue;
-   const a=this.d.agent(w.assignee),snapshot=await this.d.locked(a.id,()=>this.d.observe(a));
+   const snapshot=await this.d.locked(a.id,()=>this.d.observe(a));
    await this.d.persist(async()=>{
     if(!this.recoveryBoundary(r,snapshot,a.runtime)){r.recovery={status:'manual',reason:'終了後の入力またはセッションを確認できません。手動で復旧してください'};await this.d.save();return;}
     if(!agentControls(a).canSend)return;
@@ -329,8 +331,9 @@ export class RequestFlow {
    for(const w of q.requestGraph.nodes.filter(w=>w.inbox&&w.state.kind==='active')){
     await this.d.persist(async()=>{
      observeRequest(this.d.data,q);
-     const previous=this.run(w.currentRunId);
-     if(w.state.kind!=='active'||!previous||runState(previous)!=='completed'||!this.schedulable(previous)||!agentControls(this.d.agent(w.assignee)).canSend)return;
+     const previous=this.run(w.currentRunId),agent=this.d.data.agents.find(a=>a.id===w.assignee);
+     if(!agent||this.d.agentDeleting(agent))return;
+     if(w.state.kind!=='active'||!previous||runState(previous)!=='completed'||!this.schedulable(previous)||!agentControls(agent).canSend)return;
      const batch=w.inbox.filter(i=>!i.handledBy&&!i.retiredBy&&i.attempts.length<2).slice(0,24);if(!batch.length)return;
      const handover={previousOutput:(previous.finalOutput||previous.output||'').slice(0,3000),previousOutputTruncated:(previous.finalOutput||previous.output||'').length>3000,children:q.requestGraph.nodes.filter(c=>c.parentId===w.id).map(c=>({requestId:c.id,state:c.state,assignee:c.assignee})),handledInputs:w.inbox.filter(i=>i.handledBy).map(i=>({id:i.id,kind:i.kind,text:i.text.slice(0,500),truncated:i.text.length>500})).slice(-12)};
      const r=this.enqueue(q,w,'依頼を再開してください。元の目的: '+(w.metadata.instruction||q.instruction)+'\n引継ぎ抜粋（全文はrequests get/inputs）: '+JSON.stringify(handover)+'\n未対応入力を確認し、必要な判断のみ進めてください。既存の外部操作をやり直さない。','inbox:'+randomUUID(),'inbox',{inboxBatch:batch.map(i=>i.id),...(batch.some(i=>i.attachments?.length)?{attachments:[...new Map(batch.flatMap(i=>i.attachments||[]).map(a=>[a.id,a])).values()]}:{}),...(batch.some(i=>i.travelContexts?.length)?{travelContexts:batch.flatMap(i=>i.travelContexts||[])}:{})});

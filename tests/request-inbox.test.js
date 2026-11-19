@@ -138,3 +138,18 @@ for(const outcome of ['completed','failed','interrupted','unconfirmed'])test('re
  const restored=await f.restart();assert.equal(restored.flow.inputs(r.humanRequestId,r.workId).find(i=>i.id===item.id).result.outcome,outcome);await restored.flow.settle();
  assert.equal(restored.flow.work(restored.flow.root(r.humanRequestId),r.workId).inbox.find(i=>i.id===item.id).result.decision,undefined);
 });
+test('long child result is abbreviated only in prompt; inputs restores full text before and after restart',async t=>{
+ const f=await fixture(t),s=f.service,r=await send(s,f.agents[0],'long result');await f.submit(r);const c=await f.delegate(r,f.agents[2]);await handle(s,r,{finish:false});await f.complete(r);
+ const cr=s.flow.run(c.currentRunId);await f.submit(cr);await handle(s,cr);const output='x'.repeat(9000)+'FINAL_REQUIRED_WARNING';
+ Object.assign(f.runtimes.get(cr.agentId).turns.find(t=>t.id===cr.turnId),{state:'completed',output,completionEvent:'long-result'});await s.tick();
+ const w=s.flow.work(s.flow.root(r.humanRequestId),r.workId),stored=w.inbox.find(i=>i.result);assert.equal(stored.text.length,8000);
+ assert.equal(s.flow.inputs(r.humanRequestId,r.workId).find(i=>i.id===stored.id).text,output);
+ const prompt=s.flow.context(s.flow.run(w.currentRunId));assert(prompt.includes('"truncated":true'));assert(prompt.includes('requests inputs'));assert(!prompt.includes('FINAL_REQUIRED_WARNING'));
+ const restored=await f.restart();assert.equal(restored.flow.inputs(r.humanRequestId,r.workId).find(i=>i.id===stored.id).text,output);
+});
+test('missing assignee blocks only its own request while another Agent dispatches work',async t=>{
+ const f=await fixture(t),s=f.service,r=await send(s,f.agents[0],'A waits');await f.submit(r);await f.delegate(r,f.agents[2]);await handle(s,r,{finish:false});await f.complete(r);
+ s.data.agents=s.data.agents.filter(a=>a.id!==r.agentId);await s.flow.pump();
+ assert(s.flow.work(s.flow.root(r.humanRequestId),r.workId).state.review.includes('next-step-agent-unavailable'));
+ const b=await send(s,f.agents[1],'B continues');await f.submit(b);await handle(s,b);await f.complete(b);assert.equal(s.flow.root(b.humanRequestId).requestGraph.nodes[0].state.kind,'completed');
+});
