@@ -13,11 +13,11 @@ export function inspectRequests(data){
   for(const w of works.values()){
    if(w.parentId&&!works.has(w.parentId))bad('parentWorkId: '+w.id+' → '+w.parentId);
    const visited=new Set();let p=w;while(p){if(visited.has(p.id)){bad('work-cycle: '+w.id);break;}visited.add(p.id);p=works.get(p.parentId);}
-   if(!agents.has(w.assignee))bad('work.agentId: '+w.id+' → '+w.assignee);
+   if(!(w.planned&&!w.assignee)&&!agents.has(w.assignee))bad('work.agentId: '+w.id+' → '+w.assignee);
    if(!Array.isArray(w.runIds)||new Set(w.runIds).size!==w.runIds.length)bad('runIds: '+w.id);
    for(const id of rows(w.runIds))ref(id,'work.runIds',w.id);
-   ref(w.currentRunId,'currentRunId',w.id);
-   if(!w.runIds?.includes(w.currentRunId))bad('currentRunId-not-in-runIds: '+w.id);
+   if(!w.planned)ref(w.currentRunId,'currentRunId',w.id);
+   if(!w.planned&&!w.runIds?.includes(w.currentRunId))bad('currentRunId-not-in-runIds: '+w.id);
   }
   if(works.size!==rows(q.requestGraph?.version===3?q.requestGraph.nodes:q.works).length)bad('duplicate-work');
   for(const r of owned){

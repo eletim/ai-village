@@ -1,3 +1,4 @@
+import {bindRequestComposition} from './request-composition.js';
 import {bindSidebarOrder} from './sidebar-order.js';
 import {boardProjectTitle,mobileWorkspace} from './mobile-workspace.js';
 import {compactStatusPair,compactStatus,actionSVG,connectionStatus} from './compact-status.js';
@@ -382,6 +383,7 @@ $('#start-secretary').onclick=()=>{manageScope=selectedPlace;openLauncher('mayor
 function openMetadata(id){
  const a=state.agents.find(a=>a.id===id);metadataId=id;metadataRevision=a.metadataRevision||0;
  const f=$('#metadata-form');f.elements.name.value=a.name;projectOptions(f.elements.projectId);f.elements.projectId.value=a.projectId||'';
+ $('#manage-requests').dataset.requestComposition=id;
  $('#metadata-id').textContent=a.name+' · '+a.id;$('#stop-form').reset();$('#stop-form button').disabled=!a.tabId;
  $('#metadata-dialog .dialog-error').textContent='';$('#metadata-dialog').showModal();
 }
@@ -646,3 +648,5 @@ $('#project-actions-dialog').addEventListener('close',()=>{
 $('#suspended-list').onclick=$('#places').onclick;
 try{$('#suspended-projects').open=localStorage.getItem('village-suspended-open')==='true'||(isProject(selectedPlace)&&(state?.projects||[]).some(p=>p.suspended&&'project:'+p.id===selectedPlace));}catch{}
 $('#suspended-projects').addEventListener('toggle',()=>{try{localStorage.setItem('village-suspended-open',String($('#suspended-projects').open));}catch{}});
+
+bindRequestComposition({state:()=>state,api,refresh,newId:newRequestId});
