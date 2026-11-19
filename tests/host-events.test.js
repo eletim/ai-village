@@ -59,7 +59,7 @@ test('host queues bursts beyond old limit and drains without another event',asyn
 test('attachment retry wakes on its saved time with no host changes, and is not repeated',async t=>{
  let wakes=0;
  const run={id:'transfer',agentId:'a',runModel:{state:{kind:'queued'}},nextTransferAt:Date.now()+30};
- const d={data:{agents:[],runs:[run]},persist:fn=>fn(),save:async()=>{},releaseStuckRuns:()=>{},progress:async()=>{wakes++;}};
+ const d={units:{agent:(id,fn)=>{assert.equal(id,'a');return fn();}},data:{agents:[],runs:[run]},persist:fn=>fn(),save:async()=>{},releaseStuckRuns:()=>{},progress:async()=>{wakes++;}};
  const m=new EventMonitor(d);t.after(()=>m.close());m.reserveRecovery();
  await new Promise(r=>setTimeout(r,100));assert.equal(wakes,1);
  m.reserveRecovery();await new Promise(r=>setTimeout(r,50));assert.equal(wakes,1);

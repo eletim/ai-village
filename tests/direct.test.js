@@ -324,7 +324,7 @@ test('discovery prompt carries only recipient identity and stays fixed as the vi
 test('Agent creation and stop intent save failures happen before external effects',async t=>{
  const f=await fixture(t),s=f.service,write=s.store.write,execute=s.remote;let creates=0,closes=0;
  s.remote=async(args,...rest)=>{if(args[1]==='workspace')creates++;if(args[2]==='close')closes++;return execute(args,...rest);};
- s.store.write=async value=>{if(JSON.parse(value).agents.length>1)throw Error('save failed');return write(value);};
+ s.store.write=async value=>{if(s.data.agents.length>1)throw Error('save failed');return write(value);};
  const input={workshopId:f.w.id,cwd:'/tmp',requestId:'failed-agent-create'};
  await assert.rejects(s.create(input),/save failed/);assert.equal(s.data.agents.length,1);assert.equal(creates,0);
  s.store.write=write;const a=await s.create(input);assert.equal((await s.create(input)).id,a.id);assert.equal(creates,1);

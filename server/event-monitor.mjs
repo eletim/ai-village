@@ -57,7 +57,7 @@ export class EventMonitor {
   const first=candidates.sort((a,b)=>a.at-b.at)[0];if(!first)return;
   this.timer=setTimeout(()=>{
    this.fired.add(first.key);
-   void this.d.persist(async()=>{this.d.releaseStuckRuns({id:first.r.agentId});await this.d.save();}).then(()=>this.d.progress()).catch(error=>{this.error=error.message;}).finally(()=>{if(!this.closed)this.reserveRecovery();});
+   void this.d.units.agent(first.r.agentId,()=>this.d.persist(async()=>{this.d.releaseStuckRuns({id:first.r.agentId});await this.d.save();})).then(()=>this.d.progress()).catch(error=>{this.error=error.message;}).finally(()=>{if(!this.closed)this.reserveRecovery();});
   },Math.max(0,Math.min(2147483647,first.at-Date.now())));this.timer.unref();
  }
  close(){this.closed=true;clearTimeout(this.timer);for(const h of this.hosts.values())h.close();this.hosts.clear();}

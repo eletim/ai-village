@@ -1,3 +1,4 @@
+import {readPartitionSnapshot} from '../../server/partition-store.mjs';
 import {notifySnapshot} from './helpers/change-events.js';
 import {test,expect} from './helpers/change-events.js';
 import {mkdtemp,writeFile,readFile,rm,mkdir} from 'node:fs/promises';
@@ -18,7 +19,7 @@ test('isolated real API and browser preserve nested requests, result handling an
   const post=(path,data)=>page.request.post(base+'/api/direct/requests/'+path,{data});
   const get=async()=> (await post('get',{humanRequestId:qid})).json();
   await page.goto(base+'/agents');await expect(page.getByRole('button',{name:'親のプロフィール',exact:true})).toBeVisible();
-  const before=await get();const disk=JSON.parse(await readFile(join(dir,'direct.json'),'utf8'));expect(disk.requests[0].works).toBeUndefined();expect(disk.requests[0].requestModel).toBeUndefined();
+  const before=await get();const disk=readPartitionSnapshot(dir);expect(disk.requests[0].works).toBeUndefined();expect(disk.requests[0].requestModel).toBeUndefined();
   const omitted=await post('finish',{humanRequestId:qid,workId:ids[0],runId:runIds[0],operationId:randomUUID()});expect(omitted.status()).toBe(400);expect((await omitted.json()).error).toContain('results');expect(await get()).toEqual(before);expect(before.requestGraph.nodes).toHaveLength(3);expect(before.status).toBe('active');
   const response=await post('results',{humanRequestId:qid,workId:ids[1]});const result=(await response.json())[0];expect(result.handled).toBe(false);
   const ref={requestId:ids[2],resultId:result.id,version:result.version,decision:'accept'};

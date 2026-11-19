@@ -20,7 +20,13 @@ const operation=id=>{if(typeof id!=='string'||!/^[\w-]{8,100}$/.test(id))fail('o
 const instruction=text=>{if(typeof text!=='string'||!text.trim()||text.length>16000)fail('指示を1〜16000文字で指定してください',400);return text;};
 const runKey=(root,op)=>'flow-'+createHash('sha256').update(root+':'+op).digest('hex');
 export class RequestFlow {
- constructor(direct){this.d=direct;this.protocol=1;this.commonRequests=true;this.dispatching=new Map();this.reporting=new RequestReports(this);}
+ constructor(direct){this.d=direct;this.protocol=1;this.commonRequests=true;this.dispatching=new Map();this.reporting=new RequestReports(this);
+  for(const name of ['report','deadline','humanDeadline','plan','launch','assignPlan','discard','humanCompose','amend','supplement','delegate','respond','finish','complete','continue','cancelQueued','cancel']){
+   const command=this[name].bind(this);
+   this[name]=(x,...args)=>this.d.units.run(x.humanRequestId,()=>command(x,...args));
+  }
+  const start=this.start.bind(this);this.start=(id,...args)=>this.d.units.agent(id,()=>start(id,...args));
+ }
  init(){
   this.d.data.requests ||= [];
   // Never mint tickets or replay notifications for historical/untracked turns.
@@ -264,10 +270,10 @@ export class RequestFlow {
   for(const r of this.d.data.runs.filter(r=>r.humanRequestId===q.id&&['sent','running'].includes(r.runModel?.state.kind)))changeRun(r,{type:'close-tracking',actor:'human',reason:'request-cancelled'});
   await this.d.save();return this.get(q.id);
  }));}
- async settle(){return this.d.persist(()=>this.settleChanges());}
- async settleChanges(){
+ async settle(requests=this.requests){return this.d.persist(()=>this.settleChanges(requests));}
+ async settleChanges(requests=this.requests){
   let changed=false;
-  for(const q of this.requests){
+  for(const q of requests){
    if(q.integrity||requestStatus(q)!=='active'&&(requestStatus(q)!=='completed'||q.completedAt))continue;
    const before=JSON.stringify(q);
    for(const w of q.requestGraph.nodes)if(w.inbox?.some(i=>i.result&&('decision' in i.result||!i.result.outcome))){const inputs=this.inputs(q.id,w.id);for(const i of w.inbox)if(i.result)i.result=inputs.find(x=>x.id===i.id).result;}
@@ -316,9 +322,9 @@ export class RequestFlow {
    (!r.baselineRuntime?.fileIdentity||snapshot.fileIdentity===r.baselineRuntime.fileIdentity);
  }
  recoveryPrompt(q,w){return this.d.rules.recovery(q,w);}
- async recover(){
+ async recover(requests=this.requests){
   // Read-only host observations stay outside the short persistence boundary.
-  for(const q of this.requests.filter(q=>requestStatus(q)==='active'))for(const w of q.requestGraph.nodes){
+  for(const q of requests.filter(q=>requestStatus(q)==='active'))for(const w of q.requestGraph.nodes){
    const a=this.d.data.agents.find(a=>a.id===w.assignee);if(!a||this.d.agentDeleting(a))continue;
    const r=this.run(w.currentRunId);if((r&&runState(r))!=='failed'||r.recovery?.status==='enqueued')continue;
    let reason=r.phase==='report'?'報告生成に失敗しました。元回答は非表示です。確認して報告のみ再試行してください':r.steerTarget?'補足を含む作業は内容・副作用を確認して手動で復旧してください':r.recoveryPolicy!==1?'このrunは自動復旧導入前です':r.errorCode!=='server_overloaded'?'自動再試行対象外のエラーです':
@@ -341,9 +347,9 @@ export class RequestFlow {
    });
   }
  }
- async pump(wait=true){const queued=await this.d.locked('request-graph',async()=>{
-  await this.settle();await this.recover();
-  for(const q of this.requests.filter(q=>requestStatus(q)==='active')){
+ async pump(wait=true,requests=this.requests,dispatch=true){const queued=await this.d.locked('request-graph',async()=>{
+  await this.settle(requests);await this.recover(requests);
+  for(const q of requests.filter(q=>requestStatus(q)==='active')){
    for(const w of q.requestGraph.nodes.filter(w=>w.inbox&&w.state.kind==='active')){
     await this.d.persist(async()=>{
      observeRequest(this.d.data,q);
@@ -366,7 +372,7 @@ export class RequestFlow {
    }
   }
   const queued=[];
-  for(const r of this.d.data.runs.filter(r=>runState(r)==='queued'&&r.humanRequestId)){
+  for(const r of this.d.data.runs.filter(r=>runState(r)==='queued'&&requests.some(q=>q.id===r.humanRequestId))){
    if(quarantinedRun(this.d.data,r))continue;
    const q=this.root(r.humanRequestId);if(q.integrity)continue;
    if(r.runModel.phase==='result'&&!r.dispatchAttemptedAt){
@@ -383,12 +389,16 @@ export class RequestFlow {
   }
   return queued;
  });
+ if(!dispatch)return queued;
+ await this.dispatchReady(queued,wait);
+ }
+ async dispatchReady(queued=this.d.data.runs.filter(r=>runState(r)==='queued'&&r.humanRequestId),wait=false){
  const first=new Map();for(const r of queued.sort((a,b)=>a.createdAt.localeCompare(b.createdAt)))if(this.schedulable(r)&&!first.has(r.agentId))first.set(r.agentId,r);
- const dispatched=Promise.allSettled([...first.values()].map(r=>this.dispatchQueued(r)));
+ const dispatched=Promise.allSettled([...first.values()].map(r=>this.d.units.run(r.humanRequestId,()=>this.dispatchQueued(r))));
  if(wait){await dispatched;await Promise.allSettled([...this.dispatching.values()]);}
  }
- async notifications(){
-  for(const q of this.requests.filter(q=>requestStatus(q)==='completed'&&q.notification?.status==='pending')){
+ async notifications(requests=this.requests){
+  for(const q of requests.filter(q=>requestStatus(q)==='completed'&&q.notification?.status==='pending')){
    await this.d.locked('notify:'+q.id,async()=>{
     const claimed=await this.d.persist(async()=>{
      // Recheck after waiting for any in-flight settlement to commit or roll back.

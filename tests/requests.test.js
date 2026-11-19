@@ -1,3 +1,4 @@
+import {readPartitionSnapshot} from '../server/partition-store.mjs';
 import {compatibilityDTO} from '../server/request-compatibility.mjs';
 import {changeRun} from '../server/run-lifecycle.mjs';
 import {inputHash} from './model-fixtures.mjs';
@@ -566,7 +567,7 @@ for(const nextTurn of [false,true])test('Claude steering keeps request, finish a
 // Fail the real persistence boundary before file replacement, not the transport.
 function failWrites(s,predicate){
  const write=s.store.write;let failures=0;
- s.store.write=async value=>{if(predicate(JSON.parse(value))){failures++;throw Error('injected save failure');}return write(value);};
+ s.store.write=async value=>{if(predicate(s.data)){failures++;throw Error('injected save failure');}return write(value);};
  return {restore(){s.store.write=write;},get failures(){return failures;}};
 }
 test('failed request admission cannot leak into a concurrent save or later tick; same ID retries once',async t=>{
@@ -633,12 +634,12 @@ for(const decision of ['complete','cancel'])test('failed human '+decision+' pres
 test('a second writer cannot commit failed admission while the first disk write is pending',async t=>{
  const f=await fixture(t),s=f.service,write=s.store.write;let entered,release;
  const pending=new Promise(r=>entered=r),gate=new Promise(r=>release=r);
- s.store.write=async value=>{if(JSON.parse(value).requests.some(q=>q.clientRequestId==='concurrent-failed')){entered();await gate;throw Error('injected save failure');}return write(value);};
+ s.store.write=async value=>{if(s.data.requests.some(q=>q.clientRequestId==='concurrent-failed')){entered();await gate;throw Error('injected save failure');}return write(value);};
  const failed=s.send(f.agents[0].id,{requestId:'concurrent-failed',instruction:'rejected'});
  const rejected=assert.rejects(failed,/injected/);await pending;
  const successful=s.putProject({name:'unrelated success',requestId:'unrelated-project'});
  release();await rejected;await successful;await s.tick();
- const disk=JSON.parse(await readFile(join(f.options.dir,'direct.json'),'utf8'));
+ const disk=readPartitionSnapshot(f.options.dir);
  assert.equal(disk.requests.length,0);assert.equal(s.data.requests.length,0);assert.equal(f.sent.length,0);assert.equal(disk.projects.length,1);
 });
 test('post-dispatch save failure retains durable sent intent across restart without resending',async t=>{
@@ -667,18 +668,17 @@ test('notification cannot claim a completion that rolls back while it waits for 
  const f=await fixture(t),s=f.service,r=await s.send(f.agents[0].id,{requestId:'notify-concurrent-claim',instruction:'work'});await f.submit(r);await f.complete(r,'failed');
  const q=s.flow.root(r.humanRequestId),write=s.store.write;let entered,release;
  const pending=new Promise(r=>entered=r),gate=new Promise(r=>release=r);
- s.store.write=async value=>{if(JSON.parse(value).requests[0].notification?.status==='pending'){entered();await gate;throw Error('injected save failure');}return write(value);};
+ s.store.write=async value=>{if(s.data.requests[0].notification?.status==='pending'){entered();await gate;throw Error('injected save failure');}return write(value);};
  const failed=assert.rejects(s.flow.complete({humanRequestId:q.id,revision:q.revision}),/injected/);await pending;
  const notification=s.flow.notifications();release();await failed;await notification;assert.equal(f.notifications.length,0);assert.equal(q.notification,undefined);
 });
-test('real rename failure rolls back admission and retry dispatches only once',async t=>{
- const f=await fixture(t),s=f.service,file=join(f.options.dir,'direct.json'),backup=file+'.test-backup';
- await rename(file,backup);await mkdir(file);
- const input={requestId:'real-rename-failure',instruction:'once'};
- await assert.rejects(s.send(f.agents[0].id,input),e=>['EISDIR','ENOTDIR','EEXIST'].includes(e.code));
+test('real database write failure rolls back admission and retry dispatches once',async t=>{
+ const f=await fixture(t),s=f.service;
+ s.store.db.exec('PRAGMA query_only=ON');
+ const input={requestId:'real-database-failure',instruction:'once'};
+ await assert.rejects(s.send(f.agents[0].id,input),/readonly/);
  assert.equal(s.data.requests.length,0);assert.equal(f.sent.length,0);
- await rm(file,{recursive:true});await rename(backup,file);
- await s.tick();assert.equal(f.sent.length,0);
+ s.store.db.exec('PRAGMA query_only=OFF');
  const r=await s.send(f.agents[0].id,input);assert.equal((await s.send(f.agents[0].id,input)).id,r.id);assert.equal(f.sent.length,1);
 });
 test('nested successful claim remains durable when later report creation fails',async t=>{
@@ -734,7 +734,7 @@ test('unified nested requests require their own finish and direct dependency han
  const q=s.flow.root(r.humanRequestId);assert.equal(s.flow.results(q.id,r.workId).length,0);
  await f.finish(c);await f.complete(c);assert.equal(s.flow.results(q.id,r.workId).length,1);assert.equal(f.notifications.length,0);
  await f.finish(r);await f.complete(r);assert.equal(testView(q).status,'completed');assert(q.requestGraph.nodes.every(n=>n.state.kind==='completed'));assert.equal(f.notifications.length,1);
- const disk=JSON.parse(await readFile(join(f.options.dir,'direct.json'),'utf8'));assert.equal(disk.requests[0].requestModel,undefined);assert(disk.requests[0].requestGraph.nodes.every(n=>!('runs' in n)));
+ const disk=readPartitionSnapshot(f.options.dir);assert.equal(disk.requests[0].requestModel,undefined);assert(disk.requests[0].requestGraph.nodes.every(n=>!('runs' in n)));
 });
 test('partial responses reject foreign/stale versions and leave other child results for delivery',async t=>{
  const f=await fixture(t),s=f.service,r=await s.send(f.agents[0].id,{instruction:'parallel',requestId:randomUUID()});await f.submit(r);
@@ -798,7 +798,7 @@ test('legacy in-flight parent and child migrate with exact input ownership and l
  const f=await fixture(t),s=f.service,r=await s.send(f.agents[0].id,{instruction:'migration in progress',requestId:randomUUID()});await f.submit(r);
  const w=await f.delegate(r,f.agents[2]);await s.tick();const c=s.flow.run(w.currentRunId);await f.submit(c);
  const source=structuredClone(s.data);for(const q of source.requests){Object.assign(q,compatibilityDTO(s.data,s.flow.root(q.id)));delete q.requestGraph;}delete source.unifiedRequestVersion;
- await writeFile(join(f.options.dir,'direct.json'),JSON.stringify(source));await rm(join(f.options.dir,'direct.pre-unified-requests-v3.json'),{force:true});const sends=f.sent.length;
+ f.service.close();await rm(join(f.options.dir,'village.sqlite'),{force:true});await writeFile(join(f.options.dir,'direct.json'),JSON.stringify(source));await rm(join(f.options.dir,'direct.pre-unified-requests-v3.json'),{force:true});const sends=f.sent.length;
  await f.restart();assert.equal(f.sent.length,sends);const next=f.service,parent=next.flow.run(r.id),child=next.flow.run(c.id);assert.deepEqual(parent.inputCorrelation,r.inputCorrelation);assert.deepEqual(child.runModel,c.runModel);
  await f.complete(child);await f.finish(parent);await f.complete(parent);assert.equal(testView(next.flow.root(r.humanRequestId)).status,'completed');assert.equal(f.sent.length,sends);assert.equal(f.notifications.length,1);
  await f.restart();await f.service.tick();assert.equal(f.notifications.length,1);assert.equal(f.sent.length,sends);
@@ -824,7 +824,7 @@ for(const action of ['respond','finish','migrated-finish'])for(const outcome of 
  if(action==='migrated-finish'){
   const source=structuredClone(s.data);source.unifiedRequestVersion=2;
   for(const q of source.requests){q.works=compatibilityDTO(s.data,s.flow.root(q.id)).works;q.requestGraph.version=2;for(const n of q.requestGraph.nodes){delete n.metadata;for(const claim of n.claims)claim.legacy=true;}}
-  await rm(join(f.options.dir,'direct.pre-unified-requests-v3.json'),{force:true});await writeFile(join(f.options.dir,'direct.json'),JSON.stringify(source));
+  await rm(join(f.options.dir,'direct.pre-unified-requests-v3.json'),{force:true});f.service.close();await rm(join(f.options.dir,'village.sqlite'),{force:true});await writeFile(join(f.options.dir,'direct.json'),JSON.stringify(source));
  }
  s=await f.restart();r=s.flow.run(r.id);assert.equal(s.flow.results(qid,r.workId)[0].handled,false);
  if(outcome==='terminated')await loseObservedRun(f,r);else await f.complete(r,outcome);assert.equal(s.flow.results(qid,r.workId)[0].handled,false);assert.equal(s.flow.root(qid).requestGraph.nodes.find(n=>n.id===w.id).state.kind,'submitted');
@@ -856,7 +856,7 @@ test('v1 pending-response restart upgrades before integrity validation and prese
  const source=structuredClone(s.data);source.unifiedRequestVersion=1;source.requests[0].works=compatibilityDTO(s.data,s.data.requests[0]).works;const graph=source.requests[0].requestGraph;graph.version=1;
  for(const n of graph.nodes){n.handling.push(...n.claims.map(({legacy,invalidated,...claim})=>claim));delete n.claims;delete n.replacements;delete n.invalidatedRuns;}
  graph.nodes[1].state={kind:'completed',by:'agent',reason:'result-accepted:'+c.id};
- await writeFile(join(f.options.dir,'direct.json'),JSON.stringify(source));await rm(join(f.options.dir,'direct.pre-unified-requests-v3.json'),{force:true});
+ f.service.close();await rm(join(f.options.dir,'village.sqlite'),{force:true});await writeFile(join(f.options.dir,'direct.json'),JSON.stringify(source));await rm(join(f.options.dir,'direct.pre-unified-requests-v3.json'),{force:true});
  const restarted=await f.restart(),q=restarted.flow.root(r.humanRequestId);assert.equal(q.integrity,undefined);assert.equal(restarted.data.unifiedRequestVersion,3);assert.equal(restarted.flow.results(q.id,r.workId)[0].handled,false);assert.equal(q.requestGraph.nodes[0].claims.length,1);assert.equal(f.sent.length,2);
  await f.restart();assert.equal(f.service.flow.root(q.id).integrity,undefined);
 });
@@ -892,7 +892,7 @@ for(const implicit of [true,false])test(`saved v2 failed-result declaration pres
  await s.flow.finish(payload);
  const source=structuredClone(s.data);source.unifiedRequestVersion=2;
  for(const old of source.requests){old.works=compatibilityDTO(s.data,q).works;old.requestGraph.version=2;for(const n of old.requestGraph.nodes){delete n.metadata;for(const claim of n.claims)claim.legacy=implicit;}}
- await rm(join(f.options.dir,'direct.pre-unified-requests-v3.json'),{force:true});await writeFile(join(f.options.dir,'direct.json'),JSON.stringify(source));
+ await rm(join(f.options.dir,'direct.pre-unified-requests-v3.json'),{force:true});f.service.close();await rm(join(f.options.dir,'village.sqlite'),{force:true});await writeFile(join(f.options.dir,'direct.json'),JSON.stringify(source));
  await f.restart();const next=f.service,nq=next.flow.root(q.id),before=JSON.stringify(next.data);const {results,...omitted}=payload;
  await next.flow.finish(omitted);await next.flow.finish(payload);assert.equal(JSON.stringify(next.data),before);
  assert.equal(nq.requestGraph.nodes[0].claims[0].decision,implicit?'review':'accept');assert(!JSON.stringify(nq.requestGraph).includes('"legacy"'));

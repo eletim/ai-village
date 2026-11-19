@@ -1,3 +1,5 @@
+import {PartitionStore} from './partition-store.mjs';
+import {RequestUnits} from './request-units.mjs';
 import {EventEmitter} from 'node:events';
 import {EventMonitor} from './event-monitor.mjs';
 import {migrateProjectOrder} from './project-order-migration.mjs';
@@ -16,7 +18,6 @@ import {migrateRequestStore} from './request-migration.mjs';
 import {migrateRunStore} from './run-migration.mjs';
 import {inputCorrelation,installInstructionsScript,verifyInstructionsScript} from './input-envelope.mjs';
 import {sessionModel} from './session-model.mjs';
-import {DirectStore,writeSnapshot} from './direct-store.mjs';
 import {ProjectGuides} from './project-guides.mjs';
 import {humanProjection} from './report-view.mjs';
 import {validWorkshopPattern} from '../src/workshop-pattern.js';
@@ -55,7 +56,8 @@ export class DirectAgents {
     this.flow=new RequestFlow(this);this.events=new EventEmitter();
     this.persistence=new PersistenceBoundary();
     this.queue=Promise.resolve(); this.locks=new Map(); this.monitors=new Map();
-    this.store=new DirectStore({capture:()=>this.data,write:value=>writeSnapshot(this.dir,value)});
+    this.units=new RequestUnits(this);
+    this.store=new PartitionStore({dir:this.dir,capture:()=>this.data,selection:()=>this.units.selection(),affected:c=>this.units.affected(c)});
   }
   async init({watch=true}={}) {
     await mkdir(this.dir,{recursive:true});
@@ -66,7 +68,8 @@ export class DirectAgents {
       this.owner=createServer();
       await new Promise((ok,no)=>{this.owner.once('error',no);this.owner.listen('\0ai-village-direct-'+createHash('sha256').update(resolve(this.dir)).digest('hex'),ok);});
     }
-    try { this.data=JSON.parse(await readFile(resolve(this.dir,'direct.json'),'utf8')); }
+    const stored=this.store.open();
+    try { this.data=stored||JSON.parse(await readFile(resolve(this.dir,'direct.json'),'utf8')); }
     catch(e) { if(e.code!=='ENOENT')throw e; }
     quarantineRequests(this.data);
     this.data=await migrateRunStore(this.dir,this.data);
@@ -94,7 +97,7 @@ export class DirectAgents {
     await this.save();
     if(watch){this.flow.reporting.start();this.monitor=new EventMonitor(this,this.hostFactory?{hostFactory:this.hostFactory}:{});this.monitor.start();void this.progress().catch(()=>{});}
   }
-  close(){this.monitor?.close();this.flow.reporting.close();clearInterval(this.timer);this.owner?.close();}
+  close(){this.monitor?.close();this.flow.reporting.close();clearInterval(this.timer);this.owner?.close();this.store.close();}
   presentation(){
     if(!this.presentationCache){const view=humanProjection(this.data);this.presentationCache={...view,projects:view.projects.filter(p=>!p.deletedAt),capabilities:{requestSplitting:true,requestInbox:true,steering:true,travelContexts:true,attachments:!!this.attachments},reviews:this.reviewStates(view)};}
     const live=new Map(this.data.agents.map(a=>[a.id,a]));
@@ -223,7 +226,7 @@ export class DirectAgents {
   async persist(change,roots=this.data){return this.persistence.run(async()=>{
     const scope=this.persistence.context.getStore();
     if(scope.restore)return change();
-    scope.roots=roots;scope.restore=checkpoint(roots);
+    scope.roots=roots;scope.restore=this.units.checkpoint()||checkpoint(roots);
     try{return await change();}
     catch(error){
       if(error.persistenceUncertain)this.persistence.failure=error;
@@ -232,8 +235,8 @@ export class DirectAgents {
     }
   });}
   async save(){return this.persistence.run(async()=>{
-    const restore=checkpoint(this.persistence.context.getStore()?.roots||this.data);
-    try{const task=this.store.save();this.queue=task;await task;this.presentationCache=null;this.flow.reporting.schedule();
+    const restore=this.units.checkpoint()||checkpoint(this.persistence.context.getStore()?.roots||this.data);
+    try{const task=this.store.save();this.queue=task;await task;this.presentationCache=null;this.flow.reporting.schedule(this.store.lastChanges.filter(c=>c.kind==='requests').map(c=>c.id));
       if(this.publishedFingerprint!==this.store.fingerprint){this.publishedFingerprint=this.store.fingerprint;setImmediate(()=>{this.events.emit('change');if(this.monitor&&!this.monitor.closed){this.monitor.update();void this.progress().catch(()=>{});}});}
       const scope=this.persistence.context.getStore();if(scope.restore)scope.restore=restore;
     }catch(error){error.persistenceFailure=true;if(error.persistenceUncertain)this.persistence.failure=error;throw error;}
@@ -376,6 +379,7 @@ export class DirectAgents {
   async observationPmux(a,...args){return this.monitor?(args[0]==='tab'&&args[1]==='status'?this.monitor.status(a):JSON.parse(await this.monitor.execute(a,['purplemux',...args]))):this.pmux(a,...args);}
   observationCommand(a,args){return this.monitor?this.monitor.execute(a,args):this.execute(a,args);}
   async observe(a){
+    if(!this.units.context.getStore()?.agentIds?.has(a.id))return this.units.agent(a.id,()=>this.observe(a));
     if(this.agentDeleting(a))return this.persist(async()=>{this.releaseStuckRuns(a);this.updateAvailability(a);await this.save();return {available:false,turns:[],inputs:[]};});
     try{
       let s;
@@ -471,9 +475,16 @@ export class DirectAgents {
     this.progressDirty=true;
     if(this.progressTask)return this.progressTask;
     const task=(async()=>{
-      // Merge observations which become ready in the same event-loop turn.
       await new Promise(resolve=>setImmediate(resolve));
-      while(this.progressDirty){this.progressDirty=false;await this.flow.pump(false);await this.flow.notifications();}
+      while(this.progressDirty){
+        this.progressDirty=false;
+        for(const [id,version] of [...this.store.jobs]){
+          const q=this.data.requests.find(q=>q.id===id);
+          if(q)await this.units.run(id,async()=>{await this.flow.pump(false,[q],false);await this.flow.notifications([q]);});
+          this.store.acknowledge(id,version);
+        }
+        await this.flow.dispatchReady();
+      }
     })();
     this.progressTask=task;
     try{await task;}finally{if(this.progressTask===task)this.progressTask=null;}

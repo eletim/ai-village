@@ -151,7 +151,7 @@ test('Direct runtime retains local/SSH routing and does not mix equal session ID
 test('Direct idle CLI does not unlock send or complete an active run during index catch-up',async t=>{
  const {DirectAgents}=await import('../server/direct.mjs'),f=await setup(t);const service=new DirectAgents({dir:f.dir,notifier:{status:()=>({})}});
  const a={id:'a',provider:'codex',connection:{connectionType:'local'},state:'idle',lifecycle:'alive',workspaceId:'ws',tabId:'tab'};service.data.requests=[];service.data.agents=[a];service.data.runs=[{id:'r',agentId:'a',state:'running',baselineRuntime:{sessionId:sid,cursor:0},id:'hello',inputMarker:'ai-village-run-hello'}];service.pmux=async()=>({alive:true,cliState:'idle',agentSessionId:sid});service.runtime=async()=>({available:false,reason:'index-catching-up',sessionId:sid,turns:[],inputs:[],cursor:0});
- fixtureModels(service.data);await service.observe(a);assert.equal(testView(a).canSend,false);assert.equal(testView(a).canSteer,false);assert.equal(service.data.runs[0].runModel.state.kind,'sent');
+ fixtureModels(service.data);service.store.open();t.after(()=>service.close());await service.observe(a);assert.equal(testView(a).canSend,false);assert.equal(testView(a).canSteer,false);assert.equal(service.data.runs[0].runModel.state.kind,'sent');
 });
 test('event input upgraded to response retains accepted ownership, priorInputs and original steering output boundary',async t=>{
  const f=await setup(t),event={type:'event_msg',payload:{type:'user_message',turn_id:'t',message:'hello ai-village-run-hello'}};
