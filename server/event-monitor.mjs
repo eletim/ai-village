@@ -51,12 +51,13 @@ export class EventMonitor {
   clearTimeout(this.timer);
   const candidates=this.d.data.runs.flatMap(r=>[
    ...(r.unknownSince&&!r.unknownResolvedAt?[{r,kind:'unknown',at:Date.parse(r.unknownSince)+600000}]:[]),
+   ...(r.runModel?.state.kind==='queued'&&Number.isFinite(r.nextTransferAt)?[{r,kind:'attachment',at:r.nextTransferAt}]:[]),
    ...(r.recovery?.status==='scheduled'?[{r,kind:'recovery',at:r.recovery.nextAt}]:[])
   ]).map(e=>({...e,key:e.r.id+':'+e.kind+':'+e.at})).filter(e=>!this.fired.has(e.key));
   const first=candidates.sort((a,b)=>a.at-b.at)[0];if(!first)return;
   this.timer=setTimeout(()=>{
    this.fired.add(first.key);
-   void this.d.persist(async()=>{this.d.releaseStuckRuns({id:first.r.agentId});await this.d.save();}).then(()=>this.d.progress()).catch(error=>{this.error=error.message;});
+   void this.d.persist(async()=>{this.d.releaseStuckRuns({id:first.r.agentId});await this.d.save();}).then(()=>this.d.progress()).catch(error=>{this.error=error.message;}).finally(()=>{if(!this.closed)this.reserveRecovery();});
   },Math.max(0,Math.min(2147483647,first.at-Date.now())));this.timer.unref();
  }
  close(){this.closed=true;clearTimeout(this.timer);for(const h of this.hosts.values())h.close();this.hosts.clear();}

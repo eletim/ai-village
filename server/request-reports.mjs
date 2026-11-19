@@ -24,9 +24,9 @@ export class RequestReports {
   if(x.expectedVersion!==current.version)fail('期限が更新されています。再取得してください');
   if(!Object.hasOwn(x,'completionAt')||!Object.hasOwn(x,'reportAt'))fail('完成期限・報告期限を明示してください。指定なしはnullです');
   const dates={completionAt:deadline(x.completionAt),reportAt:deadline(x.reportAt)};
-  for(const at of Object.values(dates))if(at&&Date.parse(at)<=this.clock())fail('新しい期限は未来を指定してください');
+  for(const [key,at] of Object.entries(dates))if(at!==current[key]&&at&&Date.parse(at)<=this.clock())fail('新しい期限は未来を指定してください');
   const event={id:randomUUID(),kind:'deadline-changed',workId:w.id,at:new Date(this.clock()).toISOString(),actor,actorRunId:x.actorRunId||null,reason:x.reason,...dates};
-  w.metadata.reporting={...current,...dates,version:current.version+1,reportReceivedAt:null,expired:{},history:[...current.history,event]};
+  w.metadata.reporting={...current,...dates,version:current.version+1,reportReceivedAt:dates.reportAt===current.reportAt?current.reportReceivedAt:null,expired:Object.fromEntries(Object.entries(current.expired||{}).filter(([kind])=>dates[kind+'At']===current[kind+'At'])),history:[...current.history,event]};
   if(!w.planned)notify(this.flow,q,w,event);
   return event;
  });}

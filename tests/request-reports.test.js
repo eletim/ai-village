@@ -37,3 +37,16 @@ test('only manager changes deadline, stale versions rejected, clearing is explic
  await s.flow.humanDeadline({...x,workId:r.workId,actorRunId:undefined,revision:q.revision,operationId:randomUUID()});
  assert.deepEqual(inspectRequests(s.data).flatMap(x=>x.reasons),[]);
 });
+test('manager can request a report after completion deadline without extending or clearing it',async t=>{
+ const {s,r,cr,q,completionAt}=await setup(t);
+ s.flow.reporting.clock=()=>Date.parse(completionAt)+1;await s.flow.reporting.expire();
+ const child=s.flow.work(q,cr.workId),overdue=child.metadata.reporting.expired.completion;
+ const x={humanRequestId:q.id,workId:cr.workId,actorRunId:r.id,operationId:randomUUID(),expectedVersion:1,completionAt,reportAt:new Date(Date.parse(completionAt)+60000).toISOString(),reason:'Ask status only'};
+ await s.flow.deadline(x);
+ assert.equal(child.metadata.reporting.completionAt,completionAt);
+ assert.deepEqual(child.metadata.reporting.expired.completion,overdue);
+ assert.equal(child.metadata.reporting.expired.report,undefined);
+ await s.flow.reporting.expire();
+ assert.equal(child.metadata.reporting.history.filter(e=>e.deadlineKind==='completion').length,1);
+ await assert.rejects(s.flow.deadline({...x,operationId:randomUUID(),expectedVersion:2,completionAt:new Date(Date.parse(completionAt)-1000).toISOString()}));
+});

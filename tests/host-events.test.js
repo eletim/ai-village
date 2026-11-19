@@ -47,3 +47,23 @@ test('process exit without a final log record wakes the observer through pidfd',
  const changed=once(host,'changed');agent.kill();const [event]=await changed;
  assert.deepEqual(event.agentIds,['a']);assert.equal((await host.inspect({id:'a',sessionName:'test'})).agentAlive,false);
 });
+test('host queues bursts beyond old limit and drains without another event',async t=>{
+ const home=await mkdtemp(join(tmpdir(),'village-host-queue-'));t.after(()=>rm(home,{recursive:true,force:true}));
+ const host=new HostEvents({connectionType:'local'},{spawnProcess:(cmd,args,options)=>spawn(cmd,args,{...options,env:{...process.env,HOME:home,CODEX_HOME:join(home,'.codex')}})});t.after(()=>host.close());
+ const ready=once(host,'ready');host.start();await ready;
+ const tasks=Array.from({length:40},(_,i)=>host.execute(['python3','-c','print('+i+')']));
+ assert.equal(host.pending.size,2);assert.equal(host.waiting.length,38);
+ assert.deepEqual(await Promise.all(tasks),Array.from({length:40},(_,i)=>i+'\n'));
+ assert.equal(host.pending.size,0);assert.equal(host.waiting.length,0);
+});
+test('attachment retry wakes on its saved time with no host changes, and is not repeated',async t=>{
+ let wakes=0;
+ const run={id:'transfer',agentId:'a',runModel:{state:{kind:'queued'}},nextTransferAt:Date.now()+30};
+ const d={data:{agents:[],runs:[run]},persist:fn=>fn(),save:async()=>{},releaseStuckRuns:()=>{},progress:async()=>{wakes++;}};
+ const m=new EventMonitor(d);t.after(()=>m.close());m.reserveRecovery();
+ await new Promise(r=>setTimeout(r,100));assert.equal(wakes,1);
+ m.reserveRecovery();await new Promise(r=>setTimeout(r,50));assert.equal(wakes,1);
+ // A subsequent failed transfer reserves a new attempt.
+ run.nextTransferAt=Date.now()+20;m.reserveRecovery();
+ await new Promise(r=>setTimeout(r,80));assert.equal(wakes,2);
+});

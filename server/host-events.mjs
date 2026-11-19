@@ -6,7 +6,7 @@ const script=readFileSync(new URL('./host-events.py',import.meta.url),'utf8');
 const quote=s=>"'"+s.replaceAll("'","'\\''")+"'";
 export const hostKey=a=>a.connection.connectionType==='local'?'local':'ssh:'+a.connection.sshHost;
 export class HostEvents extends EventEmitter {
- constructor(connection,{spawnProcess=spawn,localBin='purplemux'}={}){super();Object.assign(this,{connection,spawnProcess,localBin});this.pending=new Map();this.attempt=0;this.closed=false;}
+ constructor(connection,{spawnProcess=spawn,localBin='purplemux'}={}){super();Object.assign(this,{connection,spawnProcess,localBin});this.pending=new Map();this.waiting=[];this.attempt=0;this.closed=false;}
  start(){
   if(this.closed)return;
   const remote=this.connection.connectionType==='ssh';
@@ -15,7 +15,7 @@ export class HostEvents extends EventEmitter {
   let buffer='',ended=false;
   const disconnected=()=>{
    if(ended)return;ended=true;this.ready=false;clearTimeout(this.startTimer);clearInterval(this.heartbeat);
-   child.kill();for(const {reject,timer} of this.pending.values()){clearTimeout(timer);reject(Error('変更通知の接続が切れました。操作は自動再送しません'));}this.pending.clear();
+   child.kill();for(const {reject,timer} of this.pending.values()){clearTimeout(timer);reject(Error('変更通知の接続が切れました。操作は自動再送しません'));}this.pending.clear();for(const {reject} of this.waiting)reject(Error('変更通知の接続が切れました。操作は自動再送しません'));this.waiting=[];
    this.emit('offline');if(!this.closed){this.retry=setTimeout(()=>this.start(),Math.min(60000,1000*2**Math.min(this.attempt++,6)));this.retry.unref();}
   };
   child.on('error',disconnected);child.on('close',disconnected);child.stdin.on('error',disconnected);
@@ -29,7 +29,7 @@ export class HostEvents extends EventEmitter {
      if(event.protocol!==1)return disconnected();this.ready=true;this.attempt=0;clearTimeout(this.startTimer);this.emit('ready');
      this.heartbeat=setInterval(()=>{if(Date.now()-this.lastReceived>90000)return disconnected();this.send({type:'ping'});},30000);this.heartbeat.unref();
     }else if(event.type==='response'){
-     const pending=this.pending.get(event.id);if(pending){this.pending.delete(event.id);clearTimeout(pending.timer);event.error?pending.reject(Error(event.error)):pending.resolve(event.output);}
+     const pending=this.pending.get(event.id);if(pending){this.pending.delete(event.id);clearTimeout(pending.timer);event.error?pending.reject(Error(event.error)):pending.resolve(event.output);this.flush();}
     }else if(event.type==='changed')this.emit('changed',event);
     else if(event.type==='resync'||event.type==='error')disconnected();
    }
@@ -41,11 +41,15 @@ export class HostEvents extends EventEmitter {
  async inspect(a){return JSON.parse(await this.request('watch-process',{agentId:a.id,sessionName:a.sessionName}));}
  request(type,fields){
   if(!this.ready)return Promise.reject(Error('変更通知の接続待ちです'));
-  if(this.pending.size>=32)return Promise.reject(Error('接続先の処理待ち上限です'));
-  const id=randomUUID();return new Promise((resolve,reject)=>{
+  return new Promise((resolve,reject)=>{this.waiting.push({type,fields,resolve,reject});this.flush();});
+ }
+ flush(){
+  while(this.ready&&!this.closed&&this.pending.size<2&&this.waiting.length){
+   const {type,fields,resolve,reject}=this.waiting.shift(),id=randomUUID();
    const timer=setTimeout(()=>{this.pending.delete(id);reject(Error('ホスト処理の応答期限を超過しました'));this.child?.kill();},70000);timer.unref();
    this.pending.set(id,{resolve,reject,timer});this.send({type,id,...fields});
-  });
+  }
  }
+
  close(){this.closed=true;clearTimeout(this.retry);clearTimeout(this.startTimer);clearInterval(this.heartbeat);this.child?.kill();}
 }
