@@ -2,7 +2,7 @@ import {agentFixture,runFixture,requestFixture,setRunState,setRequestState} from
 import {test,expect} from '@playwright/test';
 import {humanProjection} from '../../server/report-view.mjs';
 function fixture(){
- const q={id:'q',reportMode:true,status:'active',instruction:'元質問',works:[{id:'w',currentRunId:'r'}],report:{sourceRunId:'source'}};
+ const q={id:'q',reportMode:true,status:'active',instruction:'元質問',works:[{id:'w',agentId:'a',currentRunId:'r'}],report:{sourceRunId:'source'}};
  const data={requests:[q],agents:[{id:'a',name:'秘書',location:'mayor',state:'busy',connection:{},canQueue:true,canSend:false,nativeTurns:[{id:'turn',sessionId:'s',state:'running',output:'SECRET draft',instruction:'INTERNAL report prompt'}]}],runs:[{id:'source',agentId:'a',humanRequestId:'q',workId:'w',origin:'human',instruction:'元質問',state:'completed',output:'SECRET original'}, {id:'r',agentId:'a',humanRequestId:'q',workId:'w',phase:'report',origin:'report',instruction:'INTERNAL report prompt',output:'SECRET draft',state:'running',turnId:'turn',sessionId:'s'}],workshops:[],reviews:{},notification:{enabled:false}};
  data.runs=data.runs.map(r=>runFixture(r,r.phase==='report'?{kind:'running',sessionId:'s',turnId:'turn',inputId:'input'}:undefined));
  data.requests=[requestFixture(q,data.runs)];data.agents=data.agents.map(a=>agentFixture(a,{connected:true,process:'alive',activity:'running',canSteer:false}));return data;
@@ -27,8 +27,8 @@ test('Direct preserves original work until report commits; failure keeps origina
  await expect.poll(()=>enabled).toBe(false);await page.keyboard.press('Escape');await page.reload();
  await page.getByRole('button',{name:'設定',exact:true}).click();await expect(page.getByLabel('人間向け報告モード')).not.toBeChecked();
  failSave=true;await page.getByLabel('人間向け報告モード').check();await expect(page.getByLabel('人間向け報告モード')).not.toBeChecked();await page.keyboard.press('Escape');
- setRunState(raw.runs[1],{kind:'ended',outcome:'failed',reason:'fixture'});setRequestState(raw.requests[0],{kind:'active',review:['run-needs-review:r']});await expect(log).toContainText('報告生成に失敗');await expect(log.getByRole('button',{name:'再試行',exact:true})).toBeVisible();await expect(log).toContainText('SECRET original');
- setRunState(raw.runs[1],{kind:'ended',outcome:'unconfirmed',reason:'timeout'});await expect(log).toContainText('送信が失敗・中断・確認できず');await expect(log).toContainText('SECRET original');
+ setRunState(raw.runs[1],{kind:'ended',outcome:'failed',reason:'fixture'});setRequestState(raw.requests[0],{kind:'active',review:['run-needs-review:r']});await expect(log).toContainText('報告生成に失敗');await expect(page.locator('#agent-a .agent-recovery').getByRole('button',{name:'再試行',exact:true})).toBeVisible();await expect(log).toContainText('SECRET original');
+ setRunState(raw.runs[1],{kind:'ended',outcome:'unconfirmed',reason:'timeout'});await expect(page.locator('#agent-a .agent-recovery')).toContainText('送信が失敗・中断・確認できず');await expect(log).toContainText('SECRET original');
  setRunState(raw.runs[1],{kind:'ended',outcome:'normal',reason:'fixture'});raw.runs[1].output='完成した報告';setRequestState(raw.requests[0],{kind:'completed',by:'program',reason:'report-ended'});raw.requests[0].finalRunId='r';
  await expect(log).toContainText('完成した報告');await expect(log.getByText('SECRET original',{exact:true})).not.toBeVisible();
  await log.locator('summary').click();await expect(log.getByText('SECRET original',{exact:true})).toBeVisible();

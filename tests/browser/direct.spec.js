@@ -100,7 +100,7 @@ test('sidebar uses registered places, auto layout, same-button restore and archi
  state.agents.find(a=>a.id==='a2').state='stopping';await expect(page.locator('#agent-a2')).toContainText('終了処理中');state.agents.find(a=>a.id==='a2').state='unknown';await expect(page.locator('#agent-a2')).toContainText('接続・状態不明');
  state.agents.find(a=>a.id==='a2').state='terminated';await expect(page.locator('#agent-a2')).toHaveCount(0);await expect(page.locator('.agent-panel:visible')).toHaveCount(9);
  state.workshops.push({id:'new-place',name:'追加工房',connectionType:'ssh',workplaces:['/tmp']});await expect(page.locator('[data-place="new-place"]')).toContainText('追加工房');
- await page.locator('#manage').click();await page.getByRole('button',{name:'終了Agentの履歴',exact:true}).click();await page.locator('#history-agent').selectOption('ended');await expect(page.locator('#history-content')).toContainText('終了後も履歴を保持');
+ await page.locator('#manage').click();await page.getByRole('button',{name:'終了Agent・担当不在の履歴',exact:true}).click();await page.locator('#history-agent').selectOption('ended');await expect(page.locator('#history-content')).toContainText('終了後も履歴を保持');
 });
 test('drafts, conversation and board scroll survive place, zoom, polling and responsive layout',async({page})=>{
  const state=boardFixture();const polls=await mockSnapshot(page,state);await page.goto('/agents');

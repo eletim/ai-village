@@ -13,7 +13,7 @@ export function requestReviewReason(q,r){
 }
 export function recoveryRequests(data){
  return (data.requests||[]).flatMap(q=>{
-  if(q.integrity)return [{id:q.id,revision:q.revision,agentName:data.agents.find(a=>a.id===q.originAgentId)?.name||'参照不整合',instruction:q.instruction,reason:'参照不整合のため隔離中: '+q.integrity.reasons.join(' / '),canRetry:false,quarantined:true}];
+  if(q.integrity)return [{id:q.id,revision:q.revision,agentId:q.originAgentId,agentName:data.agents.find(a=>a.id===q.originAgentId)?.name||'参照不整合',instruction:q.instruction,reason:'参照不整合のため隔離中: '+q.integrity.reasons.join(' / '),canRetry:false,quarantined:true}];
   const w=q.requestGraph.nodes.find(w=>w.id===q.rootWorkId)||q.requestGraph.nodes.find(w=>!w.parentId);
   const r=data.runs.find(r=>r.id===w?.currentRunId);if(!r||!needsRunRecovery(q,r,w))return [];
   const a=data.agents.find(a=>a.id===w.assignee);
