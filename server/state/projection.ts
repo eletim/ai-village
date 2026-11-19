@@ -7,7 +7,7 @@ export function runView(m:Run){
  const s=m.state;
  return {state:m.supersededBy?'superseded':s.kind==='queued'?'queued':s.kind==='sent'?'awaiting_input':s.kind==='running'?'running':s.kind==='cancelled'?'terminated':({normal:'completed',failed:'failed',interrupted:'interrupted',unconfirmed:'terminated'} as const)[s.outcome],needsReview:s.kind==='ended'&&s.outcome==='unconfirmed'};
 }
-export function requestView(m:{state:Request['state']}){return {status:({active:'active',completed:'completed',withdrawn:'cancelled'} as const)[m.state.kind],needsReview:m.state.kind==='active'&&m.state.review.length>0};}
+export function requestView(m:{state:Request['state']|{kind:'submitted';resultId:string}}){return {status:({submitted:'active',active:'active',completed:'completed',withdrawn:'cancelled'} as const)[m.state.kind],needsReview:m.state.kind==='active'&&m.state.review.length>0};}
 export function agentView(m:Agent){
  const k=deriveAgent(m).kind,c=sendControls(m);
  return {state:({starting:'starting',idle:'idle',running:'busy','input-needed':'waiting_input',unreachable:'unknown',stopping:'stopping',ended:'terminated'} as const)[k],

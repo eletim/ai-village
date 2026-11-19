@@ -6,7 +6,11 @@ import {escapeReport as esc} from './report-content.js';
 // which always carries a parentWorkId), so that live answer is never hidden behind a fold.
 export function rootRunIds(requests){
  const ids=new Set();
- for(const q of requests||[])for(const w of q.requestGraph?.nodes||[])if(!w.parentId&&w.currentRunId)ids.add(w.currentRunId);
+ for(const q of requests||[]){
+  for(const w of q.requestGraph?.nodes||[])if(!w.parentId&&w.currentRunId)ids.add(w.currentRunId);
+  // Published human reports can be separate from the source work's current run.
+  if(q.status==='completed'&&q.finalRunId)ids.add(q.finalRunId);
+ }
  return ids;
 }
 // A human only ever speaks through a direct request ('human'), the raw native/PurpleMux

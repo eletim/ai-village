@@ -1,7 +1,7 @@
 import {node,graphSteps,transitionGraph,latest,handled} from './state/requests.ts';
 export const evidence=(data,q)=>data.runs.filter(r=>r.humanRequestId===q.id).map(r=>({run:r.runModel,ownerId:r.workId,agentId:r.agentId}));
 export const rootNode=q=>node(q.requestGraph,q.rootWorkId);
-export function newNode(q,{id,parentId=null,assignee,metadata={}}){return {...(q.inputProtocol===1?{inbox:[],inputClaims:[]}:{}),id,parentId,requester:parentId?{kind:'agent',agentId:node(q.requestGraph,parentId).assignee,requestId:parentId}:{kind:'human'},assignee,metadata,runAgents:{},runIds:[],currentRunId:null,reportRunId:null,reportMode:!parentId&&q.reportMode===true,state:{kind:'active',review:[]},submissions:[],claims:[],replacements:[],invalidatedRuns:[],handling:[],declarations:[],decisions:[]};}
+export function newNode(q,{id,parentId=null,assignee,metadata={},createdBy='human',planned=false}){return {...(q.commonRequests?{recipient:parentId?{kind:'request',requestId:parentId}:{kind:'human'},createdBy,planned}:{}),...(q.inputProtocol===1?{inbox:[],inputClaims:[]}:{}),id,parentId,requester:parentId?{kind:'agent',agentId:node(q.requestGraph,parentId).assignee,requestId:parentId}:{kind:'human'},assignee,metadata,runAgents:{},runIds:[],currentRunId:null,reportRunId:null,reportMode:!parentId&&q.reportMode===true,state:{kind:'active',review:[]},submissions:[],claims:[],replacements:[],invalidatedRuns:[],handling:[],declarations:[],decisions:[]};}
 export function applyGraph(data,q,event){
  const changed=transitionGraph(q.requestGraph,event,evidence(data,q));
  if(!changed.ok)throw Object.assign(Error('request transition rejected: '+event.type+' '+changed.reason),{status:409});
@@ -12,15 +12,19 @@ export function applyGraph(data,q,event){
 }
 export const steps=(data,q)=>graphSteps(q.requestGraph,evidence(data,q));
 export function validateGraph(data,q){
+ if(q.commonRequests!==undefined&&typeof q.commonRequests!=='boolean')throw Error('Unsupported request contract');
  if(q.inputProtocol!==undefined&&![0,1].includes(q.inputProtocol))throw Error('Unsupported request input protocol');
  if(q.inputProtocol===1&&q.requestGraph?.nodes?.some(n=>!Array.isArray(n.inbox)))throw Error('Request inbox missing');
  const g=q.requestGraph;if(!g||g.version!==3||g.rootId!==q.rootWorkId||!Array.isArray(g.nodes)||Object.hasOwn(q,'works')||Object.hasOwn(q,'requestModel')||!Array.isArray(g.operations))throw Error('Invalid request graph version/shape: '+q.id);
  if(new Set(g.operations.map(o=>o.id)).size!==g.operations.length||g.operations.some(o=>typeof o.id!=='string'||typeof o.payload!=='string'))throw Error('Invalid operation registry');
  if(g.nodes.filter(n=>n.parentId===null).length!==1||!node(g,g.rootId)||node(g,g.rootId).parentId!==null)throw Error('Invalid request root');
  const ids=new Set();for(const n of g.nodes){
-  if(ids.has(n.id)||typeof n.assignee!=='string'||!Array.isArray(n.runIds)||!n.runIds.includes(n.currentRunId)||new Set(n.runIds).size!==n.runIds.length||!n.metadata||typeof n.metadata!=='object'||Array.isArray(n.metadata)||['agentId','parentWorkId','runIds','currentRunId'].some(key=>Object.hasOwn(n.metadata,key))||!['active','submitted','completed','withdrawn'].includes(n.state?.kind)||!Array.isArray(n.submissions)||!Array.isArray(n.claims)||!Array.isArray(n.replacements)||!Array.isArray(n.invalidatedRuns)||!Array.isArray(n.handling)||!Array.isArray(n.declarations)||!Array.isArray(n.decisions))throw Error('Invalid request node: '+n.id);ids.add(n.id);
-  if(n.requester?.kind!==(n.parentId?'agent':'human')||n.parentId&&n.requester.requestId!==n.parentId||n.state.kind==='active'&&!Array.isArray(n.state.review)||!n.runAgents)throw Error('Invalid request authority/state');
-  if(n.state.kind==='submitted'&&(!n.parentId||n.state.resultId!==latest(n)?.id||latest(n)?.outcome!=='normal'))throw Error('Invalid submitted result');
+  if(q.commonRequests&&(!n.recipient||!['human','agent'].includes(n.createdBy)||typeof n.planned!=='boolean')||!q.commonRequests&&n.recipient)throw Error('Invalid common request contract');
+  if(n.recipient&&(n.recipient.kind==='request'?n.recipient.requestId!==n.parentId:n.recipient.kind!=='human'||!!n.parentId))throw Error('Invalid result recipient');
+  if(n.planned&&(n.runIds.length||n.currentRunId))throw Error('Planned request has execution');
+  if(ids.has(n.id)||(!(n.planned&&n.assignee===null)&&typeof n.assignee!=='string')||!Array.isArray(n.runIds)||(!n.planned&&!n.runIds.includes(n.currentRunId))||new Set(n.runIds).size!==n.runIds.length||!n.metadata||typeof n.metadata!=='object'||Array.isArray(n.metadata)||['agentId','parentWorkId','runIds','currentRunId'].some(key=>Object.hasOwn(n.metadata,key))||!['active','submitted','completed','withdrawn'].includes(n.state?.kind)||!Array.isArray(n.submissions)||!Array.isArray(n.claims)||!Array.isArray(n.replacements)||!Array.isArray(n.invalidatedRuns)||!Array.isArray(n.handling)||!Array.isArray(n.declarations)||!Array.isArray(n.decisions))throw Error('Invalid request node: '+n.id);ids.add(n.id);
+  if(!n.recipient&&n.requester?.kind!==(n.parentId?'agent':'human')||n.parentId&&n.requester.requestId!==n.parentId||n.state.kind==='active'&&!Array.isArray(n.state.review)||!n.runAgents)throw Error('Invalid request authority/state');
+  if(n.state.kind==='submitted'&&(!n.recipient&&!n.parentId||n.state.resultId!==latest(n)?.id||latest(n)?.outcome!=='normal'))throw Error('Invalid submitted result');
   if(n.replacementId){const replacement=node(g,n.replacementId);if(!replacement||replacement.parentId!==n.parentId)throw Error('Invalid replacement');const visited=new Set([n.id]);let next=n;while(next.replacementId){if(visited.has(next.replacementId))throw Error('Replacement cycle');visited.add(next.replacementId);next=node(g,next.replacementId);if(!next)throw Error('Missing replacement');}}
   const seen=new Set([n.id]);let p=n;while(p.parentId){if(seen.has(p.parentId)||!node(g,p.parentId))throw Error('Request parent cycle/missing');seen.add(p.parentId);p=node(g,p.parentId);}
   for(const id of n.runIds)if(!data.runs.some(r=>r.id===id&&r.workId===n.id&&r.humanRequestId===q.id&&r.agentId===n.runAgents[id]))throw Error('Invalid request run owner');

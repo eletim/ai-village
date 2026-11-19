@@ -1,10 +1,14 @@
 import {resolve} from 'node:path';
 // The only source of Agent-facing policy and Agent decision-operation schemas.
 export const agentActions=Object.freeze({
- amend:{fields:'{humanRequestId,workId,actorRunId,operationId,instruction}',description:'現在の実行から直接の子依頼に補足を保存。別依頼への転送は禁止。'},
- delegate:{fields:'{humanRequestId,parentWorkId,actorRunId,agentId,operationId,instruction,replacesRequestId?}',description:'同じ依頼内で別Agentへ委任。子の再作業は新しい委任。rework申告後はreplacesRequestIdで置換予約。正常終了で確定。'},
- respond:{fields:'{humanRequestId,workId,runId,operationId,inputs?:[入力ID],results:[{requestId,resultId,version,decision:accept|rework}]}',description:'現在runが直接の子結果版への対応を申告。当該runの正常終了で確定。読取は不変。'},
- finish:{fields:'{humanRequestId,workId,runId,operationId,inputs?:[入力ID],results}',description:'委任ありのまとめ役の完了申告。申告と当該回の正常終了・子の終了を照合。'}
+ plan:{fields:'{humanRequestId,parentWorkId,actorRunId,operationId,instruction,agentId?}',description:'子依頼を開始前として保存。結果は親へ返る。担当は後から選べる。'},
+ launch:{fields:'{humanRequestId,workId,actorRunId,operationId,agentId?}',description:'開始前の直接の子依頼を担当Agentへ実行予約。親の現在runから操作する。'},
+ assignPlan:{fields:'{humanRequestId,workId,actorRunId,operationId,agentId}',description:'開始前の直接の子依頼の担当を選ぶ。実行は開始しない。'},
+ discard:{fields:'{humanRequestId,workId,actorRunId,operationId}',description:'開始前の直接の子依頼を取り下げる。実行済みは対象外。'},
+ amend:{fields:'{humanRequestId,workId,actorRunId,operationId,instruction}',description:'直接の子依頼へ補足。'},
+ delegate:{fields:'{humanRequestId,parentWorkId,actorRunId,agentId,operationId,instruction,replacesRequestId?}',description:'子依頼を作成・開始。再作業はrework後replacesRequestIdで置換予約。'},
+ respond:{fields:'{humanRequestId,workId,runId,operationId,inputs?:[入力ID],results:[{requestId,resultId,version,decision:accept|rework}]}',description:'入力と直接の子結果への対応を申告。'},
+ finish:{fields:'{humanRequestId,workId,runId,operationId,inputs?:[入力ID],results}',description:'対応と完了を申告。正常終了・子の解決を照合。'}
 });
 export const actionUsage=action=>'requests '+action+' JSON '+agentActions[action].fields+' — '+agentActions[action].description;
 const common='Projectと依頼は別。完了通知は依頼全体で1回です。inputProtocol=1の依頼は通常回答でもinputsとresultsを明示してrespond/finishする。委任後は待機を続けず応答を終え、村からの再開を待つ。旧依頼と報告の回は従来の終了規則を維持する。子依頼は受け手の対応で終了します。達成度は報告本文に書き、状態は動かしません。受付不明は自動再送せず、同じ操作の再試行は同じoperationIdを使います。';
@@ -16,7 +20,7 @@ export function visualReportContext(cli,url){return '\n図は必要時のみfenc
 export class AgentRules {
  constructor(url){this.url=url;this.cli='VILLAGE_URL='+JSON.stringify(url)+' node '+JSON.stringify(resolve('scripts/village.mjs'));}
  access(id){return 'CLI: '+this.cli+' requests get '+id+'。API: POST '+this.url+'/api/direct/requests/get {humanRequestId}。必要時に最新詳細を取得: agents list、requests get HUMAN_REQUEST_ID、requests results HUMAN_REQUEST_ID WORK_ID、requests inputs HUMAN_REQUEST_ID WORK_ID（WORK_IDはworkId）。詳細はCLI help。秘書Agentはlocal接続の工房だけに作成できます。';}
- work(id){return [visualReportContext(this.cli,this.url),common,this.access(id),identity,guide,'最新名簿: GET '+this.url+'/api/direct/agents 。',steeringRule,'Agentの判断操作は delegate / amend / respond / finish です。結果の読取は自由ですが読取だけでは対応済みになりません。対応した結果をrequests respondまたはfinishのresultsで指定してください。申告は当該runの正常終了で確定し、失敗・中断・不明では未確定です。respond/finishのresultsは必須です。requests resultsで取得したrequestId/resultId/versionとdecision:accept|reworkを指定してください。results:[]は新たな対応申告なしで、未対応の子結果を暗黙受入しません。古い規則のresults省略はエラーになり、状態は変わりません。',...Object.keys(agentActions).map(actionUsage),'委任ありのまとめ役は子の送信終了と結果を確認し、最終回答直前に requests finish を申告してください。'].join('\n');}
+ work(id){return [visualReportContext(this.cli,this.url),common,this.access(id),identity,guide,'最新名簿: GET '+this.url+'/api/direct/agents 。',steeringRule,'判断操作は以下のAPI。読取は状態不変。respond/finishのresultsは必須（空は[]）。requestId/resultId/versionとdecision:accept|reworkを明示する。申告は当該runの正常終了で確定し、失敗・中断・不明では未確定。',...Object.keys(agentActions).map(actionUsage),'委任ありのまとめ役は子の送信終了と結果を確認し、最終回答直前に requests finish を申告してください。'].join('\n');}
  report(id){return [visualReportContext(this.cli,this.url),reportPolicy,this.access(id)].join('\n');}
  startup(){return '<ai-village-instructions version="1">\n毎ターンの ai-village-request は識別情報。HUMAN_REQUEST_ID はそのhumanRequestIdに置き換え、人間本文と村の規則を区別してください。\n通常作業:\n'+this.work('HUMAN_REQUEST_ID')+'\nphase=report の場合だけ適用:\n'+this.report('HUMAN_REQUEST_ID')+'\n</ai-village-instructions>';}
  context(metadata,compact){return '\n<ai-village-request>'+JSON.stringify(metadata)+(compact?'':'\n'+(metadata.phase==='report'?this.report(metadata.humanRequestId):this.work(metadata.humanRequestId)))+'</ai-village-request>';}

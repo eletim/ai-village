@@ -154,3 +154,5 @@ footer{font-variant-numeric:tabular-nums}
 .agent-panel select[name=requestTarget]{flex:0 0 100%;width:100%;min-width:0;font-size:12px;padding:4px 7px}
 
 .agent-recovery-host{flex-shrink:0;max-height:30%;overflow:auto}.agent-recovery-host:empty{display:none}
+
+#request-composition-dialog{width:min(720px,94vw)}.request-tree{padding-left:1.2rem}.request-tree li{margin:1rem 0;overflow-wrap:anywhere}.request-tree ul{padding-left:1.2rem;border-left:1px solid var(--border,#ccc)}.request-plan-controls{display:flex;flex-wrap:wrap;gap:.4rem}.request-plan-controls select{max-width:100%}

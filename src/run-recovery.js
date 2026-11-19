@@ -15,7 +15,9 @@ export function recoveryRequests(data){
  return (data.requests||[]).flatMap(q=>{
   if(q.integrity)return [{id:q.id,revision:q.revision,agentId:q.originAgentId,agentName:data.agents.find(a=>a.id===q.originAgentId)?.name||'参照不整合',instruction:q.instruction,reason:'参照不整合のため隔離中: '+q.integrity.reasons.join(' / '),canRetry:false,quarantined:true}];
   const w=q.requestGraph.nodes.find(w=>w.id===q.rootWorkId)||q.requestGraph.nodes.find(w=>!w.parentId);
-  const r=data.runs.find(r=>r.id===w?.currentRunId);if(!r||!needsRunRecovery(q,r,w))return [];
+  const deliveryFailed=q.commonRequests&&['failed','interrupted','terminated'].includes(q.delivery?.state);
+  const r=data.runs.find(r=>r.id===(deliveryFailed?q.delivery.runId:w?.currentRunId));if(deliveryFailed){const a=data.agents.find(a=>a.id===w.assignee);return [{id:q.id,revision:q.revision,runId:r?.id,workId:w.id,agentId:w.assignee,agentName:a?.name||'担当不在',instruction:q.instruction,phase:'report',state:r?.state,reason:'作業結果は提出済みです。人間向けの報告作成に失敗しました。報告のみ再試行できます。',canRetry:!!a&&!!r}];}
+  if(!r||!needsRunRecovery(q,r,w))return [];
   const a=data.agents.find(a=>a.id===w.assignee);
   return [{id:q.id,revision:q.revision,runId:r.id,workId:w.id,agentId:w.assignee,agentName:a?.name||'削除済みAgent',instruction:q.instruction,phase:r.phase||'work',state:r.state,reason:requestReviewReason(q,r),canRetry:!!a&&!a.deletedAt&&!['terminated','stopping'].includes(a.state)&&!!a.tabId&&['completed','failed','interrupted','terminated'].includes(r.state)}];
  });
@@ -23,6 +25,7 @@ export function recoveryRequests(data){
 
 export function requestWaitingText(q,workId){
  const n=q?.requestGraph?.nodes.find(n=>n.id===workId);
+ if(n?.state.kind==='submitted')return q.delivery?'作業結果は提出済みです。人間向けの報告を処理しています。':'成果を提出し、依頼元の確認を待っています。';
  if(!n||n.state.kind!=='active'||n.state.review.length)return '';
- return ({'input-pending':'補足・結果への対応を待っています。秘書は順番に再開します。',dependencies:'子依頼の実行を待っています。','result-delivery':'子依頼の結果配送を待っています。','result-processing':'子依頼の結果を処理しています。','report-preparation':'人間向けの報告を準備しています。','report-processing':'人間向けの報告を作成しています。'})[q.waiting?.[workId]]||'';
+ return ({'children-planned':'開始前の子依頼があります。「…」の依頼の構成から担当・開始を確認できます。','not-started':'子依頼は開始前です。担当を確認して開始してください。',unassigned:'子依頼の担当を選んでください。','input-pending':'補足・結果への対応を待っています。秘書は順番に再開します。',dependencies:'子依頼の実行を待っています。','result-delivery':'子依頼の結果配送を待っています。','result-processing':'子依頼の結果を処理しています。','report-preparation':'人間向けの報告を準備しています。','report-processing':'人間向けの報告を作成しています。'})[q.waiting?.[workId]]||'';
 }

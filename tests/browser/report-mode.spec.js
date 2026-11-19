@@ -54,3 +54,18 @@ test('report mode off separates progress and final in Direct',async({page})=>{
  await page.goto('/agents');await expect(page.locator('.response-progress')).toContainText('調査しています');await expect(page.locator('.response-final')).toContainText('修正できました');await expect(page.locator('details.response-history')).toHaveCount(0);
 
 });
+
+test('published report is visible outside internal exchanges after work and delivery separate',async({page})=>{
+ const {workspaceSnapshot}=await import('../../server/conversation-pages.mjs');
+ const raw=fixture();
+ const root=raw.requests[0].requestGraph.nodes[0];root.currentRunId='source';root.reportRunId='r';
+ setRunState(raw.runs[1],{kind:'ended',outcome:'normal',reason:'fixture'});
+ raw.runs[1].output='人間へ届ける確定報告';
+ setRequestState(raw.requests[0],{kind:'completed',by:'program',reason:'report-ended'});raw.requests[0].finalRunId='r';
+ await page.route('**/api/**',r=>r.fulfill({json:r.request().url().endsWith('/api/village')?{ok:true,result:{enabled:false}}:workspaceSnapshot(humanProjection(raw))}));
+ await page.goto('/agents');
+ await expect(page.getByText('人間へ届ける確定報告',{exact:true})).toBeVisible();
+ await expect(page.locator('.run-group').filter({hasText:'人間へ届ける確定報告'})).toHaveCount(0);
+ await expect(page.getByText('SECRET original',{exact:true})).not.toBeVisible();
+ await expect(page.locator('.runs')).not.toContainText('INTERNAL report prompt');
+});
