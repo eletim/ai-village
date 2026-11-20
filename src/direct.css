@@ -158,3 +158,5 @@ footer{font-variant-numeric:tabular-nums}
 #request-composition-dialog{width:min(720px,94vw)}.request-tree{padding-left:1.2rem}.request-tree li{margin:1rem 0;overflow-wrap:anywhere}.request-tree ul{padding-left:1.2rem;border-left:1px solid var(--border,#ccc)}.request-plan-controls{display:flex;flex-wrap:wrap;gap:.4rem}.request-plan-controls select{max-width:100%}
 
 #runtime-migration-dialog{width:min(720px,94vw);max-height:90dvh;box-sizing:border-box;overflow:auto}#runtime-migration-dialog label{display:block;margin:12px 0}#runtime-migration-dialog textarea,#runtime-migration-dialog select{display:block;width:100%;box-sizing:border-box;margin-top:5px}#runtime-migration-dialog button{margin:4px}#runtime-migration-dialog p{overflow-wrap:anywhere}
+
+.message.internal{align-self:flex-start;border:1px dashed #7b8c9e88;border-radius:6px;background:transparent}.message.internal small{display:block;margin-bottom:6px;font-weight:600}

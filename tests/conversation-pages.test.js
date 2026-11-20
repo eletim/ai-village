@@ -73,7 +73,7 @@ test('published report stays visible through compact paging when source work rem
  const v=fixture(2);Object.assign(v.runs[0],{humanRequestId:'q',origin:'human'});Object.assign(v.runs[1],{humanRequestId:'q',origin:'report',phase:'report',suppressUser:true});
  v.requests=[{id:'q',status:'completed',finalRunId:'r1',requestGraph:{rootId:'w',nodes:[{id:'w',parentId:null,assignee:'a',currentRunId:'r0'}]}}];
  const snapshot=workspaceSnapshot(v),current=rootRunIds(snapshot.requests);
- assert(current.has('r0'));assert(current.has('r1'));
+ assert(!current.has('r0'));assert(current.has('r1'));
  assert(!foldEntriesHTML(snapshot.conversations.a.entries,r=>r.id,current).includes('run-group'));
  v.requests[0].status='active';assert(!rootRunIds(workspaceSnapshot(v).requests).has('r1'));
 });

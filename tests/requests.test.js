@@ -904,3 +904,30 @@ test('API projection and restart keep parent and child waiting for a running gra
   assert(q.requestGraph.nodes.every(n=>n.state.kind==='active'&&n.state.review.length===0));assert.equal(f.notifications.length,0);
  }
 });
+
+test('two review rework rounds resume the secretary and publish only one human report',async t=>{
+ const f=await fixture(t,{reportMode:true}),s=f.service;
+ let reviewer=await s.send(f.agents[0].id,{instruction:'Implement, review and revise until accepted',requestId:randomUUID()});
+ await f.submit(reviewer);
+ const q=s.flow.root(reviewer.humanRequestId),rootId=reviewer.workId;
+ let child=await f.delegate(reviewer,f.agents[2]);
+ for(let round=0;round<3;round++){
+  await f.complete(reviewer);await s.tick();
+  const worker=s.flow.run(child.currentRunId);await f.submit(worker);await f.complete(worker);await s.tick();
+  reviewer=s.flow.run(q.requestGraph.nodes.find(n=>n.id===rootId).currentRunId);
+  assert.equal(reviewer.origin,'result');assert.equal(reviewer.agentId,f.agents[0].id);
+  await f.submit(reviewer);
+  assert.equal(f.notifications.length,0);assert.equal(testView(q).status,'active');
+  const result=s.flow.results(q.id,rootId).find(e=>e.requestId===child.id);
+  if(round<2){
+   await s.flow.respond({humanRequestId:q.id,workId:rootId,runId:reviewer.id,operationId:randomUUID(),results:[{requestId:child.id,resultId:result.id,version:result.version,decision:'rework'}]});
+   child=await s.flow.delegate({humanRequestId:q.id,parentWorkId:rootId,actorRunId:reviewer.id,agentId:f.agents[2].id,operationId:randomUUID(),instruction:'Address review findings '+round,replacesRequestId:child.id});
+  }else await f.finish(reviewer);
+ }
+ await f.complete(reviewer);await s.tick();
+ const report=s.data.runs.filter(r=>r.humanRequestId===q.id&&r.phase==='report');
+ assert.equal(report.length,1);assert.equal(report[0].agentId,f.agents[0].id);
+ await f.submit(report[0]);await f.complete(report[0]);
+ assert.equal(testView(q).status,'completed');assert.equal(f.notifications.length,1);
+ assert.equal(s.data.runs.filter(r=>r.humanRequestId===q.id&&r.origin==='delegation').length,3);
+});
