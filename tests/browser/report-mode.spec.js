@@ -31,10 +31,10 @@ test('Direct preserves original work until report commits; failure keeps origina
  setRunState(raw.runs[1],{kind:'ended',outcome:'failed',reason:'fixture'});await notifySnapshot(page);setRequestState(raw.requests[0],{kind:'active',review:['run-needs-review:r']});await notifySnapshot(page);await expect(log).toContainText('報告生成に失敗');await expect(page.locator('#agent-a .agent-recovery').getByRole('button',{name:'再試行',exact:true})).toBeVisible();await expect(log).toContainText('SECRET original');
  setRunState(raw.runs[1],{kind:'ended',outcome:'unconfirmed',reason:'timeout'});await notifySnapshot(page);await expect(page.locator('#agent-a .agent-recovery')).toContainText('送信が失敗・中断・確認できず');await expect(log).toContainText('SECRET original');
  setRunState(raw.runs[1],{kind:'ended',outcome:'normal',reason:'fixture'});await notifySnapshot(page);raw.runs[1].output='完成した報告';await notifySnapshot(page);setRequestState(raw.requests[0],{kind:'completed',by:'program',reason:'report-ended'});await notifySnapshot(page);raw.requests[0].finalRunId='r';await notifySnapshot(page);
- await expect(log).toContainText('完成した報告');await expect(log.getByText('SECRET original',{exact:true})).not.toBeVisible();
- await log.locator('summary').click();await expect(log.getByText('SECRET original',{exact:true})).toBeVisible();
- raw.runs[1].output='完成した報告（更新）';await notifySnapshot(page);await expect(log).toContainText('完成した報告（更新）');await expect(log.locator('details')).toHaveAttribute('open','');
- await log.locator('summary').click();await expect(log.getByText('SECRET original',{exact:true})).not.toBeVisible();await expect(log.locator('.message.user')).toHaveCount(1);
+ await expect(log.getByText('完成した報告',{exact:true})).toBeVisible();await expect(log.getByText('SECRET original',{exact:true})).not.toBeVisible();
+ await log.locator('[data-disclosure="chat:source:output"] > summary').click();await expect(log.getByText('SECRET original',{exact:true})).toBeVisible();
+ raw.runs[1].output='完成した報告（更新）';await notifySnapshot(page);await expect(log).toContainText('完成した報告（更新）');await expect(log.locator('[data-disclosure="chat:source:output"]')).toHaveAttribute('open','');
+ await log.locator('[data-disclosure="chat:source:output"] > summary').click();await expect(log.getByText('SECRET original',{exact:true})).not.toBeVisible();await expect(log.locator('.message.user')).toHaveCount(1);
  await expect(page.locator('textarea[name=instruction]')).toHaveValue('次の質問');
  await page.screenshot({path:'/tmp/village-report-mode.png'});
 });
