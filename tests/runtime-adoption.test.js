@@ -63,3 +63,11 @@ test('failed save and lost adoption response retry the same operation without du
  assert.equal(restarted.flow.inputs(r.humanRequestId,r.workId).find(i=>i.id===supplement.id).text,supplement.text);assert.equal(restarted.flow.get(r.humanRequestId).instruction,'preserve purpose');
  assert.deepEqual(await restarted.adoptRuntime(a.id,x),receipt);await restarted.tick();assert.equal(f.sent.length,1);
 });
+
+test('adoption receipt is immutable when the new native session identity becomes known later',async t=>{
+ const f=await setup(t),s=f.service,{a,b}=f,observe=s.observe.bind(s);
+ s.observe=async agent=>{const result=await observe(agent);if(agent.id===b.id)delete agent.inputEnvelope.sessionId;return result;};
+ const x={operationId:randomUUID(),revision:0,replacementRevision:0,replacementAgentId:b.id};const receipt=await s.adoptRuntime(a.id,x);assert.equal(receipt.newRuntime.inputEnvelope.sessionId,undefined);
+ a.inputEnvelope.sessionId='new-native-session-observed-after-adoption';await s.save();assert.deepEqual(await s.adoptRuntime(a.id,x),receipt);
+ const restarted=await f.restart();assert.deepEqual(await restarted.adoptRuntime(a.id,x),receipt);assert.equal(restarted.agent(a.id).inputEnvelope.sessionId,'new-native-session-observed-after-adoption');
+});

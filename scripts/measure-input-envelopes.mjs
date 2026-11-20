@@ -1,3 +1,4 @@
+import {legacyContext} from '../server/legacy-contract.mjs';
 // Offline, fixed synthetic inputs. No service, filesystem state or native session access.
 import {execFileSync} from 'node:child_process';
 import {AgentRules} from '../server/agent-rules.mjs';
@@ -19,6 +20,6 @@ for(const length of [80,8000])for(const origin of ['human','delegation','result'
  const context=(rule,mode)=>({root:()=>q,work:()=>w,inputs:()=>inputs,d:{rules:rule,agent:()=>({inputEnvelope:{mode}})}});
  const old=mode=>text+oldRules.discovery(identity)+oldContext.call(context(oldRules,mode),r);
  const modern=text+rules.discovery(identity)+RequestFlow.prototype.context.call(context(rules,'startup-v2'),r);
- rows.push({origin,bodyCharacters:length,oldLegacy:count(old('legacy')),oldStartupV1:count(old('startup-v1')),newStartupV2:count(modern),newFixedCharacters:count(modern).characters-length});
+ rows.push({origin,bodyCharacters:length,oldLegacy:count(old('legacy')),oldStartupV1:count(old('startup-v1')),newStartupV2:count(modern),stagedLegacy:count(modern+legacyContext(rules,r,{legacyContract:{expiresAt:'2026-11-27T06:34:36.031Z'}})),newFixedCharacters:count(modern).characters-length});
 }
 console.log(JSON.stringify({baseline:'9aa66f2',unit:'Unicode characters and UTF-8 bytes, not token estimates',startup:{old:count(oldRules.startup()),new:count(rules.startup())},specificationRead:{work:count(JSON.stringify(rules.specification())),report:count(JSON.stringify(rules.specification('report')))},rows},null,2));
