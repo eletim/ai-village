@@ -7,7 +7,7 @@ test('local upload CLI, real Mermaid, inline image zoom, safe fallback and poll 
  expect(uploaded.ok).toBe(true);
  const output='経路の説明\n```mermaid\nflowchart LR\n A[依頼] --> B[検証] --> C[報告]\n```\n'+uploaded.reference+'\nhttps://example.com';
  const state={agents:[{id:'a',name:'Agent',state:'busy',connection:{name:'Local'}}],workshops:[],runs:[{id:'r',agentId:'a',state:'running',instruction:'報告',output}],notification:{},reviews:{}};
- await page.route('**/api/direct**',r=>r.fulfill({json:state}));await page.goto('/agents');
+ await page.route('**/api/direct**',r=>r.fulfill({json:state}));await page.goto('/agents');await page.locator('.message.assistant > details.chat-body > summary').click();
  const diagram=page.locator('[data-visual=mermaid] img'),image=page.locator('[data-visual=image] img');
 
  await expect(diagram).toBeVisible();await expect.poll(()=>diagram.evaluate(i=>i.naturalWidth)).toBeGreaterThan(0);await expect(image).toBeVisible();

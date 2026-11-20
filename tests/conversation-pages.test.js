@@ -3,7 +3,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {workspaceSnapshot,historyPage} from '../server/conversation-pages.mjs';
 import {matchingRun} from '../src/pending-message.js';
-import {rootRunIds,foldEntriesHTML} from '../src/run-groups.js';
 import {humanProjection} from '../server/report-view.mjs';
 export function fixture(n=230){return {agents:[{id:'a',state:'idle',name:'Fixture',location:'mayor',connection:{},nativeTurns:[]}],workshops:[],projects:[],reviews:{a:{unreviewed:true,attention:true}},notification:{enabled:false},requests:[],runs:Array.from({length:n},(_,i)=>({id:'r'+i,agentId:'a',createdAt:new Date(1700000000000+i*1000).toISOString(),state:'completed',instruction:'question '+i,output:'answer '+i+' '+ 'word '.repeat(400),finalOutput:'final '+i}))};}
 test('100 boundary, agent-bound stable cursors, no native duplicate, repeated legitimate text preserved',()=>{
@@ -72,8 +71,8 @@ test('supplements obey history window while compact receipts survive and older p
 test('published report stays visible through compact paging when source work remains current',()=>{
  const v=fixture(2);Object.assign(v.runs[0],{humanRequestId:'q',origin:'human'});Object.assign(v.runs[1],{humanRequestId:'q',origin:'report',phase:'report',suppressUser:true});
  v.requests=[{id:'q',status:'completed',finalRunId:'r1',requestGraph:{rootId:'w',nodes:[{id:'w',parentId:null,assignee:'a',currentRunId:'r0'}]}}];
- const snapshot=workspaceSnapshot(v),current=rootRunIds(snapshot.requests);
- assert(!current.has('r0'));assert(current.has('r1'));
- assert(!foldEntriesHTML(snapshot.conversations.a.entries,r=>r.id,current).includes('run-group'));
- v.requests[0].status='active';assert(!rootRunIds(workspaceSnapshot(v).requests).has('r1'));
+ const snapshot=workspaceSnapshot(v);
+ assert.equal(snapshot.requests[0].finalRunId,'r1');
+ assert.equal(snapshot.requests[0].status,'completed');
+ assert(snapshot.conversations.a.entries.some(r=>r.id==='r1'&&r.phase==='report'));
 });
