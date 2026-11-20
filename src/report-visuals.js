@@ -33,13 +33,17 @@ function enhance(node){
  serial=serial.then(task,task);
 }
 // Keep actual visual nodes across changed replies and ignore identical polling snapshots.
+const disclosureStates=new WeakMap();
 export function updateReportHTML(host,html){
  if(previous.get(host)===html)return;previous.set(host,html);
  const key=n=>JSON.stringify([n.dataset.visual,n.dataset.source,n.dataset.alt]);const old=new Map();
  for(const n of host.querySelectorAll('[data-visual]')){const k=key(n);if(!old.has(k))old.set(k,[]);old.get(k).push(n);}
- const expanded=new Set([...host.querySelectorAll('details[data-disclosure][open]')].map(n=>n.dataset.disclosure));
+ const expanded=disclosureStates.get(host)||new Map();
+ for(const n of host.querySelectorAll('details[data-disclosure]'))expanded.set(n.dataset.disclosure,n.open);
+ while(expanded.size>2000)expanded.delete(expanded.keys().next().value);
+ disclosureStates.set(host,expanded);
  const template=document.createElement('template');template.innerHTML=html;
- for(const n of template.content.querySelectorAll('details[data-disclosure]'))if(expanded.has(n.dataset.disclosure))n.open=true;
+ for(const n of template.content.querySelectorAll('details[data-disclosure]'))if(expanded.get(n.dataset.disclosure))n.open=true;
  for(const n of template.content.querySelectorAll('[data-visual]')){const reuse=old.get(key(n))?.shift();if(reuse)n.replaceWith(reuse);}
  host.replaceChildren(template.content);host.querySelectorAll('[data-visual]').forEach(enhance);
 }

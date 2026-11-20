@@ -24,7 +24,7 @@ import {autogrowInput} from './autogrow-input.js';
 import {linkedText} from './linked-text.js';
 import {attachmentComposer,attachmentHTML} from './attachments.js';
 import {chatScroll} from './chat-scroll.js';
-import {foldEntriesHTML,rootRunIds} from './run-groups.js';
+import {foldEntriesHTML,rootRunIds,isHumanInput,exchangeLabel} from './run-groups.js';
 import {travelComposer} from './travel-composer.js';
 import {travelSummary,sameTravelContexts} from './travel-context.js';
 import {PAGE_SIZE,isSuspended,placeOf,orderedAgents,orderedProjectAgents,orderedProjects,boardLayout} from './board-state.js';
@@ -97,7 +97,7 @@ function sidebarState(collapsed){
 }
 sidebarState(document.documentElement.dataset.sidebarCollapsed==='true');
 mobileWorkspace();
-$('#next-agent').onclick=()=>{const list=filtered();const index=list.findIndex(a=>a.id===zoomId);if(index>=0&&list.length>1)toggleZoom(list[(index+1)%list.length].id);};
+$('#next-agent').onclick=()=>{const list=filtered();const index=list.findIndex(a=>a.id===zoomId);if(index>=0&&list.length>1){toggleZoom(list[(index+1)%list.length].id);void refresh(true);}};
 $('#sidebar-toggle').onclick=()=>{
  capturePositions();
  const collapsed=document.documentElement.dataset.sidebarCollapsed!=='true';
@@ -127,15 +127,18 @@ function entryHTML(a,r,divider){
  if(r.inputReceipt)return `${divider(r.createdAt)}<div class="run" data-entry="${esc(r.id)}">${bubble('user',r.instruction,r.createdAt,travelSummary(r.travelContexts)+attachmentHTML(r.attachments)+`<small>補足 · ${esc(r.targetLabel)} · ${esc(r.inputStatus)}</small>`)}</div>`;
  const request=state.requests?.find(q=>q.id===r.humanRequestId),current=request?.requestGraph?.nodes.find(n=>n.id===r.workId)?.currentRunId===r.id;
  const waiting=current?requestWaitingText(request,r.workId):'';
+ const node=request?.requestGraph?.nodes.find(n=>n.id===r.workId),parent=request?.requestGraph?.nodes.find(n=>n.id===node?.parentId);
+ const published=request?.status==='completed'&&request.finalRunId===r.id;
+ const finalLabel=published?'最終報告':parent?'成果提出（'+(state.agents.find(x=>x.id===parent.assignee)?.name||'依頼元Agent')+'宛）':'回答';
  const normal=!r.error&&!r.errorCode&&!r.attachmentError&&!r.needsReview&&!requestRootState(state.requests?.find(q=>q.id===r.humanRequestId))?.review?.length;
- return `${divider(r.createdAt||r.completedAt)}<div class="run" data-entry="${esc(JSON.stringify([r.external?'native':'run',r.external?(r.sessionId||r.agentSessionId||''):'',r.id]))}">${r.suppressUser?'':bubble('user',r.instruction,r.createdAt,travelSummary(r.travelContexts)+attachmentHTML(r.attachments))}${r.output||r.finalOutput?'<div class="message assistant">'+responseHTML(r)+timeHTML(r.completedAt)+'</div>':''}<p class="run-status">${compactStatusPair(r.queueCancelledAt?'送信取消済み':r.reportStatus||labels[r.state]||r.state,r.humanRequestId?({active:'依頼継続中',finalizing:'最終報告の完了待ち',completed:'依頼全体完了',cancelled:'依頼キャンセル'})[state.requests?.find(q=>q.id===r.humanRequestId)?.status]||'依頼照合中':'達成状況: 未判定',normal,r.external?'PurpleMuxからの入力 · ':r.origin==='result'?'子作業結果の配送 · ':r.origin==='steering'?'実行中への補足 · ':'')} ${esc(r.errorCode||'')} ${esc(r.attachmentError||r.error||'')} ${r.notification?' · 通知: '+esc(r.notification.status)+(r.notification.reason?' / '+esc(r.notification.reason):''):''}</p>${canCancelQueued(r)?`<button type="button" data-cancel-queued="${esc(r.id)}" data-queue-agent="${esc(a.id)}">送信待ちを取り消す</button>`:''}${waiting?`<p class="request-waiting">${esc(waiting)}</p>`:''}${r.queueCancelledAt?'':recoveryHTML(r)}</div>`;
+ return `${divider(r.createdAt||r.completedAt)}<div class="run" data-entry="${esc(JSON.stringify([r.external?'native':'run',r.external?(r.sessionId||r.agentSessionId||''):'',r.id]))}">${r.suppressUser?'':bubble(isHumanInput(r)?'user':'internal',r.instruction,r.createdAt,(isHumanInput(r)?'':'<small>'+esc(exchangeLabel(r,state))+'</small>')+travelSummary(r.travelContexts)+attachmentHTML(r.attachments))}${r.output||r.finalOutput?'<div class="message assistant">'+responseHTML({...r,collapsedHistory:isHumanInput(r)&&r.collapsedHistory},{finalLabel})+timeHTML(r.completedAt)+'</div>':''}<p class="run-status">${compactStatusPair(r.queueCancelledAt?'送信取消済み':r.reportStatus||labels[r.state]||r.state,r.humanRequestId?({active:'依頼継続中',finalizing:'最終報告の完了待ち',completed:'依頼全体完了',cancelled:'依頼キャンセル'})[state.requests?.find(q=>q.id===r.humanRequestId)?.status]||'依頼照合中':'達成状況: 未判定',normal,r.external?'PurpleMuxからの入力 · ':r.origin==='result'?'子作業結果の配送 · ':r.origin==='steering'?'実行中への補足 · ':'')} ${esc(r.errorCode||'')} ${esc(r.attachmentError||r.error||'')} ${r.notification?' · 通知: '+esc(r.notification.status)+(r.notification.reason?' / '+esc(r.notification.reason):''):''}</p>${canCancelQueued(r)?`<button type="button" data-cancel-queued="${esc(r.id)}" data-queue-agent="${esc(a.id)}">送信待ちを取り消す</button>`:''}${waiting?`<p class="request-waiting">${esc(waiting)}</p>`:''}${r.queueCancelledAt?'':recoveryHTML(r)}</div>`;
 }
 function runHTML(a){
  const page=state.conversations?.[a.id];
  // Just-focused but not yet synced: say so, rather than showing bodiless controls as if they were the full thread.
  if(state.conversations&&!page&&focusIds.has(a.id))return '<p>会話を読み込み中…</p>';
  const entries=page?.entries||agentEntries(state,a),divider=dateDividers(),localHTML=localMessageHTML(a.id),current=rootRunIds(state.requests);
- return (historyErrors.has(a.id)?`<p role="alert" class="history-error">${esc(historyErrors.get(a.id))}</p>`:'')+(page?.hasMore?`<button type="button" data-load-history="${esc(a.id)}" ${historyLoading.has(a.id)?'disabled':''}>${historyLoading.has(a.id)?'読込中…':'古い会話を読み込む'}</button>`:'')+foldEntriesHTML(entries,r=>entryHTML(a,r,divider),current)+(localHTML?divider(outbox.get(a.id)?.createdAt)+localHTML:'')+divider.trailingToday();
+ return (historyErrors.has(a.id)?`<p role="alert" class="history-error">${esc(historyErrors.get(a.id))}</p>`:'')+(page?.hasMore?`<button type="button" data-load-history="${esc(a.id)}" ${historyLoading.has(a.id)?'disabled':''}>${historyLoading.has(a.id)?'読込中…':'古い会話を読み込む'}</button>`:'')+foldEntriesHTML(entries,r=>entryHTML(a,r,divider),current,r=>exchangeLabel(r,state))+(localHTML?divider(outbox.get(a.id)?.createdAt)+localHTML:'')+divider.trailingToday();
 }
 function localMessageHTML(id){
  const m=outbox.get(id);if(!m||matchingRun(state,id,m.requestId))return '';
@@ -360,7 +363,7 @@ function focusAgent(){
  selectedPage=Math.max(0,Math.floor(filtered().findIndex(a=>a.id===id)/PAGE_SIZE));
  if(zoomId!==id)toggleZoom(id);cards.get(id)?.focus({preventScroll:true});
 }
-window.addEventListener('hashchange',()=>{focusedHash='';focusAgent();});
+window.addEventListener('hashchange',()=>{focusedHash='';focusAgent();void refresh(true);});
 const sidebarOrder=bindSidebarOrder($('#places'),{activate:handle=>{const b=handle.closest('[data-place]');choosePlace(b.dataset.place,Number(b.dataset.page));void refresh(true);},save:input=>api('/reorder',input),changed:()=>{void refresh(true);},error:e=>{$('#error').textContent='並び替えを保存できません: '+e.message;}});
 $('#places').onclick=e=>{const add=e.target.closest('[data-add]'),place=e.target.closest('[data-place]');if(add)openManagement(add.dataset.add);else if(place){choosePlace(place.dataset.place,place.dataset.place==='all'?undefined:Number(place.dataset.page));void refresh(true);}};
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&zoomId&&!document.querySelector('dialog[open]')){toggleZoom(zoomId);void refresh(true);}});
