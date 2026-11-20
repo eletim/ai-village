@@ -138,7 +138,7 @@ export class DirectAgents {
   deleteProject(id,input){return deleteProject(this,id,input);}
   writableProject(id){const p=this.project(id);if(p.deletion||p.deletedAt)fail('Projectは削除処理中または削除済みです');return p;}
   agentDeleting(a){return !!(a.deletedAt||this.data.projects.find(p=>p.id===a.projectId)?.deletion);}
-  writableAgent(a){if(this.agentDeleting(a))fail('所属Projectは削除処理中または削除済みです');return a;}
+  writableAgent(a){if(a.runtimeRetiredTo)fail('旧ランタイム保管用Agentです。新規依頼は移行先を使用してください');if(this.agentDeleting(a))fail('所属Projectは削除処理中または削除済みです');return a;}
   validName(name){if(typeof name!=='string'||!name.trim()||name.length>120)fail('名前を1〜120文字で指定してください',400);return name.trim();}
   async putProject(input,id){return this.locked('projects',()=>this.persist(async()=>{
     if('pinned' in input)fail('先頭固定は廃止されました。表示順を指定してください',400);
@@ -210,7 +210,40 @@ export class DirectAgents {
       requiresFreshSession:a.inputEnvelope?.mode!=='startup-v2',tracking:tracking.map(r=>({runId:r.id,state:modelOf(r).state.kind,requestId:r.humanRequestId})),
       queued:runs.filter(r=>modelOf(r).state.kind==='queued').map(r=>r.id),
       requests:this.data.requests.flatMap(q=>q.requestGraph?.nodes.filter(n=>n.assignee===id&&n.state.kind==='active').map(n=>({humanRequestId:q.id,workId:n.id,currentRunId:n.currentRunId,revision:q.revision}))||[]),
-      migration:'新Agentを通常のcreateで起動。旧runは再送せず追跡。未送信はcancel-queued、実行中/受付不明は終了事実を確認。終端後に人間のresume/retryでagentIdを指定し同じ依頼を引継ぐ。新しい依頼として再委任しない。旧Agent停止は管理者が別途判断。'};
+      migration:'同じ登録属性の未使用新Agentをcreate。人間専用POST /api/direct/human/agents/:id/adopt-runtime {operationId,revision,replacementAgentId,replacementRevision}で既存IDへランタイム採用。queuedは同じrunを保持。sent/runningは終端待ち。旧ランタイムの停止は別途判断。'};
+  }
+  async adoptRuntime(id,x){
+    if(!x||typeof x.operationId!=='string'||! /^[\w-]{8,100}$/.test(x.operationId)||typeof x.replacementAgentId!=='string'||x.replacementAgentId===id||!Number.isInteger(x.revision)||!Number.isInteger(x.replacementRevision)||Object.keys(x).some(k=>!['operationId','replacementAgentId','revision','replacementRevision'].includes(k)))fail('runtime adoptionの入力が不正です',400);
+    const payload=JSON.stringify({replacementAgentId:x.replacementAgentId,revision:x.revision,replacementRevision:x.replacementRevision});
+    return this.locked('projects',()=>this.locked(id,()=>this.locked(x.replacementAgentId,async()=>{
+      const a=this.agent(id),b=this.agent(x.replacementAgentId),receipt=a.runtimeMigrations?.find(m=>m.operationId===x.operationId);
+      if(receipt){if(receipt.payload!==payload)fail('operationIdの再利用です');return structuredClone(receipt);}
+      this.writableAgent(a);this.writableAgent(b);
+      if((a.metadataRevision||0)!==x.revision||(b.metadataRevision||0)!==x.replacementRevision)fail('Agentが更新されています。再読込してください');
+      if(['provider','location','projectId','workshopId','cwd'].some(k=>(a[k]||null)!==(b[k]||null))||JSON.stringify(a.connection)!==JSON.stringify(b.connection))fail('同じ場所・Project・provider・接続の未使用Agentを指定してください');
+      if(!b.tabId||b.tabId===a.tabId||!b.workspaceId||b.workspaceId===a.workspaceId)fail('独立した新ランタイムが必要です');
+      if(this.data.runs.some(r=>r.agentId===b.id)||this.data.requests.some(q=>q.requestGraph?.nodes.some(n=>n.assignee===b.id)))fail('移行元ランタイムは未使用である必要があります');
+      if(this.data.runs.some(r=>r.agentId===id&&['sent','running'].includes(modelOf(r).state.kind)))fail('受付不明・実行中runの追跡が残っています。自動再送せず終端を確認してください');
+      const oldSnapshot=await this.observe(a),fresh=await this.observe(b);
+      if(!agentControls(a).canSend||!agentControls(b).canSend||!oldSnapshot.available||!(fresh.available||b.provider==='claude'&&fresh.unrecorded===true)||fresh.inputs.length||fresh.turns.length)fail('両ランタイムのidleと新ランタイムの未使用を確認できません');
+      if(this.data.runs.some(r=>r.agentId===id&&['sent','running'].includes(modelOf(r).state.kind)))fail('受付中runが発生しました');
+      await this.verifyInstructions(b);
+      if(b.inputEnvelope?.mode!=='startup-v2'||b.inputEnvelope.hash!==createHash('sha256').update(this.startupInstructions()).digest('hex'))fail('新ランタイムの固定起動契約を確認できません');
+      const keys=['workspaceId','initialTabId','tabId','sessionName','terminalUrl','runtime','observedSessionId','inputEnvelope','modelInfo','setupRequired','ownedProcesses','processVerification','terminatedAt','lastCheckedAt'];
+      const fields=o=>Object.fromEntries(keys.filter(k=>o[k]!==undefined).map(k=>[k,structuredClone(o[k])]));
+      const old=fields(a),replacement=fields(b);
+      return this.persist(async()=>{
+        // No request, run, input, result or notification is reissued or reassigned.
+        const record={operationId:x.operationId,payload,at:now(),agentId:id,replacementAgentId:b.id,oldRuntime:old,newRuntime:replacement};
+        a.nativeTurns=(a.nativeTurns||[]).map(t=>({...t,sessionId:t.sessionId||a.observedSessionId}));
+        for(const k of keys){delete a[k];delete b[k];}Object.assign(a,replacement);Object.assign(b,old);
+        a.agentModel={...a.agentModel,intent:null,observation:structuredClone(b.agentModel.observation)};
+        b.agentModel={...b.agentModel,intent:null,observation:{connected:true,process:'alive',activity:'idle',canSteer:false}};
+        b.inputEnvelope={...b.inputEnvelope,mode:'migration-required',reason:'runtime-retired'};b.runtimeRetiredTo=a.id;b.name=b.name+'（旧ランタイム保管）';b.nativeTurns=[];
+        delete a.error;delete a.steerTarget;delete b.steerTarget;a.metadataRevision=(a.metadataRevision||0)+1;b.metadataRevision=(b.metadataRevision||0)+1;
+        (a.runtimeMigrations ||= []).push(record);await this.save();return structuredClone(record);
+      });
+    })));
   }
   startupInstructions(){return this.rules.startup();}
   async installInstructions(a){
@@ -337,13 +370,16 @@ export class DirectAgents {
     if(!allowed(confirmed)||this.agentDeleting(a)){if(r.steerTarget)return blocked('dispatch-boundary-changed','添付転送中に補足対象が変わりました。自動送信しません。');return r;}
     if(r.autoRecoveryFrom&&(Date.now()>r.recoveryDeadline||!this.flow.recoveryBoundary(this.flow.run(r.autoRecoveryFrom),confirmed,a.runtime)))return blocked('dispatch-boundary-changed','自動再試行前に新しい入力または状態変化を検出しました。requests getで確認し手動で復旧してください。');
     await this.verifyInstructions(a);
-    if(a.inputEnvelope?.mode!=='startup-v2')return blocked('startup-contract-migration-required','起動契約を確認できません。agents instructionsで診断し、新セッションへ引継いでください。全文fallbackや自動再送はしません。');
+    if(a.inputEnvelope?.mode!=='startup-v2'||a.runtimeRetiredTo){
+      if(r.queuedReason==='startup-contract-migration-required')return r;
+      return this.persist(async()=>{r.queuedReason='startup-contract-migration-required';r.error='起動契約の更新待ち。未送信のまま保留しています。人間のruntime adoption後に同じrunを送信します。';await this.save();return r;});
+    }
     const status=a.runtime;
     if(runState(r)!=='queued'||r.phase==='report'&&!this.flow.reportCurrent(r))return r;
     const deliveredInstruction=await this.persist(async()=>{
       if(this.agentDeleting(a)||runState(r)!=='queued'||r.phase==='report'&&!this.flow.reportCurrent(r))return null;
       const instruction=r.phase==='report'?this.flow.reportPrompt(this.flow.root(r.humanRequestId)):r.instruction;
-      r.instruction=instruction;r.attachmentFiles=files;r.attachmentError=null;
+      r.instruction=instruction;r.attachmentFiles=files;r.attachmentError=null;delete r.queuedReason;delete r.error;
       const text=instruction+this.secretaryContext(a)+this.flow.context(r);
       if(r.steerTarget){const previous=this.flow.run(r.steerTarget.runId);changeRun(previous,{type:'close-tracking',actor:'human',reason:'steering-successor-dispatched'});}
       changeRun(r,{type:'dispatch',actor:'program',at:Date.now(),sessionId:confirmed.sessionId||null,agentIdle:true});

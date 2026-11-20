@@ -85,6 +85,8 @@ const handleRequest = async (req, res) => {
         if(!input || typeof input!=='object')return json(res,400,{error:'Object required'});
         const guide=pathname.match(/^\/api\/direct\/human\/projects\/([0-9a-f-]{36})\/guide$/);
         if(req.method==='PUT'&&guide)return json(res,200,await direct.putProjectGuide(guide[1],input));
+        const runtimeAdoption=pathname.match(/^\/api\/direct\/human\/agents\/([0-9a-f-]{36})\/adopt-runtime$/);
+        if(req.method==='POST'&&runtimeAdoption)return json(res,200,await direct.adoptRuntime(runtimeAdoption[1],input));
         const humanAction=pathname.match(/^\/api\/direct\/human\/requests\/(retry|resume|cancel|complete|cancel-queued|supplement|plan|launch|assignPlan|discard|deadline)$/);
         if(req.method==='POST'&&humanAction){
           const action=humanAction[1],flow=direct.flow;

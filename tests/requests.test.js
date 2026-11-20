@@ -477,7 +477,7 @@ for(const state of ['intact','missing','error'])test('pre-dispatch prompt check:
  const r=await s.send(a.id,{instruction:'human',requestId:randomUUID()});
  assert.equal(f.promptChecks(),1);
  if(state==='intact'){assert.equal(r.inputEnvelopeMode,'startup-v2');assert(!f.sent.at(-1).text.includes('requests finish'));await f.submit(r);await f.complete(r);}
- else {assert.equal(f.sent.length,0);assert.equal(r.runModel.state.reason,'startup-contract-migration-required');assert.equal(a.inputEnvelope.mode,'migration-required');await f.restart();assert.equal(f.service.agent(a.id).inputEnvelope.mode,'migration-required');}
+ else {assert.equal(f.sent.length,0);assert.equal(r.queuedReason,'startup-contract-migration-required');assert.equal(a.inputEnvelope.mode,'migration-required');await f.restart();assert.equal(f.service.agent(a.id).inputEnvelope.mode,'migration-required');}
 
 });
 
@@ -486,7 +486,7 @@ test('queued compact report stops before sending when prompt disappears',async t
  const r=await s.send(a.id,{instruction:'work',requestId:randomUUID()});await f.submit(r);await f.finish(r);
  f.promptState('missing');await f.complete(r);await s.tick();
  const report=s.flow.run(s.flow.root(r.humanRequestId).requestGraph.nodes[0].reportRunId);
- assert.equal(report.phase,'report');assert.equal(report.inputEnvelopeMode,undefined);assert.equal(report.runModel.state.reason,'startup-contract-migration-required');assert.equal(f.sent.length,1);
+ assert.equal(report.phase,'report');assert.equal(report.inputEnvelopeMode,undefined);assert.equal(report.queuedReason,'startup-contract-migration-required');assert.equal(f.sent.length,1);
 });
 
 test('origin=result delivery containing pasted_content survives Claude wrapping and escaping',async t=>{
@@ -716,7 +716,7 @@ test('old installed contracts require migration after upgrade; previously dispat
  native.turns.push({id:'old-turn',state:'completed',output:'old result',completionOffset:native.cursor+1});
  await s.tick();assert.equal(testView(restored).state,'completed');assert.equal(f.sent.length,1);
  const next=await s.send(a.id,{instruction:'new input',requestId:randomUUID()});
- assert.equal(next.inputEnvelopeMode,undefined);assert.equal(f.sent.length,1);assert.equal(next.runModel.state.reason,'startup-contract-migration-required');
+ assert.equal(next.inputEnvelopeMode,undefined);assert.equal(f.sent.length,1);assert.equal(next.queuedReason,'startup-contract-migration-required');
 });
 
 test('unified nested requests require their own finish and direct dependency handling',async t=>{

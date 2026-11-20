@@ -20,14 +20,10 @@ test('specification update and service restart preserve the stable installed boo
 });
 test('legacy mode stops new dispatch, diagnostics are read-only, and explicit transfer preserves request and input IDs',async t=>{
  const f=await fixture(t),s=f.service,a=f.agents[0],target=f.agents[1];a.inputEnvelope={mode:'legacy',reason:'request-rules-updated'};
- const r=await s.send(a.id,{instruction:'migrate this request',requestId:randomUUID()});assert.equal(f.sent.length,0);assert.equal(r.dispatchAttemptedAt,undefined);assert.equal(r.runModel.state.reason,'startup-contract-migration-required');
+ const r=await s.send(a.id,{instruction:'migrate this request',requestId:randomUUID()});assert.equal(f.sent.length,0);assert.equal(r.dispatchAttemptedAt,undefined);assert.equal(r.queuedReason,'startup-contract-migration-required');
  const before=JSON.stringify(s.data),diagnostic=s.instructionStatus(a.id);assert.equal(diagnostic.requiresFreshSession,true);assert.equal(diagnostic.tracking.length,0);assert.equal(JSON.stringify(s.data),before);
  await assert.rejects(s.installInstructions(a),/既存セッション/);
- const q=s.flow.root(r.humanRequestId),inputId=s.flow.inputs(q.id,r.workId)[0].id;
- const payload={humanRequestId:q.id,workId:r.workId,agentId:target.id,revision:q.revision,operationId:'explicit-contract-transfer',instruction:'既存依頼を引継ぎ、未対応入力だけを処理'};
- const next=await s.flow.continue(payload,true);await s.tick();assert.equal(next.humanRequestId,r.humanRequestId);assert.equal(next.workId,r.workId);assert.equal(f.sent.length,1);assert.equal(s.flow.inputs(q.id,r.workId)[0].id,inputId);
- assert.equal((await s.flow.continue(payload,true)).id,next.id);assert.equal(f.sent.length,1);
- await f.submit(next);await finish(s,next);await f.complete(next);assert.equal(s.flow.root(q.id).requestGraph.nodes[0].state.kind,'completed');
+ assert.equal(r.runModel.state.kind,'queued');await assert.rejects(s.flow.continue({humanRequestId:r.humanRequestId,workId:r.workId,agentId:target.id,revision:s.flow.root(r.humanRequestId).revision,operationId:randomUUID(),instruction:'no replay'},true),/未受付・不明・実行中/);
 });
 for(const state of ['sent','running'])test('migration keeps '+state+' native tracking and rejects premature transfer',async t=>{
  const f=await fixture(t),s=f.service,a=f.agents[0],r=await s.send(a.id,{instruction:'in-flight',requestId:randomUUID()});if(state==='running')await f.submit(r);
