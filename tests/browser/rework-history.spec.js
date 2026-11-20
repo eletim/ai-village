@@ -9,3 +9,22 @@ test('two reworks remain readable and linked; genuine withdrawals and accepted r
  await first.getByRole('button',{name:'再依頼へ →'}).click();await expect(second).toBeFocused();await second.getByRole('button',{name:'再依頼へ →'}).click();await expect(third).toBeFocused();await third.getByRole('button',{name:'← 元の依頼'}).click();await expect(second).toBeFocused();expect(writes).toBe(0);
  await d.getByRole('button',{name:'閉じる',exact:true}).click();await expect(page.locator('#agent-worker .message.internal').first()).toContainText('差し戻し・再依頼済み');await expect(page.locator('#agent-worker .message.internal').last()).toContainText('承認済み');
 });
+for(const width of [1440,390])test(`long multiline instructions collapse independently at ${width}px`,async({page})=>{
+ await page.setViewportSize({width,height:900});
+ const {q,view}=reviewCycle();const text='長い指示\n  空白を整理\tして表示。\n'+('作業内容と検証条件を確認してください。'.repeat(120))+'\n末尾の完了条件🧪';
+ for(const n of q.requestGraph.nodes)n.metadata.instruction=text;
+ const before=JSON.stringify(q);
+ await page.route('**/api/**',route=>{const path=new URL(route.request().url()).pathname;return route.fulfill({json:path.endsWith('/requests/get')?q:path==='/api/direct'?workspaceSnapshot(view):{ok:true}});});
+ await page.goto('/agents');await page.locator('[data-manage-agent="worker"]').click();await page.getByRole('button',{name:'依頼の構成・分割'}).click();const d=page.getByRole('dialog',{name:'依頼の構成'});await d.locator('[data-compose-request]').selectOption('q');
+ const first=d.locator('[data-compose-node=first]'),second=d.locator('[data-compose-node=second]');
+ const heading=first.locator(':scope > strong');await expect(heading).toHaveText(Array.from(text.replace(/\s+/gu,' ').trim()).slice(0,80).join('')+'…');
+ await expect(first.locator('pre').first()).not.toBeVisible();await expect(first).toContainText('差し戻し・再依頼済み');
+ await first.getByRole('button',{name:'再依頼へ →'}).click();await expect(second).toBeFocused();await expect(second.locator(':scope > strong')).toBeInViewport();await expect(second.locator(':scope > p').first()).toBeInViewport();
+ await second.getByRole('button',{name:'← 元の依頼'}).click();await expect(first).toBeFocused();
+ await page.screenshot({path:`/tmp/request-preview-${width}-closed.png`});
+ await first.getByText('指示本文',{exact:true}).click();await expect(first.locator('pre').first()).toHaveText(text);await expect(first.locator('pre').first()).toBeVisible();await expect(second.locator('pre').first()).not.toBeVisible();await expect(first.locator('pre').nth(1)).not.toBeVisible();
+ await first.getByText(/成果・応答/).click();await expect(first.locator('pre').nth(1)).toBeVisible();
+ await first.getByText('指示本文',{exact:true}).click();await expect(first.locator('pre').first()).not.toBeVisible();await expect(first.locator('pre').nth(1)).toBeVisible();
+ expect(await d.evaluate(el=>el.scrollWidth<=el.clientWidth+1)).toBe(true);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ await first.getByText('指示本文',{exact:true}).click();await first.locator('pre').first().evaluate(el=>el.scrollIntoView({block:'end'}));expect(await d.evaluate(el=>el.scrollWidth<=el.clientWidth+1)).toBe(true);await page.screenshot({path:`/tmp/request-preview-${width}-open.png`});await page.keyboard.press('Escape');await expect(d).not.toBeVisible();expect(JSON.stringify(q)).toBe(before);
+});
