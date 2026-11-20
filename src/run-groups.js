@@ -1,3 +1,4 @@
+import {requestProgress} from './request-progress.js';
 import {escapeReport as esc} from './report-content.js';
 export const isHumanInput=r=>!!r.external||r.origin==null||r.origin==='human'||!!r.inputReceipt;
 const originLabel={steering:'補足の配送',delegation:'実装・作業依頼',retry:'再試行',continuation:'再開',report:'報告作成',result:'成果の受け取り・レビュー',agent:'他Agentからの依頼',inbox:'入力の配送'};
@@ -5,7 +6,9 @@ export function exchangeLabel(entry,state){
  const q=state.requests?.find(q=>q.id===entry.humanRequestId),nodes=q?.requestGraph?.nodes||[];
  const node=nodes.find(n=>n.id===entry.workId),parent=nodes.find(n=>n.id===node?.parentId);
  const name=id=>state.agents?.find(a=>a.id===id)?.name||'Agent';
- if(entry.origin==='delegation')return '作業依頼（'+(parent?name(parent.assignee):'依頼元Agent')+'から）';
+ const progress=entry.requestProgress||requestProgress(q,entry.workId,state.agents);
+ const suffix=progress&&['差し戻し・再依頼済み','差し戻し','承認済み','取り下げ','成果提出済み'].includes(progress.label)?' · '+progress.label+(progress.waiting?' · '+progress.waiting:''):'';
+ if(entry.origin==='delegation')return '作業依頼（'+(parent?name(parent.assignee):'依頼元Agent')+'から）'+suffix;
  if(entry.origin==='result')return '成果の受け取り・レビュー';
  if(entry.origin==='agent')return '他Agentからの作業依頼';
  return originLabel[entry.origin]||'途中経過';

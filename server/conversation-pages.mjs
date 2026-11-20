@@ -1,8 +1,9 @@
+import {requestProgress} from '../src/request-progress.js';
 import {agentEntries} from '../src/completions.js';
 const terminal=new Set(['completed','failed','interrupted','superseded','terminated']);
 export const entryKey=r=>JSON.stringify([r.createdAt||'',r.external?'native':'run',r.external?(r.sessionId||r.agentSessionId||''):'',r.id]);
 const fields='id inputReceipt inputStatus targetLabel requestId agentId humanRequestId workId origin phase state needsReview runModel createdAt completedAt turnId sessionId agentSessionId instruction travelContexts attachments output finalOutput error errorCode attachmentError recovery notification queueCancelledAt dispatchAttemptedAt inputId suppressUser hideEntry reportStatus hiddenCompletion collapsedHistory external'.split(' ');
-const present=r=>Object.fromEntries(fields.filter(k=>r[k]!==undefined).map(k=>[k,r[k]]));
+const present=(r,view)=>({...Object.fromEntries(fields.filter(k=>r[k]!==undefined).map(k=>[k,r[k]])),...(r.workId?{requestProgress:requestProgress(view.requests?.find(q=>q.id===r.humanRequestId),r.workId,view.agents)}:{})});
 const ordered=(view,a)=>agentEntries(view,a).sort((a,b)=>entryKey(a)<entryKey(b)?-1:entryKey(a)>entryKey(b)?1:0);
 const cursor=(agentId,key)=>Buffer.from(JSON.stringify([agentId,key])).toString('base64url');
 function decode(value,agentId){
@@ -12,7 +13,7 @@ function decode(value,agentId){
 export function historyPage(view,agentId,before){
  const a=view.agents.find(a=>a.id===agentId);if(!a)throw Object.assign(Error('Agent not found'),{status:404});
  const all=ordered(view,a),bound=before?decode(before,agentId):null,older=bound?all.filter(r=>entryKey(r)<bound):all,entries=older.slice(-100);
- return {entries:entries.map(present),hasMore:older.length>entries.length,cursor:entries.length?cursor(agentId,entryKey(entries[0])):null};
+ return {entries:entries.map(r=>present(r,view)),hasMore:older.length>entries.length,cursor:entries.length?cursor(agentId,entryKey(entries[0])):null};
 }
 // Call only on humanProjection, never on the raw request graph.
 // focus: null/undefined keeps every agent's conversation body in the snapshot (legacy/API callers).
@@ -38,7 +39,7 @@ export function workspaceSnapshot(view,ranges={},focus=null){
   // Keep unsent/uncertain/running controls reachable even when older than the window.
   const entries=all.filter(r=>visible.has(r)||!r.inputReceipt&&!r.external&&!terminal.has(r.state));
   entries.forEach(r=>{if(!r.external)included.add(r.id);});
-  conversations[a.id]={entries:entries.map(present),hasMore:all.some(r=>window.length&&entryKey(r)<entryKey(window[0])),cursor:window.length?cursor(a.id,entryKey(window[0])):null};
+  conversations[a.id]={entries:entries.map(r=>present(r,view)),hasMore:all.some(r=>window.length&&entryKey(r)<entryKey(window[0])),cursor:window.length?cursor(a.id,entryKey(window[0])):null};
  }
  const runs=view.runs.filter(r=>included.has(r.id));
  const agents=view.agents.map(a=>{const {nativeTurns,runtime,creationInput,ownedProcesses,processVerification,initialTabId,sessionName,...rest}=a;return {...rest,nativeTurns:(nativeTurns||[]).slice(-1).map(t=>({id:t.id,sessionId:t.sessionId,state:t.state}))};});

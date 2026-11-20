@@ -20,7 +20,7 @@ test('deadline and latest report are visible, human changes root deadline with v
  });
  await page.goto('/agents');await expect(page.locator('.agent-recovery-host')).toContainText('調査が完了しました');
  await page.getByRole('button',{name:'期限・報告の詳細'}).click();const dialog=page.getByRole('dialog',{name:'依頼の構成'});await dialog.locator('[data-compose-request]').selectOption('q');
- await dialog.locator('summary').click();await dialog.locator('[name=completionAt]').fill('2026-12-01T12:00');await dialog.locator('[name=reason]').fill('希望納期を指定');await dialog.getByRole('button',{name:'期限を保存'}).click();
+ await dialog.locator('summary').filter({hasText:'期限を設定・変更'}).click();await dialog.locator('[name=completionAt]').fill('2026-12-01T12:00');await dialog.locator('[name=reason]').fill('希望納期を指定');await dialog.getByRole('button',{name:'期限を保存'}).click();
  await expect.poll(()=>writes.length).toBe(1);expect(writes[0].expectedVersion).toBe(1);expect(writes[0].reportAt).toBeNull();expect(writes[0].reason).toBe('希望納期を指定');
  await expect(dialog.locator('.request-reporting')).toContainText('2026');
 });

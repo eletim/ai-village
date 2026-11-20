@@ -1,0 +1,11 @@
+import {test,expect} from './helpers/change-events.js';import {reviewCycle} from '../rework-fixture.mjs';import {workspaceSnapshot} from '../../server/conversation-pages.mjs';
+test('two reworks remain readable and linked; genuine withdrawals and accepted result are distinct',async({page})=>{
+ const {q,view}=reviewCycle();let writes=0;
+ await page.route('**/api/**',route=>{const url=new URL(route.request().url());if(url.pathname.endsWith('/requests/get'))return route.fulfill({json:q});if(url.pathname==='/api/direct')return route.fulfill({json:workspaceSnapshot(view)});if(url.pathname.includes('/human/'))writes++;return route.fulfill({json:{ok:true,result:{}}});});
+ await page.goto('/agents');await page.locator('[data-manage-agent="worker"]').click();await page.getByRole('button',{name:'依頼の構成・分割'}).click();const d=page.getByRole('dialog',{name:'依頼の構成'});await d.locator('[data-compose-request]').selectOption('q');
+ const first=d.locator('[data-compose-node=first]'),second=d.locator('[data-compose-node=second]'),third=d.locator('[data-compose-node=third]');
+ await expect(first).toContainText('差し戻し・再依頼済み');await expect(second).toContainText('差し戻し・再依頼済み');await expect(third).toContainText('承認済み');await expect(d).not.toContainText('確認待ち');await expect(d.locator('[data-compose-node=cancel]')).toContainText('取り下げ');await expect(d.locator('[data-compose-node=plan]')).toContainText('取り下げ');
+ await first.getByText('指示本文',{exact:true}).click();await first.getByText(/成果・応答/).click();await expect(first.locator('pre').nth(0)).toBeVisible();await expect(first.locator('pre').nth(1)).toHaveText('成果 first');await expect(second.locator('pre').first()).not.toBeVisible();
+ await first.getByRole('button',{name:'再依頼へ →'}).click();await expect(second).toBeFocused();await second.getByRole('button',{name:'再依頼へ →'}).click();await expect(third).toBeFocused();await third.getByRole('button',{name:'← 元の依頼'}).click();await expect(second).toBeFocused();expect(writes).toBe(0);
+ await d.getByRole('button',{name:'閉じる',exact:true}).click();await expect(page.locator('#agent-worker .message.internal').first()).toContainText('差し戻し・再依頼済み');await expect(page.locator('#agent-worker .message.internal').last()).toContainText('承認済み');
+});
