@@ -16,7 +16,7 @@
 ## 確認済みの観測
 
 - 旧親は隔離村へのrespondだけを行い、`OLD-PARENT-READY`で正常終了した。
-- 未移行の別startup-v1 Agentは、現行サーバー上で新規依頼と最終報告を完了した（`UNRELATED-COMPAT-OK`）。旧起動契約のままで、7日間の期限付き互換情報が保存された。
+- 未移行の別startup-v1 Agentは、現行サーバー上で新規依頼と最終報告を完了した（`UNRELATED-COMPAT-OK`）。旧起動契約のままで、当時の7日間の互換情報が保存された。親の補足により最終実装では7日は管理者の確認日に変更し、超過しても自動停止しない。確認日超過の継続は追加の状態/送信経路テストで検証し、この時刻条件変更後に全実機行程は繰り返していない。
 - 対象だけをprepareした後、同じ親の補足入力がqueuedで保留され、正常終了・idle後のadoptで同じrunが新sessionへ送られた。
 - Claudeは固定bootstrapからwork仕様を取得し、封筒のrevision `8e8cc2c5e21c3f5e82ceb2281490817191c8ef07194fcac069c5db254f1faad3`との一致を確認した。inputsを指定しresults:[]でrespondを実行、`CLAUDE-V2-READY`で正常終了した。
 - Claudeの2回目は短い封筒で、同じwork仕様を再取得せずinputs/resultsを指定してfinishし、`CLAUDE-SECOND-OK`で正常終了、最終報告も完了した。

@@ -1,6 +1,6 @@
 # Agent input envelope
 
-> 現行の起動契約・仕様取得・既存セッション移行は [stable-bootstrap.md](stable-bootstrap.md)。以下のstartup-v1/legacy全文fallbackは2026-11-12時点の履歴で、v2送信には使わない。旧セッションの7日間の互換境界と対象指定移行は上記の現行資料を参照。全文入力照合の不変条件は引き続き有効。
+> 現行の起動契約・仕様取得・既存セッション移行は [stable-bootstrap.md](stable-bootstrap.md)。以下のstartup-v1/legacy全文fallbackは2026-11-12時点の履歴で、v2送信には使わない。旧セッションの明示的な移行待ち互換境界と対象指定移行は上記の現行資料を参照。全文入力照合の不変条件は引き続き有効。
 
 ## Protocol
 

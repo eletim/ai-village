@@ -1,4 +1,4 @@
-import {enrollLegacy,legacyAllowed,legacyContext} from './legacy-contract.mjs';
+import {enrollLegacy,legacyAllowed,legacyContext,legacyReviewDue} from './legacy-contract.mjs';
 import {migrateCommonRequests} from './common-request-migration.mjs';
 import {PartitionStore} from './partition-store.mjs';
 import {RequestUnits} from './request-units.mjs';
@@ -211,7 +211,7 @@ export class DirectAgents {
     return {agentId:id,envelope:structuredClone(a.inputEnvelope||{mode:'migration-required'}),requiredContract:2,
       requiresFreshSession:a.inputEnvelope?.mode!=='startup-v2',tracking:tracking.map(r=>({runId:r.id,state:modelOf(r).state.kind,requestId:r.humanRequestId})),
       queued:runs.filter(r=>modelOf(r).state.kind==='queued').map(r=>r.id),
-      legacyCompatibility:a.legacyContract||null,legacyDispatchAllowed:legacyAllowed(a),runtimeUpgrade:a.runtimeUpgrade||null,
+      legacyCompatibility:a.legacyContract||null,legacyDispatchAllowed:legacyAllowed(a),legacyMigrationReviewDue:legacyReviewDue(a),runtimeUpgrade:a.runtimeUpgrade||null,
       requests:this.data.requests.flatMap(q=>q.requestGraph?.nodes.filter(n=>n.assignee===id&&n.state.kind==='active').map(n=>({humanRequestId:q.id,workId:n.id,currentRunId:n.currentRunId,revision:q.revision}))||[]),
       migration:'対象だけ人間専用POST /api/direct/human/agents/:id/prepare-runtime {operationId,revision}で次送信を保留。現在runの正常終了・idleを確認。同じ登録属性の未使用新Agentをcreate。人間専用POST /api/direct/human/agents/:id/adopt-runtime {operationId,revision,replacementAgentId,replacementRevision,handover}で既存IDへランタイム採用。queuedは同じrunを保持。sent/runningは終端待ち。旧ランタイムの停止は別途判断。'};
   }
