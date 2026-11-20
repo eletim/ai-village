@@ -1,3 +1,9 @@
+import {enrollLegacy,legacyAllowed,legacyContext,legacyReviewDue} from './legacy-contract.mjs';
+import {migrateCommonRequests} from './common-request-migration.mjs';
+import {PartitionStore} from './partition-store.mjs';
+import {RequestUnits} from './request-units.mjs';
+import {EventEmitter} from 'node:events';
+import {EventMonitor} from './event-monitor.mjs';
 import {migrateProjectOrder} from './project-order-migration.mjs';
 import {orderedProjects,orderedProjectAgents} from '../src/board-state.js';
 import {migrateUnifiedStore} from './unified-request-migration.mjs';
@@ -14,10 +20,10 @@ import {migrateRequestStore} from './request-migration.mjs';
 import {migrateRunStore} from './run-migration.mjs';
 import {inputCorrelation,installInstructionsScript,verifyInstructionsScript} from './input-envelope.mjs';
 import {sessionModel} from './session-model.mjs';
-import {DirectStore,writeSnapshot} from './direct-store.mjs';
 import {ProjectGuides} from './project-guides.mjs';
 import {humanProjection} from './report-view.mjs';
 import {validWorkshopPattern} from '../src/workshop-pattern.js';
+import {deleteAgent} from './agent-deletion.mjs';
 import {deletionPlan,deleteProject} from './project-deletion.mjs';
 import {stageAttachment} from './attachment-transfer.mjs';
 import {RequestFlow} from './requests.mjs';
@@ -46,14 +52,15 @@ const STUCK_RUN_TIMEOUT_MS = 10*60*1000;
 // Human and future secretary callers share this service. No model-generated
 // instruction, approval, or report is required. One server owns a state directory.
 export class DirectAgents {
-  constructor({dir, remote, notifier, attachments, transferAttachment=stageAttachment, localRun=run, localBin=process.env.VILLAGE_PMUX_BIN || 'purplemux', pollMs=2000, villageUrl='http://127.0.0.1:5173'}) {
-    Object.assign(this,{dir,remote,notifier,attachments,transferAttachment,localRun,localBin,pollMs,villageUrl});
+  constructor({dir, remote, notifier, attachments, transferAttachment=stageAttachment, localRun=run, localBin=process.env.VILLAGE_PMUX_BIN || 'purplemux', pollMs=2000, hostFactory, villageUrl='http://127.0.0.1:5173'}) {
+    Object.assign(this,{dir,remote,notifier,attachments,transferAttachment,localRun,localBin,pollMs,hostFactory,villageUrl});
     this.data={version:1,workshops:[],projects:[],agents:[],runs:[]};
     this.projectGuides=new ProjectGuides(undefined,this);
-    this.flow=new RequestFlow(this);
+    this.flow=new RequestFlow(this);this.events=new EventEmitter();
     this.persistence=new PersistenceBoundary();
     this.queue=Promise.resolve(); this.locks=new Map(); this.monitors=new Map();
-    this.store=new DirectStore({capture:()=>this.data,write:value=>writeSnapshot(this.dir,value)});
+    this.units=new RequestUnits(this);
+    this.store=new PartitionStore({dir:this.dir,capture:()=>this.data,selection:()=>this.units.selection(),affected:c=>this.units.affected(c)});
   }
   async init({watch=true}={}) {
     await mkdir(this.dir,{recursive:true});
@@ -64,7 +71,8 @@ export class DirectAgents {
       this.owner=createServer();
       await new Promise((ok,no)=>{this.owner.once('error',no);this.owner.listen('\0ai-village-direct-'+createHash('sha256').update(resolve(this.dir)).digest('hex'),ok);});
     }
-    try { this.data=JSON.parse(await readFile(resolve(this.dir,'direct.json'),'utf8')); }
+    const stored=this.store.open();
+    try { this.data=stored||JSON.parse(await readFile(resolve(this.dir,'direct.json'),'utf8')); }
     catch(e) { if(e.code!=='ENOENT')throw e; }
     quarantineRequests(this.data);
     this.data=await migrateRunStore(this.dir,this.data);
@@ -73,6 +81,7 @@ export class DirectAgents {
     if(!this.data.unifiedRequestVersion)this.data=await migrateCanonicalStore(this.dir,this.data);
     if(!this.data.unifiedRequestVersion)this.data=await migrateMarkerStore(this.dir,this.data);
     this.data=await migrateUnifiedStore(this.dir,this.data);
+    this.data=migrateCommonRequests(this.data);
     this.data.projects ||= [];
     migrateProjectOrder(this.data.projects);
     for(const p of this.data.projects)if(p.deletion?.status==='running'){p.deletion.status='partial';p.deletion.interruptedAt=now();}
@@ -80,7 +89,8 @@ export class DirectAgents {
     for(const a of this.data.agents) {
       a.connection.connectionType ||= 'ssh';
       a.inputEnvelope ||= {mode:'legacy'};
-      if(a.inputEnvelope.mode==='startup-v1'&&a.inputEnvelope.hash&&a.inputEnvelope.hash!==createHash('sha256').update(this.startupInstructions()).digest('hex'))a.inputEnvelope={...a.inputEnvelope,mode:'legacy',reason:'request-rules-updated'};
+      enrollLegacy(a);
+      if(a.inputEnvelope.mode==='startup-v2'&&a.inputEnvelope.hash!==createHash('sha256').update(this.startupInstructions()).digest('hex'))a.inputEnvelope={...a.inputEnvelope,mode:'migration-required',reason:a.inputEnvelope.reason||'startup-contract-upgrade-required'};
       a.modelInfo={available:false};
       bindAgent(a);delete a.steerTarget;
       // A removed tab identity cannot be reused; otherwise live observations expire on restart.
@@ -90,9 +100,9 @@ export class DirectAgents {
     for(const p of this.data.projects)if(!p.deletedAt)await this.projectGuides.initialize(p);
     this.flow.init();
     await this.save();
-    if(watch){this.timer=setInterval(()=>this.tick().catch(()=>{}),this.pollMs);this.timer.unref();void this.tick().catch(()=>{});}
+    if(watch){this.flow.reporting.start();this.monitor=new EventMonitor(this,this.hostFactory?{hostFactory:this.hostFactory}:{});this.monitor.start();void this.progress().catch(()=>{});}
   }
-  close(){clearInterval(this.timer);this.owner?.close();}
+  close(){this.monitor?.close();this.flow.reporting.close();clearInterval(this.timer);this.owner?.close();this.store.close();}
   presentation(){
     if(!this.presentationCache){const view=humanProjection(this.data);this.presentationCache={...view,projects:view.projects.filter(p=>!p.deletedAt),capabilities:{requestSplitting:true,requestInbox:true,steering:true,travelContexts:true,attachments:!!this.attachments},reviews:this.reviewStates(view)};}
     const live=new Map(this.data.agents.map(a=>[a.id,a]));
@@ -130,8 +140,9 @@ export class DirectAgents {
   projectDeletePlan(id){return deletionPlan(this,id);}
   deleteProject(id,input){return deleteProject(this,id,input);}
   writableProject(id){const p=this.project(id);if(p.deletion||p.deletedAt)fail('Projectは削除処理中または削除済みです');return p;}
-  agentDeleting(a){return !!(a.deletedAt||this.data.projects.find(p=>p.id===a.projectId)?.deletion);}
-  writableAgent(a){if(this.agentDeleting(a))fail('所属Projectは削除処理中または削除済みです');return a;}
+  deleteAgent(id,input){return deleteAgent(this,id,input);}
+  agentDeleting(a){return !!(a.deletion||a.deletedAt||this.data.projects.find(p=>p.id===a.projectId)?.deletion);}
+  writableAgent(a){if(a.runtimeRetiredTo)fail('旧ランタイム保管用Agentです。新規依頼は移行先を使用してください');if(this.agentDeleting(a))fail('所属Projectは削除処理中または削除済みです');return a;}
   validName(name){if(typeof name!=='string'||!name.trim()||name.length>120)fail('名前を1〜120文字で指定してください',400);return name.trim();}
   async putProject(input,id){return this.locked('projects',()=>this.persist(async()=>{
     if('pinned' in input)fail('先頭固定は廃止されました。表示順を指定してください',400);
@@ -197,31 +208,87 @@ export class DirectAgents {
   })));}
   get rules(){let url=this.villageUrl;try{url=new URL(this.notifier.status().officeUrl).origin;}catch{}return new AgentRules(url);}
   secretaryContext(agent){const identity=agentIdentity(agent);return this.rules.discovery({agentId:agent.id,role:identity.role,location:identity.location,projectId:agent.projectId||null});}
+  instructionStatus(id){
+    const a=this.agent(id),runs=this.data.runs.filter(r=>r.agentId===id),tracking=runs.filter(r=>['sent','running'].includes(modelOf(r).state.kind));
+    return {agentId:id,envelope:structuredClone(a.inputEnvelope||{mode:'migration-required'}),requiredContract:2,
+      requiresFreshSession:a.inputEnvelope?.mode!=='startup-v2',tracking:tracking.map(r=>({runId:r.id,state:modelOf(r).state.kind,requestId:r.humanRequestId})),
+      queued:runs.filter(r=>modelOf(r).state.kind==='queued').map(r=>r.id),
+      legacyCompatibility:a.legacyContract||null,legacyDispatchAllowed:legacyAllowed(a),legacyMigrationReviewDue:legacyReviewDue(a),runtimeUpgrade:a.runtimeUpgrade||null,
+      requests:this.data.requests.flatMap(q=>q.requestGraph?.nodes.filter(n=>n.assignee===id&&n.state.kind==='active').map(n=>({humanRequestId:q.id,workId:n.id,currentRunId:n.currentRunId,revision:q.revision}))||[]),
+      migration:'依頼で許可された対象だけ agents prepare-runtime AGENT_ID {operationId,revision}で次送信を保留。現在runの正常終了・idleを確認。同じ登録属性の未使用新Agentをcreate。agents adopt-runtime AGENT_ID {operationId,revision,replacementAgentId,replacementRevision,handover}で既存IDへランタイム採用。queuedは同じrunを保持。sent/runningは終端待ち。旧ランタイムの停止は別途判断。'};
+  }
+  async prepareRuntime(id,x){
+    if(!x||typeof x.operationId!=='string'||! /^[\w-]{8,100}$/.test(x.operationId)||!Number.isInteger(x.revision)||Object.keys(x).some(k=>!['operationId','revision'].includes(k)))fail('prepare-runtimeの入力が不正です',400);
+    return this.locked(id,()=>this.persist(async()=>{
+      const a=this.writableAgent(this.agent(id));
+      if(a.runtimeUpgrade?.operationId===x.operationId){if(a.runtimeUpgrade.revision!==x.revision)fail('operationIdの再利用です');return structuredClone(a.runtimeUpgrade);}
+      if((a.metadataRevision||0)!==x.revision)fail('Agentが更新されています。再読込してください');
+      a.runtimeUpgrade={state:'prepared',operationId:x.operationId,revision:x.revision,at:now()};a.metadataRevision=(a.metadataRevision||0)+1;await this.save();return structuredClone(a.runtimeUpgrade);
+    }));
+  }
+  async adoptRuntime(id,x){
+    if(!x||typeof x.operationId!=='string'||! /^[\w-]{8,100}$/.test(x.operationId)||typeof x.replacementAgentId!=='string'||x.replacementAgentId===id||!Number.isInteger(x.revision)||!Number.isInteger(x.replacementRevision)||Object.keys(x).some(k=>!['operationId','replacementAgentId','revision','replacementRevision','handover'].includes(k)))fail('runtime adoptionの入力が不正です',400);
+    if(x.handover!==undefined&&(typeof x.handover!=='string'||!x.handover.trim()||x.handover.length>30000))fail('handoverは1〜30000文字です',400);
+    const payload=JSON.stringify({replacementAgentId:x.replacementAgentId,revision:x.revision,replacementRevision:x.replacementRevision,...(x.handover!==undefined?{handover:x.handover}:{})});
+    return this.locked('projects',()=>this.locked(id,()=>this.locked(x.replacementAgentId,async()=>{
+      const a=this.agent(id),b=this.agent(x.replacementAgentId),receipt=a.runtimeMigrations?.find(m=>m.operationId===x.operationId);
+      if(receipt){if(receipt.payload!==payload)fail('operationIdの再利用です');return structuredClone(receipt);}
+      this.writableAgent(a);this.writableAgent(b);
+      if((a.metadataRevision||0)!==x.revision||(b.metadataRevision||0)!==x.replacementRevision)fail('Agentが更新されています。再読込してください');
+      if(['provider','location','projectId','workshopId','cwd'].some(k=>(a[k]||null)!==(b[k]||null))||JSON.stringify(a.connection)!==JSON.stringify(b.connection))fail('同じ場所・Project・provider・接続の未使用Agentを指定してください');
+      if(!b.tabId||b.tabId===a.tabId||!b.workspaceId||b.workspaceId===a.workspaceId)fail('独立した新ランタイムが必要です');
+      if(this.data.runs.some(r=>r.agentId===b.id)||this.data.requests.some(q=>q.requestGraph?.nodes.some(n=>n.assignee===b.id)))fail('移行元ランタイムは未使用である必要があります');
+      if(this.data.runs.some(r=>r.agentId===id&&['sent','running'].includes(modelOf(r).state.kind)))fail('受付不明・実行中runの追跡が残っています。自動再送せず終端を確認してください');
+      if(this.data.runs.some(r=>r.agentId===id&&r.dispatchAttemptedAt)&&!x.handover?.trim())fail('過去の外部操作・未完了事項・不明点を確認したhandoverが必要です',400);
+      const oldSnapshot=await this.observe(a),fresh=await this.observe(b);
+      if((oldSnapshot.inputs.length||oldSnapshot.turns.length)&&!x.handover?.trim())fail('native履歴の外部操作・未完了事項・不明点を確認したhandoverが必要です',400);
+      if(!agentControls(a).canSend||!agentControls(b).canSend||!oldSnapshot.available||!(fresh.available||b.provider==='claude'&&fresh.unrecorded===true)||fresh.inputs.length||fresh.turns.length)fail('両ランタイムのidleと新ランタイムの未使用を確認できません');
+      if(this.data.runs.some(r=>r.agentId===id&&['sent','running'].includes(modelOf(r).state.kind)))fail('受付中runが発生しました');
+      await this.verifyInstructions(b);
+      if(b.inputEnvelope?.mode!=='startup-v2'||b.inputEnvelope.hash!==createHash('sha256').update(this.startupInstructions()).digest('hex'))fail('新ランタイムの固定起動契約を確認できません');
+      const keys=['workspaceId','initialTabId','tabId','sessionName','terminalUrl','runtime','observedSessionId','inputEnvelope','modelInfo','setupRequired','ownedProcesses','processVerification','terminatedAt','lastCheckedAt'];
+      const fields=o=>Object.fromEntries(keys.filter(k=>o[k]!==undefined).map(k=>[k,structuredClone(o[k])]));
+      const old=fields(a),replacement=fields(b);
+      return this.persist(async()=>{
+        // No request, run, input, result or notification is reissued or reassigned.
+        const record={operationId:x.operationId,payload,at:now(),agentId:id,replacementAgentId:b.id,oldRuntime:structuredClone(old),newRuntime:structuredClone(replacement),handover:x.handover||null,requestContexts:this.data.requests.flatMap(q=>(q.requestGraph?.nodes||[]).filter(n=>n.assignee===id).map(n=>({humanRequestId:q.id,workId:n.id})))};
+        a.nativeTurns=(a.nativeTurns||[]).map(t=>({...t,sessionId:t.sessionId||a.observedSessionId}));
+        for(const k of keys){delete a[k];delete b[k];}Object.assign(a,replacement);Object.assign(b,old);
+        a.agentModel={...a.agentModel,intent:null,observation:structuredClone(b.agentModel.observation)};
+        b.agentModel={...b.agentModel,intent:null,observation:{connected:true,process:'alive',activity:'idle',canSteer:false}};
+        b.inputEnvelope={...b.inputEnvelope,mode:'migration-required',reason:'runtime-retired'};b.runtimeRetiredTo=a.id;b.name=b.name+'（旧ランタイム保管）';b.nativeTurns=[];
+        delete a.error;delete a.steerTarget;delete b.steerTarget;a.metadataRevision=(a.metadataRevision||0)+1;b.metadataRevision=(b.metadataRevision||0)+1;
+        if(a.runtimeUpgrade)a.runtimeUpgrade={...a.runtimeUpgrade,state:'adopted',adoptionOperationId:x.operationId};
+        (a.runtimeMigrations ||= []).push(record);await this.save();return structuredClone(record);
+      });
+    })));
+  }
   startupInstructions(){return this.rules.startup();}
   async installInstructions(a){
-    let envelope={mode:'legacy'};
+    if(a.tabId)throw Error('既存セッションへ起動契約を再インストールできません。新しいAgentを作成してください。');
+    let envelope={mode:'migration-required',reason:'startup-receipt-invalid'};
     try{
       const body=this.startupInstructions();
       const receipt=JSON.parse(await this.execute(a,['python3','-c',installInstructionsScript,a.workspaceId,a.provider,body]));
-      if(receipt.installed===true&&receipt.hash===createHash('sha256').update(body).digest('hex'))envelope={mode:'startup-v1',hash:receipt.hash,installedAt:now()};
-    }catch{envelope={mode:'legacy',reason:'startup-instructions-unavailable'};}
+      if(receipt.installed===true&&receipt.hash===createHash('sha256').update(body).digest('hex'))envelope={mode:'startup-v2',hash:receipt.hash,installedAt:now()};
+    }catch{envelope={mode:'migration-required',reason:'startup-instructions-unavailable'};}
     await this.persist(async()=>{a.inputEnvelope=envelope;await this.save();});
   }
   async verifyInstructions(a){
-    if(a.inputEnvelope?.mode!=='startup-v1')return;
+    if(a.inputEnvelope?.mode!=='startup-v2')return;
     let reason='startup-instructions-missing-or-changed';
     try{
       const result=JSON.parse(await this.execute(a,['python3','-c',verifyInstructionsScript,a.workspaceId,a.provider,a.inputEnvelope.hash||'']));
       if(result.verified===true)return;
     }catch{reason='startup-instructions-check-failed';}
-    await this.persist(async()=>{a.inputEnvelope={...a.inputEnvelope,mode:'legacy',reason,downgradedAt:now()};await this.save();});
+    await this.persist(async()=>{a.inputEnvelope={...a.inputEnvelope,mode:'migration-required',reason,downgradedAt:now()};await this.save();});
   }
   // Only synchronous model edits and save() belong inside this boundary.
   // Read remote evidence first; dispatch external effects only after it commits.
   async persist(change,roots=this.data){return this.persistence.run(async()=>{
     const scope=this.persistence.context.getStore();
     if(scope.restore)return change();
-    scope.roots=roots;scope.restore=checkpoint(roots);
+    scope.roots=roots;scope.restore=this.units.checkpoint()||checkpoint(roots);
     try{return await change();}
     catch(error){
       if(error.persistenceUncertain)this.persistence.failure=error;
@@ -229,9 +296,10 @@ export class DirectAgents {
       throw error;
     }
   });}
-  async save(){return this.persistence.run(async()=>{
-    const restore=checkpoint(this.persistence.context.getStore()?.roots||this.data);
-    try{const task=this.store.save();this.queue=task;await task;this.presentationCache=null;
+  async save(options){return this.persistence.run(async()=>{
+    const restore=this.units.checkpoint()||checkpoint(this.persistence.context.getStore()?.roots||this.data);
+    try{const task=this.store.save(options);this.queue=task;await task;this.presentationCache=null;this.flow.reporting.schedule(this.store.lastChanges.filter(c=>c.kind==='requests').map(c=>c.id));
+      if(this.publishedFingerprint!==this.store.fingerprint){this.publishedFingerprint=this.store.fingerprint;setImmediate(()=>{this.events.emit('change');if(this.monitor&&!this.monitor.closed){this.monitor.update();void this.progress().catch(()=>{});}});}
       const scope=this.persistence.context.getStore();if(scope.restore)scope.restore=restore;
     }catch(error){error.persistenceFailure=true;if(error.persistenceUncertain)this.persistence.failure=error;throw error;}
   });}
@@ -271,7 +339,7 @@ export class DirectAgents {
     return this.localRun(args[0]==='purplemux'?this.localBin:args[0],args.slice(1));
   }
   async pmux(a,...args){return JSON.parse(await this.execute(a,['purplemux',...args]));}
-  async runtime(a,status){this.runtimeReader ||= new RuntimeReader(this.dir);return this.runtimeReader.read(a,status,(agent,args)=>this.execute(agent,args));}
+  async runtime(a,status){this.runtimeReader ||= new RuntimeReader(this.dir);return this.runtimeReader.read(a,status,(agent,args)=>this.observationCommand(agent,args));}
   async create(input){return this.locked('projects',()=>this.locked('create:'+input.requestId,()=>this.createOnce(input)));}
   async createOnce({workshopId,cwd,name='Agent',requestId,provider='codex',location='workshop',projectId=null}){
     if(typeof requestId!=='string'||! /^[\w-]{8,100}$/.test(requestId))fail('requestIdが必要です',400);
@@ -320,17 +388,26 @@ export class DirectAgents {
     if(!allowed(confirmed)||this.agentDeleting(a)){if(r.steerTarget)return blocked('dispatch-boundary-changed','添付転送中に補足対象が変わりました。自動送信しません。');return r;}
     if(r.autoRecoveryFrom&&(Date.now()>r.recoveryDeadline||!this.flow.recoveryBoundary(this.flow.run(r.autoRecoveryFrom),confirmed,a.runtime)))return blocked('dispatch-boundary-changed','自動再試行前に新しい入力または状態変化を検出しました。requests getで確認し手動で復旧してください。');
     await this.verifyInstructions(a);
-    const status=a.runtime,compact=a.inputEnvelope?.mode==='startup-v1';
+    if(a.runtimeUpgrade?.state==='prepared'||a.runtimeRetiredTo||(a.inputEnvelope?.mode!=='startup-v2'&&!legacyAllowed(a))){
+      if(r.queuedReason==='startup-contract-migration-required')return r;
+      return this.persist(async()=>{r.queuedReason='startup-contract-migration-required';r.error='起動契約の更新待ち。未送信のまま保留しています。runtime adoption後に同じrunを送信します。';await this.save();return r;});
+    }
+    const status=a.runtime;
     if(runState(r)!=='queued'||r.phase==='report'&&!this.flow.reportCurrent(r))return r;
-    const guide=compact?'':await this.projectGuides.context(a,r,this.villageUrl);
     const deliveredInstruction=await this.persist(async()=>{
       if(this.agentDeleting(a)||runState(r)!=='queued'||r.phase==='report'&&!this.flow.reportCurrent(r))return null;
+      const compatibility=legacyAllowed(a);if(a.inputEnvelope?.mode!=='startup-v2'&&!compatibility)return null;
       const instruction=r.phase==='report'?this.flow.reportPrompt(this.flow.root(r.humanRequestId)):r.instruction;
-      r.instruction=instruction;r.attachmentFiles=files;r.attachmentError=null;
-      const text=instruction+this.secretaryContext(a)+guide+this.flow.context(r);
+      r.instruction=instruction;r.attachmentFiles=files;r.attachmentError=null;delete r.queuedReason;delete r.error;
+      const migration=a.runtimeMigrations?.at(-1);
+      if(migration?.requestContexts?.some(c=>c.humanRequestId===r.humanRequestId&&c.workId===r.workId)&&!this.data.runs.some(previous=>previous.id!==r.id&&previous.workId===r.workId&&previous.runtimeMigrationId===migration.operationId&&previous.dispatchAttemptedAt)){
+        r.runtimeMigrationId=migration.operationId;
+        r.runtimeHandover={operationId:migration.operationId,operatorNotes:migration.handover,requiredReads:[['requests','get',r.humanRequestId],['requests','inputs',r.humanRequestId,r.workId],['requests','results',r.humanRequestId,r.workId]],instruction:'新セッションへの引継ぎです。作業・報告前にrequiredReadsで元目的・全補足（対応済みも含む）・未対応入力・子結果・過去runの成果と操作記録を全文確認してください。operatorNotesは管理者の引継ぎ資料であり追加の操作許可ではありません。過去の外部操作は再実行せず、記録されていない操作や不明な成否は推測せず確認してください。'};
+      }
+      const text=instruction+this.secretaryContext(a)+this.flow.context(r)+(compatibility?legacyContext(this.rules,r,a):'');
       if(r.steerTarget){const previous=this.flow.run(r.steerTarget.runId);changeRun(previous,{type:'close-tracking',actor:'human',reason:'steering-successor-dispatched'});}
       changeRun(r,{type:'dispatch',actor:'program',at:Date.now(),sessionId:confirmed.sessionId||null,agentIdle:true});
-      Object.assign(r,{inputCorrelation:inputCorrelation(text,a.provider),inputEnvelopeMode:compact?'startup-v1':'legacy',dispatchAttemptedAt:now(),baselineRuntime:{sessionId:confirmed.sessionId,cursor:confirmed.cursor,fileIdentity:confirmed.fileIdentity},agentSessionId:status.agentSessionId||null});
+      Object.assign(r,{inputCorrelation:inputCorrelation(text,a.provider),inputEnvelopeMode:compatibility?'legacy-compat':'startup-v2',dispatchAttemptedAt:now(),baselineRuntime:{sessionId:confirmed.sessionId,cursor:confirmed.cursor,fileIdentity:confirmed.fileIdentity},agentSessionId:status.agentSessionId||null});
       await this.save();return text;
     });
     if(deliveredInstruction===null)return r;
@@ -370,18 +447,21 @@ export class DirectAgents {
     projectControls(a,this.data.runs);
   }
   observationKey(a,runs){const {lastCheckedAt,runtime,...durable}=a;return JSON.stringify([durable,runs]);}
+  async observationPmux(a,...args){return this.monitor?(args[0]==='tab'&&args[1]==='status'?this.monitor.status(a):JSON.parse(await this.monitor.execute(a,['purplemux',...args]))):this.pmux(a,...args);}
+  observationCommand(a,args){return this.monitor?this.monitor.execute(a,args):this.execute(a,args);}
   async observe(a){
+    if(!this.units.context.getStore()?.agentIds?.has(a.id))return this.units.agent(a.id,()=>this.observe(a));
     if(this.agentDeleting(a))return this.persist(async()=>{this.releaseStuckRuns(a);this.updateAvailability(a);await this.save();return {available:false,turns:[],inputs:[]};});
     try{
       let s;
-      try{s=await this.pmux(a,'tab','status','-w',a.workspaceId,a.tabId);}catch(error){
-        const {tabs}=await this.pmux(a,'tab','list','-w',a.workspaceId);
+      try{s=await this.observationPmux(a,'tab','status','-w',a.workspaceId,a.tabId);}catch(error){
+        const {tabs}=await this.observationPmux(a,'tab','list','-w',a.workspaceId);
         if(!Array.isArray(tabs)||tabs.some(t=>t.tabId===a.tabId))throw error;
         s={alive:false,cliState:'inactive'};
       }
       const snapshot=await this.runtime(a,s);
       let setupRequired=false;
-      if(s.alive&&!s.agentSessionId){const capture=await this.pmux(a,'tab','capture','-w',a.workspaceId,a.tabId);setupRequired=/Do you trust|trust this|trust the contents/i.test(capture.content||'');}
+      if(s.alive&&!s.agentSessionId){const capture=await this.observationPmux(a,'tab','capture','-w',a.workspaceId,a.tabId);setupRequired=/Do you trust|trust this|trust the contents/i.test(capture.content||'');}
       const roots={agent:a,runs:this.data.runs.filter(r=>r.agentId===a.id)};
       return await this.persist(async()=>{
       const before=this.observationKey(a,roots.runs);
@@ -402,8 +482,8 @@ export class DirectAgents {
         const archived=(a.nativeTurns||[]).map(t=>({...t,sessionId:t.sessionId||a.observedSessionId})).filter(t=>t.sessionId&&t.sessionId!==snapshot.sessionId&&['completed','failed','interrupted'].includes(t.state));
         a.nativeTurns=[...archived,...snapshot.turns.map(t=>({...t,sessionId:snapshot.sessionId,instruction:snapshot.inputs.filter(i=>i.turnId===t.id).map(i=>i.text).join('\n')}))];
       }
-      if(a.inputEnvelope?.mode==='startup-v1'&&s.agentSessionId){
-        if(a.inputEnvelope.sessionId&&a.inputEnvelope.sessionId!==s.agentSessionId)a.inputEnvelope={mode:'legacy',reason:'native-session-changed'};
+      if(a.inputEnvelope?.mode==='startup-v2'&&s.agentSessionId){
+        if(a.inputEnvelope.sessionId&&a.inputEnvelope.sessionId!==s.agentSessionId)a.inputEnvelope={...a.inputEnvelope,mode:'migration-required',reason:'native-session-changed'};
         else a.inputEnvelope.sessionId=s.agentSessionId;
       }
       if(snapshot.sessionId)a.observedSessionId=snapshot.sessionId;
@@ -466,9 +546,16 @@ export class DirectAgents {
     this.progressDirty=true;
     if(this.progressTask)return this.progressTask;
     const task=(async()=>{
-      // Merge observations which become ready in the same event-loop turn.
       await new Promise(resolve=>setImmediate(resolve));
-      while(this.progressDirty){this.progressDirty=false;await this.flow.pump(false);await this.flow.notifications();}
+      while(this.progressDirty){
+        this.progressDirty=false;
+        for(const [id,version] of [...this.store.jobs]){
+          const q=this.data.requests.find(q=>q.id===id);
+          if(q)await this.units.run(id,async()=>{await this.flow.pump(false,[q],false);await this.flow.notifications([q]);});
+          this.store.acknowledge(id,version);
+        }
+        await this.flow.dispatchReady();
+      }
     })();
     this.progressTask=task;
     try{await task;}finally{if(this.progressTask===task)this.progressTask=null;}

@@ -1,3 +1,4 @@
+import {ChangeStream} from '../server/change-stream.mjs';
 import {humanUI} from '../server/human-ui.mjs';
 import {receiveUpload} from '../server/upload-limits.mjs';
 import {apiValue} from '../server/state-projection.mjs';
@@ -40,6 +41,7 @@ await notifier.init();
 const attachments=new AttachmentStore(dir);await attachments.init();
 const direct = new DirectAgents({dir:dir,remote:remoteExecutor(dir),notifier,attachments,villageUrl:`http://127.0.0.1:${port}`});
 await direct.init();
+const changeStream=new ChangeStream(direct.events);todos.events.on('change',()=>direct.events.emit('change'));
 const images = new ImageStore(dir);
 await images.init();
 const operations = new VillageOperations({dir}, notifier, {web:new WebReader(),images,todos,direct,travelRegistry,prs:new PullRequests(dir,library)});
@@ -53,6 +55,8 @@ const handleRequest = async (req, res) => {
     if(pathname.startsWith('/api/direct/human/')&&!humanIntent.allow(req))return json(res,403,{error:'人間専用の操作です。村の画面を再読み込みして操作してください。'});
     if (pathname.startsWith('/api/')) {
       if (pathname.startsWith('/api/direct')) {
+        if(req.method==='GET'&&pathname==='/api/direct/rules')return json(res,200,direct.rules.specification(new URL(req.url,'http://localhost').searchParams.get('phase')||'work'));
+        if(req.method==='GET'&&pathname==='/api/direct/events')return changeStream.connect(req,res);
         if(req.method==='GET' && pathname==='/api/direct/usage')return json(res,200,await weeklyUsage.get());
         if(req.method==='GET' && pathname==='/api/direct/requests')return json(res,200,{requests:direct.flow.list()});
         if(req.method==='GET' && pathname==='/api/direct/agents')return json(res,200,direct.discovery());
@@ -81,12 +85,16 @@ const handleRequest = async (req, res) => {
         if(!input || typeof input!=='object')return json(res,400,{error:'Object required'});
         const guide=pathname.match(/^\/api\/direct\/human\/projects\/([0-9a-f-]{36})\/guide$/);
         if(req.method==='PUT'&&guide)return json(res,200,await direct.putProjectGuide(guide[1],input));
-        const humanAction=pathname.match(/^\/api\/direct\/human\/requests\/(retry|resume|cancel|complete|cancel-queued|supplement|plan|launch|assignPlan|discard)$/);
+        const runtimePreparation=pathname.match(/^\/api\/direct\/human\/agents\/([0-9a-f-]{36})\/prepare-runtime$/);
+        if(req.method==='POST'&&runtimePreparation)return json(res,200,await direct.prepareRuntime(runtimePreparation[1],input));
+        const runtimeAdoption=pathname.match(/^\/api\/direct\/human\/agents\/([0-9a-f-]{36})\/adopt-runtime$/);
+        if(req.method==='POST'&&runtimeAdoption)return json(res,200,await direct.adoptRuntime(runtimeAdoption[1],input));
+        const humanAction=pathname.match(/^\/api\/direct\/human\/requests\/(retry|resume|cancel|complete|cancel-queued|supplement|plan|launch|assignPlan|discard|deadline)$/);
         if(req.method==='POST'&&humanAction){
           const action=humanAction[1],flow=direct.flow;
-          return json(res,200,['plan','launch','assignPlan','discard'].includes(action)?await flow.humanCompose(input,action):action==='cancel-queued'?await flow.cancelQueued(input):action==='retry'||action==='resume'?await flow.continue(input,action==='retry'):await flow[action](input));
+          return json(res,200,action==='deadline'?await flow.humanDeadline(input):['plan','launch','assignPlan','discard'].includes(action)?await flow.humanCompose(input,action):action==='cancel-queued'?await flow.cancelQueued(input):action==='retry'||action==='resume'?await flow.continue(input,action==='retry'):await flow[action](input));
         }
-        const requestAction=pathname.match(/^\/api\/direct\/requests\/(get|results|inputs|delegate|amend|respond|finish|plan|launch|assignPlan|discard)$/);
+        const requestAction=pathname.match(/^\/api\/direct\/requests\/(get|results|inputs|delegate|amend|respond|finish|plan|launch|assignPlan|discard|report|deadline)$/);
         if(req.method==='POST'&&requestAction){
           const action=requestAction[1],flow=direct.flow;
           const result=action==='cancel-queued'?await flow.cancelQueued(input):action==='get'?flow.get(input.humanRequestId):action==='inputs'?flow.inputs(input.humanRequestId,input.workId):action==='results'?flow.results(input.humanRequestId,input.workId):action==='retry'||action==='resume'?await flow.continue(input,action==='retry'):await flow[action](input);

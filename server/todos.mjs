@@ -1,9 +1,10 @@
+import {EventEmitter} from 'node:events';
 import { readFile, mkdir, writeFile, rename } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 const fail=(status,message)=>Object.assign(new Error(message),{status});
 export class TodoStore {
-  constructor(dir){this.dir=dir;this.file=join(dir,'todos.json');this.state={revision:0,items:[]};this.queue=Promise.resolve();}
+  constructor(dir){this.events=new EventEmitter();this.dir=dir;this.file=join(dir,'todos.json');this.state={revision:0,items:[]};this.queue=Promise.resolve();}
   async init(){await mkdir(this.dir,{recursive:true});try{const state=JSON.parse(await readFile(this.file,'utf8'));if(!Number.isSafeInteger(state.revision)||!Array.isArray(state.items))throw new Error('TODO保存データが不正です');this.state=state;}catch(e){if(e.code!=='ENOENT')throw e;}}
   snapshot(){return structuredClone(this.state);}
   update(input){const task=this.queue.then(()=>this.commit(input));this.queue=task.catch(()=>{});return task;}
@@ -22,6 +23,6 @@ export class TodoStore {
     if(input.action==='delete')next.items=next.items.filter(item=>item.id!==input.id);
     next.revision++;
     await writeFile(this.file+'.tmp',JSON.stringify(next),{mode:0o600});await rename(this.file+'.tmp',this.file);
-    this.state=next;return this.snapshot();
+    this.state=next;this.events.emit('change');return this.snapshot();
   }
 }

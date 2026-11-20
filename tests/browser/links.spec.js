@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './helpers/change-events.js';
 for (const view of ['direct'])
     test(`${view}: conversation links are clickable without losing line breaks`, async ({ page }) => {
         const content = '一行目\n二行目 https://example.com/test。\n[資料](https://example.com/docs)';

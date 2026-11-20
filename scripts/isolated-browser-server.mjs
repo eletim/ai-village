@@ -17,7 +17,7 @@ child.stdout.on('data',async chunk=>{
   const env=(await readFile(`/proc/${child.pid}/environ`,'utf8')).split('\0');
   if(!env.includes('VILLAGE_STATE_DIR='+process.env.VILLAGE_STATE_DIR)||!env.includes('VILLAGE_NOTIFICATIONS=false'))throw Error('Child isolation mismatch');
   if(await realpath(`/proc/${child.pid}/cwd`)!==resolve('.'))throw Error('Child checkout mismatch');
-  if(!(await stat(resolve(state,'direct.json'))).isFile())throw Error('Disposable state was not initialized');
+  if(!(await stat(resolve(state,'village.sqlite'))).isFile())throw Error('Disposable state was not initialized');
   console.log(`ISOLATED_BROWSER_READY port=${port} state=${state} pid=${child.pid}`);
  }catch(error){console.error(error);child.kill();process.exitCode=1;}
 });

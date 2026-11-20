@@ -1,4 +1,4 @@
-import {test,expect} from '@playwright/test';
+import {test,expect} from './helpers/change-events.js';
 test('project opening defaults to secretary, preserves manual split, and saves split preference',async({page})=>{
  const s={projects:[{id:'p',name:'Project P'},{id:'q',name:'Project Q'}],agents:[{id:'s',name:'Secretary',role:'secretary',location:'mayor',projectId:'p'},{id:'w',name:'Worker',role:'worker',location:'workshop',projectId:'p'},{id:'q',name:'Only worker',role:'worker',location:'workshop',projectId:'q'}].map(a=>({...a,state:'idle',connection:{},canSend:true,nativeTurns:[]})),workshops:[],runs:[],reviews:{},notification:{enabled:false}};
  await page.route('**/api/**',r=>r.fulfill({json:new URL(r.request().url()).pathname==='/api/direct'?s:{ok:true,result:{enabled:false}}}));

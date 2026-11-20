@@ -19,6 +19,7 @@ test('startup instructions append to owned PurpleMux provider prompts and never 
   assert.equal(await readFile(path,'utf8'),'# purplemux context\noriginal\n\n'+body);
   const verify=()=>JSON.parse(execFileSync('python3',['-c',verifyInstructionsScript,'ws-test',provider,inputHash(body)],{cwd,env:{...process.env,HOME:home}}));
   assert.equal(verify().verified,true);
+  assert.throws(()=>execFileSync('python3',['-c',installInstructionsScript,'ws-test',provider,body],{env:{...process.env,HOME:home},stdio:'pipe'}));
   await writeFile(path,'# purplemux context\nrewritten');assert.equal(verify().verified,false);
   await writeFile(path,body.replace('日本語','changed'));assert.equal(verify().verified,false);
   await rm(path);assert.throws(verify);
@@ -28,12 +29,12 @@ test('startup instructions append to owned PurpleMux provider prompts and never 
  assert.throws(()=>execFileSync('python3',['-c',installInstructionsScript,'../elsewhere','codex',body],{env:{...process.env,HOME:home},stdio:'pipe'}));
 });
 
-test('unavailable startup integration falls back durably; only exact installation receipt enables short mode',async()=>{
+test('unavailable startup integration requires migration durably; only exact installation receipt enables short mode',async()=>{
  const d=new DirectAgents({dir:'/unused',notifier:{status:()=>({})}});d.save=async()=>{};
  const a={workspaceId:'ws-owned',provider:'claude'};
- d.execute=async()=>JSON.stringify({installed:true,hash:'wrong'});await d.installInstructions(a);assert.equal(a.inputEnvelope.mode,'legacy');
- d.execute=async()=>{throw Error('unsupported host');};await d.installInstructions(a);assert.equal(a.inputEnvelope.mode,'legacy');
- d.execute=async(_a,args)=>JSON.stringify({installed:true,hash:inputHash(args.at(-1))});await d.installInstructions(a);assert.equal(a.inputEnvelope.mode,'startup-v1');
+ d.execute=async()=>JSON.stringify({installed:true,hash:'wrong'});await d.installInstructions(a);assert.equal(a.inputEnvelope.mode,'migration-required');
+ d.execute=async()=>{throw Error('unsupported host');};await d.installInstructions(a);assert.equal(a.inputEnvelope.mode,'migration-required');
+ d.execute=async(_a,args)=>JSON.stringify({installed:true,hash:inputHash(args.at(-1))});await d.installInstructions(a);assert.equal(a.inputEnvelope.mode,'startup-v2');
 });
 
 test('marker is independent of presentation, cannot match a prefix, and never falls back to hash when present',()=>{

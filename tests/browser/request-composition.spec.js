@@ -1,4 +1,4 @@
-import {test,expect} from '@playwright/test';
+import {test,expect} from './helpers/change-events.js';
 test('human saves an unassigned child, chooses an Agent and starts it once',async({page})=>{
  const q={id:'q',commonRequests:true,status:'active',revision:1,instruction:'検索を追加',rootWorkId:'w',requestGraph:{rootId:'w',nodes:[{id:'w',parentId:null,assignee:'a',state:{kind:'active',review:[]},metadata:{instruction:'検索を追加'},inbox:[]}]}};
  const state={agents:[{id:'a',name:'秘書A',location:'mayor',state:'idle',connection:{},canSend:true},{id:'b',name:'秘書B',location:'mayor',state:'idle',connection:{},canSend:true}],projects:[],workshops:[],runs:[],requests:[q],reviews:{},notification:{enabled:false},capabilities:{requestSplitting:true,requestInbox:true}};

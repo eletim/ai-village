@@ -1,3 +1,4 @@
+import {initialDeadlines} from './request-reports.mjs';
 import {randomUUID} from 'node:crypto';
 import {newNode,applyGraph} from './unified-requests.mjs';
 import {workDTO} from './request-compatibility.mjs';
@@ -8,9 +9,8 @@ const fail=message=>{throw Object.assign(Error(message),{status:409});};
 export async function compose(flow,x,action,actor){
  return flow.d.locked('request-graph',()=>flow.d.persist(async()=>{
   const q=flow.root(x.humanRequestId),creating=['plan','delegate'].includes(action);
-  if(!q.commonRequests)fail('この依頼は旧形式です。新しい依頼で分割してください');
   if(typeof x.operationId!=='string'||!/^[\w-]{8,100}$/.test(x.operationId))fail('operationIdを指定してください');
-  const payload=JSON.stringify({type:action,actor,parentWorkId:x.parentWorkId||null,workId:x.workId||null,actorRunId:x.actorRunId||null,instruction:x.instruction||null,agentId:x.agentId||null,replacesRequestId:x.replacesRequestId||null});
+  const payload=JSON.stringify({type:action,actor,parentWorkId:x.parentWorkId||null,workId:x.workId||null,actorRunId:x.actorRunId||null,instruction:x.instruction||null,reportAt:x.reportAt||null,completionAt:x.completionAt||null,agentId:x.agentId||null,replacesRequestId:x.replacesRequestId||null});
   const old=q.requestGraph.operations.find(o=>o.id===x.operationId);
   if(old){if(old.payload!==payload)fail('operationIdの再利用です');return workDTO(flow.work(q,old.childId));}
   flow.active(q);
@@ -29,7 +29,7 @@ export async function compose(flow,x,action,actor){
   let child=w;
   if(creating){
    if(action==='delegate'&&!assignee)fail('担当Agentを指定してください');
-   child=newNode(q,{id:randomUUID(),parentId:parent.id,assignee,createdBy:actor,planned:true,metadata:{instruction:x.instruction,operationId:x.operationId,actorRunId:x.actorRunId||null,...(x.replacesRequestId?{replacesRequestId:x.replacesRequestId}:{}),createdAt:new Date().toISOString()}});
+   child=newNode(q,{id:randomUUID(),parentId:parent.id,assignee,createdBy:actor,planned:true,metadata:{reporting:initialDeadlines(x),instruction:x.instruction,operationId:x.operationId,actorRunId:x.actorRunId||null,...(x.replacesRequestId?{replacesRequestId:x.replacesRequestId}:{}),createdAt:new Date().toISOString()}});
    applyGraph(flow.d.data,q,{type:'add',actor,request:child});child=flow.work(q,child.id);
    if(action==='delegate'){flow.enqueue(q,child,x.instruction,'delegate:'+x.operationId,'delegation');if(x.replacesRequestId)applyGraph(flow.d.data,q,{type:'replace',actor:'agent',requestId:parent.id,childId:x.replacesRequestId,replacementId:child.id});}
   }else if(action==='discard')applyGraph(flow.d.data,q,{type:'discard-plan',actor,requestId:w.id});

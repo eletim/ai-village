@@ -84,3 +84,34 @@ test('final persistence failure cannot return idempotent success until a retry s
  f.d.save=async()=>{if(testView(f.d.project(f.p.id).deletion)?.status==='deleted'&&!failed){failed=true;throw Error('disk fixture');}return save();};
  const input=f.input();await assert.rejects(f.d.deleteProject(f.p.id,input),/disk/);assert.equal(f.d.project(f.p.id).deletedAt,undefined);assert.equal(testView(f.d.project(f.p.id).deletion).status,'running');assert.equal(testView((await f.d.deleteProject(f.p.id,input))).status,'deleted');assert.deepEqual(f.closed,['a','b']);
 });
+
+test('individual deletion preserves project, other agents and history; CLI retry is durable',async t=>{
+ const {VillageOperations}=await import('../server/operations.mjs');
+ const f=await fixture(t),a=f.d.agent('a');a.agentModel.observation={connected:true,process:'alive',activity:'idle',canSteer:false};await f.d.save();
+ const ops=new VillageOperations({dir:f.d.dir},null,{direct:f.d});
+ const args=['agents','delete','a',JSON.stringify({operationId:'delete-single-agent',revision:0})];
+ const first=await ops.execute(args);assert.equal(first.ok,true);assert.equal(first.result.status,'deleted');
+ assert.deepEqual((await ops.execute(args)).result,first.result);assert.deepEqual(f.closed,['a']);
+ assert.deepEqual(f.d.discovery().agents.map(a=>a.agentId),['b']);assert.equal(f.d.snapshot().projects.length,1);
+ assert.equal(f.d.snapshot().runs[0].output,'保持する履歴');
+ const restored=new DirectAgents(f.opts);await restored.init({watch:false});
+ assert.deepEqual(await restored.deleteAgent('a',{operationId:'delete-single-agent',revision:0}),first.result);
+ assert.deepEqual(f.closed,['a']);
+});
+test('individual deletion rejects busy, stale revision and active requests before stopping',async t=>{
+ const f=await fixture(t),a=f.d.agent('a'),x={operationId:'delete-single-agent',revision:0};
+ await assert.rejects(f.d.deleteAgent('a',x),/待機/);
+ a.agentModel.observation={connected:true,process:'alive',activity:'idle',canSteer:false};
+ await assert.rejects(f.d.deleteAgent('a',{...x,revision:1}),/更新/);
+ f.d.data.requests.push({id:'unfinished',requestGraph:{nodes:[{assignee:'a',state:{kind:'active'}}]}});
+ await assert.rejects(f.d.deleteAgent('a',x),/未完了/);assert.deepEqual(f.closed,[]);assert.equal(a.deletion,undefined);
+});
+test('individual partial deletion blocks new work and reconciles same operation after restart',async t=>{
+ const f=await fixture(t),a=f.d.agent('a'),x={operationId:'delete-single-agent',revision:0};
+ a.agentModel.observation={connected:true,process:'alive',activity:'idle',canSteer:false};await f.d.save();f.offline('a');
+ assert.equal((await f.d.deleteAgent('a',x)).status,'partial');assert.equal(a.deletedAt,undefined);
+ await assert.rejects(f.d.send('a',{instruction:'no send',requestId:'no-send-deleted-agent'}),/削除/);
+ await assert.rejects(f.d.deleteAgent('a',{...x,operationId:'another-delete'}),/更新/);
+ f.offline('');const restored=new DirectAgents(f.opts);await restored.init({watch:false});
+ assert.equal((await restored.deleteAgent('a',x)).status,'deleted');assert.deepEqual(f.closed,['a']);
+});

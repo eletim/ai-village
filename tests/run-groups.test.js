@@ -1,75 +1,28 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {isAlwaysVisible,rootRunIds,foldEntriesHTML} from '../src/run-groups.js';
-const render=r=>`<span data-id="${r.id}"></span>`;
-test('only human-origin, external/native and unclassified-origin entries are never folded on their own',()=>{
- assert.equal(isAlwaysVisible({origin:'human'}),true);
- assert.equal(isAlwaysVisible({external:true}),true);
- assert.equal(isAlwaysVisible({origin:undefined}),true);
- assert.equal(isAlwaysVisible({}),true);
- assert.equal(isAlwaysVisible({origin:'steering'}),false);
- assert.equal(isAlwaysVisible({origin:'delegation'}),false);
- assert.equal(isAlwaysVisible({origin:'retry'}),false);
- assert.equal(isAlwaysVisible({origin:'continuation'}),false);
- assert.equal(isAlwaysVisible({origin:'report'}),false);
- assert.equal(isAlwaysVisible({origin:'result'}),false);
- assert.equal(isAlwaysVisible({origin:'agent'}),false);
+import {isHumanInput,chatBodyHTML,exchangeLabel} from '../src/run-groups.js';
+test('human input classification does not depend on current root run',()=>{
+ for(const r of [{origin:'human'},{external:true},{},{inputReceipt:true}])assert(isHumanInput(r));
+ for(const origin of ['steering','delegation','retry','continuation','report','result','agent','inbox'])assert(!isHumanInput({origin}));
 });
-test('a run that is the live head of its own request\'s root work is visible even with a non-human origin',()=>{
- const current=rootRunIds([{requestGraph:{nodes:[{id:'w',parentId:null,currentRunId:'retry-run'}]}}]);
- assert.equal(isAlwaysVisible({id:'retry-run',origin:'retry'},current),true);
- assert.equal(isAlwaysVisible({id:'other-run',origin:'retry'},current),false);
+test('input and response have independent disclosures, and only body is wrapped',()=>{
+ const r={id:'r'};
+ assert.equal(chatBodyHTML(r,'input','human text',false),'human text');
+ const input=chatBodyHTML(r,'input','input text',true),output=chatBodyHTML(r,'output','answer',true);
+ assert.match(input,/data-disclosure="chat:r:input"/);assert.match(output,/data-disclosure="chat:r:output"/);
+ assert(!input.includes(' open'));assert(!input.includes('message'));
+ assert.match(chatBodyHTML(r,'output','',true,'再開'),/…（再開）/);
 });
-test('rootRunIds never includes a delegated child work\'s current run, even though it is current for that work',()=>{
- const current=rootRunIds([{requestGraph:{nodes:[{id:'root',parentId:null,currentRunId:'r1'},{id:'child',parentId:'root',currentRunId:'d1'}]}}]);
- assert.equal(current.has('r1'),true);assert.equal(current.has('d1'),false);
+test('routing uses ownership; disclosure IDs are escaped',()=>{
+ const state={agents:[{id:'s',name:'秘書'},{id:'w',name:'工房'}],requests:[{id:'q',requestGraph:{nodes:[{id:'p',assignee:'s'},{id:'c',parentId:'p',assignee:'w'}]}}]};
+ const entry={id:'"<script>',agentId:'w',humanRequestId:'q',workId:'c',origin:'delegation'};
+ assert.equal(exchangeLabel(entry,state),'作業依頼（秘書から）');
+ const html=chatBodyHTML(entry,'input','safe',true);assert(!html.includes('<script>'));assert.match(html,/&lt;script&gt;/);
 });
-test('a lone human entry renders ungrouped; a run of non-human entries folds into one collapsed details',()=>{
- const html=foldEntriesHTML([{id:'h1',origin:'human'}],render);
- assert.equal(html,'<span data-id="h1"></span>');
- const folded=foldEntriesHTML([{id:'s1',origin:'steering'},{id:'d1',origin:'delegation'}],render);
- assert.match(folded,/^<details class="run-group" data-disclosure="group:s1">/);
- assert(!folded.includes(' open'));
- assert.match(folded,/<summary>.*2件.*<\/summary>/);
- assert.match(folded,/<span data-id="s1">/);assert.match(folded,/<span data-id="d1">/);
-});
-test('human and non-human entries alternate without merging across a human boundary',()=>{
- const entries=[{id:'h1',origin:'human'},{id:'s1',origin:'steering'},{id:'h2',origin:'human'},{id:'r1',origin:'retry'},{id:'r2',origin:'continuation'}];
- const html=foldEntriesHTML(entries,render);
- const order=[...html.matchAll(/data-id="([^"]+)"|data-disclosure="group:([^"]+)"/g)].map(m=>m[1]||'group:'+m[2]);
- assert.deepEqual(order,['h1','group:s1','s1','h2','group:r1','r1','r2']);
-});
-test('a native/PurpleMux external turn stays ungrouped between folded village-internal entries',()=>{
- const entries=[{id:'s1',origin:'steering'},{id:'n1',external:true},{id:'d1',origin:'delegation'}];
- const html=foldEntriesHTML(entries,render);
- const order=[...html.matchAll(/data-id="([^"]+)"|data-disclosure="group:([^"]+)"/g)].map(m=>m[1]||'group:'+m[2]);
- assert.deepEqual(order,['group:s1','s1','n1','group:d1','d1']);
-});
-test('a retried answer on a non-human-origin run that is still the root work\'s current run stays unfolded',()=>{
- const current=rootRunIds([{requestGraph:{nodes:[{id:'w',parentId:null,currentRunId:'retry-run'}]}}]);
- const entries=[{id:'h1',origin:'human',state:'failed'},{id:'retry-run',origin:'retry',state:'completed',finalOutput:'answer'}];
- const html=foldEntriesHTML(entries,render,current);
- assert(!html.includes('<details'));
- const order=[...html.matchAll(/data-id="([^"]+)"/g)].map(m=>m[1]);
- assert.deepEqual(order,['h1','retry-run']);
-});
-test('the summary leads with an accurate entry count for both a single folded entry and several',()=>{
- const single=foldEntriesHTML([{id:'s1',origin:'steering'}],render);
- assert.match(single,/<summary>人間以外のやり取りを見る（1件・補足）<\/summary>/);
- const several=foldEntriesHTML([{id:'s1',origin:'steering'},{id:'d1',origin:'delegation'},{id:'d2',origin:'delegation'}],render);
- assert.match(several,/<summary>人間以外のやり取りを見る（3件・補足・委任）<\/summary>/);
-});
-test('an Agent-to-Agent independent request (origin agent) folds by default but stays visible if it is still the root work\'s current run',()=>{
- const folded=foldEntriesHTML([{id:'a1',origin:'agent'}],render);
- assert.match(folded,/^<details class="run-group" data-disclosure="group:a1">/);
- assert.match(folded,/他Agentからの依頼/);
- const current=rootRunIds([{requestGraph:{nodes:[{id:'w',parentId:null,currentRunId:'a1'}]}}]);
- const unfolded=foldEntriesHTML([{id:'a1',origin:'agent'}],render,current);
- assert(!unfolded.includes('<details'));
-});
-test('a dangerous entry id cannot break out of the data-disclosure attribute',()=>{
- const html=foldEntriesHTML([{id:'"><script>alert(1)</script>',origin:'steering'},{id:'r2',origin:'result'}],()=>'');
- assert(!html.includes('<script>'));
- assert.match(html,/data-disclosure="group:&quot;&gt;&lt;script&gt;/);
- assert.match(html,/補足・子作業結果/);
+
+test('disclosure labels describe the chat and escape markup',()=>{
+ assert.match(chatBodyHTML({id:'r'},'output','body',true,'成果提出（秘書宛）'),/<summary>…（成果提出（秘書宛））<\/summary>/);
+ assert.match(chatBodyHTML({id:'r'},'input','body',true,'<img>'),/…（&lt;img&gt;）/);
+ assert.equal(exchangeLabel({origin:'continuation'},{}),'再開');
+ assert.equal(exchangeLabel({origin:'result'},{}),'成果の受け取り・レビュー');
 });

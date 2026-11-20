@@ -80,3 +80,7 @@ E-ryzen（村長PC）のローカルPurpleMuxとE-frontierのSSH接続を同じ�
 - 実機の証跡は `.runtime/validation/`（スクリーンショット、ブラウザエラー一覧、復旧結果）、操作履歴は `.runtime/ssh-audit.jsonl`、通知結果は `.runtime/notifications.jsonl`。ランタイムデータはcommit対象外です。
 
 自動検証: `npm run check`、`npm test`（103件）、`npm run build`。ブラウザ検証は `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/google-chrome VILLAGE_TEST_PORT=5184 npm run test:ui`。登録・編集、入力保持、HTMLの文字列表示、モバイル幅も確認しています。既存画面を含むブラウザテストは19件成功、1件skip（既存の条件付きテスト）でした。
+
+## 不要なAgentの個別削除
+
+`agents list` でIDとmetadataRevisionを確認し、依頼で許可された対象だけ `agents delete AGENT_ID '{"operationId":"unique-delete-operation","revision":0}'` で削除する。待機・終了済み、担当中の依頼と未送信/受付中/実行中runがないことを検査する。所有プロセスの終了確認後に一覧から除外し、依頼・run・成果の履歴は保持する。終了を確認できない場合はpartialを返し、新規依頼を拒否する。受付不明は自動再送せず、確認して再試行する場合は同じoperationIdとrevisionを使う。

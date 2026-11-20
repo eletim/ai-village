@@ -1,4 +1,4 @@
-import {test,expect} from '@playwright/test';
+import {test,expect} from './helpers/change-events.js';
 for(const width of [1440,390])test(`sidebar toggle keeps draft and scope, grows board, persists at ${width}px`,async({page})=>{
  await page.setViewportSize({width,height:844});
  await page.route('**/api/**',r=>r.fulfill({json:{workshops:[],projects:[{id:'p',name:'作業'}],agents:[{id:'a',name:'秘書',projectId:'p',location:'mayor',state:'idle',canSend:true,connection:{}}],runs:[],reviews:{},notification:{enabled:false}}}));

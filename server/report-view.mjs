@@ -1,8 +1,8 @@
 import {projectState} from './state-projection.mjs';
 import {recoveryRequests} from '../src/run-recovery.js';
 // Human-facing projection only. requests get/results retain the immutable source.
-// Work stays visible until the final report commits. Internal report turns are
-// always withheld; afterwards original work is available as collapsed history.
+// Work stays visible until the final report commits. Unpublished report output
+// is withheld; input bodies and original work remain available in disclosures.
 const firstAfter=(a,session,cursor)=>(a.nativeTurns||[]).filter(t=>(t.sessionId||a.observedSessionId)===session&&Number.isFinite(t.offset)&&t.offset>cursor).sort((x,y)=>x.offset-y.offset)[0];
 export function humanProjection(data){
  data=projectState(data);
@@ -26,20 +26,21 @@ export function humanProjection(data){
 
  }
  for(const r of view.runs){
-  if(r.origin==='inbox'){r.suppressUser=true;r.instruction='';r.attachments=[];r.travelContexts=[];}
+  if(r.origin==='inbox')r.suppressUser=true;
   const q=protectedRequests.get(r.humanRequestId);if(!q)continue;
   if(q.status!=='completed'&&r.phase!=='report'){r.hiddenCompletion=true;continue;}
   const original=data.runs.find(x=>x.id===r.id);
   const show=q.status==='completed'&&q.finalRunId===r.id&&r.phase==='report';
   // Whitelist the presentation fields: hashes/checkpoints/retry prompts must not
-  // inadvertently expose internal instructions or intermediate answers.
+  // inadvertently appear as chat content. Input bodies remain available to expand.
   for(const key of Object.keys(r))if(!['id','requestId','agentId','humanRequestId','workId','origin','phase','state','needsReview','runModel','createdAt','completedAt','turnId','sessionId','agentSessionId','instruction','travelContexts','attachments','output','error','errorCode','recovery'].includes(key))delete r[key];
   const archive=q.status==='completed'&&r.phase!=='report';
   r.output=show?(original.finalOutput||original.output||''):archive?(original.output||original.finalOutput||''):'';
   if(show)r.finalOutput=r.output;
   if(archive){r.collapsedHistory=true;r.finalOutput=original.finalOutput||'';}
   r.suppressUser=!['human','steering'].includes(r.origin);
-  if(r.suppressUser){r.instruction='';r.attachments=[];r.travelContexts=[];}
+  // Keep input bodies for the chat's disclosure; suppressUser selects an internal
+  // bubble rather than deleting the text needed to expand it.
   const current=q.requestGraph.nodes.find(w=>w.id===r.workId)?.currentRunId===r.id;
   r.hideEntry=r.suppressUser&&!current&&!show&&!r.collapsedHistory;
   r.reportStatus=q.status==='cancelled'?'依頼キャンセル':q.status==='completed'&&!show?'作業完了（報告に統合済み）':show?'報告完了':r.phase==='report'?

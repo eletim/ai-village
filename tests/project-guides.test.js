@@ -27,14 +27,14 @@ test('Project guide scope, fresh reads, missing and unsafe files',async t=>{
 });
 test('dispatch attaches guide only to registered secretary normal runs',async t=>{
  const dir=await mkdtemp(join(tmpdir(),'guide-dispatch-'));t.after(()=>rm(dir,{recursive:true,force:true}));
- const d=new DirectAgents({dir});await d.init({watch:false});t.after(()=>d.close());
+ const d=new DirectAgents({dir});d.verifyInstructions=async()=>{};await d.init({watch:false});t.after(()=>d.close());
  d.observe=async a=>{a.canSend=true;a.runtime={agentSessionId:'native'};return {sessionId:'native',cursor:0};};
  d.flow.context=()=>'';d.flow.root=()=>({});d.flow.reportPrompt=()=> 'human instruction';d.flow.reportCurrent=()=>true;
  let sent;d.pmux=async(...args)=>{sent=args.at(-1);};
  for(const [location,project,phase,expected] of [['mayor',projectId,undefined,true],['mayor','other',undefined,false],['workshop',projectId,undefined,false],['mayor',projectId,'report',false]]){
-  const a={id:'agent',location,projectId:project,tabId:'tab',workspaceId:'ws',state:'idle'};d.data.agents=[a];
+  const a={id:'agent',location,projectId:project,tabId:'tab',workspaceId:'ws',state:'idle',inputEnvelope:{mode:'startup-v2'}};d.data.agents=[a];
   const r={id:'run',agentId:a.id,state:'queued',instruction:'human instruction',phase};d.data.runs=[r];fixtureModels(d.data);
-  await d.attemptRun(r);assert.equal(testView(r).state,'awaiting_input');assert.equal(sent.includes('<ai-village-project-guide>'),expected);
+  await d.attemptRun(r);assert.equal(testView(r).state,'awaiting_input');assert(!sent.includes('<ai-village-project-guide>'));assert(d.rules.specification().text.includes('projects guide'));
   assert(!sent.includes('まとまった実装・検証'));
  }
 });
@@ -68,7 +68,7 @@ test('defaults initialize once; legacy documents stay live until edited; revisio
  t.after(()=>Promise.all([rm(dir,{recursive:true,force:true}),rm(root,{recursive:true,force:true})]));
  await writeFile(join(root,'index.json'),JSON.stringify({legacy:'guide.md',broken:'missing.md'}));await writeFile(join(root,'guide.md'),'individual policy');
  await writeFile(join(dir,'direct.json'),JSON.stringify({version:1,projects:[{id:'existing',name:'Existing',revision:0},{id:'legacy',name:'Legacy',revision:0},{id:'broken',name:'Broken',revision:0}],agents:[],runs:[],workshops:[]}));
- const d=new DirectAgents({dir});d.projectGuides.root=root;await d.init({watch:false});t.after(()=>d.close());
+ const d=new DirectAgents({dir});d.verifyInstructions=async()=>{};d.projectGuides.root=root;await d.init({watch:false});t.after(()=>d.close());
  const initial=await d.projectGuides.get('existing');assert.match(initial.content,/デフォルトの秘書方針/);assert.match(initial.content,/人間から明示的な実装指示があるまで、実装や工房への作業指示を行わない。相談・方針検討・案への同意だけでは、実装指示とみなさない。/);
  const created=await d.putProject({name:'New',requestId:'create-new-project'});assert.equal((await d.projectGuides.get(created.id)).content,initial.content);
  assert.equal((await d.projectGuides.get('broken')).available,false);assert(!Object.hasOwn(d.data.projectPolicies,'broken'));

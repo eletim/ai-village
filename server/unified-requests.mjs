@@ -1,7 +1,7 @@
 import {node,graphSteps,transitionGraph,latest,handled} from './state/requests.ts';
 export const evidence=(data,q)=>data.runs.filter(r=>r.humanRequestId===q.id).map(r=>({run:r.runModel,ownerId:r.workId,agentId:r.agentId}));
 export const rootNode=q=>node(q.requestGraph,q.rootWorkId);
-export function newNode(q,{id,parentId=null,assignee,metadata={},createdBy='human',planned=false}){return {...(q.commonRequests?{recipient:parentId?{kind:'request',requestId:parentId}:{kind:'human'},createdBy,planned}:{}),...(q.inputProtocol===1?{inbox:[],inputClaims:[]}:{}),id,parentId,requester:parentId?{kind:'agent',agentId:node(q.requestGraph,parentId).assignee,requestId:parentId}:{kind:'human'},assignee,metadata,runAgents:{},runIds:[],currentRunId:null,reportRunId:null,reportMode:!parentId&&q.reportMode===true,state:{kind:'active',review:[]},submissions:[],claims:[],replacements:[],invalidatedRuns:[],handling:[],declarations:[],decisions:[]};}
+export function newNode(q,{id,parentId=null,assignee,metadata={},createdBy='human',planned=false}){return {recipient:parentId?{kind:'request',requestId:parentId}:{kind:'human'},createdBy,planned,...(q.inputProtocol===1?{inbox:[],inputClaims:[]}:{}),id,parentId,requester:parentId?{kind:'agent',agentId:node(q.requestGraph,parentId).assignee,requestId:parentId}:{kind:'human'},assignee,metadata,runAgents:{},runIds:[],currentRunId:null,reportRunId:null,reportMode:!parentId&&q.reportMode===true,state:{kind:'active',review:[]},submissions:[],claims:[],replacements:[],invalidatedRuns:[],handling:[],declarations:[],decisions:[]};}
 export function applyGraph(data,q,event){
  const changed=transitionGraph(q.requestGraph,event,evidence(data,q));
  if(!changed.ok)throw Object.assign(Error('request transition rejected: '+event.type+' '+changed.reason),{status:409});
@@ -19,7 +19,7 @@ export function validateGraph(data,q){
  if(new Set(g.operations.map(o=>o.id)).size!==g.operations.length||g.operations.some(o=>typeof o.id!=='string'||typeof o.payload!=='string'))throw Error('Invalid operation registry');
  if(g.nodes.filter(n=>n.parentId===null).length!==1||!node(g,g.rootId)||node(g,g.rootId).parentId!==null)throw Error('Invalid request root');
  const ids=new Set();for(const n of g.nodes){
-  if(q.commonRequests&&(!n.recipient||!['human','agent'].includes(n.createdBy)||typeof n.planned!=='boolean')||!q.commonRequests&&n.recipient)throw Error('Invalid common request contract');
+  if(q.commonRequests&&(!n.recipient||!['human','agent'].includes(n.createdBy)||typeof n.planned!=='boolean'))throw Error('Invalid common request contract');
   if(n.recipient&&(n.recipient.kind==='request'?n.recipient.requestId!==n.parentId:n.recipient.kind!=='human'||!!n.parentId))throw Error('Invalid result recipient');
   if(n.planned&&(n.runIds.length||n.currentRunId))throw Error('Planned request has execution');
   if(ids.has(n.id)||(!(n.planned&&n.assignee===null)&&typeof n.assignee!=='string')||!Array.isArray(n.runIds)||(!n.planned&&!n.runIds.includes(n.currentRunId))||new Set(n.runIds).size!==n.runIds.length||!n.metadata||typeof n.metadata!=='object'||Array.isArray(n.metadata)||['agentId','parentWorkId','runIds','currentRunId'].some(key=>Object.hasOwn(n.metadata,key))||!['active','submitted','completed','withdrawn'].includes(n.state?.kind)||!Array.isArray(n.submissions)||!Array.isArray(n.claims)||!Array.isArray(n.replacements)||!Array.isArray(n.invalidatedRuns)||!Array.isArray(n.handling)||!Array.isArray(n.declarations)||!Array.isArray(n.decisions))throw Error('Invalid request node: '+n.id);ids.add(n.id);

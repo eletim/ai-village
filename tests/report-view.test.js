@@ -9,7 +9,7 @@ test('shows work until report commits, hides internal report streams, preserves 
  data.agents[0].nativeTurns.push({id:'later',sessionId:'s',offset:30,output:'later unrelated'});
  view=humanProjection(fixtureModels(data,{refresh:true}));assert.equal(view.agents[0].nativeTurns.length,3);assert.equal(view.agents[0].nativeTurns[2].output,'later unrelated');
  data.runs.push({id:'report',humanRequestId:'q',agentId:'a',phase:'report',origin:'report',instruction:'secret prompt',output:'secret report stream',state:'running'});
- const pending=humanProjection(fixtureModels(data,{refresh:true}));assert(pending.runs.some(r=>r.output==='secret draft'));assert(!JSON.stringify(pending.runs).includes('secret prompt'));assert(!JSON.stringify(pending.runs).includes('secret report stream'));
+ const pending=humanProjection(fixtureModels(data,{refresh:true}));assert(pending.runs.some(r=>r.output==='secret draft'));assert.equal(pending.runs[1].instruction,'secret prompt');assert(!JSON.stringify(pending.runs).includes('secret report stream'));
  data.requests[0].status='cancelled';assert.equal(humanProjection(fixtureModels(data,{refresh:true})).runs[0].output,'secret draft');data.requests[0].status='active';
  data.runs[1].state='completed';data.runs[1].finalOutput='human report';Object.assign(data.requests[0],{status:'completed',finalRunId:'report'});
  const viewFinal=humanProjection(fixtureModels(data,{refresh:true}));assert.equal(viewFinal.runs[1].output,'human report');assert.equal(viewFinal.runs[0].collapsedHistory,true);assert.equal(viewFinal.runs[0].finalOutput,'secret final');
@@ -23,4 +23,17 @@ test('an ended report run never matched to a turn hides only the first turn afte
   requests:[{id:'q',reportMode:true,status:'completed',finalRunId:'report',works:[{id:'w',agentId:'a',runIds:['w','report']}]}]};
  const ids=humanProjection(fixtureModels(data,{refresh:true})).agents[0].nativeTurns.map(t=>t.id);
  assert(!ids.includes('report-turn'));assert(ids.includes('later'));
+});
+
+test('completed internal chats and inbox delivery preserve expandable inputs',()=>{
+ const data={agents:[{id:'a',location:'mayor',nativeTurns:[]}],runs:[
+ {id:'child',humanRequestId:'q',workId:'w',agentId:'a',origin:'delegation',instruction:'implementation request',state:'completed',output:'done',attachments:[{id:'file'}],travelContexts:[{id:'trip'}]},
+ {id:'inbox',agentId:'a',origin:'inbox',instruction:'delivered supplement',state:'completed'}
+ ],requests:[{id:'q',reportMode:true,status:'completed',finalRunId:'child',works:[{id:'w',agentId:'a',currentRunId:'child'}]}]};
+ const view=humanProjection(fixtureModels(data,{refresh:true}));
+ assert.equal(view.runs[0].instruction,'implementation request');
+ assert.equal(view.runs[0].suppressUser,true);
+ assert.deepEqual(view.runs[0].attachments,[{id:'file'}]);
+ assert.deepEqual(view.runs[0].travelContexts,[{id:'trip'}]);
+ assert.equal(view.runs[1].instruction,'delivered supplement');
 });

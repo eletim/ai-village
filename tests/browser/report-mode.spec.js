@@ -1,5 +1,6 @@
+import {notifySnapshot} from './helpers/change-events.js';
 import {agentFixture,runFixture,requestFixture,setRunState,setRequestState} from './helpers/direct-fixtures.js';
-import {test,expect} from '@playwright/test';
+import {test,expect} from './helpers/change-events.js';
 import {humanProjection} from '../../server/report-view.mjs';
 function fixture(){
  const q={id:'q',reportMode:true,status:'active',instruction:'元質問',works:[{id:'w',agentId:'a',currentRunId:'r'}],report:{sourceRunId:'source'}};
@@ -19,21 +20,25 @@ test('Direct preserves original work until report commits; failure keeps origina
  });
  await page.goto('/agents');const log=page.locator('#agent-a .runs');
  await expect(log).toContainText('人間向けの報告を作成中');
- await expect(log).toContainText('SECRET original');await expect(log).not.toContainText('SECRET draft');await expect(log).not.toContainText('INTERNAL');
+ await expect(log).toContainText('SECRET original');await expect(log).not.toContainText('SECRET draft');await expect(log.getByText('INTERNAL report prompt',{exact:true})).not.toBeVisible();
+ const reportInput=log.locator('[data-disclosure="chat:r:input"]');
+ await reportInput.locator('summary').click();
+ await expect(reportInput.getByText('INTERNAL report prompt',{exact:true})).toBeVisible();
+ await reportInput.locator('summary').click();
  await expect(page.getByRole('button',{name:'待機キューへ',exact:true})).toBeEnabled();
  await page.locator('textarea[name=instruction]').fill('次の質問');
  await page.getByRole('button',{name:'設定',exact:true}).click();
  await expect(page.getByLabel('人間向け報告モード')).toBeChecked();await page.getByLabel('人間向け報告モード').uncheck();
  await expect.poll(()=>enabled).toBe(false);await page.keyboard.press('Escape');await page.reload();
  await page.getByRole('button',{name:'設定',exact:true}).click();await expect(page.getByLabel('人間向け報告モード')).not.toBeChecked();
- failSave=true;await page.getByLabel('人間向け報告モード').check();await expect(page.getByLabel('人間向け報告モード')).not.toBeChecked();await page.keyboard.press('Escape');
- setRunState(raw.runs[1],{kind:'ended',outcome:'failed',reason:'fixture'});setRequestState(raw.requests[0],{kind:'active',review:['run-needs-review:r']});await expect(log).toContainText('報告生成に失敗');await expect(page.locator('#agent-a .agent-recovery').getByRole('button',{name:'再試行',exact:true})).toBeVisible();await expect(log).toContainText('SECRET original');
- setRunState(raw.runs[1],{kind:'ended',outcome:'unconfirmed',reason:'timeout'});await expect(page.locator('#agent-a .agent-recovery')).toContainText('送信が失敗・中断・確認できず');await expect(log).toContainText('SECRET original');
- setRunState(raw.runs[1],{kind:'ended',outcome:'normal',reason:'fixture'});raw.runs[1].output='完成した報告';setRequestState(raw.requests[0],{kind:'completed',by:'program',reason:'report-ended'});raw.requests[0].finalRunId='r';
- await expect(log).toContainText('完成した報告');await expect(log.getByText('SECRET original',{exact:true})).not.toBeVisible();
- await log.locator('summary').click();await expect(log.getByText('SECRET original',{exact:true})).toBeVisible();
- raw.runs[1].output='完成した報告（更新）';await expect(log).toContainText('完成した報告（更新）');await expect(log.locator('details')).toHaveAttribute('open','');
- await log.locator('summary').click();await expect(log.getByText('SECRET original',{exact:true})).not.toBeVisible();await expect(log.locator('.message.user')).toHaveCount(1);
+ failSave=true;await notifySnapshot(page);await page.getByLabel('人間向け報告モード').check();await expect(page.getByLabel('人間向け報告モード')).not.toBeChecked();await page.keyboard.press('Escape');
+ setRunState(raw.runs[1],{kind:'ended',outcome:'failed',reason:'fixture'});await notifySnapshot(page);setRequestState(raw.requests[0],{kind:'active',review:['run-needs-review:r']});await notifySnapshot(page);await expect(log).toContainText('報告生成に失敗');await expect(page.locator('#agent-a .agent-recovery').getByRole('button',{name:'再試行',exact:true})).toBeVisible();await expect(log).toContainText('SECRET original');
+ setRunState(raw.runs[1],{kind:'ended',outcome:'unconfirmed',reason:'timeout'});await notifySnapshot(page);await expect(page.locator('#agent-a .agent-recovery')).toContainText('送信が失敗・中断・確認できず');await expect(log).toContainText('SECRET original');
+ setRunState(raw.runs[1],{kind:'ended',outcome:'normal',reason:'fixture'});await notifySnapshot(page);raw.runs[1].output='完成した報告';await notifySnapshot(page);setRequestState(raw.requests[0],{kind:'completed',by:'program',reason:'report-ended'});await notifySnapshot(page);raw.requests[0].finalRunId='r';await notifySnapshot(page);
+ await expect(log.getByText('完成した報告',{exact:true})).toBeVisible();await expect(log.getByText('SECRET original',{exact:true})).not.toBeVisible();
+ await log.locator('[data-disclosure="chat:source:output"] > summary').click();await expect(log.getByText('SECRET original',{exact:true})).toBeVisible();
+ raw.runs[1].output='完成した報告（更新）';await notifySnapshot(page);await expect(log).toContainText('完成した報告（更新）');await expect(log.locator('[data-disclosure="chat:source:output"]')).toHaveAttribute('open','');
+ await log.locator('[data-disclosure="chat:source:output"] > summary').click();await expect(log.getByText('SECRET original',{exact:true})).not.toBeVisible();await expect(log.locator('.message.user')).toHaveCount(1);
  await expect(page.locator('textarea[name=instruction]')).toHaveValue('次の質問');
  await page.screenshot({path:'/tmp/village-report-mode.png'});
 });
@@ -49,7 +54,7 @@ test('official HTTP report setting validates and remains independent of notifica
 });
 
 test('report mode off separates progress and final in Direct',async({page})=>{
- const raw=fixture();raw.requests[0].reportMode=false;raw.agents[0].nativeTurns=[];raw.runs=raw.runs.slice(0,1);Object.assign(raw.runs[0],{output:'調査しています\n\n**修正できました**',finalOutput:'**修正できました**'});
+ const raw=fixture();raw.requests[0].reportMode=false;await notifySnapshot(page);raw.agents[0].nativeTurns=[];await notifySnapshot(page);raw.runs=raw.runs.slice(0,1);await notifySnapshot(page);Object.assign(raw.runs[0],{output:'調査しています\n\n**修正できました**',finalOutput:'**修正できました**'});await notifySnapshot(page);
  await page.route('**/api/**',r=>r.fulfill({json:r.request().url().endsWith('/api/village')?{ok:true,result:{enabled:false}}:humanProjection(raw)}));
  await page.goto('/agents');await expect(page.locator('.response-progress')).toContainText('調査しています');await expect(page.locator('.response-final')).toContainText('修正できました');await expect(page.locator('details.response-history')).toHaveCount(0);
 
@@ -58,14 +63,16 @@ test('report mode off separates progress and final in Direct',async({page})=>{
 test('published report is visible outside internal exchanges after work and delivery separate',async({page})=>{
  const {workspaceSnapshot}=await import('../../server/conversation-pages.mjs');
  const raw=fixture();
- const root=raw.requests[0].requestGraph.nodes[0];root.currentRunId='source';root.reportRunId='r';
- setRunState(raw.runs[1],{kind:'ended',outcome:'normal',reason:'fixture'});
- raw.runs[1].output='人間へ届ける確定報告';
- setRequestState(raw.requests[0],{kind:'completed',by:'program',reason:'report-ended'});raw.requests[0].finalRunId='r';
+ const root=raw.requests[0].requestGraph.nodes[0];root.currentRunId='source';await notifySnapshot(page);root.reportRunId='r';await notifySnapshot(page);
+ setRunState(raw.runs[1],{kind:'ended',outcome:'normal',reason:'fixture'});await notifySnapshot(page);
+ raw.runs[1].output='人間へ届ける確定報告';await notifySnapshot(page);
+ setRequestState(raw.requests[0],{kind:'completed',by:'program',reason:'report-ended'});await notifySnapshot(page);raw.requests[0].finalRunId='r';await notifySnapshot(page);
  await page.route('**/api/**',r=>r.fulfill({json:r.request().url().endsWith('/api/village')?{ok:true,result:{enabled:false}}:workspaceSnapshot(humanProjection(raw))}));
  await page.goto('/agents');
  await expect(page.getByText('人間へ届ける確定報告',{exact:true})).toBeVisible();
  await expect(page.locator('.run-group').filter({hasText:'人間へ届ける確定報告'})).toHaveCount(0);
  await expect(page.getByText('SECRET original',{exact:true})).not.toBeVisible();
- await expect(page.locator('.runs')).not.toContainText('INTERNAL report prompt');
+ await expect(page.getByText('INTERNAL report prompt',{exact:true})).not.toBeVisible();
+ await page.locator('[data-disclosure="chat:r:input"] > summary').click();
+ await expect(page.getByText('INTERNAL report prompt',{exact:true})).toBeVisible();
 });

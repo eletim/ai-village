@@ -1,4 +1,5 @@
-import {test,expect} from '@playwright/test';
+import {notifySnapshot} from './helpers/change-events.js';
+import {test,expect} from './helpers/change-events.js';
 const id=n=>'00000000-0000-4000-8000-'+String(n).padStart(12,'0');
 function fixture(shops=2,people=8){return {workshops:Array.from({length:shops},(_,i)=>({id:'w'+i,name:['木の工房','川辺の工房'][i]||'工房 '+(i+1),iconPattern:Array(8).fill(i%2?'diamond':'line')})),projects:[{id:'p',name:'村づくり'}],agents:Array.from({length:people},(_,i)=>({id:id(i),name:i<2?'秘書 '+(i+1):'住人 '+(i+1),location:i<2?'mayor':'workshop',workshopId:'w'+(i%shops),projectId:'p',state:i===0?'busy':i===3?'unknown':'idle',connection:{},canSend:true})),runs:[],reviews:{[id(2)]:{attention:true}},notification:{enabled:false}};}
 async function mock(page,state){let offline=false;const mutations=[];await page.route('**/api/**',r=>{if(r.request().method()!=='GET'){mutations.push(r.request().url());return r.fulfill({json:{ok:true,result:{enabled:false}}});}return offline?r.abort():r.fulfill({json:state});});return {offline:v=>offline=v,mutations};}
@@ -6,10 +7,10 @@ test('registered village, selection, poll movement/deletion, deep link and retur
  const s=fixture(),m=await mock(page,s);await page.goto('/');await expect(page.locator('.village-lot')).toHaveCount(3);await expect(page.locator('#village-lots [data-resident]')).toHaveCount(8);await expect(page.locator('body')).not.toContainText('ミク');
  await page.locator('[data-place="workshop:w0"]').click();await expect(page.locator('#place-detail h2')).toHaveText('木の工房');await page.locator('#village-lots [data-resident="'+id(2)+'"]').click();await expect(page.locator('#resident-detail')).toContainText('村づくり');await expect(page.locator('#resident-detail')).toContainText('要確認');
  await page.screenshot({path:'/tmp/village-map-desktop.png',fullPage:true});
- s.agents[2].workshopId='w1';await expect(page.locator('#place-detail h2')).toHaveText('川辺の工房');await expect(page.locator('#resident-detail h2')).toHaveText('住人 3');
+ s.agents[2].workshopId='w1';await notifySnapshot(page);await expect(page.locator('#place-detail h2')).toHaveText('川辺の工房');await expect(page.locator('#resident-detail h2')).toHaveText('住人 3');
  expect(m.mutations).toEqual([]);await page.getByRole('link',{name:/このAgentと話す/}).click();await expect(page).toHaveURL(new RegExp('/agents#agent-'+id(2)));await expect(page.locator('#agent-'+id(2))).toBeVisible();await page.getByRole('link',{name:'村へ戻る',exact:true}).click();await expect(page.locator('.village-lot')).toHaveCount(3);
- await page.locator('#village-lots [data-resident="'+id(2)+'"]').click();s.agents.splice(2,1);await expect(page.locator('#resident-detail')).toBeEmpty();
- m.offline(true);await expect(page.locator('#map-connection')).toContainText('接続未確認');await expect(page.locator('#village-lots [data-status=unknown]')).toHaveCount(7);m.offline(false);await expect(page.locator('#map-connection')).toHaveAttribute('aria-label',/接続中/);expect(m.mutations.filter(x=>!x.endsWith('/view'))).toEqual([]);
+ await page.locator('#village-lots [data-resident="'+id(2)+'"]').click();s.agents.splice(2,1);await notifySnapshot(page);await expect(page.locator('#resident-detail')).toBeEmpty();
+ m.offline(true);await notifySnapshot(page);await expect(page.locator('#map-connection')).toContainText('接続未確認');await expect(page.locator('#village-lots [data-status=unknown]')).toHaveCount(7);m.offline(false);await notifySnapshot(page);await expect(page.locator('#map-connection')).toHaveAttribute('aria-label',/接続中/);expect(m.mutations.filter(x=>!x.endsWith('/view'))).toEqual([]);
 });
 test('large village, mobile keyboard navigation and three themes stay within viewport',async({page})=>{
  const s=fixture(9,29);await mock(page,s);await page.setViewportSize({width:390,height:844});await page.goto('/');await expect(page.locator('.village-lot')).toHaveCount(10);await expect(page.locator('#village-lots [data-resident]')).toHaveCount(29);

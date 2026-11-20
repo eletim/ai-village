@@ -1,4 +1,5 @@
-import {test,expect} from '@playwright/test';
+import {notifySnapshot} from './helpers/change-events.js';
+import {test,expect} from './helpers/change-events.js';
 test('busy secretary explicitly chooses A supplement without steering B; closed target never becomes new request',async({page})=>{
  const a={id:'a',name:'秘書',location:'mayor',state:'busy',connection:{},canSend:false,canQueue:true,canSteer:true,steerTarget:{runId:'B',sessionId:'s',turnId:'t'}};
  const q={id:'A',status:'active',instruction:'依頼A',requestGraph:{nodes:[{id:'workA',assignee:'a',state:{kind:'active',review:[]},metadata:{instruction:'依頼A'},inbox:[]}]}};
@@ -10,7 +11,7 @@ test('busy secretary explicitly chooses A supplement without steering B; closed 
  await page.goto('/agents');const choice=page.getByRole('combobox',{name:'依頼・補足先'});await expect(choice).toHaveValue('');
  await choice.selectOption('A:workA');await page.locator('textarea[name=instruction]').fill('Aへの追加条件');await page.getByRole('button',{name:'補足を送信',exact:true}).click();
  await expect.poll(()=>sends.length).toBe(1);expect(sends[0].humanRequestId).toBe('A');expect(sends[0].workId).toBe('workA');expect(sends[0].steerTarget).toBeUndefined();await expect(page.locator('.runs')).toContainText('Aへの追加条件');
- q.status='completed';await expect(choice).toContainText('補足先は終了済み');await expect(page.getByRole('button',{name:'補足を送信',exact:true})).toBeDisabled();
+ q.status='completed';await notifySnapshot(page);await expect(choice).toContainText('補足先は終了済み');await expect(page.getByRole('button',{name:'補足を送信',exact:true})).toBeDisabled();
  await choice.selectOption('');await expect(page.getByRole('button',{name:'待機キューへ',exact:true})).toBeEnabled();
 });
 test('supplement is chronological, visible with attachments, and remains stable through polling',async({page})=>{
@@ -19,5 +20,5 @@ test('supplement is chronological, visible with attachments, and remains stable 
  requests:[{id:'q',status:'active',instruction:'initial request',requestGraph:{rootId:'w',nodes:[{id:'w',parentId:null,assignee:'a',metadata:{},state:{kind:'active',review:[]},currentRunId:'answer',inbox:[{id:'i',kind:'supplement',text:'earlier supplement',createdAt:'2026-11-19T01:01:00Z',attachments:[{id:'c9a1db77-d633-42e9-aad5-128cdf0f7f61',kind:'file',name:'supplement.txt',size:4}]}]}]}}]};
  await page.route('**/api/**',r=>r.fulfill({json:state}));await page.goto('/agents');const input=page.locator('[data-entry="input:i"]');await expect(input).toContainText('supplement.txt');await expect(input).toContainText('受付済み');
  await expect(page.locator('.runs')).toContainText('latest reply');expect(await input.evaluate(el=>!!(el.compareDocumentPosition([...document.querySelectorAll('.message.assistant')].find(x=>x.textContent.includes('latest reply')))&Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true);
- state.requests[0].requestGraph.nodes[0].inbox[0].handledBy='answer';await expect(input).toContainText('対応済み');await expect(input).toHaveCount(1);await expect(input).toContainText('supplement.txt');
+ state.requests[0].requestGraph.nodes[0].inbox[0].handledBy='answer';await notifySnapshot(page);await expect(input).toContainText('対応済み');await expect(input).toHaveCount(1);await expect(input).toContainText('supplement.txt');
 });

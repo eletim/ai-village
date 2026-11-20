@@ -8,7 +8,7 @@ import {transitionGraph,reconcileGraph,graphSteps,waitingReason} from '../server
 import {unifiedData,migrateUnifiedStore} from '../server/unified-request-migration.mjs';
 import {validateGraph} from '../server/unified-requests.mjs';
 const run=(id,owner,kind='running',outcome='normal')=>({ownerId:owner,agentId:owner,run:{...newRun(id,'tree','human').value,state:kind==='running'?{kind,sessionId:'s',turnId:id,inputId:'i'}:kind==='ended'?{kind,outcome,reason:'native-terminal'}:{kind},facts:[{type:'input',at:1}]}});
-const request=(id,parentId,currentRunId)=>({metadata:{},id,parentId,requester:parentId?{kind:'agent',requestId:parentId,agentId:parentId}:{kind:'human'},assignee:id,runAgents:{[currentRunId]:id},runIds:[currentRunId],currentRunId,reportRunId:null,reportMode:false,state:{kind:'active',review:[]},submissions:[],claims:[],replacements:[],invalidatedRuns:[],handling:[],declarations:[],decisions:[]});
+const request=(id,parentId,currentRunId)=>({recipient:parentId?{kind:"request",requestId:parentId}:{kind:"human"},createdBy:parentId?"agent":"human",planned:false,metadata:{},id,parentId,requester:parentId?{kind:'agent',requestId:parentId,agentId:parentId}:{kind:'human'},assignee:id,runAgents:{[currentRunId]:id},runIds:[currentRunId],currentRunId,reportRunId:null,reportMode:false,state:{kind:'active',review:[]},submissions:[],claims:[],replacements:[],invalidatedRuns:[],handling:[],declarations:[],decisions:[]});
 const fixture=()=>({version:3,rootId:'parent',nodes:[request('parent',null,'p'),request('child','parent','c')],operations:[]});
 test('pure identical lifecycle, actor enforcement, exact result versions and operation idempotence',()=>{
  const input=fixture(),runs=[run('p','parent'),run('c','child','ended')],g=reconcileGraph(input,runs);assert.equal(input.nodes[1].state.kind,'active');assert.equal(g.nodes[1].state.kind,'submitted');
@@ -18,7 +18,7 @@ test('pure identical lifecycle, actor enforcement, exact result versions and ope
  const changed=transitionGraph(g,event,runs);assert(changed.ok);assert.deepEqual(transitionGraph(changed.value,event,runs).value,changed.value);
  assert.equal(transitionGraph(changed.value,{...event,results:[]},runs).ok,false);assert.equal(graphSteps(changed.value,runs).length,1);
  const declaration=transitionGraph(changed.value,{...event,type:'finish',operationId:'finish',results:[]},runs).value;assert.equal(declaration.nodes[0].state.kind,'active');
- assert.equal(reconcileGraph(declaration,[run('p','parent','ended'),runs[1]]).nodes[0].state.kind,'completed');
+ assert.equal(reconcileGraph(declaration,[run('p','parent','ended'),runs[1]]).nodes[0].state.kind,'submitted');
 });
 test('queued delivery reservation retracts but sent/unconfirmed delivery is never consumed by an old actor',()=>{
  const runs=[run('p','parent','ended'),run('c','child','ended')];let g=reconcileGraph(fixture(),runs);
@@ -30,7 +30,7 @@ test('queued delivery reservation retracts but sent/unconfirmed delivery is neve
 });
 test('migration is deterministic, idempotent, backs up exact bytes and preserves running evidence and notification history',async t=>{
  const runs=[run('p','parent'),run('c','child','ended')].map(e=>({id:e.run.id,agentId:e.agentId,humanRequestId:'tree',workId:e.ownerId,runModel:e.run,inputCorrelation:{version:1,hash:'exact-input'},baselineRuntime:{sessionId:'s',cursor:7,fileIdentity:'f'}}));
- const source={runs,agents:[{id:'parent'},{id:'child'}],requests:[{id:'tree',rootWorkId:'parent',works:[{id:'parent',parentWorkId:null,agentId:'parent',runIds:['p'],currentRunId:'p'},{id:'child',parentWorkId:'parent',agentId:'child',runIds:['c'],currentRunId:'c'}],notification:{status:'sent',messageId:'request:tree'},requestModel:{state:{kind:'active',review:[]},declarations:[],decisions:[]}}]};
+ const source={runs,agents:[{id:'parent'},{id:'child'}],requests:[{commonRequests:true,id:'tree',rootWorkId:'parent',works:[{id:'parent',parentWorkId:null,agentId:'parent',runIds:['p'],currentRunId:'p'},{id:'child',parentWorkId:'parent',agentId:'child',runIds:['c'],currentRunId:'c'}],notification:{status:'sent',messageId:'request:tree'},requestModel:{state:{kind:'active',review:[]},declarations:[],decisions:[]}}]};
  const original=JSON.stringify(source),a=unifiedData(source);const inconsistent=structuredClone(a);inconsistent.requests[0].requestGraph.version=2;assert.throws(()=>unifiedData(inconsistent),/Inconsistent/);assert.equal(JSON.stringify(source),original);assert.equal(JSON.stringify(unifiedData(source)),JSON.stringify(a));assert.equal(JSON.stringify(unifiedData(a)),JSON.stringify(a));assert.deepEqual(a.runs,source.runs);assert.deepEqual(a.requests[0].notification,source.requests[0].notification);assert(!JSON.stringify(a).includes('requestModel'));assert.equal(a.requests[0].requestGraph.nodes[0].state.kind,'active');
  const dir=await mkdtemp(join(tmpdir(),'unified-migration-'));t.after(()=>rm(dir,{recursive:true,force:true}));await writeFile(join(dir,'direct.json'),original);
  await migrateUnifiedStore(dir,source);assert.equal(await readFile(join(dir,'direct.pre-unified-requests-v3.json'),'utf8'),original);
@@ -82,7 +82,7 @@ test('supplement cancellation cannot revive old claims or finish declarations; f
  g=transitionGraph(g,{type:'attempt',actor:'human',requestId:'parent',runId:'s',report:false},runs).value;
  runs[2].run.state={kind:'cancelled',reason:'human'};g.nodes[0].currentRunId='p';runs[0]=run('p','parent','ended');g=reconcileGraph(g,runs);
  assert.equal(g.nodes[0].handling.length,0);assert.equal(g.nodes[1].state.kind,'submitted');assert.equal(g.nodes[0].state.kind,'active');
- g=transitionGraph(g,{...event,operationId:'fresh'},runs).value;assert.equal(g.nodes[0].state.kind,'completed');assert.equal(g.nodes[0].handling.length,1);
+ g=transitionGraph(g,{...event,operationId:'fresh'},runs).value;assert.equal(g.nodes[0].state.kind,'submitted');assert.equal(g.nodes[0].handling.length,1);
 });
 test('unrelated result receipt does not erase prior failure review; nested failure remains visible',()=>{
  const runs=[run('p','parent','ended','failed'),run('c','child','ended')];let g=reconcileGraph(fixture(),runs);
@@ -94,7 +94,7 @@ test('unrelated result receipt does not erase prior failure review; nested failu
  assert(failure.nodes[0].state.review.includes('child-needs-review'));assert(failure.nodes[1].state.review.includes('child-needs-review'));
 });
 
-function persisted(g,runs){return {unifiedRequestVersion:3,runs:runs.map(e=>({id:e.run.id,agentId:e.agentId,humanRequestId:'tree',workId:e.ownerId,runModel:e.run})),requests:[{id:'tree',rootWorkId:g.rootId,...(g.version<3?{works:g.nodes.map(n=>({id:n.id,parentWorkId:n.parentId,agentId:n.assignee,runIds:n.runIds,currentRunId:n.currentRunId}))}:{}),requestGraph:g,notification:{status:'sent',messageId:'existing-effect'}}]};}
+function persisted(g,runs){return {unifiedRequestVersion:3,runs:runs.map(e=>({id:e.run.id,agentId:e.agentId,humanRequestId:'tree',workId:e.ownerId,runModel:e.run})),requests:[{commonRequests:true,id:'tree',rootWorkId:g.rootId,...(g.version<3?{works:g.nodes.map(n=>({id:n.id,parentWorkId:n.parentId,agentId:n.assignee,runIds:n.runIds,currentRunId:n.currentRunId}))}:{}),requestGraph:g,notification:{status:'sent',messageId:'existing-effect'}}]};}
 test('persisted claims and handling validate operation, native outcome, owner and supersession evidence',()=>{
  const runs=[run('p','parent'),run('c','child','ended')];let g=reconcileGraph(fixture(),runs);
  const event={type:'finish',actor:'agent',requestId:'parent',runId:'p',operationId:'claim',at:1,results:[{requestId:'child',resultId:'c',version:1,decision:'accept'}]};

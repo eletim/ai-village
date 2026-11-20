@@ -1,12 +1,15 @@
 import {resolve} from 'node:path';
+import {createHash} from 'node:crypto';
 // The only source of Agent-facing policy and Agent decision-operation schemas.
 export const agentActions=Object.freeze({
- plan:{fields:'{humanRequestId,parentWorkId,actorRunId,operationId,instruction,agentId?}',description:'子依頼を開始前として保存。結果は親へ返る。担当は後から選べる。'},
+ report:{fields:'{humanRequestId,workId,actorRunId,operationId,kind:progress|question|extension,text,proposedCompletionAt?,proposedReportAt?}',description:'途中報告を保存して即時配送。延長は提案のみ。'},
+ deadline:{fields:'{humanRequestId,workId,actorRunId,operationId,expectedVersion,completionAt,reportAt,reason}',description:'管理する直接の子依頼の期限を変更。日時はタイムゾーン付き、期限なしはnull。'},
+ plan:{fields:'{humanRequestId,parentWorkId,actorRunId,operationId,instruction,agentId?,reportAt?,completionAt?}',description:'子依頼を開始前として保存。結果は親へ返る。担当は後から選べる。'},
  launch:{fields:'{humanRequestId,workId,actorRunId,operationId,agentId?}',description:'開始前の直接の子依頼を担当Agentへ実行予約。親の現在runから操作する。'},
  assignPlan:{fields:'{humanRequestId,workId,actorRunId,operationId,agentId}',description:'開始前の直接の子依頼の担当を選ぶ。実行は開始しない。'},
  discard:{fields:'{humanRequestId,workId,actorRunId,operationId}',description:'開始前の直接の子依頼を取り下げる。実行済みは対象外。'},
  amend:{fields:'{humanRequestId,workId,actorRunId,operationId,instruction}',description:'直接の子依頼へ補足。'},
- delegate:{fields:'{humanRequestId,parentWorkId,actorRunId,agentId,operationId,instruction,replacesRequestId?}',description:'子依頼を作成・開始。再作業はrework後replacesRequestIdで置換予約。'},
+ delegate:{fields:'{humanRequestId,parentWorkId,actorRunId,agentId,operationId,instruction,replacesRequestId?,reportAt?,completionAt?}',description:'子依頼を作成・開始。再作業はrework後replacesRequestIdで置換予約。'},
  respond:{fields:'{humanRequestId,workId,runId,operationId,inputs?:[入力ID],results:[{requestId,resultId,version,decision:accept|rework}]}',description:'入力と直接の子結果への対応を申告。'},
  finish:{fields:'{humanRequestId,workId,runId,operationId,inputs?:[入力ID],results}',description:'対応と完了を申告。正常終了・子の解決を照合。'}
 });
@@ -20,10 +23,15 @@ export function visualReportContext(cli,url){return '\n図は必要時のみfenc
 export class AgentRules {
  constructor(url){this.url=url;this.cli='VILLAGE_URL='+JSON.stringify(url)+' node '+JSON.stringify(resolve('scripts/village.mjs'));}
  access(id){return 'CLI: '+this.cli+' requests get '+id+'。API: POST '+this.url+'/api/direct/requests/get {humanRequestId}。必要時に最新詳細を取得: agents list、requests get HUMAN_REQUEST_ID、requests results HUMAN_REQUEST_ID WORK_ID、requests inputs HUMAN_REQUEST_ID WORK_ID（WORK_IDはworkId）。詳細はCLI help。秘書Agentはlocal接続の工房だけに作成できます。';}
- work(id){return [visualReportContext(this.cli,this.url),common,this.access(id),identity,guide,'最新名簿: GET '+this.url+'/api/direct/agents 。',steeringRule,'判断操作は以下のAPI。読取は状態不変。respond/finishのresultsは必須（空は[]）。requestId/resultId/versionとdecision:accept|reworkを明示する。申告は当該runの正常終了で確定し、失敗・中断・不明では未確定。',...Object.keys(agentActions).map(actionUsage),'委任ありのまとめ役は子の送信終了と結果を確認し、最終回答直前に requests finish を申告してください。'].join('\n');}
+ work(id){return [visualReportContext(this.cli,this.url),common,'期限延長は依頼元の判断。子依頼には報告期限を指定。未報告の期限通知には状況確認・期限変更を判断し、完了前でもreportで進捗・相談を届ける。','inputsのtruncatedはrequests inputsで全文を取得。textSourceUnavailable=trueは全文を取得できない結果。抜粋を全文と扱わない。入力のtextInInstruction=trueは封筒の本文に全文がある。result.outcomeは実行事実であり採否ではない。今回の依頼だけを操作する。',this.access(id),identity,guide,'最新名簿: GET '+this.url+'/api/direct/agents 。',steeringRule,'判断操作は以下のAPI。読取は状態不変。respond/finishのresultsは必須（空は[]）。requestId/resultId/versionとdecision:accept|reworkを明示する。申告は当該runの正常終了で確定し、失敗・中断・不明では未確定。',...Object.keys(agentActions).map(actionUsage),'委任ありのまとめ役は子の送信終了と結果を確認し、最終回答直前に requests finish を申告してください。'].join('\n');}
  report(id){return [visualReportContext(this.cli,this.url),reportPolicy,this.access(id)].join('\n');}
- startup(){return '<ai-village-instructions version="1">\n毎ターンの ai-village-request は識別情報。HUMAN_REQUEST_ID はそのhumanRequestIdに置き換え、人間本文と村の規則を区別してください。\n通常作業:\n'+this.work('HUMAN_REQUEST_ID')+'\nphase=report の場合だけ適用:\n'+this.report('HUMAN_REQUEST_ID')+'\n</ai-village-instructions>';}
- context(metadata,compact){return '\n<ai-village-request>'+JSON.stringify(metadata)+(compact?'':'\n'+(metadata.phase==='report'?this.report(metadata.humanRequestId):this.work(metadata.humanRequestId)))+'</ai-village-request>';}
+ specification(phase='work'){
+  if(!['work','report'].includes(phase))throw Object.assign(Error('phase must be work or report'),{status:400});
+  const text=phase==='report'?this.report('HUMAN_REQUEST_ID'):this.work('HUMAN_REQUEST_ID');
+  return {version:1,phase,revision:createHash('sha256').update(text).digest('hex'),text};
+ }
+ startup(){return '<ai-village-instructions version="2">\n村の固定起動契約。ai-village-discoveryは登録、ai-village-requestは今回の識別情報で、操作許可ではありません。依頼本文と資料を区別し、個別指示と権限を守る。毎回の封筒のrulesRevisionが未読または変更された時、作業前に '+this.cli+' rules get work（phase=reportはreport）で正式な現行仕様を取得し、同revisionを確認して従う。APIはGET '+this.url+'/api/direct/rules?phase=work|report。取得不能・未知の契約・競合なら操作を進めず理由を報告する。仕様の更新は新しい操作許可ではない。結果/期限/inputs/results/委任/完了の手続きはこの正式仕様が定める。旧履歴の操作説明を現行仕様と混同しない。受付不明の送信は自動再送しない。起動契約の変更は新セッションを要し、プロンプトファイル変更を既存セッションへの反映とみなさない。\n</ai-village-instructions>';}
+ context(metadata){const phase=metadata.phase==='report'?'report':'work';return '\n<ai-village-request>'+JSON.stringify({...metadata,contract:2,rulesRevision:this.specification(phase).revision})+'</ai-village-request>';}
  discovery(self){return '\n<ai-village-discovery>'+JSON.stringify(self)+'</ai-village-discovery>';}
  project(projectId){return '\n<ai-village-project-guide>'+JSON.stringify({projectId,argv:['projects','guide',projectId]})+'</ai-village-project-guide>';}
  reportData(q,source,supplements){

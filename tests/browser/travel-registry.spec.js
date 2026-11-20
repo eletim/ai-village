@@ -1,5 +1,5 @@
 import {directSnapshot} from './helpers/direct-fixtures.js';
-import {test,expect} from '@playwright/test';
+import {test,expect} from './helpers/change-events.js';
 test('registered computer/folder CRUD, selection isolation, immutable draft and concurrent editing',async({page,request})=>{
  await page.route(directSnapshot,r=>r.fulfill({json:{capabilities:{travelContexts:true},agents:[{id:'registry-test',name:'Agent',connection:{},state:'idle',canSend:true}],runs:[],notification:{}}}));
  await page.goto('/agents');

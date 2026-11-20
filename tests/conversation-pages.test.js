@@ -3,7 +3,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {workspaceSnapshot,historyPage} from '../server/conversation-pages.mjs';
 import {matchingRun} from '../src/pending-message.js';
-import {rootRunIds,foldEntriesHTML} from '../src/run-groups.js';
 import {humanProjection} from '../server/report-view.mjs';
 export function fixture(n=230){return {agents:[{id:'a',state:'idle',name:'Fixture',location:'mayor',connection:{},nativeTurns:[]}],workshops:[],projects:[],reviews:{a:{unreviewed:true,attention:true}},notification:{enabled:false},requests:[],runs:Array.from({length:n},(_,i)=>({id:'r'+i,agentId:'a',createdAt:new Date(1700000000000+i*1000).toISOString(),state:'completed',instruction:'question '+i,output:'answer '+i+' '+ 'word '.repeat(400),finalOutput:'final '+i}))};}
 test('100 boundary, agent-bound stable cursors, no native duplicate, repeated legitimate text preserved',()=>{
@@ -19,10 +18,10 @@ test('active old inputs stay controllable; full request records excluded and sou
  const v=fixture();v.runs[0].state='queued';v.runs[0].humanRequestId='q';v.runs[0].baselineRuntime={secret:'not a display field'};v.requests=[{id:'q',status:'active',instruction:'SECRET',inbox:[{text:'SECRET'}],works:[{id:'w',currentRunId:'r0',instruction:'SECRET'}]}];
  const s=workspaceSnapshot(v);assert.equal(s.conversations.a.entries.length,101);assert(s.runs.some(r=>r.id==='r0'));assert(!JSON.stringify(s).includes('SECRET'));assert(!JSON.stringify(s).includes('not a display field'));assert.equal(v.requests[0].instruction,'SECRET');assert.deepEqual(s.reviews,v.reviews);
 });
-test('projection applied before paging: report instructions hidden, completed work collapsed, updates retained',()=>{
+test('projection applied before paging: report inputs expandable, completed work collapsed, updates retained',()=>{
  const v=fixture(2);v.runs[0].humanRequestId='q';Object.assign(v.runs[1],{humanRequestId:'q',phase:'report',origin:'report',instruction:'PRIVATE REPORT',output:'PRIVATE DRAFT',workId:'w'});v.requests=[{id:'q',reportMode:true,status:'active',works:[{id:'w',currentRunId:'r1'}]}];
- let s=workspaceSnapshot(humanProjection(fixtureModels(v,{refresh:true})));assert(!JSON.stringify(s).includes('PRIVATE'));const cursor=s.conversations.a.cursor;
- v.requests[0].status='completed';v.requests[0].finalRunId='r1';v.runs[1].finalOutput='public final';s=workspaceSnapshot(humanProjection(fixtureModels(v,{refresh:true})),{a:cursor});assert(s.conversations.a.entries[0].collapsedHistory);assert.equal(s.conversations.a.entries[1].output,'public final');assert(!JSON.stringify(s).includes('PRIVATE REPORT'));
+ let s=workspaceSnapshot(humanProjection(fixtureModels(v,{refresh:true})));assert(!JSON.stringify(s).includes('PRIVATE DRAFT'));assert.equal(s.conversations.a.entries[1].instruction,'PRIVATE REPORT');const cursor=s.conversations.a.cursor;
+ v.requests[0].status='completed';v.requests[0].finalRunId='r1';v.runs[1].finalOutput='public final';s=workspaceSnapshot(humanProjection(fixtureModels(v,{refresh:true})),{a:cursor});assert(s.conversations.a.entries[0].collapsedHistory);assert.equal(s.conversations.a.entries[1].output,'public final');assert.equal(s.conversations.a.entries[1].instruction,'PRIVATE REPORT');
 });
 test('cursor unaffected by managed run acceptance and external sessions remain distinct',()=>{
  const v=fixture(1);const p=historyPage(v,'a');v.runs[0].sessionId='new';assert.equal(workspaceSnapshot(v,{a:p.cursor}).conversations.a.entries.length,1);
@@ -72,8 +71,8 @@ test('supplements obey history window while compact receipts survive and older p
 test('published report stays visible through compact paging when source work remains current',()=>{
  const v=fixture(2);Object.assign(v.runs[0],{humanRequestId:'q',origin:'human'});Object.assign(v.runs[1],{humanRequestId:'q',origin:'report',phase:'report',suppressUser:true});
  v.requests=[{id:'q',status:'completed',finalRunId:'r1',requestGraph:{rootId:'w',nodes:[{id:'w',parentId:null,assignee:'a',currentRunId:'r0'}]}}];
- const snapshot=workspaceSnapshot(v),current=rootRunIds(snapshot.requests);
- assert(current.has('r0'));assert(current.has('r1'));
- assert(!foldEntriesHTML(snapshot.conversations.a.entries,r=>r.id,current).includes('run-group'));
- v.requests[0].status='active';assert(!rootRunIds(workspaceSnapshot(v).requests).has('r1'));
+ const snapshot=workspaceSnapshot(v);
+ assert.equal(snapshot.requests[0].finalRunId,'r1');
+ assert.equal(snapshot.requests[0].status,'completed');
+ assert(snapshot.conversations.a.entries.some(r=>r.id==='r1'&&r.phase==='report'));
 });

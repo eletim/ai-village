@@ -1,3 +1,4 @@
+import {readPartitionSnapshot} from '../server/partition-store.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {migrateProjectOrder} from '../server/project-order-migration.mjs';
@@ -19,6 +20,6 @@ test('startup saves pin retirement once and preserves other project fields',asyn
  d.project(p.id).pinned=true;Object.assign(d.project(q.id),{displayOrder:-10,suspended:true});await d.save();
  const restored=new DirectAgents(options);await restored.init({watch:false});t.after(()=>restored.close());
  assert.deepEqual(orderedProjects(restored.data.projects).map(p=>p.id),[p.id,q.id]);assert.equal(restored.project(q.id).suspended,true);
- const saved=JSON.parse(await readFile(join(dir,'direct.json'),'utf8'));assert.equal(saved.projects.some(p=>'pinned' in p),false);
+ const saved=readPartitionSnapshot(dir);assert.equal(saved.projects.some(p=>'pinned' in p),false);
  const again=new DirectAgents(options);await again.init({watch:false});t.after(()=>again.close());assert.deepEqual(again.data.projects,saved.projects);
 });

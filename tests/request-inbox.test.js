@@ -121,7 +121,7 @@ test('previously saved orphan report reservation recovers without a second repor
  const f=await fixture(t,{reportMode:true}),s=f.service,r=await send(s,f.agents[0],'A');await f.submit(r);await handle(s,r);
  s.flow.dispatchQueued=async()=>{};await f.complete(r);const q=s.flow.root(r.humanRequestId),w=s.flow.work(q,r.workId),report=s.flow.run(q.report.initialRunId);
  // Saved shape produced by the previous version: report metadata removed, queued head remains.
- delete q.report;w.reportRunId=null;w.inbox.push({id:randomUUID(),kind:'supplement',text:'legacy late input',createdAt:new Date().toISOString(),attempts:[]});await s.save();
+ delete q.report;q.commonRequests=false;delete s.data.commonRequestVersion;delete w.recipient;delete w.createdBy;delete w.planned;w.currentRunId=report.id;w.reportRunId=report.id;w.state={kind:'active',review:[]};w.inbox.push({id:randomUUID(),kind:'supplement',text:'legacy late input',createdAt:new Date().toISOString(),attempts:[]});await s.save();
  const restored=await f.restart();await restored.tick();const node=restored.flow.work(restored.flow.root(q.id),w.id);assert.equal(restored.flow.run(report.id).runModel.state.kind,'cancelled');assert.notEqual(node.currentRunId,report.id);assert(!f.sent.some(x=>x.text.includes(report.id)));
 });
 
@@ -144,7 +144,7 @@ test('long child result is abbreviated only in prompt; inputs restores full text
  Object.assign(f.runtimes.get(cr.agentId).turns.find(t=>t.id===cr.turnId),{state:'completed',output,completionEvent:'long-result'});await s.tick();
  const w=s.flow.work(s.flow.root(r.humanRequestId),r.workId),stored=w.inbox.find(i=>i.result);assert.equal(stored.text.length,8000);
  assert.equal(s.flow.inputs(r.humanRequestId,r.workId).find(i=>i.id===stored.id).text,output);
- const prompt=s.flow.context(s.flow.run(w.currentRunId));assert(prompt.includes('"truncated":true'));assert(prompt.includes('requests inputs'));assert(!prompt.includes('FINAL_REQUIRED_WARNING'));
+ const prompt=s.flow.context(s.flow.run(w.currentRunId));assert(prompt.includes('"truncated":true'));assert(s.rules.specification().text.includes('requests inputs'));assert(!prompt.includes('FINAL_REQUIRED_WARNING'));
  const restored=await f.restart();assert.equal(restored.flow.inputs(r.humanRequestId,r.workId).find(i=>i.id===stored.id).text,output);
 });
 test('missing assignee blocks only its own request while another Agent dispatches work',async t=>{

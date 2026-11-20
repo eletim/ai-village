@@ -1,3 +1,4 @@
+import {subscribeChanges} from './change-stream.js';
 import {bindRequestComposition} from './request-composition.js';
 import {bindSidebarOrder} from './sidebar-order.js';
 import {boardProjectTitle,mobileWorkspace} from './mobile-workspace.js';
@@ -9,6 +10,7 @@ import {acceptWorkspace} from './workspace-sync.js';
 import {restorePendingMessage,matchingRun,unchangedDraft,pendingMessageStatus} from './pending-message.js';
 import {weeklyUsagePanel} from './model-usage.js';
 import {canCancelQueued} from './queued-run.js';
+import {runtimeMigration} from './runtime-migration.js';
 import {agentProfileViewer} from './agent-profile.js';
 import {dateDividers} from './date-divider.js';
 import {responseHTML} from './response-content.js';
@@ -22,7 +24,7 @@ import {autogrowInput} from './autogrow-input.js';
 import {linkedText} from './linked-text.js';
 import {attachmentComposer,attachmentHTML} from './attachments.js';
 import {chatScroll} from './chat-scroll.js';
-import {foldEntriesHTML,rootRunIds} from './run-groups.js';
+import {isHumanInput,exchangeLabel,chatBodyHTML} from './run-groups.js';
 import {travelComposer} from './travel-composer.js';
 import {travelSummary,sameTravelContexts} from './travel-context.js';
 import {PAGE_SIZE,isSuspended,placeOf,orderedAgents,orderedProjectAgents,orderedProjects,boardLayout} from './board-state.js';
@@ -30,7 +32,8 @@ import {agentEntries,unreadByAgent,visualState,faviconHref} from './completions.
 import {agentPlaceName} from './agent-identity.js';
 import {bindPromptInput,mobilePromptUI} from './prompt-input.js';
 const $=s=>document.querySelector(s);
-const profileViewer=agentProfileViewer();
+const migrationViewer=runtimeMigration({api,newId:newRequestId});
+const profileViewer=agentProfileViewer({onMigration:id=>migrationViewer.open(id)});
 weeklyUsagePanel($('#weekly-usage'));
 $('#agents').addEventListener('click',e=>{const button=e.target.closest('[data-profile-agent]');if(button){const a=state.agents.find(a=>a.id===button.dataset.profileAgent);if(a)profileViewer.open(a,(state.projects||[]).find(p=>p.id===a.projectId)||null);}});
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -94,7 +97,7 @@ function sidebarState(collapsed){
 }
 sidebarState(document.documentElement.dataset.sidebarCollapsed==='true');
 mobileWorkspace();
-$('#next-agent').onclick=()=>{const list=filtered();const index=list.findIndex(a=>a.id===zoomId);if(index>=0&&list.length>1)toggleZoom(list[(index+1)%list.length].id);};
+$('#next-agent').onclick=()=>{const list=filtered();const index=list.findIndex(a=>a.id===zoomId);if(index>=0&&list.length>1){toggleZoom(list[(index+1)%list.length].id);void refresh(true);}};
 $('#sidebar-toggle').onclick=()=>{
  capturePositions();
  const collapsed=document.documentElement.dataset.sidebarCollapsed!=='true';
@@ -104,6 +107,14 @@ $('#sidebar-toggle').onclick=()=>{
 function capturePositions(){for(const [id,card] of cards)if(!card.hidden)scrolls.get(id)?.capture();}
 function timeHTML(value){if(!value)return '';const date=new Date(value);return Number.isNaN(date.getTime())?'':`<time datetime="${esc(value)}" title="${esc(date.toLocaleString())}">${esc(date.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}))}</time>`;}
 function bubble(side,text,at,extra=''){return `<div class="message ${side}">${text?(side==='assistant'?reportHTML(text):`<pre>${linkedText(text)}</pre>`):''}${extra}${timeHTML(at)}</div>`;}
+function requestSignalsHTML(agentId){
+ return (state.requests||[]).filter(q=>q.status==='active').flatMap(q=>(q.requestGraph?.nodes||[]).filter(n=>n.assignee===agentId&&n.state.kind==='active'&&n.metadata?.reporting).map(n=>{
+  const r=n.metadata.reporting,latest=r.latestReport||r.reports?.at(-1),overdue=Object.keys(r.expired||{}).length;
+  if(!latest&&!overdue&&!r.reportAt&&!r.completionAt)return '';
+  const date=at=>at?new Date(at).toLocaleString():'指定なし';
+  return `<div class="request-reporting"><p>${esc((n.metadata.instruction||q.instruction||'依頼').slice(0,100))}</p><p>完成期限: ${esc(date(r.completionAt))} · 次回報告: ${esc(date(r.reportAt))}${r.reportReceivedAt?'（報告済み）':''}</p>${overdue?'<p>期限超過：依頼元の判断待ち</p>':''}${latest?`<p>${esc(latest.text.slice(0,1000))}</p>`:''}<button data-request-composition="${esc(agentId)}">期限・報告の詳細</button></div>`;
+ })).join('');
+}
 function recoveryHTML(r){
  const q=state.requests?.find(q=>q.id===r.humanRequestId),w=q?.requestGraph?.nodes.find(w=>w.currentRunId===r.id);
  if(!needsRunRecovery(q,r,w))return '';
@@ -116,15 +127,24 @@ function entryHTML(a,r,divider){
  if(r.inputReceipt)return `${divider(r.createdAt)}<div class="run" data-entry="${esc(r.id)}">${bubble('user',r.instruction,r.createdAt,travelSummary(r.travelContexts)+attachmentHTML(r.attachments)+`<small>補足 · ${esc(r.targetLabel)} · ${esc(r.inputStatus)}</small>`)}</div>`;
  const request=state.requests?.find(q=>q.id===r.humanRequestId),current=request?.requestGraph?.nodes.find(n=>n.id===r.workId)?.currentRunId===r.id;
  const waiting=current?requestWaitingText(request,r.workId):'';
+ const node=request?.requestGraph?.nodes.find(n=>n.id===r.workId),parent=request?.requestGraph?.nodes.find(n=>n.id===node?.parentId);
+ const published=request?.status==='completed'&&request.finalRunId===r.id;
+ const finalLabel=published?'最終報告':parent?'成果提出（'+(state.agents.find(x=>x.id===parent.assignee)?.name||'依頼元Agent')+'宛）':'回答';
+ const human=isHumanInput(r),inputBody=(r.instruction?'<pre>'+linkedText(r.instruction)+'</pre>':'')+travelSummary(r.travelContexts)+attachmentHTML(r.attachments);
+ const input=human&&!r.suppressUser?bubble('user',r.instruction,r.createdAt,travelSummary(r.travelContexts)+attachmentHTML(r.attachments)):
+  '<div class="message internal">'+chatBodyHTML(r,'input',inputBody,true,exchangeLabel(r,state))+timeHTML(r.createdAt)+'</div>';
+ // Legacy completed replies have no finalOutput/origin metadata; retain their human-facing answer.
+ const showAnswer=published||(human&&!r.hiddenCompletion&&!r.collapsedHistory&&(r.finalOutput||(r.origin==null&&r.state==='completed')));
+ const response=r.output||r.finalOutput?'<div class="message assistant">'+chatBodyHTML(r,'output',responseHTML({...r,collapsedHistory:false},{finalLabel}),!showAnswer,r.finalOutput?finalLabel:'途中経過')+timeHTML(r.completedAt)+'</div>':'';
  const normal=!r.error&&!r.errorCode&&!r.attachmentError&&!r.needsReview&&!requestRootState(state.requests?.find(q=>q.id===r.humanRequestId))?.review?.length;
- return `${divider(r.createdAt||r.completedAt)}<div class="run" data-entry="${esc(JSON.stringify([r.external?'native':'run',r.external?(r.sessionId||r.agentSessionId||''):'',r.id]))}">${r.suppressUser?'':bubble('user',r.instruction,r.createdAt,travelSummary(r.travelContexts)+attachmentHTML(r.attachments))}${r.output||r.finalOutput?'<div class="message assistant">'+responseHTML(r)+timeHTML(r.completedAt)+'</div>':''}<p class="run-status">${compactStatusPair(r.queueCancelledAt?'送信取消済み':r.reportStatus||labels[r.state]||r.state,r.humanRequestId?({active:'依頼継続中',finalizing:'最終報告の完了待ち',completed:'依頼全体完了',cancelled:'依頼キャンセル'})[state.requests?.find(q=>q.id===r.humanRequestId)?.status]||'依頼照合中':'達成状況: 未判定',normal,r.external?'PurpleMuxからの入力 · ':r.origin==='result'?'子作業結果の配送 · ':r.origin==='steering'?'実行中への補足 · ':'')} ${esc(r.errorCode||'')} ${esc(r.attachmentError||r.error||'')} ${r.notification?' · 通知: '+esc(r.notification.status)+(r.notification.reason?' / '+esc(r.notification.reason):''):''}</p>${canCancelQueued(r)?`<button type="button" data-cancel-queued="${esc(r.id)}" data-queue-agent="${esc(a.id)}">送信待ちを取り消す</button>`:''}${waiting?`<p class="request-waiting">${esc(waiting)}</p>`:''}${r.queueCancelledAt?'':recoveryHTML(r)}</div>`;
+ return `${divider(r.createdAt||r.completedAt)}<div class="run" data-entry="${esc(JSON.stringify([r.external?'native':'run',r.external?(r.sessionId||r.agentSessionId||''):'',r.id]))}">${input}${response}<p class="run-status">${compactStatusPair(r.queueCancelledAt?'送信取消済み':r.reportStatus||labels[r.state]||r.state,r.humanRequestId?({active:'依頼継続中',finalizing:'最終報告の完了待ち',completed:'依頼全体完了',cancelled:'依頼キャンセル'})[state.requests?.find(q=>q.id===r.humanRequestId)?.status]||'依頼照合中':'達成状況: 未判定',normal,r.external?'PurpleMuxからの入力 · ':r.origin==='result'?'子作業結果の配送 · ':r.origin==='steering'?'実行中への補足 · ':'')} ${esc(r.errorCode||'')} ${esc(r.attachmentError||r.error||'')} ${r.notification?' · 通知: '+esc(r.notification.status)+(r.notification.reason?' / '+esc(r.notification.reason):''):''}</p>${canCancelQueued(r)?`<button type="button" data-cancel-queued="${esc(r.id)}" data-queue-agent="${esc(a.id)}">送信待ちを取り消す</button>`:''}${waiting?`<p class="request-waiting">${esc(waiting)}</p>`:''}${r.queueCancelledAt?'':recoveryHTML(r)}</div>`;
 }
 function runHTML(a){
  const page=state.conversations?.[a.id];
  // Just-focused but not yet synced: say so, rather than showing bodiless controls as if they were the full thread.
  if(state.conversations&&!page&&focusIds.has(a.id))return '<p>会話を読み込み中…</p>';
- const entries=page?.entries||agentEntries(state,a),divider=dateDividers(),localHTML=localMessageHTML(a.id),current=rootRunIds(state.requests);
- return (historyErrors.has(a.id)?`<p role="alert" class="history-error">${esc(historyErrors.get(a.id))}</p>`:'')+(page?.hasMore?`<button type="button" data-load-history="${esc(a.id)}" ${historyLoading.has(a.id)?'disabled':''}>${historyLoading.has(a.id)?'読込中…':'古い会話を読み込む'}</button>`:'')+foldEntriesHTML(entries,r=>entryHTML(a,r,divider),current)+(localHTML?divider(outbox.get(a.id)?.createdAt)+localHTML:'')+divider.trailingToday();
+ const entries=page?.entries||agentEntries(state,a),divider=dateDividers(),localHTML=localMessageHTML(a.id);
+ return (historyErrors.has(a.id)?`<p role="alert" class="history-error">${esc(historyErrors.get(a.id))}</p>`:'')+(page?.hasMore?`<button type="button" data-load-history="${esc(a.id)}" ${historyLoading.has(a.id)?'disabled':''}>${historyLoading.has(a.id)?'読込中…':'古い会話を読み込む'}</button>`:'')+entries.map(r=>entryHTML(a,r,divider)).join('')+(localHTML?divider(outbox.get(a.id)?.createdAt)+localHTML:'')+divider.trailingToday();
 }
 function localMessageHTML(id){
  const m=outbox.get(id);if(!m||matchingRun(state,id,m.requestId))return '';
@@ -204,7 +224,7 @@ function renderBoard(){
    if(!deliveryUnconfirmed(known))clearSubmittedDraft(a.id,receipt,outbox.get(a.id));
    pending.delete(a.id);outbox.delete(a.id);storeDrafts();
   }
-  updateReportHTML(card.querySelector('.agent-recovery-host'),agentRecoveryHTML(a.id));
+  updateReportHTML(card.querySelector('.agent-recovery-host'),agentRecoveryHTML(a.id)+requestSignalsHTML(a.id));
   const area=card.querySelector('.runs'),html=runHTML(a),wasLoading=area.dataset.loading==='true';area.dataset.loading=String(!!state.conversations&&!state.conversations[a.id]);if(wasLoading){updateReportHTML(area,html);scrolls.get(a.id).loaded();}else scrolls.get(a.id).preserve(()=>updateReportHTML(area,html));
   const prompt=card.querySelector('textarea[name=instruction]'),promptLabel=(a.name||'Agent')+'に聞く';
   prompt.placeholder=promptLabel;prompt.title=promptLabel+(mobilePromptUI()?'（Enterで改行、送信ボタン / Ctrl+Enterで送信）':'（Enter / Ctrl+Enterで送信、Shift+Enterで改行、変換中のEnterは確定）');prompt.setAttribute('aria-label',prompt.title);
@@ -349,7 +369,7 @@ function focusAgent(){
  selectedPage=Math.max(0,Math.floor(filtered().findIndex(a=>a.id===id)/PAGE_SIZE));
  if(zoomId!==id)toggleZoom(id);cards.get(id)?.focus({preventScroll:true});
 }
-window.addEventListener('hashchange',()=>{focusedHash='';focusAgent();});
+window.addEventListener('hashchange',()=>{focusedHash='';focusAgent();void refresh(true);});
 const sidebarOrder=bindSidebarOrder($('#places'),{activate:handle=>{const b=handle.closest('[data-place]');choosePlace(b.dataset.place,Number(b.dataset.page));void refresh(true);},save:input=>api('/reorder',input),changed:()=>{void refresh(true);},error:e=>{$('#error').textContent='並び替えを保存できません: '+e.message;}});
 $('#places').onclick=e=>{const add=e.target.closest('[data-add]'),place=e.target.closest('[data-place]');if(add)openManagement(add.dataset.add);else if(place){choosePlace(place.dataset.place,place.dataset.place==='all'?undefined:Number(place.dataset.page));void refresh(true);}};
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&zoomId&&!document.querySelector('dialog[open]')){toggleZoom(zoomId);void refresh(true);}});
@@ -554,7 +574,7 @@ $('#agents').onclick=e=>{
   });return;
  }
  const reconcile=e.target.closest('[data-reconcile]');if(reconcile){const id=reconcile.dataset.reconcile,receipt=pending.get(id);if(receipt)action(reconcile.closest('article'),async()=>{if(receipt.requestTarget){const [humanRequestId,workId]=receipt.requestTarget.split(':');await api('/human/requests/supplement',{humanRequestId,workId,operationId:receipt.requestId,instruction:receipt.instruction,attachments:receipt.attachments,travelContexts:receipt.travelContexts});}else await api('/agents/'+id+'/runs',receipt);await refresh();});return;}const manage=e.target.closest('[data-manage-agent]'),zoom=e.target.closest('[data-zoom]');if(manage)openMetadata(manage.dataset.manageAgent);if(zoom){toggleZoom(zoom.dataset.zoom);void refresh(true);}};
-void refresh();setInterval(()=>{if(!document.hidden)void refresh();},2000);
+void refresh();subscribeChanges(()=>refresh(true),{onDisconnect:()=>{connected=false;connectionStatus($('#connection'),'変更通知に再接続しています');if(state)renderBoard();}});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)restartSync();});
 window.addEventListener('pageshow',e=>{if(e.persisted)restartSync();});
 window.addEventListener('online',()=>{if(!document.hidden)restartSync();});

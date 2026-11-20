@@ -1,3 +1,4 @@
+import {readPartitionSnapshot} from '../server/partition-store.mjs';
 import {compatibilityDTO} from '../server/request-compatibility.mjs';
 import {changeRun} from '../server/run-lifecycle.mjs';
 import {inputHash} from './model-fixtures.mjs';
@@ -30,7 +31,7 @@ async function fixture(t,{reportMode=false}={}){
  const options={dir,remote:execute,localRun:(cmd,args)=>execute([cmd,...args]),notifier:{status:()=>({}),enqueue:async message=>{notifications.push(message);return {status:'sent'};}}};
  let service=new DirectAgents(options);await service.init({watch:false});service.flow.protocol=0;await service.flow.configureReport(reportMode);
  const agents=Array.from({length:4},(_,i)=>({id:randomUUID(),name:i<2?'Secretary '+i:'Worker '+i,location:i<2?'mayor':'workshop',workshopId:'w'+i,connection:{connectionType:i===3?'ssh':'local',sshHost:i===3?'remote':null,name:'PC'+i},workspaceId:'',tabId:'tab'+i,sessionName:'pane'+i,provider:'codex',state:'idle'}));
- for(const a of agents){a.workspaceId='ws-'+a.id;service.data.agents.push(a);runtimes.set(a.id,{available:true,sessionId:'session-'+a.id,fileIdentity:'file-'+a.id,cursor:0,inputs:[],turns:[]});}
+ for(const a of agents){a.inputEnvelope={mode:'startup-v2',hash:inputHash(service.startupInstructions())};a.workspaceId='ws-'+a.id;service.data.agents.push(a);runtimes.set(a.id,{available:true,sessionId:'session-'+a.id,fileIdentity:'file-'+a.id,cursor:0,inputs:[],turns:[]});}
  await service.save();await service.tick();
  const submit=async(r,transform=x=>x)=>{
   const native=runtimes.get(r.agentId),text=sent.findLast(s=>s.agentId===r.agentId)?.text;
@@ -292,20 +293,20 @@ test('two-stage report replaces visible work after completion, waits for accepta
  assert(s.flow.get(q.id).runs[0].output.includes('SECRET DRAFT'));
  await f.finish(source);await f.complete(source);
  assert.equal(testView(q).status,'active');assert.equal(testView(q).status,'active');assert.equal(f.notifications.length,0);
- let report=s.flow.run(q.requestGraph.nodes[0].currentRunId);assert.equal(report.phase,'report');assert.equal(report.workId,source.workId);
- assert.match(report.instruction,/元の質問/);assert.match(s.flow.context(report),/追加作業/);
+ let report=s.flow.run(q.requestGraph.nodes[0].reportRunId);assert.equal(report.phase,'report');assert.equal(report.workId,source.workId);
+ assert.match(report.instruction,/元の質問/);assert.match(s.rules.specification('report').text,/追加作業/);
  // finish must come before the report body is written, so a trailing habitual remark can
  // never become the run's last message and clobber the report in finalOutput.
- assert.match(s.flow.context(report),/finishは不要/);
- assert.match(s.flow.context(report),/その後は何も足さないで/);
+ assert.match(s.rules.specification('report').text,/finishは不要/);
+ assert.match(s.rules.specification('report').text,/その後は何も足さないで/);
  assert(JSON.stringify(s.snapshot()).includes('Output '+source.id));
  assert(!JSON.stringify(s.snapshot()).includes('人間が読む短い報告に書き直し'));
  assert.equal(s.snapshot().reviews[source.agentId].attention,false);
  const count=f.sent.length;await s.tick();await s.tick();assert.equal(f.sent.length,count);
  s=await f.restart();await s.tick();assert.equal(f.sent.length,count);
- report=s.flow.run(report.id);await f.finish(report);
+ report=s.flow.run(report.id);await assert.rejects(f.finish(report));
  await f.submit(report);assert.equal(testView(s.agent(report.agentId)).canSteer,true);
- await assert.rejects(f.delegate(report,f.agents[2]),/報告工程/);
+ await assert.rejects(f.delegate(report,f.agents[2]),/現在の作業run/);
  await f.finish(report);assert.equal(f.notifications.length,0);await f.complete(report);
  assert.equal(f.notifications.length,1);assert.match(f.notifications[0].content,new RegExp('Final '+report.id));
  assert.equal(testView(s.flow.root(q.id)).status,'completed');assert.equal(s.snapshot().reviews[source.agentId].attention,true);
@@ -316,12 +317,12 @@ test('two-stage report replaces visible work after completion, waits for accepta
 test('report failure retries only report; cancelled or unknown reports never redispatch/notify',async t=>{
  const f=await fixture(t,{reportMode:true}),s=f.service;
  const source=await s.send(f.agents[0].id,{requestId:'report-failed-request',instruction:'work'});await f.submit(source);await f.finish(source);await f.complete(source);
- const q=s.flow.root(source.humanRequestId),report=s.flow.run(q.requestGraph.nodes[0].currentRunId);
+ const q=s.flow.root(source.humanRequestId),report=s.flow.run(q.requestGraph.nodes[0].reportRunId);
  await f.submit(report);await f.finish(report);await f.complete(report,'failed');
  assert.equal(testView(q).status,'active');assert.equal(testView(q).status,'active');assert.equal(f.notifications.length,0);
  assert(JSON.stringify(s.snapshot()).includes('Output '+source.id));
  const x={humanRequestId:q.id,workId:report.workId,revision:q.revision,operationId:'report-retry-operation',instruction:'Do work again'};
- const retry=await s.flow.continue(x,true);assert.equal(retry.phase,'report');assert.match(s.flow.context(retry),/再実行は禁止/);assert.equal(await s.flow.continue(x,true),retry);
+ const retry=await s.flow.continue(x,true);assert.equal(retry.phase,'report');assert.match(s.rules.specification('report').text,/再実行は禁止/);assert.equal(await s.flow.continue(x,true),retry);
  f.lose(true);await s.tick();assert.equal(testView(retry).state,'awaiting_input');const count=f.sent.length;
  await s.tick();await f.restart();await f.service.tick();assert.equal(f.sent.length,count);
  const restored=f.service.flow.root(q.id);await f.service.flow.cancel({humanRequestId:q.id,revision:restored.revision});await f.service.tick();
@@ -341,7 +342,7 @@ test('report snapshot is pinned, supplements stay same work until report, new re
  const f=await fixture(t,{reportMode:true}),s=f.service;
  const r=await s.send(f.agents[0].id,{requestId:'report-queue-root',instruction:'元質問'});await f.submit(r);
  await s.flow.configureReport(false);
- await f.finish(r);await f.complete(r);const q=s.flow.root(r.humanRequestId),report=s.flow.run(q.requestGraph.nodes[0].currentRunId);
+ await f.finish(r);await f.complete(r);const q=s.flow.root(r.humanRequestId),report=s.flow.run(q.requestGraph.nodes[0].reportRunId);
  await f.submit(report);
  const supplement=await s.send(r.agentId,{requestId:'report-valid-steer',instruction:'補足',steerTarget:{runId:report.id,sessionId:report.sessionId,turnId:report.turnId}});assert.equal(supplement.phase,'report');await acceptSteer(f,supplement);
  const later=await s.send(r.agentId,{requestId:'report-next-request',instruction:'次の独立依頼'});
@@ -359,14 +360,14 @@ test('cancel before source completion or queued report prevents creation/dispatc
  // A native completion can be observed and settled while dispatch remains withheld.
  const native=f.runtimes.get(r2.agentId);native.turns.at(-1).state='completed';
  await s.observe(s.agent(r2.agentId));await s.flow.settle();
- const q2=s.flow.root(r2.humanRequestId),report=s.flow.run(q2.requestGraph.nodes[0].currentRunId);assert.equal(testView(report).state,'queued');
+ const q2=s.flow.root(r2.humanRequestId),report=s.flow.run(q2.requestGraph.nodes[0].reportRunId);assert.equal(testView(report).state,'queued');
  await s.flow.cancel({humanRequestId:q2.id,revision:q2.revision});const count=f.sent.length;await s.tick();await f.restart();await f.service.tick();
  assert.equal(f.sent.length,count);assert.equal(f.notifications.length,0);
 });
 test('report completed without finish becomes visible and completes; disabled notifications do not skip report',async t=>{
  const f=await fixture(t,{reportMode:true}),s=f.service;s.notifier.enqueue=async()=>({status:'disabled'});
  const r=await s.send(f.agents[0].id,{requestId:'report-no-finish',instruction:'question'});await f.submit(r);await f.complete(r);
- const q=s.flow.root(r.humanRequestId),report=s.flow.run(q.requestGraph.nodes[0].currentRunId);assert.equal(report.phase,'report');
+ const q=s.flow.root(r.humanRequestId),report=s.flow.run(q.requestGraph.nodes[0].reportRunId);assert.equal(report.phase,'report');
  await f.submit(report);await f.complete(report);assert.equal(testView(q).status,'completed');assert(JSON.stringify(s.snapshot()).includes('Final '+report.id));assert.equal(testView(q.notification).status,'disabled');
  await assert.rejects(s.flow.continue({humanRequestId:q.id,workId:r.workId,revision:q.revision,operationId:'no-resume-report',instruction:'resume'}),/受付中では/);
 });
@@ -380,10 +381,10 @@ test('both report settings survive restart; failed persistence does not falsely 
 
 test('compact work context retains completion and receipt rules with discoverable detailed operations',async t=>{
  const f=await fixture(t),r=await f.service.send(f.agents[0].id,{instruction:'context test',requestId:'compact-context-test'});
- const text=f.service.flow.context(r);
- assert(text.length<3000);
+ const text=f.service.rules.specification().text;
+ assert(text.length<4000);
  for(const token of ['requests finish','operationId','正常終了','委任','受付不明','/api/direct/requests/get','village-image:UUID'])assert(text.includes(token),token);
- assert(text.includes(r.id));assert(text.includes(r.workId));assert(text.includes(r.humanRequestId));
+ const envelope=f.service.flow.context(r);assert(envelope.includes(r.id));assert(envelope.includes(r.workId));assert(envelope.includes(r.humanRequestId));
 });
 test('steering partitions progress at actual acceptance through multiple supplements and restart',async t=>{
  const f=await fixture(t),s=f.service,root=await s.send(f.agents[0].id,{requestId:randomUUID(),instruction:'Original'});await f.submit(root);
@@ -442,55 +443,50 @@ test('event-to-response upgrade preserves Direct steering boundary and supersede
  await f.finish(f.service.flow.run(third.id));await f.complete(f.service.flow.run(third.id));assert.equal(f.notifications.length,1);
 });
 
-test('startup envelope retains literal human input and dynamic identity; report and legacy fallback retain finish rules',async t=>{
+test('startup envelope retains literal human input and dynamic identity; report specifications remain discoverable',async t=>{
  const f=await fixture(t,{reportMode:true}),s=f.service,a=f.agents[0];
- a.inputEnvelope={mode:'startup-v1'};
+ a.inputEnvelope={mode:'startup-v2',hash:inputHash(s.startupInstructions())};
  const human='  本文 <pasted_content>\nそのまま  ';
  const r=await s.send(a.id,{instruction:human,requestId:randomUUID()});
  const delivered=f.sent.at(-1).text;
  assert(delivered.startsWith(human+'\n'));assert(delivered.includes(r.id));assert.equal(r.inputMarker,undefined);
  assert(delivered.includes('ai-village-discovery'));assert(delivered.includes(a.id));
  assert(!delivered.includes('requests finish'));assert(!delivered.includes('図は必要時のみ'));
- assert(s.startupInstructions().includes('requests finish'));assert(s.startupInstructions().includes('phase=report'));
- assert(s.startupInstructions().includes('projects guide PROJECT_ID'));
+ assert(s.rules.specification().text.includes('requests finish'));assert(s.startupInstructions().includes('phase=report'));
+ assert(s.rules.specification().text.includes('projects guide PROJECT_ID'));
  await f.submit(r);await f.finish(r);await f.complete(r);await s.tick();
- const q=s.flow.get(r.humanRequestId),report=s.flow.run(q.requestGraph.nodes[0].currentRunId);
+ const q=s.flow.get(r.humanRequestId),report=s.flow.run(q.requestGraph.nodes[0].reportRunId);
  assert.equal(report.phase,'report');assert(report.instruction.startsWith('報告資料'));
  assert(!s.flow.context(report).includes('requests finish'));
  a.inputEnvelope={mode:'legacy'};
- assert(s.flow.context(report).includes('finishは不要'));
- assert(s.flow.context(r).includes('requests delegate'));
+ assert(s.rules.specification('report').text.includes('finishは不要'));assert(!s.flow.context(report).includes('finishは不要'));
+ assert(!s.flow.context(r).includes('requests delegate'));
 });
 
-test('startup envelope uses latest metadata and retains attachments/travel; changed native session downgrades to legacy',async t=>{
- const f=await fixture(t),s=f.service,a=f.agents[0];a.inputEnvelope={mode:'startup-v1',sessionId:'previous-session'};
- await s.tick();assert.equal(a.inputEnvelope.mode,'legacy');assert.equal(a.inputEnvelope.reason,'native-session-changed');
- a.inputEnvelope={mode:'startup-v1'};a.projectId='current-project';a.metadataRevision=42;
+test('startup envelope uses latest metadata and retains attachments/travel; changed native session requires migration',async t=>{
+ const f=await fixture(t),s=f.service,a=f.agents[0];a.inputEnvelope={mode:'startup-v2',sessionId:'previous-session'};
+ await s.tick();assert.equal(a.inputEnvelope.mode,'migration-required');assert.equal(a.inputEnvelope.reason,'native-session-changed');
+ a.inputEnvelope={mode:'startup-v2',hash:inputHash(s.startupInstructions())};a.projectId='current-project';a.metadataRevision=42;
  const context=s.secretaryContext(a,true);assert(context.includes('current-project'));assert(!context.includes('metadataRevision'));assert(!context.includes('所属は'));
  assert(s.rules.dynamic({attachmentFiles:[{path:'/attachment',sha256:'verified'}],travelContexts:[]}).includes('/attachment'));
- await s.save();await f.restart();assert.equal(f.service.agent(a.id).inputEnvelope.mode,'startup-v1');
+ await s.save();await f.restart();assert.equal(f.service.agent(a.id).inputEnvelope.mode,'startup-v2');
 });
 
 for(const state of ['intact','missing','error'])test('pre-dispatch prompt check: '+state,async t=>{
- const f=await fixture(t),s=f.service,a=f.agents[0];a.inputEnvelope={mode:'startup-v1',hash:inputHash(s.startupInstructions())};f.promptState(state);
+ const f=await fixture(t),s=f.service,a=f.agents[0];a.inputEnvelope={mode:'startup-v2',hash:inputHash(s.startupInstructions())};f.promptState(state);
  const r=await s.send(a.id,{instruction:'human',requestId:randomUUID()});
- assert.equal(f.promptChecks(),1);assert.equal(r.inputEnvelopeMode,state==='intact'?'startup-v1':'legacy');
- assert.equal(f.sent.at(-1).text.includes('requests finish'),state!=='intact');
- await f.submit(r);await f.complete(r);
- f.promptState('intact');
- const next=await s.send(a.id,{instruction:'next',requestId:randomUUID()});
- assert.equal(f.promptChecks(),state==='intact'?2:1);
- assert.equal(next.inputEnvelopeMode,state==='intact'?'startup-v1':'legacy');
- if(state!=='intact'){assert.match(a.inputEnvelope.reason,/startup-instructions-/);await f.restart();assert.equal(f.service.agent(a.id).inputEnvelope.mode,'legacy');}
+ assert.equal(f.promptChecks(),1);
+ if(state==='intact'){assert.equal(r.inputEnvelopeMode,'startup-v2');assert(!f.sent.at(-1).text.includes('requests finish'));await f.submit(r);await f.complete(r);}
+ else {assert.equal(f.sent.length,0);assert.equal(r.queuedReason,'startup-contract-migration-required');assert.equal(a.inputEnvelope.mode,'migration-required');await f.restart();assert.equal(f.service.agent(a.id).inputEnvelope.mode,'migration-required');}
+
 });
 
-test('queued compact report restores full report rules when prompt disappears before dispatch',async t=>{
- const f=await fixture(t,{reportMode:true}),s=f.service,a=f.agents[0];a.inputEnvelope={mode:'startup-v1',hash:inputHash(s.startupInstructions())};
+test('queued compact report stops before sending when prompt disappears',async t=>{
+ const f=await fixture(t,{reportMode:true}),s=f.service,a=f.agents[0];a.inputEnvelope={mode:'startup-v2',hash:inputHash(s.startupInstructions())};
  const r=await s.send(a.id,{instruction:'work',requestId:randomUUID()});await f.submit(r);await f.finish(r);
  f.promptState('missing');await f.complete(r);await s.tick();
- const report=s.flow.run(s.flow.root(r.humanRequestId).requestGraph.nodes[0].currentRunId);
- assert.equal(report.phase,'report');assert.equal(report.inputEnvelopeMode,'legacy');
- assert.match(f.sent.at(-1).text,/追加作業・ファイル変更・PR操作/);assert.match(f.sent.at(-1).text,/finishは不要/);
+ const report=s.flow.run(s.flow.root(r.humanRequestId).requestGraph.nodes[0].reportRunId);
+ assert.equal(report.phase,'report');assert.equal(report.inputEnvelopeMode,undefined);assert.equal(report.queuedReason,'startup-contract-migration-required');assert.equal(f.sent.length,1);
 });
 
 test('origin=result delivery containing pasted_content survives Claude wrapping and escaping',async t=>{
@@ -559,14 +555,14 @@ for(const nextTurn of [false,true])test('Claude steering keeps request, finish a
  if(nextTurn)n.turns.push({id:tid,state:'running',output:'',messageOffsets:true,messages:[]});
  n.inputs.push({id:'supplement-input',turnId:tid,offset:n.cursor,text:'\n<pasted_content id="steer">\n'+f.sent.at(-1).text+'\n</pasted_content id="steer">\n',explicitTurn:true,source:nextTurn?'claude-user':'claude-queued'});
  await s.tick();assert.equal(receipt(r).acceptance,'accepted');assert.equal(r.turnId,tid);await f.finish(r);n.cursor+=10;n.turns.find(t=>t.id===tid).completionOffset=n.cursor;await f.complete(r);await s.tick();
- const q=s.flow.root(root.humanRequestId),report=s.flow.run(q.requestGraph.nodes[0].currentRunId);assert.equal(report.phase,'report');await f.submit(report);assert.equal(testView(s.agent(root.agentId)).canSteer,false);await f.complete(report);await s.tick();
+ const q=s.flow.root(root.humanRequestId),report=s.flow.run(q.requestGraph.nodes[0].reportRunId);assert.equal(report.phase,'report');await f.submit(report);assert.equal(testView(s.agent(root.agentId)).canSteer,false);await f.complete(report);await s.tick();
  assert.equal(testView(q).status,'completed');assert.equal(s.data.requests.length,1);assert.equal(f.notifications.length,1);
 });
 
 // Fail the real persistence boundary before file replacement, not the transport.
 function failWrites(s,predicate){
  const write=s.store.write;let failures=0;
- s.store.write=async value=>{if(predicate(JSON.parse(value))){failures++;throw Error('injected save failure');}return write(value);};
+ s.store.write=async value=>{if(predicate(s.data)){failures++;throw Error('injected save failure');}return write(value);};
  return {restore(){s.store.write=write;},get failures(){return failures;}};
 }
 test('failed request admission cannot leak into a concurrent save or later tick; same ID retries once',async t=>{
@@ -633,12 +629,12 @@ for(const decision of ['complete','cancel'])test('failed human '+decision+' pres
 test('a second writer cannot commit failed admission while the first disk write is pending',async t=>{
  const f=await fixture(t),s=f.service,write=s.store.write;let entered,release;
  const pending=new Promise(r=>entered=r),gate=new Promise(r=>release=r);
- s.store.write=async value=>{if(JSON.parse(value).requests.some(q=>q.clientRequestId==='concurrent-failed')){entered();await gate;throw Error('injected save failure');}return write(value);};
+ s.store.write=async value=>{if(s.data.requests.some(q=>q.clientRequestId==='concurrent-failed')){entered();await gate;throw Error('injected save failure');}return write(value);};
  const failed=s.send(f.agents[0].id,{requestId:'concurrent-failed',instruction:'rejected'});
  const rejected=assert.rejects(failed,/injected/);await pending;
  const successful=s.putProject({name:'unrelated success',requestId:'unrelated-project'});
  release();await rejected;await successful;await s.tick();
- const disk=JSON.parse(await readFile(join(f.options.dir,'direct.json'),'utf8'));
+ const disk=readPartitionSnapshot(f.options.dir);
  assert.equal(disk.requests.length,0);assert.equal(s.data.requests.length,0);assert.equal(f.sent.length,0);assert.equal(disk.projects.length,1);
 });
 test('post-dispatch save failure retains durable sent intent across restart without resending',async t=>{
@@ -667,18 +663,17 @@ test('notification cannot claim a completion that rolls back while it waits for 
  const f=await fixture(t),s=f.service,r=await s.send(f.agents[0].id,{requestId:'notify-concurrent-claim',instruction:'work'});await f.submit(r);await f.complete(r,'failed');
  const q=s.flow.root(r.humanRequestId),write=s.store.write;let entered,release;
  const pending=new Promise(r=>entered=r),gate=new Promise(r=>release=r);
- s.store.write=async value=>{if(JSON.parse(value).requests[0].notification?.status==='pending'){entered();await gate;throw Error('injected save failure');}return write(value);};
+ s.store.write=async value=>{if(s.data.requests[0].notification?.status==='pending'){entered();await gate;throw Error('injected save failure');}return write(value);};
  const failed=assert.rejects(s.flow.complete({humanRequestId:q.id,revision:q.revision}),/injected/);await pending;
  const notification=s.flow.notifications();release();await failed;await notification;assert.equal(f.notifications.length,0);assert.equal(q.notification,undefined);
 });
-test('real rename failure rolls back admission and retry dispatches only once',async t=>{
- const f=await fixture(t),s=f.service,file=join(f.options.dir,'direct.json'),backup=file+'.test-backup';
- await rename(file,backup);await mkdir(file);
- const input={requestId:'real-rename-failure',instruction:'once'};
- await assert.rejects(s.send(f.agents[0].id,input),e=>['EISDIR','ENOTDIR','EEXIST'].includes(e.code));
+test('real database write failure rolls back admission and retry dispatches once',async t=>{
+ const f=await fixture(t),s=f.service;
+ s.store.db.exec('PRAGMA query_only=ON');
+ const input={requestId:'real-database-failure',instruction:'once'};
+ await assert.rejects(s.send(f.agents[0].id,input),/readonly/);
  assert.equal(s.data.requests.length,0);assert.equal(f.sent.length,0);
- await rm(file,{recursive:true});await rename(backup,file);
- await s.tick();assert.equal(f.sent.length,0);
+ s.store.db.exec('PRAGMA query_only=OFF');
  const r=await s.send(f.agents[0].id,input);assert.equal((await s.send(f.agents[0].id,input)).id,r.id);assert.equal(f.sent.length,1);
 });
 test('nested successful claim remains durable when later report creation fails',async t=>{
@@ -690,7 +685,7 @@ test('nested successful claim remains durable when later report creation fails',
  fault.restore();await f.finish(r,'durable-claim-op');await s.tick();assert.equal(s.data.runs.filter(r=>r.phase==='report').length,1);
 });
 
-for(const mode of ['startup-v1','legacy'])test('lean '+mode+' input fields and same-text requests stay distinct through report and restart',async t=>{
+for(const mode of ['startup-v2'])test('lean '+mode+' input fields and same-text requests stay distinct through report and restart',async t=>{
  const f=await fixture(t,{reportMode:true}),a=f.agents[0];a.projectId='project';a.inputEnvelope={mode,hash:inputHash(f.service.startupInstructions())};
  const r=await f.service.send(a.id,{instruction:'repeat',requestId:randomUUID()});
  const check=(r,text)=>{
@@ -698,11 +693,11 @@ for(const mode of ['startup-v1','legacy'])test('lean '+mode+' input fields and s
   const own=JSON.parse(text.match(/<ai-village-discovery>(.*?)<\/ai-village-discovery>/s)[1]);
   assert.deepEqual(own,{agentId:a.id,role:'secretary',location:'mayor',projectId:'project'});
   const request=JSON.parse(text.match(/<ai-village-request>([^\n]*)/)[1].split('</ai-village-request>')[0]);
-  assert.deepEqual(request,{humanRequestId:r.humanRequestId,workId:r.workId,runId:r.id,origin:r.origin,phase:r.phase||'work'});
+  assert.equal(request.contract,2);assert.equal(request.rulesRevision,f.service.rules.specification(r.phase==='report'?'report':'work').revision);assert.equal(request.runId,r.id);
   assert.equal(r.inputMarker,undefined);assert.equal(r.inputCorrelation.version,1);
  };
  check(r,f.sent.at(-1).text);await f.submit(r);await f.complete(r);
- const report=f.service.flow.run(f.service.flow.root(r.humanRequestId).requestGraph.nodes[0].currentRunId);
+ const report=f.service.flow.run(f.service.flow.root(r.humanRequestId).requestGraph.nodes[0].reportRunId);
  check(report,f.sent.at(-1).text);await f.submit(report);await f.complete(report);
  const next=await f.service.send(a.id,{instruction:'repeat',requestId:randomUUID()});
  assert.notDeepEqual(next.inputCorrelation,r.inputCorrelation);
@@ -710,21 +705,18 @@ for(const mode of ['startup-v1','legacy'])test('lean '+mode+' input fields and s
  await f.submit(f.service.flow.run(next.id));await f.complete(f.service.flow.run(next.id));
 });
 
-test('old installed rules downgrade immediately after upgrade; previously dispatched marker runs still complete',async t=>{
+test('old installed contracts require migration after upgrade; previously dispatched marker runs still complete',async t=>{
  const f=await fixture(t),a=f.agents[0],r=await f.service.send(a.id,{instruction:'legacy in flight',requestId:randomUUID()});
  // Persist the pre-upgrade contract, then boot the new service without resending.
  delete r.inputCorrelation;r.inputMarker='ai-village-run-'+r.id;
- a.inputEnvelope={mode:'startup-v1',hash:inputHash('previous rules')};await f.service.save();
+ a.inputEnvelope={mode:'startup-v2',hash:inputHash('previous rules')};await f.service.save();
  await f.restart();const s=f.service,restored=s.flow.run(r.id),native=f.runtimes.get(a.id);
- assert.equal(s.agent(a.id).inputEnvelope.mode,'legacy');assert.equal(s.agent(a.id).inputEnvelope.reason,'request-rules-updated');
+ assert.equal(s.agent(a.id).inputEnvelope.mode,'migration-required');assert.equal(s.agent(a.id).inputEnvelope.reason,'startup-contract-upgrade-required');
  native.cursor+=10;native.inputs.push({id:'old-input',turnId:'old-turn',offset:native.cursor,text:'old body '+r.inputMarker});
  native.turns.push({id:'old-turn',state:'completed',output:'old result',completionOffset:native.cursor+1});
  await s.tick();assert.equal(testView(restored).state,'completed');assert.equal(f.sent.length,1);
  const next=await s.send(a.id,{instruction:'new input',requestId:randomUUID()});
- assert.equal(next.inputMarker,undefined);assert.equal(next.inputEnvelopeMode,'legacy');
- assert.doesNotMatch(f.sent.at(-1).text,/ai-village-input|ai-village-run-|"metadataRevision"/);
- assert.match(f.sent.at(-1).text,/resultsは必須/);assert.match(f.sent.at(-1).text,/agents list/);assert.match(f.sent.at(-1).text,/requests results HUMAN_REQUEST_ID WORK_ID/);
- await f.submit(next);await f.complete(next);
+ assert.equal(next.inputEnvelopeMode,undefined);assert.equal(f.sent.length,1);assert.equal(next.queuedReason,'startup-contract-migration-required');
 });
 
 test('unified nested requests require their own finish and direct dependency handling',async t=>{
@@ -734,7 +726,7 @@ test('unified nested requests require their own finish and direct dependency han
  const q=s.flow.root(r.humanRequestId);assert.equal(s.flow.results(q.id,r.workId).length,0);
  await f.finish(c);await f.complete(c);assert.equal(s.flow.results(q.id,r.workId).length,1);assert.equal(f.notifications.length,0);
  await f.finish(r);await f.complete(r);assert.equal(testView(q).status,'completed');assert(q.requestGraph.nodes.every(n=>n.state.kind==='completed'));assert.equal(f.notifications.length,1);
- const disk=JSON.parse(await readFile(join(f.options.dir,'direct.json'),'utf8'));assert.equal(disk.requests[0].requestModel,undefined);assert(disk.requests[0].requestGraph.nodes.every(n=>!('runs' in n)));
+ const disk=readPartitionSnapshot(f.options.dir);assert.equal(disk.requests[0].requestModel,undefined);assert(disk.requests[0].requestGraph.nodes.every(n=>!('runs' in n)));
 });
 test('partial responses reject foreign/stale versions and leave other child results for delivery',async t=>{
  const f=await fixture(t),s=f.service,r=await s.send(f.agents[0].id,{instruction:'parallel',requestId:randomUUID()});await f.submit(r);
@@ -798,7 +790,7 @@ test('legacy in-flight parent and child migrate with exact input ownership and l
  const f=await fixture(t),s=f.service,r=await s.send(f.agents[0].id,{instruction:'migration in progress',requestId:randomUUID()});await f.submit(r);
  const w=await f.delegate(r,f.agents[2]);await s.tick();const c=s.flow.run(w.currentRunId);await f.submit(c);
  const source=structuredClone(s.data);for(const q of source.requests){Object.assign(q,compatibilityDTO(s.data,s.flow.root(q.id)));delete q.requestGraph;}delete source.unifiedRequestVersion;
- await writeFile(join(f.options.dir,'direct.json'),JSON.stringify(source));await rm(join(f.options.dir,'direct.pre-unified-requests-v3.json'),{force:true});const sends=f.sent.length;
+ f.service.close();await rm(join(f.options.dir,'village.sqlite'),{force:true});await writeFile(join(f.options.dir,'direct.json'),JSON.stringify(source));await rm(join(f.options.dir,'direct.pre-unified-requests-v3.json'),{force:true});const sends=f.sent.length;
  await f.restart();assert.equal(f.sent.length,sends);const next=f.service,parent=next.flow.run(r.id),child=next.flow.run(c.id);assert.deepEqual(parent.inputCorrelation,r.inputCorrelation);assert.deepEqual(child.runModel,c.runModel);
  await f.complete(child);await f.finish(parent);await f.complete(parent);assert.equal(testView(next.flow.root(r.humanRequestId)).status,'completed');assert.equal(f.sent.length,sends);assert.equal(f.notifications.length,1);
  await f.restart();await f.service.tick();assert.equal(f.notifications.length,1);assert.equal(f.sent.length,sends);
@@ -824,7 +816,7 @@ for(const action of ['respond','finish','migrated-finish'])for(const outcome of 
  if(action==='migrated-finish'){
   const source=structuredClone(s.data);source.unifiedRequestVersion=2;
   for(const q of source.requests){q.works=compatibilityDTO(s.data,s.flow.root(q.id)).works;q.requestGraph.version=2;for(const n of q.requestGraph.nodes){delete n.metadata;for(const claim of n.claims)claim.legacy=true;}}
-  await rm(join(f.options.dir,'direct.pre-unified-requests-v3.json'),{force:true});await writeFile(join(f.options.dir,'direct.json'),JSON.stringify(source));
+  await rm(join(f.options.dir,'direct.pre-unified-requests-v3.json'),{force:true});f.service.close();await rm(join(f.options.dir,'village.sqlite'),{force:true});await writeFile(join(f.options.dir,'direct.json'),JSON.stringify(source));
  }
  s=await f.restart();r=s.flow.run(r.id);assert.equal(s.flow.results(qid,r.workId)[0].handled,false);
  if(outcome==='terminated')await loseObservedRun(f,r);else await f.complete(r,outcome);assert.equal(s.flow.results(qid,r.workId)[0].handled,false);assert.equal(s.flow.root(qid).requestGraph.nodes.find(n=>n.id===w.id).state.kind,'submitted');
@@ -856,7 +848,7 @@ test('v1 pending-response restart upgrades before integrity validation and prese
  const source=structuredClone(s.data);source.unifiedRequestVersion=1;source.requests[0].works=compatibilityDTO(s.data,s.data.requests[0]).works;const graph=source.requests[0].requestGraph;graph.version=1;
  for(const n of graph.nodes){n.handling.push(...n.claims.map(({legacy,invalidated,...claim})=>claim));delete n.claims;delete n.replacements;delete n.invalidatedRuns;}
  graph.nodes[1].state={kind:'completed',by:'agent',reason:'result-accepted:'+c.id};
- await writeFile(join(f.options.dir,'direct.json'),JSON.stringify(source));await rm(join(f.options.dir,'direct.pre-unified-requests-v3.json'),{force:true});
+ f.service.close();await rm(join(f.options.dir,'village.sqlite'),{force:true});await writeFile(join(f.options.dir,'direct.json'),JSON.stringify(source));await rm(join(f.options.dir,'direct.pre-unified-requests-v3.json'),{force:true});
  const restarted=await f.restart(),q=restarted.flow.root(r.humanRequestId);assert.equal(q.integrity,undefined);assert.equal(restarted.data.unifiedRequestVersion,3);assert.equal(restarted.flow.results(q.id,r.workId)[0].handled,false);assert.equal(q.requestGraph.nodes[0].claims.length,1);assert.equal(f.sent.length,2);
  await f.restart();assert.equal(f.service.flow.root(q.id).integrity,undefined);
 });
@@ -892,7 +884,7 @@ for(const implicit of [true,false])test(`saved v2 failed-result declaration pres
  await s.flow.finish(payload);
  const source=structuredClone(s.data);source.unifiedRequestVersion=2;
  for(const old of source.requests){old.works=compatibilityDTO(s.data,q).works;old.requestGraph.version=2;for(const n of old.requestGraph.nodes){delete n.metadata;for(const claim of n.claims)claim.legacy=implicit;}}
- await rm(join(f.options.dir,'direct.pre-unified-requests-v3.json'),{force:true});await writeFile(join(f.options.dir,'direct.json'),JSON.stringify(source));
+ await rm(join(f.options.dir,'direct.pre-unified-requests-v3.json'),{force:true});f.service.close();await rm(join(f.options.dir,'village.sqlite'),{force:true});await writeFile(join(f.options.dir,'direct.json'),JSON.stringify(source));
  await f.restart();const next=f.service,nq=next.flow.root(q.id),before=JSON.stringify(next.data);const {results,...omitted}=payload;
  await next.flow.finish(omitted);await next.flow.finish(payload);assert.equal(JSON.stringify(next.data),before);
  assert.equal(nq.requestGraph.nodes[0].claims[0].decision,implicit?'review':'accept');assert(!JSON.stringify(nq.requestGraph).includes('"legacy"'));
@@ -911,4 +903,31 @@ test('API projection and restart keep parent and child waiting for a running gra
   const q=service.flow.get(r.humanRequestId);assert.equal(q.needsReview,false);assert.equal(q.waiting[r.workId],'dependencies');assert.equal(q.waiting[c.id],'dependencies');
   assert(q.requestGraph.nodes.every(n=>n.state.kind==='active'&&n.state.review.length===0));assert.equal(f.notifications.length,0);
  }
+});
+
+test('two review rework rounds resume the secretary and publish only one human report',async t=>{
+ const f=await fixture(t,{reportMode:true}),s=f.service;
+ let reviewer=await s.send(f.agents[0].id,{instruction:'Implement, review and revise until accepted',requestId:randomUUID()});
+ await f.submit(reviewer);
+ const q=s.flow.root(reviewer.humanRequestId),rootId=reviewer.workId;
+ let child=await f.delegate(reviewer,f.agents[2]);
+ for(let round=0;round<3;round++){
+  await f.complete(reviewer);await s.tick();
+  const worker=s.flow.run(child.currentRunId);await f.submit(worker);await f.complete(worker);await s.tick();
+  reviewer=s.flow.run(q.requestGraph.nodes.find(n=>n.id===rootId).currentRunId);
+  assert.equal(reviewer.origin,'result');assert.equal(reviewer.agentId,f.agents[0].id);
+  await f.submit(reviewer);
+  assert.equal(f.notifications.length,0);assert.equal(testView(q).status,'active');
+  const result=s.flow.results(q.id,rootId).find(e=>e.requestId===child.id);
+  if(round<2){
+   await s.flow.respond({humanRequestId:q.id,workId:rootId,runId:reviewer.id,operationId:randomUUID(),results:[{requestId:child.id,resultId:result.id,version:result.version,decision:'rework'}]});
+   child=await s.flow.delegate({humanRequestId:q.id,parentWorkId:rootId,actorRunId:reviewer.id,agentId:f.agents[2].id,operationId:randomUUID(),instruction:'Address review findings '+round,replacesRequestId:child.id});
+  }else await f.finish(reviewer);
+ }
+ await f.complete(reviewer);await s.tick();
+ const report=s.data.runs.filter(r=>r.humanRequestId===q.id&&r.phase==='report');
+ assert.equal(report.length,1);assert.equal(report[0].agentId,f.agents[0].id);
+ await f.submit(report[0]);await f.complete(report[0]);
+ assert.equal(testView(q).status,'completed');assert.equal(f.notifications.length,1);
+ assert.equal(s.data.runs.filter(r=>r.humanRequestId===q.id&&r.origin==='delegation').length,3);
 });

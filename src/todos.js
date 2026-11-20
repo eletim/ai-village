@@ -1,3 +1,4 @@
+import {subscribeChanges} from './change-stream.js';
 export function initTodos(){
   const list=document.querySelector('#todo-list'),form=document.querySelector('#todo-form'),input=document.querySelector('#todo-text'),notice=document.querySelector('#todo-notice');
   let state,editing=null,editRevision=null,busy=false,signature='';
@@ -14,7 +15,7 @@ export function initTodos(){
     }
   };
   const reset=()=>{editing=null;editRevision=null;input.value='';document.querySelector('#todo-save').textContent='TODOを追加';};
-  async function refresh(){try{const response=await fetch('/api/todos',{signal:AbortSignal.timeout(10000)});if(!response.ok)throw new Error('TODOを読み込めません。再接続を待ってください。');const next=await response.json();if(!busy&&(!state||next.revision>=state.revision)){state=next;render();}}catch(e){notice.textContent=e.message;}finally{setTimeout(refresh,1500);}}
+  async function refresh(){try{const response=await fetch('/api/todos',{signal:AbortSignal.timeout(10000)});if(!response.ok)throw new Error('TODOを読み込めません。再接続を待ってください。');const next=await response.json();if(!busy&&(!state||next.revision>=state.revision)){state=next;render();}return true;}catch(e){notice.textContent=e.message;return false;}}
   async function mutate(change){
     if(busy||!state)return;busy=true;notice.textContent='保存中…';
     // The revision belongs to the displayed list; never silently retry a stale edit.
@@ -22,8 +23,8 @@ export function initTodos(){
     form.querySelectorAll('button,input').forEach(el=>el.disabled=true);list.querySelectorAll('button,input').forEach(el=>el.disabled=true);
     try{const response=await fetch('/api/todos',{method:'POST',signal:AbortSignal.timeout(10000),headers:{'Content-Type':'application/json'},body:JSON.stringify({...change,revision:change.action==='edit'?revision:state.revision})});const body=await response.json();if(!response.ok)throw new Error(body.error||'保存できませんでした');state=body;if(['add','edit'].includes(change.action)||(change.action==='delete'&&change.id===editing))reset();notice.textContent='保存しました';}
     catch(e){notice.textContent=e.message+' 保存結果が不明な場合は一覧を確認してください。';}
-    finally{busy=false;signature='';render();form.querySelectorAll('button,input').forEach(el=>el.disabled=false);}
+    finally{busy=false;void refresh();signature='';render();form.querySelectorAll('button,input').forEach(el=>el.disabled=false);}
   }
   form.addEventListener('submit',e=>{e.preventDefault();mutate({action:editing?'edit':'add',id:editing,text:input.value});});
-  document.querySelector('#todo-cancel').addEventListener('click',reset);refresh();
+  document.querySelector('#todo-cancel').addEventListener('click',reset);refresh();subscribeChanges(refresh);
 }
