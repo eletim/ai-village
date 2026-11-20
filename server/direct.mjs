@@ -213,7 +213,7 @@ export class DirectAgents {
       queued:runs.filter(r=>modelOf(r).state.kind==='queued').map(r=>r.id),
       legacyCompatibility:a.legacyContract||null,legacyDispatchAllowed:legacyAllowed(a),legacyMigrationReviewDue:legacyReviewDue(a),runtimeUpgrade:a.runtimeUpgrade||null,
       requests:this.data.requests.flatMap(q=>q.requestGraph?.nodes.filter(n=>n.assignee===id&&n.state.kind==='active').map(n=>({humanRequestId:q.id,workId:n.id,currentRunId:n.currentRunId,revision:q.revision}))||[]),
-      migration:'対象だけ人間専用POST /api/direct/human/agents/:id/prepare-runtime {operationId,revision}で次送信を保留。現在runの正常終了・idleを確認。同じ登録属性の未使用新Agentをcreate。人間専用POST /api/direct/human/agents/:id/adopt-runtime {operationId,revision,replacementAgentId,replacementRevision,handover}で既存IDへランタイム採用。queuedは同じrunを保持。sent/runningは終端待ち。旧ランタイムの停止は別途判断。'};
+      migration:'依頼で許可された対象だけ agents prepare-runtime AGENT_ID {operationId,revision}で次送信を保留。現在runの正常終了・idleを確認。同じ登録属性の未使用新Agentをcreate。agents adopt-runtime AGENT_ID {operationId,revision,replacementAgentId,replacementRevision,handover}で既存IDへランタイム採用。queuedは同じrunを保持。sent/runningは終端待ち。旧ランタイムの停止は別途判断。'};
   }
   async prepareRuntime(id,x){
     if(!x||typeof x.operationId!=='string'||! /^[\w-]{8,100}$/.test(x.operationId)||!Number.isInteger(x.revision)||Object.keys(x).some(k=>!['operationId','revision'].includes(k)))fail('prepare-runtimeの入力が不正です',400);
@@ -388,7 +388,7 @@ export class DirectAgents {
     await this.verifyInstructions(a);
     if(a.runtimeUpgrade?.state==='prepared'||a.runtimeRetiredTo||(a.inputEnvelope?.mode!=='startup-v2'&&!legacyAllowed(a))){
       if(r.queuedReason==='startup-contract-migration-required')return r;
-      return this.persist(async()=>{r.queuedReason='startup-contract-migration-required';r.error='起動契約の更新待ち。未送信のまま保留しています。人間のruntime adoption後に同じrunを送信します。';await this.save();return r;});
+      return this.persist(async()=>{r.queuedReason='startup-contract-migration-required';r.error='起動契約の更新待ち。未送信のまま保留しています。runtime adoption後に同じrunを送信します。';await this.save();return r;});
     }
     const status=a.runtime;
     if(runState(r)!=='queued'||r.phase==='report'&&!this.flow.reportCurrent(r))return r;

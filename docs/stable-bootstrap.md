@@ -14,15 +14,15 @@ contract 2は短い起動契約だけをセッションへ導入する。操作�
 
 受付指紋は最終的に送った全文から作成する。過去に送信した本文、hash、runID、native受付照合は一切書き換えない。Claudeのpaste変換の照合とCodexのnative重複判定は従来どおり。
 
-## 旧秘書を移す具体手順（反映管理者が実施）
+## 旧秘書を移す具体手順（人間または依頼で許可されたAgentが実施）
 
 この実装は本番へ移行操作をしていない。旧startup-v1/legacyは「移行待ち互換」として保存し、未移行Agentの新規依頼・結果・報告を継続する。初回から7日後を管理者の移行判断確認日（legacyContract.reviewAt）とするが、**時刻だけでは送信を止めない**。`agents instructions` は未移行・確認日超過（legacyMigrationReviewDue）・prepare状態を診断する。互換の全文付加は server/legacy-contract.mjs の境界に限定し、各入力に移行待ちと「固定bootstrap未導入」を明記、runのinputEnvelopeModeもlegacy-compatと記録する。未移行を解決済みとは扱わない。新規セッションはv2で、v2の検証失敗を旧方式へ降格させない。管理者が対象をprepareした場合だけ旧Agentの次送信を保留する。旧developer指示との競合は推測せず報告し、送信済みの観察は常に継続する。
 
 1. 管理者が反映前に通常の状態バックアップ（SQLiteを含む）を取り、進行中・受付不明を確認する。移行中は対象の新規投入やPurpleMuxからの直接入力を控える。
 2. 正式CLI `agents instructions OLD_AGENT_ID` で契約・追跡中run・queued・依頼をread-only診断する。対象の旧秘書は既存IDを使い続ける。
 3. 通常の `agents create JSON` で同じProject・場所・workshop・cwd・provider・connectionの未使用Agentを準備する。新workspaceへ固定契約を導入してから起動する。新Agentに仕事や人間入力を送らない。`agents instructions NEW_AGENT_ID` でstartup-v2を確認する。ファイルreceiptはliveモデルの記憶を証明しない。
-4. 管理者が対象の旧秘書だけに、人間専用 `POST /api/direct/human/agents/OLD_AGENT_ID/prepare-runtime` を `{operationId,revision:OLD_METADATA_REVISION}` で実行する。新しい送信だけを保留し、稼働中のrunは止めない。応答の正常終了とnative idleをrequests getとagents instructions/Agent状態で確認する。必要なら村の変更通知を受けて再確認し、実行中に採用しない。無関係Agentは移行待ち互換で継続する。prepareによりmetadataRevisionが1増えるので最新値を取得する。
-5. 両ランタイムがidleで旧Agentにsent/runningがない境界で、人間専用 `POST /api/direct/human/agents/OLD_AGENT_ID/adopt-runtime` を操作する。既存の人間認証・Origin/cookie/X-Village-Human-UIを使い、payloadは `{operationId,replacementAgentId:NEW_AGENT_ID,revision:OLD_METADATA_REVISION,replacementRevision:NEW_METADATA_REVISION,handover:HANDOVER_NOTES}`。revisionは最新のagents取得のmetadataRevision（未設定なら0）。handoverは元の目的、継続中の判断、実施済み外部操作（commit/PR/送信等）、未完了事項、成否不明を記した管理者の引継ぎメモ。過去に送信したrunがあるAgentでは必須（1〜30000文字）。旧セッションの最終回答・正式report・履歴を確認して作成し、未記録の外部操作を「なし」と推測しない。同じ操作を再確認する場合は同じoperationIdとpayload（handoverを含む）。権限をAgent CLIには公開しない。通常画面のAgentプロフィール→「セッションの切替」から、反映管理者が同じ人間専用APIを操作できる。
+4. 管理者が対象の旧秘書だけに、正式CLI `agents prepare-runtime OLD_AGENT_ID JSON` を `{operationId,revision:OLD_METADATA_REVISION}` で実行する。新しい送信だけを保留し、稼働中のrunは止めない。応答の正常終了とnative idleをrequests getとagents instructions/Agent状態で確認する。必要なら村の変更通知を受けて再確認し、実行中に採用しない。無関係Agentは移行待ち互換で継続する。prepareによりmetadataRevisionが1増えるので最新値を取得する。
+5. 両ランタイムがidleで旧Agentにsent/runningがない境界で、正式CLI `agents adopt-runtime OLD_AGENT_ID JSON` を操作する。JSONは `{operationId,replacementAgentId:NEW_AGENT_ID,revision:OLD_METADATA_REVISION,replacementRevision:NEW_METADATA_REVISION,handover:HANDOVER_NOTES}`。revisionは最新のagents取得のmetadataRevision（未設定なら0）。handoverは元の目的、継続中の判断、実施済み外部操作（commit/PR/送信等）、未完了事項、成否不明を記した管理者の引継ぎメモ。過去に送信したrunがあるAgentでは必須（1〜30000文字）。旧セッションの最終回答・正式report・履歴を確認して作成し、未記録の外部操作を「なし」と推測しない。同じ操作を再確認する場合は同じoperationIdとpayload（handoverを含む）。Agentは人間から許可された対象だけを操作する。CLIは通常の認証付き /api/village を通り、操作監査を残す。人間専用APIへの偽装は不要。通常画面のAgentプロフィール→「セッションの切替」から、反映管理者が同じ人間専用APIを操作できる。
 6. サーバーは両Agentをロックし、同じ登録属性、未使用のnative履歴、idle、起動ファイルhashを検証し、一つの保存transactionでランタイム所有を交換する。**旧AgentのID・名前・Project・依頼担当・親子関係・run・入力・結果・通知はそのまま**。新Agent側は旧ランタイム保管用になり新規作業を拒否する。旧セッションは停止しない。監査receiptを保存し、再起動後の同じoperationIdも再交換しない。保存失敗なら所有交換をrollbackする。
 7. 下表の進行を確認する。今後の新規依頼も元の秘書IDへ送れる。新しい依頼として再委任せず、完了済み外部作業をやり直さない。保管された旧ランタイムの停止は別途の人間判断とする。
 

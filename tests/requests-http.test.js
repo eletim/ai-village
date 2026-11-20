@@ -40,15 +40,16 @@ test('real HTTP + native JSONL + durable inbox + isolated notify CLI: 0 interim,
  const finish=async(r,op)=>{const q=await request(r.humanRequestId);const body={humanRequestId:q.id,workId:r.workId,runId:r.id,revision:q.revision,operationId:op,inputs:q.requestGraph.nodes.find(n=>n.id===r.workId).inbox.filter(i=>!i.handledBy&&i.attempts.includes(r.id)).map(i=>i.id),results:[]};const receipt=await post('/requests/finish',body);assert.equal(receipt.status,200);return body;};
  try{
   await start();
+  const cli=async(action,payload)=>{const r=await fetch(base+'/api/village',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({argv:['agents',action,agents[0].id,JSON.stringify(payload)]})});const result=await r.json();assert.equal(result.ok,true,JSON.stringify(result));return result;};
   const preparation={operationId:'http-prepare-runtime',revision:0};
   const preparePath='/api/direct/human/agents/'+agents[0].id+'/prepare-runtime';
   assert.equal((await fetch(base+preparePath,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(preparation)})).status,403);
-  assert.equal((await post('/human/agents/'+agents[0].id+'/prepare-runtime',preparation)).status,200);
+  await cli('prepare-runtime',preparation);
   assert.equal((await post('/human/agents/'+agents[0].id+'/prepare-runtime',preparation)).status,200);
   const migration={operationId:'http-adopt-runtime',revision:1,replacementRevision:0,replacementAgentId:agents[2].id};
   const migrationPath='/api/direct/human/agents/'+agents[0].id+'/adopt-runtime';
   const denied=await fetch(base+migrationPath,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(migration)});assert.equal(denied.status,403);
-  const adopted=await post('/human/agents/'+agents[0].id+'/adopt-runtime',migration);assert.equal(adopted.status,200);assert.equal((await post('/human/agents/'+agents[0].id+'/adopt-runtime',migration)).status,200);
+  await cli('adopt-runtime',migration);assert.equal((await post('/human/agents/'+agents[0].id+'/adopt-runtime',migration)).status,200);
   for(const key of ['workspaceId','tabId','sessionName','nativeSession']){const value=agents[0][key];agents[0][key]=agents[2][key];agents[2][key]=value;}await writeFile(join(dir,'agents-fixture.json'),JSON.stringify(agents));
   const spec=await (await fetch(base+'/api/direct/rules?phase=work')).json();assert.equal(spec.revision,new AgentRules(base).specification().revision);assert(spec.text.includes('requests report'));assert.equal((await fetch(base+'/api/direct/rules?phase=invalid')).status,400);const fileResponse=await fetch(base+'/api/attachments?name=sample.json',{method:'POST',headers:{'Content-Type':'application/json'},body:'{"hello":"world"}'});assert.equal(fileResponse.status,201);const file=await fileResponse.json();const attachments=[file.id];
   const travelContexts=[{name:'出張先',sshHost:'dev@travel-pc',cwd:'/tmp/work with spaces; $(noop)',notes:'参照情報のみ'}];const root=(await post('/agents/'+agents[0].id+'/runs',{instruction:'Human collaboration request',requestId:'http-human-request',travelContexts,attachments})).body;

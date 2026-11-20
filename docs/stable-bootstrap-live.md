@@ -1,3 +1,5 @@
+> 現在は依頼で許可されたAgentも `agents prepare-runtime` / `agents adopt-runtime` を使用できます。以下は人間専用だった時点の検証記録です。現行手順は stable-bootstrap.md を参照してください。
+
 # 段階導入の実機検証（2026-11-20）
 
 一般のfixtureとは別に、PurpleMuxから新規の使い捨てworkspaceと実際のCodex/Claude CLIを起動した。既存の本番Agentへテスト入力を送っていない。実機用ポート15192、別の一時stateディレクトリ、通知無効化を使用し、isolated-browser-serverの起動ログで実際のPID・bind・stateを照合した。旧版9aa66f2の隔離サーバーから起動したstartup-v1のCodexを、同じ隔離stateを使う現行サーバーへ引き継いだ。本番サービスを止めたのではなく、この隔離サーバーだけを入れ替えた。

@@ -17,6 +17,7 @@ export class VillageOperations {
       ...(direct?[
         {name:'workshops pattern',usage:'workshops pattern WORKSHOP_ID JSON_ARRAY_8_OR_NULL (none|line|diamond; top row left to right, then bottom)',mutation:true,run:args=>{if(args.length!==2)throw Error('工房IDと8セルのJSON配列を指定してください');return direct.putWorkshop({iconPattern:JSON.parse(args[1])},args[0]);}},
         {name:'agents create',usage:'agents create JSON({requestId,workshopId,cwd,name,provider,location,projectId?})',mutation:true,run:args=>{if(args.length!==1)throw Error('JSONを1つ指定してください');return direct.create(JSON.parse(args[0]));}},
+        ...['prepare-runtime','adopt-runtime'].map(action=>({name:'agents '+action,usage:'agents '+action+' AGENT_ID JSON '+(action==='prepare-runtime'?'{operationId,revision}':'{operationId,revision,replacementAgentId,replacementRevision,handover?}')+' (authorized session migration; preserves requests; requires idle and unused donor for adoption)',mutation:true,run:args=>{if(args.length!==2)throw Error('Agent IDとJSONを指定してください');return direct[action==='prepare-runtime'?'prepareRuntime':'adoptRuntime'](args[0],JSON.parse(args[1]));}})),
         {name:'agents stop',usage:'agents stop AGENT_ID',mutation:true,run:args=>{if(args.length!==1)throw Error('Agent IDを指定してください');return direct.stop(args[0]);}},
         {name:'agents rename',usage:'agents rename AGENT_ID REVISION NAME',mutation:true,run:args=>{if(args.length!==3)throw Error('ID REVISION NAMEを指定してください');return direct.updateAgent(args[0],{revision:Number(args[1]),name:args[2]});}},
         {name:'agents project',usage:'agents project AGENT_ID REVISION PROJECT_ID|-',mutation:true,run:args=>{if(args.length!==3)throw Error('ID REVISION PROJECT_IDを指定してください');return direct.updateAgent(args[0],{revision:Number(args[1]),projectId:args[2]==='-'?null:args[2]});}},
@@ -56,7 +57,7 @@ export class VillageOperations {
     ];
   }
   resolve(argv) {
-    if(!Array.isArray(argv)||!argv.length||argv.length>12||argv.some(arg=>typeof arg!=='string'||arg.length>(argv[0]==='requests'?20000:argv[0]==='notifications'?4000:2000)))throw new Error('argvは1〜12個の文字列で指定してください。');
+    if(!Array.isArray(argv)||!argv.length||argv.length>12||argv.some(arg=>typeof arg!=='string'||arg.length>(argv[0]==='agents'&&argv[1]==='adopt-runtime'?40000:argv[0]==='requests'?20000:argv[0]==='notifications'?4000:2000)))throw new Error('argvは1〜12個の文字列で指定してください。');
     const command=this.commands.find(command=>argv.slice(0,command.name.split(' ').length).join(' ')===command.name);
     if(!command)throw new Error('未対応の操作です。helpでマニュアルと操作一覧を確認してください。');
     return {command,args:argv.slice(command.name.split(' ').length)};

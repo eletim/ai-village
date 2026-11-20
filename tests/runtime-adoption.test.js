@@ -71,3 +71,33 @@ test('adoption receipt is immutable when the new native session identity becomes
  a.inputEnvelope.sessionId='new-native-session-observed-after-adoption';await s.save();assert.deepEqual(await s.adoptRuntime(a.id,x),receipt);
  const restarted=await f.restart();assert.deepEqual(await restarted.adoptRuntime(a.id,x),receipt);assert.equal(restarted.agent(a.id).inputEnvelope.sessionId,'new-native-session-observed-after-adoption');
 });
+
+test('Agent CLI prepares and adopts with long handover, audit and durable idempotency',async t=>{
+ const {VillageOperations}=await import('../server/operations.mjs');
+ const {readFile}=await import('node:fs/promises');
+ const f=await setup(t),s=f.service,{a,b}=f,ops=new VillageOperations({dir:s.dir},null,{direct:s});
+ const prepare=['agents','prepare-runtime',a.id,JSON.stringify({operationId:randomUUID(),revision:0})];
+ assert.equal((await ops.execute(prepare)).ok,true);assert.equal(a.metadataRevision,1);
+ assert.equal((await ops.execute(prepare)).ok,true);assert.equal(a.metadataRevision,1);
+ const handover='過去の外部操作は再実行せず記録を確認。'.repeat(400);
+ const payload={operationId:randomUUID(),revision:1,replacementRevision:0,replacementAgentId:b.id,handover};
+ const args=['agents','adopt-runtime',a.id,JSON.stringify(payload)],old=a.workspaceId,fresh=b.workspaceId;
+ const result=await ops.execute(args);assert.equal(result.ok,true);assert.equal(result.result.handover,handover);
+ assert.equal(a.workspaceId,fresh);assert.equal(b.workspaceId,old);
+ assert.deepEqual((await ops.execute(args)).result,result.result);
+ const restarted=await f.restart(),next=new VillageOperations({dir:s.dir},null,{direct:restarted});
+ assert.deepEqual((await next.execute(args)).result,result.result);
+ const audit=(await readFile(s.dir+'/operations.jsonl','utf8')).trim().split('\n').map(JSON.parse);
+ assert.equal(audit.length,5);assert(audit.every(entry=>entry.issuer==='cli'&&entry.result.ok));
+ assert.equal(audit.at(-1).argv[3],args[3]);
+});
+test('Agent CLI retains runtime adoption validation and cannot alter request lifecycle',async t=>{
+ const {VillageOperations}=await import('../server/operations.mjs');
+ const f=await setup(t),s=f.service,{a,b}=f,ops=new VillageOperations({dir:s.dir},null,{direct:s});
+ const r=await s.send(a.id,{instruction:'inflight',requestId:randomUUID()});await f.submit(r);
+ const before=JSON.stringify(s.flow.root(r.humanRequestId));
+ const result=await ops.execute(['agents','adopt-runtime',a.id,JSON.stringify({operationId:randomUUID(),revision:0,replacementRevision:0,replacementAgentId:b.id,handover:'Preserve ongoing task'})]);
+ assert.equal(result.ok,false);assert.match(result.error,/受付不明・実行中/);
+ assert.equal(JSON.stringify(s.flow.root(r.humanRequestId)),before);assert.equal(f.sent.length,1);
+ assert.equal((await ops.execute(['agents','prepare-runtime',a.id,'{}'])).ok,false);
+});
