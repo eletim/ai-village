@@ -21,7 +21,7 @@ contract 2は短い起動契約だけをセッションへ導入する。操作�
 1. 管理者が反映前に通常の状態バックアップ（SQLiteを含む）を取り、進行中・受付不明を確認する。移行中は対象の新規投入やPurpleMuxからの直接入力を控える。
 2. 正式CLI `agents instructions OLD_AGENT_ID` で契約・追跡中run・queued・依頼をread-only診断する。対象の旧秘書は既存IDを使い続ける。
 3. 通常の `agents create JSON` で同じProject・場所・workshop・cwd・provider・connectionの未使用Agentを準備する。新workspaceへ固定契約を導入してから起動する。新Agentに仕事や人間入力を送らない。`agents instructions NEW_AGENT_ID` でstartup-v2を確認する。ファイルreceiptはliveモデルの記憶を証明しない。
-4. 両ランタイムがidleで旧Agentにsent/runningがない境界で、人間専用 `POST /api/direct/human/agents/OLD_AGENT_ID/adopt-runtime` を操作する。既存の人間認証・Origin/cookie/X-Village-Human-UIを使い、payloadは `{operationId,replacementAgentId:NEW_AGENT_ID,revision:OLD_METADATA_REVISION,replacementRevision:NEW_METADATA_REVISION}`。revisionは最新のagents取得のmetadataRevision（未設定なら0）。同じ操作を再確認する場合は同じoperationIdとpayload。権限をAgent CLIには公開しない。専用の選択UIは未提供で、反映管理者が認証済みHTTP操作を行う。
+4. 両ランタイムがidleで旧Agentにsent/runningがない境界で、人間専用 `POST /api/direct/human/agents/OLD_AGENT_ID/adopt-runtime` を操作する。既存の人間認証・Origin/cookie/X-Village-Human-UIを使い、payloadは `{operationId,replacementAgentId:NEW_AGENT_ID,revision:OLD_METADATA_REVISION,replacementRevision:NEW_METADATA_REVISION,handover:HANDOVER_NOTES}`。revisionは最新のagents取得のmetadataRevision（未設定なら0）。handoverは元の目的、継続中の判断、実施済み外部操作（commit/PR/送信等）、未完了事項、成否不明を記した管理者の引継ぎメモ。過去に送信したrunがあるAgentでは必須（1〜30000文字）。旧セッションの最終回答・正式report・履歴を確認して作成し、未記録の外部操作を「なし」と推測しない。同じ操作を再確認する場合は同じoperationIdとpayload（handoverを含む）。権限をAgent CLIには公開しない。専用の選択UIは未提供で、反映管理者が認証済みHTTP操作を行う。
 5. サーバーは両Agentをロックし、同じ登録属性、未使用のnative履歴、idle、起動ファイルhashを検証し、一つの保存transactionでランタイム所有を交換する。**旧AgentのID・名前・Project・依頼担当・親子関係・run・入力・結果・通知はそのまま**。新Agent側は旧ランタイム保管用になり新規作業を拒否する。旧セッションは停止しない。監査receiptを保存し、再起動後の同じoperationIdも再交換しない。保存失敗なら所有交換をrollbackする。
 6. 下表の進行を確認する。今後の新規依頼も元の秘書IDへ送れる。新しい依頼として再委任せず、完了済み外部作業をやり直さない。保管された旧ランタイムの停止は別途の人間判断とする。
 
@@ -33,7 +33,17 @@ contract 2は短い起動契約だけをセッションへ導入する。操作�
 |sent/受付追跡中/running、native busy|移行を拒否。観察を継続し終端の根拠を確認。自動再送・停止で解決しない|
 |終端failed/interrupted/unconfirmed|ランタイム移行自体はidle確認後に可能だが、依頼の失敗や不明を成功に変えない。外部効果確認後の人間専用retry/resume等による明示復旧が別途必要|
 
-現在の親秘書についても、レビュー回の正常終了後の子結果待ち境界でこの操作を行えば、同じ親依頼へ結果を受領し、レビュー・最終報告・今後の新規依頼を継続できる。受付中に更新を強行しない。全Agent停止や、modeだけの強制変更は不要。移行操作は外部送信せず所有台帳だけを確定し、その後の送信は既存の受付照合を通る。
+現在の親秘書については、今回許可された反映管理の範囲で管理者が、レビュー回の正常終了とnative idleを確認してから実施する。実行中の親を入れ替えない。親の最終回答/reportから引継ぎメモを準備し、子結果待ち境界でこの操作を行えば、同じ親依頼へ結果を受領し、レビュー・最終報告・今後の新規依頼を継続できる。受付中に更新を強行しない。全Agent停止や、modeだけの強制変更は不要。移行操作は外部送信せず所有台帳だけを確定し、その後の送信は既存の受付照合を通る。
+
+## 新セッションの文脈と遅延イベント
+
+採用transactionは対象の依頼/ノードID一覧と引継ぎメモをreceiptに保存する。移行後、そのノードへの初回送信（既存queued、結果入力、reportを含む）の `sessionHandover` は、requests get / inputs / resultsの具体的な引数を持ち、作業・報告前に全文を読むよう指示する。getは元目的・全runの指示と成果・操作履歴、inputsは対応済みを含む全補足と未対応入力、resultsは子結果を保持する。短い通常の引継ぎ抜粋だけで過去文脈を代用しない。現runのinputs/results対応手続きや報告だけの制限は変わらない。
+
+会話記憶や未記録の外部操作を自動復元できたとは主張しない。管理者メモも資料であって新しい許可ではない。過去の外部操作は再実行せず、成否不明は確認する。次の新規依頼には旧依頼の引継ぎを付けない。この一回の引継ぎ参照・メモと、APIから読む必要な履歴は移行コストであり、通常封筒の固定費削減には含めない。
+
+監視イベントは観測結果を運ばずAgentを再評価するきっかけだけである。採用と観測は同じAgentロックで直列化され、遅延通知でも現在のworkspace/tab/sessionから読み直す。旧native結果を新sessionの観測として取り込まない。旧sessionの既存終端履歴は元session ID付きで保持する。遅延通知を採用前に予約し、採用後に旧sessionの通知・結果を発生させる隔離回帰で確認した。直接PurpleMuxへ同時入力する管理操作は避ける。
+
+採用応答を失った場合は、新Agentを作り直さず同じoperationId/payloadを再送する。保存済みなら同じreceiptを返し、旧新runtimeを再交換せず、queued runも増やさない。保存前の失敗なら所有関係はrollbackされ、同じ操作を再試行する。人間認証は維持し、Agentへ人間専用権限を渡さない。
 
 ## 失敗・再起動・ロールバック
 
@@ -64,7 +74,7 @@ Codex/Claudeの既存launcherへの導入は同じPython install/verify経路を
 
 ## 今回の検証結果
 
-- 最終 `npm test`: 531件中530成功・条件付き1skip・失敗0。初期実行で旧「全文fallback」期待のテストを新しい診断停止契約へ更新した。
+- 最終 `npm test`: 533件中532成功・条件付き1skip・失敗0。初期実行で旧「全文fallback」期待のテストを新しい診断停止契約へ更新した。
 - `typecheck` / `check` / `build`: 成功。
 - 隔離Playwright全172件成功。専用ポート15189、使い捨て状態、通知無効化、既存サーバー再利用禁止・実bind/state検証のガードを維持。
 - 新規回帰: 仕様更新と再起動後も短縮、旧セッションへの新規送信停止、read-only診断、sent/runningの照合維持と早すぎる担当交代拒否、同一Agent IDでのランタイム移行と冪等再試行、各phaseの本文一回、再開引継ぎの重複抑制、既存promptへの再追記拒否。HTTP/CLIで同一仕様revision、未知phase拒否を確認。
@@ -73,3 +83,5 @@ Codex/Claudeの既存launcherへの導入は同じPython install/verify経路を
 追加回帰は未送信queued、子結果待ち、生成済みreport待ち、sent/unknown・running拒否、未使用/属性/revision検証、保存失敗rollback、移行後再起動と新規依頼を検証。隔離HTTPでは人間権限拒否/認証済み移行/同一操作再試行の後に依頼・委任・結果・報告・通知一回の実際の経路を通した。ブラウザ全体は既存画面の回帰であり、新操作の画面操作検証ではない。
 
 ブラウザ初回は171成功・1失敗。compact-status fixtureがgraph更新前に変更通知を送り、古い投影を表示する順序競合を修正し、全体再実行で172成功。今回の本体変更による表示機能の変更はない。
+
+追加補足の検証では、移行後の通常/結果/reportの引継ぎ参照、長い補足の全文取得、過去成果・管理者の外部操作メモ、旧通知の隔離を確認。queuedを持った採用の保存失敗→同一operationId再試行→応答喪失相当の再起動→再試行→送信後再試行でも、runtime所有とrun数が変わらず送信一回であることを確認した。通常封筒の再測定は既掲載値と同じ。
