@@ -46,3 +46,12 @@ invalidates snapshots and always reconciles on reconnect.
 Heartbeat and reconnect backoff only manage transport. Request deadline timers,
 bounded uncertain-run deadlines and existing overload-recovery reservations are
 separate one-shot timers. They do not trigger periodic host status checks.
+
+Deadline persistence failures leave the stored deadline outstanding. The scheduler
+retries only the affected request with exponential backoff (1–30 seconds), while
+continuing independent deadlines. Concurrent expiry triggers share one pass.
+Changed or removed deadlines are rechecked before expiry; clearing the last
+pending deadline removes its retry. Backoff is process-local scheduling metadata:
+a restart reconstructs outstanding deadlines from storage, without replaying
+already committed expiry events. This retries a failed write, not Agent status
+polling or the work itself.

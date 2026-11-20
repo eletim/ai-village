@@ -13,7 +13,7 @@ function notify(flow,q,target,event){
  applyGraph(flow.d.data,q,{type:'supplement',actor:'program',requestId:target.id,input:{id:event.id,kind:'supplement',text:'依頼の通知（実行指示ではなく報告データ）: '+JSON.stringify(event),createdAt:event.at,attempts:[]}});
 }
 export class RequestReports {
- constructor(flow,{clock=Date.now}={}){this.flow=flow;this.clock=clock;this.enabled=false;this.reservations=new Map();}
+ constructor(flow,{clock=Date.now,retryDelayMs=1000}={}){this.flow=flow;this.clock=clock;this.retryDelayMs=retryDelayMs;this.enabled=false;this.reservations=new Map();this.retries=new Map();}
  start(){this.enabled=true;this.schedule();}
  close(){this.enabled=false;clearTimeout(this.timer);}
  async change(x,actor='agent') {return this.mutate(x,'deadline',actor,async(q,w)=>{
@@ -55,17 +55,24 @@ export class RequestReports {
  }));}
  schedule(changedIds){
   if(!this.enabled)return;
+  if(!changedIds){this.reservations.clear();for(const id of this.retries.keys())if(!this.flow.requests.some(q=>q.id===id))this.retries.delete(id);}
+  for(const id of changedIds||[])if(!this.flow.requests.some(q=>q.id===id)){this.reservations.delete(id);this.retries.delete(id);}
   const requests=changedIds?[...new Set(changedIds)].map(id=>this.flow.requests.find(q=>q.id===id)).filter(Boolean):this.flow.requests;
-  for(const q of requests)this.reservations.set(q.id,this.pending([q]));
+  for(const q of requests){const pending=this.pending([q]);this.reservations.set(q.id,pending);if(!pending.length)this.retries.delete(q.id);}
   clearTimeout(this.timer);
-  const at=Math.min(...[...this.reservations.values()].flat().map(e=>e.at));if(!Number.isFinite(at))return;
+  const at=Math.min(...[...this.reservations.values()].flat().map(e=>Math.max(e.at,this.retries.get(e.q.id)?.at||0)));if(!Number.isFinite(at))return;
   this.timer=setTimeout(()=>void this.expire().catch(error=>{this.error=error.message;}),Math.max(0,Math.min(2147483647,at-this.clock())));this.timer.unref?.();
  }
 
- async expire(){
+ expire(){
+  if(this.expiring)return this.expiring;
+  this.expiring=this.expireDue().finally(()=>{this.expiring=null;});return this.expiring;
+ }
+ async expireDue(){
   const f=this.flow,entries=this.enabled?[...this.reservations.values()].flat():this.pending();
-  const ids=[...new Set(entries.filter(e=>e.at<=this.clock()).map(e=>e.q.id))];
-  for(const id of ids)await f.d.units.run(id,()=>f.d.locked('request-graph',()=>f.d.persist(async()=>{
+  const ids=[...new Set(entries.filter(e=>Math.max(e.at,this.retries.get(e.q.id)?.at||0)<=this.clock()).map(e=>e.q.id))];
+  const errors=[];
+  for(const id of ids)try{await f.d.units.run(id,()=>f.d.locked('request-graph',()=>f.d.persist(async()=>{
    const q=f.root(id),due=this.pending([q]).filter(e=>e.at<=this.clock());if(!due.length)return;
    for(const {w,kind,version} of due){
     const s=w.metadata.reporting,event={id:randomUUID(),kind:'deadline-exceeded',deadlineKind:kind,workId:w.id,version,at:new Date(this.clock()).toISOString(),deadline:s[kind+'At']};
@@ -73,7 +80,15 @@ export class RequestReports {
     if(w.parentId)notify(f,q,f.work(q,w.parentId),event);
    }
    await f.d.save();
-  })));
-  this.schedule(ids);await f.d.progress();
+  })));this.retries.delete(id);
+  }catch(error){
+   // The persisted deadline remains due after rollback. Retry this request only;
+   // an unrelated save must not erase backoff or strand other deadlines.
+   const attempts=(this.retries.get(id)?.attempts||0)+1;
+   this.retries.set(id,{attempts,at:this.clock()+Math.min(30000,this.retryDelayMs*2**Math.min(attempts-1,5))});errors.push(error);
+  }
+  this.schedule(ids);
+  if(errors.length)throw new AggregateError(errors,'Deadline processing failed; retry scheduled');
+  this.error=null;await f.d.progress();
  }
 }
