@@ -161,6 +161,6 @@ footer{font-variant-numeric:tabular-nums}
 
 .message.internal{align-self:flex-end;border:1px dashed #7b8c9e88;border-radius:6px;background:transparent}.message.internal small{display:block;margin-bottom:6px;font-weight:600}
 
-.chat-author{display:block;font-size:11px;margin-bottom:5px}.chat-body>summary{cursor:pointer;font-size:12px;padding:4px 0}.chat-body[open]>summary{margin-bottom:6px}.message .chat-body{min-width:110px}
+.chat-body>summary{cursor:pointer;font-size:12px;padding:4px 0}.chat-body[open]>summary{margin-bottom:6px}.message .chat-body{min-width:110px}
 /* chatScroll owns read position; native anchoring must not also shift it on font changes. */
 .runs{overflow-anchor:none}
