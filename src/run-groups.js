@@ -5,14 +5,14 @@ export function exchangeLabel(entry,state){
  const q=state.requests?.find(q=>q.id===entry.humanRequestId),nodes=q?.requestGraph?.nodes||[];
  const node=nodes.find(n=>n.id===entry.workId),parent=nodes.find(n=>n.id===node?.parentId);
  const name=id=>state.agents?.find(a=>a.id===id)?.name||'Agent';
- const target=name(entry.agentId);
- if(entry.origin==='delegation')return `${parent?name(parent.assignee):'依頼元Agent'} → ${target}・作業依頼`;
- if(entry.origin==='result')return `子作業の担当Agent → ${target}・成果の受け取り・レビュー`;
- if(entry.origin==='agent')return `他Agent → ${target}・作業依頼`;
- return `システム → ${target}・${originLabel[entry.origin]||'途中経過'}`;
+ if(entry.origin==='delegation')return '作業依頼（'+(parent?name(parent.assignee):'依頼元Agent')+'から）';
+ if(entry.origin==='result')return '成果の受け取り・レビュー';
+ if(entry.origin==='agent')return '他Agentからの作業依頼';
+ return originLabel[entry.origin]||'途中経過';
 }
 // The chat shell is always visible. Only its body is a disclosure.
-export function chatBodyHTML(entry,side,body,fold){
- if(!fold||!body)return body;
- return `<details class="chat-body" data-disclosure="${esc('chat:'+entry.id+':'+side)}"><summary>…（途中経過）</summary>${body}</details>`;
+export function chatBodyHTML(entry,side,body,fold,label='途中経過'){
+ if(!fold)return body;
+ if(!body)return `<span class="chat-placeholder">…（${esc(label)}）</span>`;
+ return `<details class="chat-body" data-disclosure="${esc('chat:'+entry.id+':'+side)}"><summary>…（${esc(label)}）</summary>${body}</details>`;
 }

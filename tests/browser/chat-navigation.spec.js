@@ -36,7 +36,7 @@ for(const width of [1440,390])test(`chat shells stay visible and bodies fold ind
  await expect(answer.getByText('レビュー中',{exact:true})).not.toBeVisible();
  await first.locator('summary').click();
  await expect(first.locator('.message.user')).toHaveCount(0);
- await expect(log.locator('.message.internal').first()).toContainText('子作業の担当Agent → 秘書');
+ await expect(log.locator('.message.internal').first()).toContainText('…（成果の受け取り・レビュー）');
  await expect(second).not.toHaveAttribute('open','');
  await notifySnapshot(page);await expect(first).toHaveAttribute('open','');await expect(second).not.toHaveAttribute('open','');
  const before=focusRequests.length;
@@ -49,6 +49,8 @@ for(const width of [1440,390])test(`chat shells stay visible and bodies fold ind
  await expect(child.locator('.message.internal')).toBeVisible();
  await expect(child.locator('.message.assistant')).toBeVisible();
  await expect(child.getByText('実装結果',{exact:true})).not.toBeVisible();
+ await expect(child.locator('.chat-author')).toHaveCount(0);
+ await expect(child.locator('.message.assistant > details > summary')).toHaveText('…（成果提出（秘書宛））');
  const input=child.locator('.message.internal'),output=child.locator('.message.assistant');
  const align=await child.evaluate(el=>{const i=el.querySelector('.message.internal').getBoundingClientRect(),o=el.querySelector('.message.assistant').getBoundingClientRect();return i.right>o.right&&i.left>o.left;});
  expect(align).toBe(true);
@@ -59,7 +61,7 @@ for(const width of [1440,390])test(`chat shells stay visible and bodies fold ind
  await output.locator('summary').click();
  await expect(child.getByText('実装結果',{exact:true})).toBeVisible();
  await expect(child.locator('.message.user')).toHaveCount(0);
- await expect(child).toContainText('秘書 → 工房・作業依頼');
+ await expect(child).toContainText('…（作業依頼（秘書から））');
  await expect(child).toContainText('成果提出（秘書宛）');await expect(child).not.toContainText('最終報告');
  await page.locator('#next-agent').click();await expect(first).toHaveAttribute('open','');
 });
