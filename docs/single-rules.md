@@ -1,5 +1,7 @@
 # 単一化 第3段階：規則と入力照合
 
+> 歴史資料。現行の操作仕様は `rules get work|report`、起動契約と移行は [stable-bootstrap.md](stable-bootstrap.md)。この資料のlegacy全文fallbackと操作一覧を現行契約として使わない。
+
 この文書は第3段階の履歴です。新規送信のマーカー廃止・全文照合と互換性は [input-envelope.md](input-envelope.md) が現行仕様です。
 
 第2段階（PR #63）の上に積む。統合先は integration/single-village 系のみ。秘書が第2段階→第3段階の順で統合・反映する。本作業では本番を変更していない。

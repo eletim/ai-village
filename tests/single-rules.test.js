@@ -2,13 +2,14 @@ import test from 'node:test';import assert from 'node:assert/strict';import {mkd
 import {AgentRules,agentActions,actionUsage} from '../server/agent-rules.mjs';
 import {markerData,migrateMarkerStore} from '../server/marker-migration.mjs';import {newRequest} from '../server/state/request.ts';
 import {matchesRunInput} from '../server/input-envelope.mjs';import {correlate} from '../server/runtime-events.mjs';
-test('startup, legacy work/report and help use exactly the same policy and action schemas',()=>{
- const rules=new AgentRules('http://127.0.0.1:5394');assert.deepEqual(Object.keys(agentActions),['report','deadline','plan','launch','assignPlan','discard','amend','delegate','respond','finish']);
- const startup=rules.startup();assert(startup.includes(rules.work('HUMAN_REQUEST_ID')));assert(startup.includes(rules.report('HUMAN_REQUEST_ID')));
- const work=rules.context({humanRequestId:'q',phase:'work'},false),report=rules.context({humanRequestId:'q',phase:'report'},false);
- assert(work.includes(rules.work('q')));assert(report.includes(rules.report('q')));for(const name of Object.keys(agentActions))assert(startup.includes(actionUsage(name)));
- assert(!startup.includes('acknowledge'));assert(!actionUsage('finish').includes('revision'));assert(rules.context({humanRequestId:'q'},true).length<100);assert(!rules.reportData({id:'q',instruction:'human'},{id:'r',output:'result'},[]).includes('追加作業'));
+test('stable startup delegates to the versioned single-source specification without repeating schemas',()=>{
+ const rules=new AgentRules('http://127.0.0.1:5394');
+ const startup=rules.startup();assert(startup.includes('rules get work'));assert(!startup.includes('requests finish JSON'));
+ for(const name of Object.keys(agentActions))assert(rules.specification().text.includes(actionUsage(name)));
+ const before=rules.startup(),revision=rules.specification().revision;rules.work=()=> 'updated operation contract';assert.equal(rules.startup(),before);assert.notEqual(rules.specification().revision,revision);
+ for(const phase of ['work','report']){const envelope=rules.context({humanRequestId:'q',phase});assert(!envelope.includes('requests finish'));assert(envelope.length<250);}
 });
+
 function fixture(){const q=newRequest('q','r','human').value;const run={id:'r',humanRequestId:'q',inputHash:'old',priorInputs:[{id:'i',offset:1,hash:'old'}],baselineRuntime:{sessionId:'s',cursor:1},runModel:{...q.runs[0],state:{kind:'sent',sessionId:'s',sentAt:1}}};return {runs:[run],requests:[{id:'q',requestModel:{...q,runs:[run.runModel]}}],agents:[]};}
 test('marker migration keeps completed history, preserves marked in-flight input, and closes only unmarked in-flight runs with review',()=>{
  const old=fixture(),copy=structuredClone(old),next=markerData(old);assert.deepEqual(old,copy);assert.equal(next.data.runs[0].runModel.state.outcome,'unconfirmed');assert(next.data.requests[0].requestModel.state.review.length);assert.equal(next.data.runs[0].inputHash,undefined);assert.equal(next.data.runs[0].priorInputs[0].hash,undefined);assert.deepEqual(markerData(next.data).data,next.data);
@@ -26,7 +27,7 @@ test('only an exact run marker matches: hashes, prose, wrapper or escapes never 
 
 test('report policy rewrites material for the human as a natural reply to the original question',()=>{
  const rules=new AgentRules('http://127.0.0.1:5399');
- for(const text of [rules.report('q'),rules.startup(),rules.context({humanRequestId:'q',phase:'report'},false)]){
+ for(const text of [rules.report('q'),rules.specification('report').text]){
   assert.doesNotMatch(text,/言語|日本語|Japanese|英語|English|翻訳/i);
   for(const phrase of ['画面から隠れ','転記・構成のなぞりではなく','質問への答えを最初','まずquestion（元の依頼）を読み','その人への自然な返答','成果の捏造','追加作業','finishは不要','何も足さない'])assert(text.includes(phrase),phrase);
  }

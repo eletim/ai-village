@@ -1,3 +1,4 @@
+import {installInstructionsScript,verifyInstructionsScript} from '../server/input-envelope.mjs';
 import {inputHash} from './model-fixtures.mjs';
 import {receipt} from './model-fixtures.mjs';
 import {testView} from './model-fixtures.mjs';
@@ -14,6 +15,8 @@ async function fixture(t){
  const remote=async(args)=>{
   if(disconnected)throw Error('offline');
   if(args[0]==='python3'){
+   if(args[2]===installInstructionsScript)return JSON.stringify({installed:true,hash:inputHash(args.at(-1))});
+   if(args[2]===verifyInstructionsScript)return JSON.stringify({verified:true});
    if(args[2].includes('def digest'))return JSON.stringify(data);
    return JSON.stringify(args[2].includes('root=pane')?[{pid:123,start:'1'}]:{remainingOwned:0});
   }
@@ -190,7 +193,7 @@ test('secretary receives discovery without losing native input correlation or re
  const remote=f.service.remote;f.service.remote=async args=>{if(args[2]==='send')delivered=args.at(-1);return remote(args);};
  const payload={instruction:'工房を確認して',requestId:'secretary-discovery'};
  const r=await f.service.send(f.a.id,payload);
- assert.equal(r.instruction,payload.instruction);assert(delivered.includes('最新名簿'));assert(delivered.includes('/api/direct/agents'));
+ assert.equal(r.instruction,payload.instruction);assert(!delivered.includes('最新名簿'));assert(f.service.rules.specification().text.includes('最新名簿'));assert(!delivered.includes('/api/direct/agents'));
  assert(delivered.includes(r.id));assert.equal(r.inputMarker,undefined);assert.equal(r.inputHash,undefined);
  Object.assign(f.input(delivered),{state:'completed',output:'confirmed'});await f.service.tick();assert.equal(testView(r).state,'completed');
  await f.service.send(f.a.id,payload);assert.equal(f.sends(),1);

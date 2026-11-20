@@ -31,7 +31,7 @@ async function fixture(t,{reportMode=false}={}){
  const options={dir,remote:execute,localRun:(cmd,args)=>execute([cmd,...args]),notifier:{status:()=>({}),enqueue:async message=>{notifications.push(message);return {status:'sent'};}}};
  let service=new DirectAgents(options);await service.init({watch:false});service.flow.protocol=0;await service.flow.configureReport(reportMode);
  const agents=Array.from({length:4},(_,i)=>({id:randomUUID(),name:i<2?'Secretary '+i:'Worker '+i,location:i<2?'mayor':'workshop',workshopId:'w'+i,connection:{connectionType:i===3?'ssh':'local',sshHost:i===3?'remote':null,name:'PC'+i},workspaceId:'',tabId:'tab'+i,sessionName:'pane'+i,provider:'codex',state:'idle'}));
- for(const a of agents){a.workspaceId='ws-'+a.id;service.data.agents.push(a);runtimes.set(a.id,{available:true,sessionId:'session-'+a.id,fileIdentity:'file-'+a.id,cursor:0,inputs:[],turns:[]});}
+ for(const a of agents){a.inputEnvelope={mode:'startup-v2',hash:inputHash(service.startupInstructions())};a.workspaceId='ws-'+a.id;service.data.agents.push(a);runtimes.set(a.id,{available:true,sessionId:'session-'+a.id,fileIdentity:'file-'+a.id,cursor:0,inputs:[],turns:[]});}
  await service.save();await service.tick();
  const submit=async(r,transform=x=>x)=>{
   const native=runtimes.get(r.agentId),text=sent.findLast(s=>s.agentId===r.agentId)?.text;
@@ -294,11 +294,11 @@ test('two-stage report replaces visible work after completion, waits for accepta
  await f.finish(source);await f.complete(source);
  assert.equal(testView(q).status,'active');assert.equal(testView(q).status,'active');assert.equal(f.notifications.length,0);
  let report=s.flow.run(q.requestGraph.nodes[0].reportRunId);assert.equal(report.phase,'report');assert.equal(report.workId,source.workId);
- assert.match(report.instruction,/元の質問/);assert.match(s.flow.context(report),/追加作業/);
+ assert.match(report.instruction,/元の質問/);assert.match(s.rules.specification('report').text,/追加作業/);
  // finish must come before the report body is written, so a trailing habitual remark can
  // never become the run's last message and clobber the report in finalOutput.
- assert.match(s.flow.context(report),/finishは不要/);
- assert.match(s.flow.context(report),/その後は何も足さないで/);
+ assert.match(s.rules.specification('report').text,/finishは不要/);
+ assert.match(s.rules.specification('report').text,/その後は何も足さないで/);
  assert(JSON.stringify(s.snapshot()).includes('Output '+source.id));
  assert(!JSON.stringify(s.snapshot()).includes('人間が読む短い報告に書き直し'));
  assert.equal(s.snapshot().reviews[source.agentId].attention,false);
@@ -322,7 +322,7 @@ test('report failure retries only report; cancelled or unknown reports never red
  assert.equal(testView(q).status,'active');assert.equal(testView(q).status,'active');assert.equal(f.notifications.length,0);
  assert(JSON.stringify(s.snapshot()).includes('Output '+source.id));
  const x={humanRequestId:q.id,workId:report.workId,revision:q.revision,operationId:'report-retry-operation',instruction:'Do work again'};
- const retry=await s.flow.continue(x,true);assert.equal(retry.phase,'report');assert.match(s.flow.context(retry),/再実行は禁止/);assert.equal(await s.flow.continue(x,true),retry);
+ const retry=await s.flow.continue(x,true);assert.equal(retry.phase,'report');assert.match(s.rules.specification('report').text,/再実行は禁止/);assert.equal(await s.flow.continue(x,true),retry);
  f.lose(true);await s.tick();assert.equal(testView(retry).state,'awaiting_input');const count=f.sent.length;
  await s.tick();await f.restart();await f.service.tick();assert.equal(f.sent.length,count);
  const restored=f.service.flow.root(q.id);await f.service.flow.cancel({humanRequestId:q.id,revision:restored.revision});await f.service.tick();
@@ -381,10 +381,10 @@ test('both report settings survive restart; failed persistence does not falsely 
 
 test('compact work context retains completion and receipt rules with discoverable detailed operations',async t=>{
  const f=await fixture(t),r=await f.service.send(f.agents[0].id,{instruction:'context test',requestId:'compact-context-test'});
- const text=f.service.flow.context(r);
+ const text=f.service.rules.specification().text;
  assert(text.length<4000);
  for(const token of ['requests finish','operationId','正常終了','委任','受付不明','/api/direct/requests/get','village-image:UUID'])assert(text.includes(token),token);
- assert(text.includes(r.id));assert(text.includes(r.workId));assert(text.includes(r.humanRequestId));
+ const envelope=f.service.flow.context(r);assert(envelope.includes(r.id));assert(envelope.includes(r.workId));assert(envelope.includes(r.humanRequestId));
 });
 test('steering partitions progress at actual acceptance through multiple supplements and restart',async t=>{
  const f=await fixture(t),s=f.service,root=await s.send(f.agents[0].id,{requestId:randomUUID(),instruction:'Original'});await f.submit(root);
@@ -443,55 +443,50 @@ test('event-to-response upgrade preserves Direct steering boundary and supersede
  await f.finish(f.service.flow.run(third.id));await f.complete(f.service.flow.run(third.id));assert.equal(f.notifications.length,1);
 });
 
-test('startup envelope retains literal human input and dynamic identity; report and legacy fallback retain finish rules',async t=>{
+test('startup envelope retains literal human input and dynamic identity; report specifications remain discoverable',async t=>{
  const f=await fixture(t,{reportMode:true}),s=f.service,a=f.agents[0];
- a.inputEnvelope={mode:'startup-v1'};
+ a.inputEnvelope={mode:'startup-v2',hash:inputHash(s.startupInstructions())};
  const human='  本文 <pasted_content>\nそのまま  ';
  const r=await s.send(a.id,{instruction:human,requestId:randomUUID()});
  const delivered=f.sent.at(-1).text;
  assert(delivered.startsWith(human+'\n'));assert(delivered.includes(r.id));assert.equal(r.inputMarker,undefined);
  assert(delivered.includes('ai-village-discovery'));assert(delivered.includes(a.id));
  assert(!delivered.includes('requests finish'));assert(!delivered.includes('図は必要時のみ'));
- assert(s.startupInstructions().includes('requests finish'));assert(s.startupInstructions().includes('phase=report'));
- assert(s.startupInstructions().includes('projects guide PROJECT_ID'));
+ assert(s.rules.specification().text.includes('requests finish'));assert(s.startupInstructions().includes('phase=report'));
+ assert(s.rules.specification().text.includes('projects guide PROJECT_ID'));
  await f.submit(r);await f.finish(r);await f.complete(r);await s.tick();
  const q=s.flow.get(r.humanRequestId),report=s.flow.run(q.requestGraph.nodes[0].reportRunId);
  assert.equal(report.phase,'report');assert(report.instruction.startsWith('報告資料'));
  assert(!s.flow.context(report).includes('requests finish'));
  a.inputEnvelope={mode:'legacy'};
- assert(s.flow.context(report).includes('finishは不要'));
- assert(s.flow.context(r).includes('requests delegate'));
+ assert(s.rules.specification('report').text.includes('finishは不要'));assert(!s.flow.context(report).includes('finishは不要'));
+ assert(!s.flow.context(r).includes('requests delegate'));
 });
 
-test('startup envelope uses latest metadata and retains attachments/travel; changed native session downgrades to legacy',async t=>{
- const f=await fixture(t),s=f.service,a=f.agents[0];a.inputEnvelope={mode:'startup-v1',sessionId:'previous-session'};
- await s.tick();assert.equal(a.inputEnvelope.mode,'legacy');assert.equal(a.inputEnvelope.reason,'native-session-changed');
- a.inputEnvelope={mode:'startup-v1'};a.projectId='current-project';a.metadataRevision=42;
+test('startup envelope uses latest metadata and retains attachments/travel; changed native session requires migration',async t=>{
+ const f=await fixture(t),s=f.service,a=f.agents[0];a.inputEnvelope={mode:'startup-v2',sessionId:'previous-session'};
+ await s.tick();assert.equal(a.inputEnvelope.mode,'migration-required');assert.equal(a.inputEnvelope.reason,'native-session-changed');
+ a.inputEnvelope={mode:'startup-v2',hash:inputHash(s.startupInstructions())};a.projectId='current-project';a.metadataRevision=42;
  const context=s.secretaryContext(a,true);assert(context.includes('current-project'));assert(!context.includes('metadataRevision'));assert(!context.includes('所属は'));
  assert(s.rules.dynamic({attachmentFiles:[{path:'/attachment',sha256:'verified'}],travelContexts:[]}).includes('/attachment'));
- await s.save();await f.restart();assert.equal(f.service.agent(a.id).inputEnvelope.mode,'startup-v1');
+ await s.save();await f.restart();assert.equal(f.service.agent(a.id).inputEnvelope.mode,'startup-v2');
 });
 
 for(const state of ['intact','missing','error'])test('pre-dispatch prompt check: '+state,async t=>{
- const f=await fixture(t),s=f.service,a=f.agents[0];a.inputEnvelope={mode:'startup-v1',hash:inputHash(s.startupInstructions())};f.promptState(state);
+ const f=await fixture(t),s=f.service,a=f.agents[0];a.inputEnvelope={mode:'startup-v2',hash:inputHash(s.startupInstructions())};f.promptState(state);
  const r=await s.send(a.id,{instruction:'human',requestId:randomUUID()});
- assert.equal(f.promptChecks(),1);assert.equal(r.inputEnvelopeMode,state==='intact'?'startup-v1':'legacy');
- assert.equal(f.sent.at(-1).text.includes('requests finish'),state!=='intact');
- await f.submit(r);await f.complete(r);
- f.promptState('intact');
- const next=await s.send(a.id,{instruction:'next',requestId:randomUUID()});
- assert.equal(f.promptChecks(),state==='intact'?2:1);
- assert.equal(next.inputEnvelopeMode,state==='intact'?'startup-v1':'legacy');
- if(state!=='intact'){assert.match(a.inputEnvelope.reason,/startup-instructions-/);await f.restart();assert.equal(f.service.agent(a.id).inputEnvelope.mode,'legacy');}
+ assert.equal(f.promptChecks(),1);
+ if(state==='intact'){assert.equal(r.inputEnvelopeMode,'startup-v2');assert(!f.sent.at(-1).text.includes('requests finish'));await f.submit(r);await f.complete(r);}
+ else {assert.equal(f.sent.length,0);assert.equal(r.runModel.state.reason,'startup-contract-migration-required');assert.equal(a.inputEnvelope.mode,'migration-required');await f.restart();assert.equal(f.service.agent(a.id).inputEnvelope.mode,'migration-required');}
+
 });
 
-test('queued compact report restores full report rules when prompt disappears before dispatch',async t=>{
- const f=await fixture(t,{reportMode:true}),s=f.service,a=f.agents[0];a.inputEnvelope={mode:'startup-v1',hash:inputHash(s.startupInstructions())};
+test('queued compact report stops before sending when prompt disappears',async t=>{
+ const f=await fixture(t,{reportMode:true}),s=f.service,a=f.agents[0];a.inputEnvelope={mode:'startup-v2',hash:inputHash(s.startupInstructions())};
  const r=await s.send(a.id,{instruction:'work',requestId:randomUUID()});await f.submit(r);await f.finish(r);
  f.promptState('missing');await f.complete(r);await s.tick();
  const report=s.flow.run(s.flow.root(r.humanRequestId).requestGraph.nodes[0].reportRunId);
- assert.equal(report.phase,'report');assert.equal(report.inputEnvelopeMode,'legacy');
- assert.match(f.sent.at(-1).text,/追加作業・ファイル変更・PR操作/);assert.match(f.sent.at(-1).text,/finishは不要/);
+ assert.equal(report.phase,'report');assert.equal(report.inputEnvelopeMode,undefined);assert.equal(report.runModel.state.reason,'startup-contract-migration-required');assert.equal(f.sent.length,1);
 });
 
 test('origin=result delivery containing pasted_content survives Claude wrapping and escaping',async t=>{
@@ -690,7 +685,7 @@ test('nested successful claim remains durable when later report creation fails',
  fault.restore();await f.finish(r,'durable-claim-op');await s.tick();assert.equal(s.data.runs.filter(r=>r.phase==='report').length,1);
 });
 
-for(const mode of ['startup-v1','legacy'])test('lean '+mode+' input fields and same-text requests stay distinct through report and restart',async t=>{
+for(const mode of ['startup-v2'])test('lean '+mode+' input fields and same-text requests stay distinct through report and restart',async t=>{
  const f=await fixture(t,{reportMode:true}),a=f.agents[0];a.projectId='project';a.inputEnvelope={mode,hash:inputHash(f.service.startupInstructions())};
  const r=await f.service.send(a.id,{instruction:'repeat',requestId:randomUUID()});
  const check=(r,text)=>{
@@ -698,7 +693,7 @@ for(const mode of ['startup-v1','legacy'])test('lean '+mode+' input fields and s
   const own=JSON.parse(text.match(/<ai-village-discovery>(.*?)<\/ai-village-discovery>/s)[1]);
   assert.deepEqual(own,{agentId:a.id,role:'secretary',location:'mayor',projectId:'project'});
   const request=JSON.parse(text.match(/<ai-village-request>([^\n]*)/)[1].split('</ai-village-request>')[0]);
-  assert.deepEqual(request,{humanRequestId:r.humanRequestId,workId:r.workId,runId:r.id,origin:r.origin,phase:r.phase||'work'});
+  assert.equal(request.contract,2);assert.equal(request.rulesRevision,f.service.rules.specification(r.phase==='report'?'report':'work').revision);assert.equal(request.runId,r.id);
   assert.equal(r.inputMarker,undefined);assert.equal(r.inputCorrelation.version,1);
  };
  check(r,f.sent.at(-1).text);await f.submit(r);await f.complete(r);
@@ -710,21 +705,18 @@ for(const mode of ['startup-v1','legacy'])test('lean '+mode+' input fields and s
  await f.submit(f.service.flow.run(next.id));await f.complete(f.service.flow.run(next.id));
 });
 
-test('old installed rules downgrade immediately after upgrade; previously dispatched marker runs still complete',async t=>{
+test('old installed contracts require migration after upgrade; previously dispatched marker runs still complete',async t=>{
  const f=await fixture(t),a=f.agents[0],r=await f.service.send(a.id,{instruction:'legacy in flight',requestId:randomUUID()});
  // Persist the pre-upgrade contract, then boot the new service without resending.
  delete r.inputCorrelation;r.inputMarker='ai-village-run-'+r.id;
- a.inputEnvelope={mode:'startup-v1',hash:inputHash('previous rules')};await f.service.save();
+ a.inputEnvelope={mode:'startup-v2',hash:inputHash('previous rules')};await f.service.save();
  await f.restart();const s=f.service,restored=s.flow.run(r.id),native=f.runtimes.get(a.id);
- assert.equal(s.agent(a.id).inputEnvelope.mode,'legacy');assert.equal(s.agent(a.id).inputEnvelope.reason,'request-rules-updated');
+ assert.equal(s.agent(a.id).inputEnvelope.mode,'migration-required');assert.equal(s.agent(a.id).inputEnvelope.reason,'startup-contract-upgrade-required');
  native.cursor+=10;native.inputs.push({id:'old-input',turnId:'old-turn',offset:native.cursor,text:'old body '+r.inputMarker});
  native.turns.push({id:'old-turn',state:'completed',output:'old result',completionOffset:native.cursor+1});
  await s.tick();assert.equal(testView(restored).state,'completed');assert.equal(f.sent.length,1);
  const next=await s.send(a.id,{instruction:'new input',requestId:randomUUID()});
- assert.equal(next.inputMarker,undefined);assert.equal(next.inputEnvelopeMode,'legacy');
- assert.doesNotMatch(f.sent.at(-1).text,/ai-village-input|ai-village-run-|"metadataRevision"/);
- assert.match(f.sent.at(-1).text,/resultsは必須/);assert.match(f.sent.at(-1).text,/agents list/);assert.match(f.sent.at(-1).text,/requests results HUMAN_REQUEST_ID WORK_ID/);
- await f.submit(next);await f.complete(next);
+ assert.equal(next.inputEnvelopeMode,undefined);assert.equal(f.sent.length,1);assert.equal(next.runModel.state.reason,'startup-contract-migration-required');
 });
 
 test('unified nested requests require their own finish and direct dependency handling',async t=>{

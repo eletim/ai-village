@@ -1,5 +1,7 @@
 # Agent input envelope
 
+> 現行の起動契約・仕様取得・既存セッション移行は [stable-bootstrap.md](stable-bootstrap.md)。以下のstartup-v1/legacy全文fallbackは2026-11-12時点の履歴で、現行送信には使わない。全文入力照合の不変条件は引き続き有効。
+
 ## Protocol
 
 New sends contain the human instruction/attachments, `ai-village-discovery`
@@ -152,7 +154,7 @@ only their tabs, and deleted their two empty workspaces. The isolated server,
 state/cwd, test native JSONL/index cache and owned prompt files were removed.
 Pre-existing workspaces remained present. Production and main were untouched.
 
-## Startup instructions
+## Historical startup instructions (superseded by contract 2)
 
 After creating a dedicated PurpleMux workspace and before creating its Agent tab,
 the village appends its rules to that workspace's provider prompt. The current
@@ -219,7 +221,7 @@ Cleanup: both Agents terminated with zero remaining owned processes; all four
 PurpleMux tabs and both workspaces were removed. The isolated server was stopped,
 and its scratch state, native session logs/cache and workspace prompts removed.
 
-## Defense against PurpleMux prompt rewrites
+## Historical defense against PurpleMux prompt rewrites
 
 PurpleMux regenerates the entire provider prompt on server startup
 (`writeAllWorkspacePrompts`), workspace rename and directory updates. A persisted

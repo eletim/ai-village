@@ -38,6 +38,7 @@ p=root/(provider+'-prompt.md')
 if root.is_symlink() or p.is_symlink() or not p.is_file():raise ValueError('workspace prompt missing')
 original=p.read_text()
 if '# purplemux context' not in original:raise ValueError('unsupported workspace prompt')
+if '<ai-village-instructions' in original:raise ValueError('existing startup contract: fresh workspace required')
 p.write_text(original+'\\n\\n'+body)
 print(json.dumps({'installed':True,'hash':hashlib.sha256(body.encode()).hexdigest()}))
 `;
@@ -51,6 +52,6 @@ if not re.fullmatch(r'ws-[A-Za-z0-9_-]+',ws) or provider not in ('claude','codex
 root=Path.home()/'.purplemux'/'workspaces'/ws
 p=root/(provider+'-prompt.md')
 if root.is_symlink() or p.is_symlink() or not p.is_file():raise ValueError('workspace prompt unavailable')
-blocks=re.findall(rb'<ai-village-instructions version="1">.*?</ai-village-instructions>',p.read_bytes(),re.S)
+blocks=re.findall(rb'<ai-village-instructions version="[12]">.*?</ai-village-instructions>',p.read_bytes(),re.S)
 print(json.dumps({'verified':any(hashlib.sha256(b).hexdigest()==expected for b in blocks)}))
 `;

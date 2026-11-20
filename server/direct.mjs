@@ -87,7 +87,7 @@ export class DirectAgents {
     for(const a of this.data.agents) {
       a.connection.connectionType ||= 'ssh';
       a.inputEnvelope ||= {mode:'legacy'};
-      if(a.inputEnvelope.mode==='startup-v1'&&a.inputEnvelope.hash&&a.inputEnvelope.hash!==createHash('sha256').update(this.startupInstructions()).digest('hex'))a.inputEnvelope={...a.inputEnvelope,mode:'legacy',reason:'request-rules-updated'};
+      if(a.inputEnvelope.mode!=='startup-v2'||a.inputEnvelope.hash!==createHash('sha256').update(this.startupInstructions()).digest('hex'))a.inputEnvelope={...a.inputEnvelope,mode:'migration-required',reason:a.inputEnvelope.reason||'startup-contract-upgrade-required'};
       a.modelInfo={available:false};
       bindAgent(a);delete a.steerTarget;
       // A removed tab identity cannot be reused; otherwise live observations expire on restart.
@@ -204,24 +204,33 @@ export class DirectAgents {
   })));}
   get rules(){let url=this.villageUrl;try{url=new URL(this.notifier.status().officeUrl).origin;}catch{}return new AgentRules(url);}
   secretaryContext(agent){const identity=agentIdentity(agent);return this.rules.discovery({agentId:agent.id,role:identity.role,location:identity.location,projectId:agent.projectId||null});}
+  instructionStatus(id){
+    const a=this.agent(id),runs=this.data.runs.filter(r=>r.agentId===id),tracking=runs.filter(r=>['sent','running'].includes(modelOf(r).state.kind));
+    return {agentId:id,envelope:structuredClone(a.inputEnvelope||{mode:'migration-required'}),requiredContract:2,
+      requiresFreshSession:a.inputEnvelope?.mode!=='startup-v2',tracking:tracking.map(r=>({runId:r.id,state:modelOf(r).state.kind,requestId:r.humanRequestId})),
+      queued:runs.filter(r=>modelOf(r).state.kind==='queued').map(r=>r.id),
+      requests:this.data.requests.flatMap(q=>q.requestGraph?.nodes.filter(n=>n.assignee===id&&n.state.kind==='active').map(n=>({humanRequestId:q.id,workId:n.id,currentRunId:n.currentRunId,revision:q.revision}))||[]),
+      migration:'新Agentを通常のcreateで起動。旧runは再送せず追跡。未送信はcancel-queued、実行中/受付不明は終了事実を確認。終端後に人間のresume/retryでagentIdを指定し同じ依頼を引継ぐ。新しい依頼として再委任しない。旧Agent停止は管理者が別途判断。'};
+  }
   startupInstructions(){return this.rules.startup();}
   async installInstructions(a){
-    let envelope={mode:'legacy'};
+    if(a.tabId)throw Error('既存セッションへ起動契約を再インストールできません。新しいAgentを作成してください。');
+    let envelope={mode:'migration-required',reason:'startup-receipt-invalid'};
     try{
       const body=this.startupInstructions();
       const receipt=JSON.parse(await this.execute(a,['python3','-c',installInstructionsScript,a.workspaceId,a.provider,body]));
-      if(receipt.installed===true&&receipt.hash===createHash('sha256').update(body).digest('hex'))envelope={mode:'startup-v1',hash:receipt.hash,installedAt:now()};
-    }catch{envelope={mode:'legacy',reason:'startup-instructions-unavailable'};}
+      if(receipt.installed===true&&receipt.hash===createHash('sha256').update(body).digest('hex'))envelope={mode:'startup-v2',hash:receipt.hash,installedAt:now()};
+    }catch{envelope={mode:'migration-required',reason:'startup-instructions-unavailable'};}
     await this.persist(async()=>{a.inputEnvelope=envelope;await this.save();});
   }
   async verifyInstructions(a){
-    if(a.inputEnvelope?.mode!=='startup-v1')return;
+    if(a.inputEnvelope?.mode!=='startup-v2')return;
     let reason='startup-instructions-missing-or-changed';
     try{
       const result=JSON.parse(await this.execute(a,['python3','-c',verifyInstructionsScript,a.workspaceId,a.provider,a.inputEnvelope.hash||'']));
       if(result.verified===true)return;
     }catch{reason='startup-instructions-check-failed';}
-    await this.persist(async()=>{a.inputEnvelope={...a.inputEnvelope,mode:'legacy',reason,downgradedAt:now()};await this.save();});
+    await this.persist(async()=>{a.inputEnvelope={...a.inputEnvelope,mode:'migration-required',reason,downgradedAt:now()};await this.save();});
   }
   // Only synchronous model edits and save() belong inside this boundary.
   // Read remote evidence first; dispatch external effects only after it commits.
@@ -328,17 +337,17 @@ export class DirectAgents {
     if(!allowed(confirmed)||this.agentDeleting(a)){if(r.steerTarget)return blocked('dispatch-boundary-changed','添付転送中に補足対象が変わりました。自動送信しません。');return r;}
     if(r.autoRecoveryFrom&&(Date.now()>r.recoveryDeadline||!this.flow.recoveryBoundary(this.flow.run(r.autoRecoveryFrom),confirmed,a.runtime)))return blocked('dispatch-boundary-changed','自動再試行前に新しい入力または状態変化を検出しました。requests getで確認し手動で復旧してください。');
     await this.verifyInstructions(a);
-    const status=a.runtime,compact=a.inputEnvelope?.mode==='startup-v1';
+    if(a.inputEnvelope?.mode!=='startup-v2')return blocked('startup-contract-migration-required','起動契約を確認できません。agents instructionsで診断し、新セッションへ引継いでください。全文fallbackや自動再送はしません。');
+    const status=a.runtime;
     if(runState(r)!=='queued'||r.phase==='report'&&!this.flow.reportCurrent(r))return r;
-    const guide=compact?'':await this.projectGuides.context(a,r,this.villageUrl);
     const deliveredInstruction=await this.persist(async()=>{
       if(this.agentDeleting(a)||runState(r)!=='queued'||r.phase==='report'&&!this.flow.reportCurrent(r))return null;
       const instruction=r.phase==='report'?this.flow.reportPrompt(this.flow.root(r.humanRequestId)):r.instruction;
       r.instruction=instruction;r.attachmentFiles=files;r.attachmentError=null;
-      const text=instruction+this.secretaryContext(a)+guide+this.flow.context(r);
+      const text=instruction+this.secretaryContext(a)+this.flow.context(r);
       if(r.steerTarget){const previous=this.flow.run(r.steerTarget.runId);changeRun(previous,{type:'close-tracking',actor:'human',reason:'steering-successor-dispatched'});}
       changeRun(r,{type:'dispatch',actor:'program',at:Date.now(),sessionId:confirmed.sessionId||null,agentIdle:true});
-      Object.assign(r,{inputCorrelation:inputCorrelation(text,a.provider),inputEnvelopeMode:compact?'startup-v1':'legacy',dispatchAttemptedAt:now(),baselineRuntime:{sessionId:confirmed.sessionId,cursor:confirmed.cursor,fileIdentity:confirmed.fileIdentity},agentSessionId:status.agentSessionId||null});
+      Object.assign(r,{inputCorrelation:inputCorrelation(text,a.provider),inputEnvelopeMode:'startup-v2',dispatchAttemptedAt:now(),baselineRuntime:{sessionId:confirmed.sessionId,cursor:confirmed.cursor,fileIdentity:confirmed.fileIdentity},agentSessionId:status.agentSessionId||null});
       await this.save();return text;
     });
     if(deliveredInstruction===null)return r;
@@ -413,8 +422,8 @@ export class DirectAgents {
         const archived=(a.nativeTurns||[]).map(t=>({...t,sessionId:t.sessionId||a.observedSessionId})).filter(t=>t.sessionId&&t.sessionId!==snapshot.sessionId&&['completed','failed','interrupted'].includes(t.state));
         a.nativeTurns=[...archived,...snapshot.turns.map(t=>({...t,sessionId:snapshot.sessionId,instruction:snapshot.inputs.filter(i=>i.turnId===t.id).map(i=>i.text).join('\n')}))];
       }
-      if(a.inputEnvelope?.mode==='startup-v1'&&s.agentSessionId){
-        if(a.inputEnvelope.sessionId&&a.inputEnvelope.sessionId!==s.agentSessionId)a.inputEnvelope={mode:'legacy',reason:'native-session-changed'};
+      if(a.inputEnvelope?.mode==='startup-v2'&&s.agentSessionId){
+        if(a.inputEnvelope.sessionId&&a.inputEnvelope.sessionId!==s.agentSessionId)a.inputEnvelope={...a.inputEnvelope,mode:'migration-required',reason:'native-session-changed'};
         else a.inputEnvelope.sessionId=s.agentSessionId;
       }
       if(snapshot.sessionId)a.observedSessionId=snapshot.sessionId;
