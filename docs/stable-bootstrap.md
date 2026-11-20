@@ -22,7 +22,7 @@ contract 2は短い起動契約だけをセッションへ導入する。操作�
 2. 正式CLI `agents instructions OLD_AGENT_ID` で契約・追跡中run・queued・依頼をread-only診断する。対象の旧秘書は既存IDを使い続ける。
 3. 通常の `agents create JSON` で同じProject・場所・workshop・cwd・provider・connectionの未使用Agentを準備する。新workspaceへ固定契約を導入してから起動する。新Agentに仕事や人間入力を送らない。`agents instructions NEW_AGENT_ID` でstartup-v2を確認する。ファイルreceiptはliveモデルの記憶を証明しない。
 4. 管理者が対象の旧秘書だけに、人間専用 `POST /api/direct/human/agents/OLD_AGENT_ID/prepare-runtime` を `{operationId,revision:OLD_METADATA_REVISION}` で実行する。新しい送信だけを保留し、稼働中のrunは止めない。応答の正常終了とnative idleをrequests getとagents instructions/Agent状態で確認する。必要なら村の変更通知を受けて再確認し、実行中に採用しない。無関係Agentは移行待ち互換で継続する。prepareによりmetadataRevisionが1増えるので最新値を取得する。
-5. 両ランタイムがidleで旧Agentにsent/runningがない境界で、人間専用 `POST /api/direct/human/agents/OLD_AGENT_ID/adopt-runtime` を操作する。既存の人間認証・Origin/cookie/X-Village-Human-UIを使い、payloadは `{operationId,replacementAgentId:NEW_AGENT_ID,revision:OLD_METADATA_REVISION,replacementRevision:NEW_METADATA_REVISION,handover:HANDOVER_NOTES}`。revisionは最新のagents取得のmetadataRevision（未設定なら0）。handoverは元の目的、継続中の判断、実施済み外部操作（commit/PR/送信等）、未完了事項、成否不明を記した管理者の引継ぎメモ。過去に送信したrunがあるAgentでは必須（1〜30000文字）。旧セッションの最終回答・正式report・履歴を確認して作成し、未記録の外部操作を「なし」と推測しない。同じ操作を再確認する場合は同じoperationIdとpayload（handoverを含む）。権限をAgent CLIには公開しない。専用の選択UIは未提供で、反映管理者が認証済みHTTP操作を行う。
+5. 両ランタイムがidleで旧Agentにsent/runningがない境界で、人間専用 `POST /api/direct/human/agents/OLD_AGENT_ID/adopt-runtime` を操作する。既存の人間認証・Origin/cookie/X-Village-Human-UIを使い、payloadは `{operationId,replacementAgentId:NEW_AGENT_ID,revision:OLD_METADATA_REVISION,replacementRevision:NEW_METADATA_REVISION,handover:HANDOVER_NOTES}`。revisionは最新のagents取得のmetadataRevision（未設定なら0）。handoverは元の目的、継続中の判断、実施済み外部操作（commit/PR/送信等）、未完了事項、成否不明を記した管理者の引継ぎメモ。過去に送信したrunがあるAgentでは必須（1〜30000文字）。旧セッションの最終回答・正式report・履歴を確認して作成し、未記録の外部操作を「なし」と推測しない。同じ操作を再確認する場合は同じoperationIdとpayload（handoverを含む）。権限をAgent CLIには公開しない。通常画面のAgentプロフィール→「セッションの切替」から、反映管理者が同じ人間専用APIを操作できる。
 6. サーバーは両Agentをロックし、同じ登録属性、未使用のnative履歴、idle、起動ファイルhashを検証し、一つの保存transactionでランタイム所有を交換する。**旧AgentのID・名前・Project・依頼担当・親子関係・run・入力・結果・通知はそのまま**。新Agent側は旧ランタイム保管用になり新規作業を拒否する。旧セッションは停止しない。監査receiptを保存し、再起動後の同じoperationIdも再交換しない。保存失敗なら所有交換をrollbackする。
 7. 下表の進行を確認する。今後の新規依頼も元の秘書IDへ送れる。新しい依頼として再委任せず、完了済み外部作業をやり直さない。保管された旧ランタイムの停止は別途の人間判断とする。
 
@@ -92,3 +92,24 @@ Codex/Claudeの既存launcherへの導入は同じPython install/verify経路を
 段階導入後の再測定（本文80文字）: v2通常787文字は変化なし。移行待ち旧互換は通常4183、委任4188、結果4183、補足4189、報告1956文字。旧互換期間には短縮効果を主張しない。スクリプトはstagedLegacy欄で別計上する。
 
 実機の最終検証で、採用receiptのnewRuntime.inputEnvelopeが現Agentと参照共有され、初回native session ID観測時にreceiptへ追記される問題を検出した。所有権/runの重複はなかったが、receiptの不変性を満たさないため旧新runtimeを独立したdeep copyで記録する修正を追加した。遅れてsession IDが判明した後・再起動後にも同一receiptを返す回帰テストは成功。
+
+## 通常画面からの移行（管理者）
+
+1. 対象Agentの名前を押し、プロフィールの「セッションの切替」を開く。「移行待ち」、対象名、追跡中run数を確認する。新契約のAgentではv2を表示する。
+2. 用意済みの未使用候補を選ぶ。Project・場所・AI・工房・作業場所・接続の適合、登録履歴未使用、待機中を確認する。UIはドナーを作成しない。採用APIは実機の未使用と起動契約も改めて検証する。
+3. 保存済み引継ぎ資料と依頼履歴を読み、元目的・完了事項・未完事項・実施済み外部操作・不明点を「引継ぎメモ」へ記入する。実際の人名/内部パス/機密を製品へ固定埋め込みせず、認証情報を入力しない。
+4. 「このAgentの切替を準備」を押す。現在実行は止めない。通常回答が正常終了してから「状態を再確認」。追跡中runなし・実機idle・直近実行正常終了を確認できるまで切替ボタンは無効。失敗/中断/不明はこの画面で強制解決しない。
+5. 「確認した新セッションへ切替」を押す。成功後は同じAgentの「短い起動契約（v2）」を表示する。既存のqueued/子結果配送があれば同じ依頼で自動進行する。
+6. 自動で再開する仕事がなく、人間がレビュー継続を必要と判断した場合だけ、同じ画面の「同じ依頼のレビューを再開」でactive依頼と補足本文を選び、明示送信する。未処理入力・実行・配送待ちを検出した場合は追加送信しない。採否や依頼完了をUIが勝手に変更することはない。
+
+画面は明示再確認を使い、新しいポーリングを追加しない。人間専用API/Origin/認証/意図ヘッダーは既存のまま。Agent APIへ権限を追加しない。
+
+送信前にoperationId・revision・送信内容をブラウザのlocalStorageへ保存する。操作中は二重押下を抑止。通信断/5xx/受付不明は記録を保持し、再読込後も「同じ操作で受付を確認」で同一payloadを送る。自動再送や自動的な別operationId発行はしない。成功または明確な4xx拒否の後だけ未確認記録を解消し、拒否時は状態の再確認が必要。保存できなければ送信しない。ブラウザデータを消去した場合はこの記録を復元できないので、管理者がサーバーの状態を確認し、新たな切替を推測で試みない。
+
+検証: UI専用の隔離ブラウザで進行中/失敗終了の抑止、idleでの同ID切替、候補不適合、応答喪失→再読込→同一operationId/payload、409後再確認、二重押下、未処理入力がある場合の再開抑止、狭い画面を検証。UI試験はHTTP応答fixtureを使用し、実際の人間専用API・保存・native照合は既存requests-http/runtime-adoptionテストで別途検証。今回のUIから実モデルへの本番移行は未実施。実機検証は前節の10de45bまでの検証と区別する。
+
+Node全体初回は既存requests-httpの再起動後capture件数で7対6の失敗が1件発生。単独と全体の再実行は成功（536成功・1skip）。今回変更はUIのみであり、このHTTP不安定性の原因は未確定。添付HTTPの既知事象とは混同しない。
+
+ブラウザ全体再実行では既存travel旧サーバー互換テストのエラー表示待ちが一度失敗。関連3件と新UI5件の再実行は成功。今回のUIはlocalhost以外のHTTP接続も考慮し、既存getRandomValuesによるoperationId生成を再利用する（randomUUID APIなしでも回帰確認）。
+
+UI追加の最終検証: Node全体536成功・1skip、隔離ブラウザ全体177成功、typecheck/check/build成功。UI回帰5件と既存プロフィール5件を含む。新UIの本番反映、既存秘書へのprepare/adopt、ドナー再作成は実施していない。

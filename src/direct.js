@@ -10,6 +10,7 @@ import {acceptWorkspace} from './workspace-sync.js';
 import {restorePendingMessage,matchingRun,unchangedDraft,pendingMessageStatus} from './pending-message.js';
 import {weeklyUsagePanel} from './model-usage.js';
 import {canCancelQueued} from './queued-run.js';
+import {runtimeMigration} from './runtime-migration.js';
 import {agentProfileViewer} from './agent-profile.js';
 import {dateDividers} from './date-divider.js';
 import {responseHTML} from './response-content.js';
@@ -31,7 +32,8 @@ import {agentEntries,unreadByAgent,visualState,faviconHref} from './completions.
 import {agentPlaceName} from './agent-identity.js';
 import {bindPromptInput,mobilePromptUI} from './prompt-input.js';
 const $=s=>document.querySelector(s);
-const profileViewer=agentProfileViewer();
+const migrationViewer=runtimeMigration({api,newId:newRequestId});
+const profileViewer=agentProfileViewer({onMigration:id=>migrationViewer.open(id)});
 weeklyUsagePanel($('#weekly-usage'));
 $('#agents').addEventListener('click',e=>{const button=e.target.closest('[data-profile-agent]');if(button){const a=state.agents.find(a=>a.id===button.dataset.profileAgent);if(a)profileViewer.open(a,(state.projects||[]).find(p=>p.id===a.projectId)||null);}});
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
