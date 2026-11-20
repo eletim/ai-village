@@ -20,7 +20,11 @@ test('Direct preserves original work until report commits; failure keeps origina
  });
  await page.goto('/agents');const log=page.locator('#agent-a .runs');
  await expect(log).toContainText('人間向けの報告を作成中');
- await expect(log).toContainText('SECRET original');await expect(log).not.toContainText('SECRET draft');await expect(log).not.toContainText('INTERNAL');
+ await expect(log).toContainText('SECRET original');await expect(log).not.toContainText('SECRET draft');await expect(log.getByText('INTERNAL report prompt',{exact:true})).not.toBeVisible();
+ const reportInput=log.locator('[data-disclosure="chat:r:input"]');
+ await reportInput.locator('summary').click();
+ await expect(reportInput.getByText('INTERNAL report prompt',{exact:true})).toBeVisible();
+ await reportInput.locator('summary').click();
  await expect(page.getByRole('button',{name:'待機キューへ',exact:true})).toBeEnabled();
  await page.locator('textarea[name=instruction]').fill('次の質問');
  await page.getByRole('button',{name:'設定',exact:true}).click();
@@ -68,5 +72,7 @@ test('published report is visible outside internal exchanges after work and deli
  await expect(page.getByText('人間へ届ける確定報告',{exact:true})).toBeVisible();
  await expect(page.locator('.run-group').filter({hasText:'人間へ届ける確定報告'})).toHaveCount(0);
  await expect(page.getByText('SECRET original',{exact:true})).not.toBeVisible();
- await expect(page.locator('.runs')).not.toContainText('INTERNAL report prompt');
+ await expect(page.getByText('INTERNAL report prompt',{exact:true})).not.toBeVisible();
+ await page.locator('[data-disclosure="chat:r:input"] > summary').click();
+ await expect(page.getByText('INTERNAL report prompt',{exact:true})).toBeVisible();
 });

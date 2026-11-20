@@ -18,10 +18,10 @@ test('active old inputs stay controllable; full request records excluded and sou
  const v=fixture();v.runs[0].state='queued';v.runs[0].humanRequestId='q';v.runs[0].baselineRuntime={secret:'not a display field'};v.requests=[{id:'q',status:'active',instruction:'SECRET',inbox:[{text:'SECRET'}],works:[{id:'w',currentRunId:'r0',instruction:'SECRET'}]}];
  const s=workspaceSnapshot(v);assert.equal(s.conversations.a.entries.length,101);assert(s.runs.some(r=>r.id==='r0'));assert(!JSON.stringify(s).includes('SECRET'));assert(!JSON.stringify(s).includes('not a display field'));assert.equal(v.requests[0].instruction,'SECRET');assert.deepEqual(s.reviews,v.reviews);
 });
-test('projection applied before paging: report instructions hidden, completed work collapsed, updates retained',()=>{
+test('projection applied before paging: report inputs expandable, completed work collapsed, updates retained',()=>{
  const v=fixture(2);v.runs[0].humanRequestId='q';Object.assign(v.runs[1],{humanRequestId:'q',phase:'report',origin:'report',instruction:'PRIVATE REPORT',output:'PRIVATE DRAFT',workId:'w'});v.requests=[{id:'q',reportMode:true,status:'active',works:[{id:'w',currentRunId:'r1'}]}];
- let s=workspaceSnapshot(humanProjection(fixtureModels(v,{refresh:true})));assert(!JSON.stringify(s).includes('PRIVATE'));const cursor=s.conversations.a.cursor;
- v.requests[0].status='completed';v.requests[0].finalRunId='r1';v.runs[1].finalOutput='public final';s=workspaceSnapshot(humanProjection(fixtureModels(v,{refresh:true})),{a:cursor});assert(s.conversations.a.entries[0].collapsedHistory);assert.equal(s.conversations.a.entries[1].output,'public final');assert(!JSON.stringify(s).includes('PRIVATE REPORT'));
+ let s=workspaceSnapshot(humanProjection(fixtureModels(v,{refresh:true})));assert(!JSON.stringify(s).includes('PRIVATE DRAFT'));assert.equal(s.conversations.a.entries[1].instruction,'PRIVATE REPORT');const cursor=s.conversations.a.cursor;
+ v.requests[0].status='completed';v.requests[0].finalRunId='r1';v.runs[1].finalOutput='public final';s=workspaceSnapshot(humanProjection(fixtureModels(v,{refresh:true})),{a:cursor});assert(s.conversations.a.entries[0].collapsedHistory);assert.equal(s.conversations.a.entries[1].output,'public final');assert.equal(s.conversations.a.entries[1].instruction,'PRIVATE REPORT');
 });
 test('cursor unaffected by managed run acceptance and external sessions remain distinct',()=>{
  const v=fixture(1);const p=historyPage(v,'a');v.runs[0].sessionId='new';assert.equal(workspaceSnapshot(v,{a:p.cursor}).conversations.a.entries.length,1);
