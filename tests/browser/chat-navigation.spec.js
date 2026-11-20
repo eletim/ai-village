@@ -1,11 +1,12 @@
 import {test,expect,notifySnapshot} from './helpers/change-events.js';
 import {workspaceSnapshot} from '../../server/conversation-pages.mjs';
 import {humanProjection} from '../../server/report-view.mjs';
-import {agentFixture,runFixture,requestFixture} from './helpers/direct-fixtures.js';
+import {agentFixture,runFixture,requestFixture,setRequestState} from './helpers/direct-fixtures.js';
 function fixture(){
  const agents=['a','b'].map((id,i)=>agentFixture({id,name:i?'工房':'秘書',location:i?'workshop':'mayor',projectId:'p',projectName:'村実装',workshopId:'w',canSend:true,connection:{},nativeTurns:[]}));
  const runs=[runFixture({id:'h',agentId:'a',humanRequestId:'q',workId:'root',origin:'human',instruction:'人間の依頼',output:'受付',createdAt:'2026-01-01'}),runFixture({id:'d',agentId:'b',humanRequestId:'q',workId:'child',origin:'delegation',instruction:'実装指示',output:'実装結果',finalOutput:'実装結果',createdAt:'2026-01-02'}),runFixture({id:'r',agentId:'a',humanRequestId:'q',workId:'root',origin:'result',instruction:'工房からの結果',output:'レビュー中',createdAt:'2026-01-03'}),runFixture({id:'r2',agentId:'a',humanRequestId:'q',workId:'root',origin:'continuation',instruction:'再レビュー',output:'追加の確認',createdAt:'2026-01-04'})];
  const q=requestFixture({id:'q',reportMode:true,instruction:'人間の依頼',works:[{id:'root',agentId:'a',currentRunId:'r2'},{id:'child',parentWorkId:'root',agentId:'b',currentRunId:'d'}]},runs);
+ setRequestState(q,{kind:'completed',by:'program',reason:'fixture'});q.finalRunId='r2';
  return {agents,runs,requests:[q],workshops:[{id:'w',name:'工房',connectionType:'local'}],projects:[{id:'p',name:'村実装'}],reviews:{},notification:{enabled:false}};
 }
 for(const width of [1440,390])test(`chat shells stay visible and bodies fold independently at ${width}px`,async({page})=>{
@@ -57,6 +58,7 @@ for(const width of [1440,390])test(`chat shells stay visible and bodies fold ind
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  await page.screenshot({path:'/tmp/village-chat-shell-'+width+'.png'});
  await input.locator('summary').click();
+ await expect(input.getByText('実装指示',{exact:true})).toBeVisible();
  await expect(output.locator('details')).not.toHaveAttribute('open','');
  await output.locator('summary').click();
  await expect(child.getByText('実装結果',{exact:true})).toBeVisible();
