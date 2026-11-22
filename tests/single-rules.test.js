@@ -29,12 +29,12 @@ test('report policy rewrites material for the human as a natural reply to the or
  const rules=new AgentRules('http://127.0.0.1:5399');
  for(const text of [rules.report('q'),rules.specification('report').text]){
   assert.doesNotMatch(text,/言語|日本語|Japanese|英語|English|翻訳/i);
-  for(const phrase of ['画面から隠れ','転記・構成のなぞりではなく','質問への答えを最初','まずquestion（元の依頼）を読み','その人への自然な返答','成果の捏造','追加作業','finishは不要','何も足さない'])assert(text.includes(phrase),phrase);
+  for(const phrase of ['画面から隠れ','転記・構成のなぞりではなく','質問への答えを最初','まずhumanInstructionsの元の依頼','自然な返答','成果の捏造','追加作業','finishは不要','何も足さない'])assert(text.includes(phrase),phrase);
  }
- const data=rules.reportData({id:'q',instruction:'Original question'},{id:'r',finalOutput:'Work material'},['supplement']);
- assert(data.includes('question=元の依頼、finalResult=書き直し用の作業回答'));
+ const data=rules.reportData({id:'q',instruction:'Original question'},{id:'r',finalOutput:'Work material'},{human:[{id:'i',text:'supplement'}],material:[]});
+ assert(data.includes('humanInstructions=人間の依頼・追記'));
  assert.doesNotMatch(data.split('\n')[0],/言語|日本語|英語|Japanese|English|翻訳/i);
  for(const action of Object.keys(agentActions))assert.doesNotMatch(actionUsage(action),/言語|日本語|英語|Japanese|English|翻訳/i);
  assert.doesNotMatch(rules.context({humanRequestId:'q',phase:'report'},true),/言語|日本語|英語|Japanese|English|翻訳/i);
- assert.deepEqual(JSON.parse(data.split('\n')[1]),{question:'Original question',supplements:['supplement'],finalResult:'Work material',truncation:{question:false,finalResult:false,supplements:[false],omittedSupplements:0}});
+ const parsed=JSON.parse(data.split('\n')[1]);assert.equal(parsed.humanInstructions.original.text,'Original question');assert.equal(parsed.evidence.finalResult.text,'Work material');
 });
