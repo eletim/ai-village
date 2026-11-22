@@ -8,6 +8,7 @@ export const agentActions=Object.freeze({
  launch:{fields:'{humanRequestId,workId,actorRunId,operationId,agentId?}',description:'開始前の直接の子依頼を担当Agentへ実行予約。親の現在runから操作する。'},
  assignPlan:{fields:'{humanRequestId,workId,actorRunId,operationId,agentId}',description:'開始前の直接の子依頼の担当を選ぶ。実行は開始しない。'},
  discard:{fields:'{humanRequestId,workId,actorRunId,operationId}',description:'開始前の直接の子依頼を取り下げる。実行済みは対象外。'},
+ continueChild:{fields:'{humanRequestId,workId,actorRunId,targetRunId,revision,operationId,instruction}',description:'requests get/results/inputsで直接の子の終了・残成果・実施済み外部操作を確認してから、同じ担当へ未完了分を継続指示。最新targetRunId/revisionが必須。実行中・受付不明・採用/差し戻し申告済みは不可。別担当はreworkとdelegate。応答不明は同じoperationIdと同じ内容で再試行。外部副作用の重複防止は別途確認する。'},
  amend:{fields:'{humanRequestId,workId,actorRunId,operationId,instruction}',description:'直接の子依頼へ補足。'},
  delegate:{fields:'{humanRequestId,parentWorkId,actorRunId,agentId,operationId,instruction,replacesRequestId?,reportAt?,completionAt?}',description:'子依頼を作成・開始。再作業はrework後replacesRequestIdで置換予約。'},
  respond:{fields:'{humanRequestId,workId,runId,operationId,inputs?:[入力ID],results:[{requestId,resultId,version,decision:accept|rework}]}',description:'入力と直接の子結果への対応を申告。'},
