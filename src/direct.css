@@ -164,3 +164,5 @@ footer{font-variant-numeric:tabular-nums}
 .chat-body>summary{cursor:pointer;font-size:12px;padding:4px 0}.chat-body[open]>summary{margin-bottom:6px}.message .chat-body{min-width:110px}
 /* chatScroll owns read position; native anchoring must not also shift it on font changes. */
 .runs{overflow-anchor:none}
+
+.request-history-text{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit}.request-tree [data-compose-node]:focus{outline:2px solid var(--accent,#5b9bd5);outline-offset:4px}

@@ -39,10 +39,10 @@ test('waiting A frees secretary for B; supplement and child result batch into A;
 test('late supplement prevents completion; idempotent receipt and restart retain it',async t=>{
  const f=await fixture(t);let s=f.service;const r=await send(s,f.agents[0],'A');await f.submit(r);await handle(s,r);
  const x={humanRequestId:r.humanRequestId,workId:r.workId,operationId:randomUUID(),instruction:'late'};
- const first=await s.flow.supplement(x);assert.deepEqual(await s.flow.supplement(x),first);
+ const first=await s.flow.supplement(x);assert.deepEqual(first.source,{actor:'human'});assert.deepEqual(await s.flow.supplement(x),first);
  await assert.rejects(s.flow.supplement({...x,instruction:'different'}));await f.complete(r);
  assert.equal(s.flow.root(r.humanRequestId).requestGraph.nodes[0].state.kind,'active');
- s=await f.restart();assert(s.flow.inputs(r.humanRequestId,r.workId).some(i=>i.id===first.id&&!i.handledBy));
+ s=await f.restart();assert(s.flow.inputs(r.humanRequestId,r.workId).some(i=>i.id===first.id&&!i.handledBy&&i.source?.actor==='human'));
  await assert.rejects(handle(s,r,{ids:[first.id]}));
 });
 test('foreign inputs and missing inputs rejected, failed run cannot confirm claims',async t=>{
@@ -87,6 +87,7 @@ test('supplement during report reopens work and never publishes obsolete report'
  const input=await s.flow.supplement({humanRequestId:q.id,workId:r.workId,operationId:randomUUID(),instruction:'new requirements'});
  await f.complete(report);assert.notEqual(q.requestGraph.nodes[0].state.kind,'completed');assert(!q.notification);
  const resumed=s.flow.run(s.flow.work(q,r.workId).currentRunId);assert.notEqual(resumed.id,r.id);await f.submit(resumed);await handle(s,resumed);await f.complete(resumed);
+ const payload=JSON.parse(s.flow.run(s.flow.work(q,r.workId).reportRunId).instruction.split('\n')[1]);assert.equal(payload.humanInstructions.amendments.at(-1).id,input.id);assert.equal(payload.humanInstructions.amendments.at(-1).text,'new requirements');
  assert(s.flow.inputs(q.id,r.workId).find(i=>i.id===input.id).handledBy);assert.notEqual(s.flow.work(q,r.workId).reportRunId,report.id);
 });
 test('failed supplement persistence does not acknowledge or duplicate the receipt',async t=>{
@@ -152,4 +153,10 @@ test('missing assignee blocks only its own request while another Agent dispatche
  s.data.agents=s.data.agents.filter(a=>a.id!==r.agentId);await s.flow.pump();
  assert(s.flow.work(s.flow.root(r.humanRequestId),r.workId).state.review.includes('next-step-agent-unavailable'));
  const b=await send(s,f.agents[1],'B continues');await f.submit(b);await handle(s,b);await f.complete(b);assert.equal(s.flow.root(b.humanRequestId).requestGraph.nodes[0].state.kind,'completed');
+});
+test('human deadline notifications retain program origin, not human text instructions',async t=>{
+ const f=await fixture(t),s=f.service,r=await send(s,f.agents[0],'original');await f.submit(r);
+ const q=s.flow.root(r.humanRequestId);
+ await s.flow.humanDeadline({humanRequestId:q.id,workId:r.workId,revision:q.revision,operationId:randomUUID(),expectedVersion:1,completionAt:null,reportAt:null,reason:'人間の指示という文言があっても内部通知'});
+ const notice=s.flow.inputs(q.id,r.workId).find(i=>i.kind==='supplement');assert.equal(notice.source.actor,'program');
 });
