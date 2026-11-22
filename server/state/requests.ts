@@ -8,7 +8,7 @@ export type Response={requestId:string;resultId:string;version:number;decision:'
 export type Handling=Omit<Response,'decision'>&{decision:Response['decision']|'review';actorRunId:string;actor:Actor;operationId:string};
 export type Claim=Handling&{invalidated?:string};
 export type Replacement={replacementId:string;actorRunId:string;resultId:string;version:number};
-export type InboxItem={id:string;kind:'request'|'supplement'|'result';text:string;createdAt:string;result?:Omit<Response,'decision'>&{outcome?:string;reason?:string|null};attempts:string[];handledBy?:string;retiredBy?:string};
+export type InboxItem={source?:{actor:Actor};id:string;kind:'request'|'supplement'|'result';text:string;createdAt:string;result?:Omit<Response,'decision'>&{outcome?:string;reason?:string|null};attempts:string[];handledBy?:string;retiredBy?:string};
 export type InputClaim={runId:string;ids:string[];operationId:string};
 export type Recipient={kind:'human'}|{kind:'request';requestId:string};
 export type Node={recipient:Recipient;createdBy:Actor;planned:boolean;inbox?:InboxItem[];inputClaims?:InputClaim[];metadata:Record<string,unknown>;claims:Claim[];replacements:Replacement[];invalidatedRuns:string[];replacementId?:string;id:string;parentId:string|null;requester:{kind:'human'}|{kind:'agent';agentId:string;requestId:string};assignee:string|null;runAgents:Record<string,string>;runIds:string[];currentRunId:string|null;reportRunId:string|null;reportMode:boolean;state:RequestState;submissions:Submission[];handling:Handling[];declarations:{id:string;runId:string;at:number;invalidated?:string}[];decisions:{actor:Actor;reason:string}[]};
@@ -143,7 +143,7 @@ export function transitionGraph(source:Graph,e:Event,runs:Evidence):Result<Graph
  if(e.type==='supplement'){
   if(!['active','submitted'].includes(n.state.kind)||e.input.kind!=='supplement'||n.inbox?.some(i=>i.id===e.input.id))return reject('invalid-supplement');
   if(!n.parentId)n.reportRunId=null;
-  (n.inbox ||= []).push(e.input);n.inputClaims ||= [];
+  (n.inbox ||= []).push({...e.input,source:{actor:e.actor}});n.inputClaims ||= [];
   n.state={kind:'active',review:n.state.kind==='active'?n.state.review:[]};
   return accept(reconcileGraph(g,runs));
  }

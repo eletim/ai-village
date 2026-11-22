@@ -322,7 +322,7 @@ test('report failure retries only report; cancelled or unknown reports never red
  assert.equal(testView(q).status,'active');assert.equal(testView(q).status,'active');assert.equal(f.notifications.length,0);
  assert(JSON.stringify(s.snapshot()).includes('Output '+source.id));
  const x={humanRequestId:q.id,workId:report.workId,revision:q.revision,operationId:'report-retry-operation',instruction:'Do work again'};
- const retry=await s.flow.continue(x,true);assert.equal(retry.phase,'report');assert.match(s.rules.specification('report').text,/再実行は禁止/);assert.equal(await s.flow.continue(x,true),retry);
+ const retry=await s.flow.continue(x,true);assert.equal(retry.phase,'report');const reportData=JSON.parse(retry.instruction.split('\n')[1]);assert.equal(reportData.humanInstructions.amendments.at(-1).text,x.instruction);assert.equal(reportData.humanInstructions.amendments.at(-1).id,retry.id);assert.match(s.rules.specification('report').text,/再実行は禁止/);assert.equal(await s.flow.continue(x,true),retry);
  f.lose(true);await s.tick();assert.equal(testView(retry).state,'awaiting_input');const count=f.sent.length;
  await s.tick();await f.restart();await f.service.tick();assert.equal(f.sent.length,count);
  const restored=f.service.flow.root(q.id);await f.service.flow.cancel({humanRequestId:q.id,revision:restored.revision});await f.service.tick();
