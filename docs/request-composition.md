@@ -2,6 +2,8 @@
 
 新規依頼は `commonRequests: true`。人間の受付と秘書の委任は同じ Node、入力対応、結果提出の規則を使う。親子関係は取りまとめを表し、作成者を表さない。
 
+終了確認済みの子を同じ担当へ継続する操作は [依頼元Agentによる継続](child-continuation.md) を参照。
+
 ## 正本と境界
 
 - Nodeの `createdBy` は作成操作の主体、`recipient` は成果の返却先（human / request）。人間が子依頼を作っても、返却先は親依頼のまま。

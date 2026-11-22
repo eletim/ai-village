@@ -94,7 +94,7 @@ const handleRequest = async (req, res) => {
           const action=humanAction[1],flow=direct.flow;
           return json(res,200,action==='deadline'?await flow.humanDeadline(input):['plan','launch','assignPlan','discard'].includes(action)?await flow.humanCompose(input,action):action==='cancel-queued'?await flow.cancelQueued(input):action==='retry'||action==='resume'?await flow.continue(input,action==='retry'):await flow[action](input));
         }
-        const requestAction=pathname.match(/^\/api\/direct\/requests\/(get|results|inputs|delegate|amend|respond|finish|plan|launch|assignPlan|discard|report|deadline)$/);
+        const requestAction=pathname.match(/^\/api\/direct\/requests\/(get|results|inputs|delegate|continueChild|amend|respond|finish|plan|launch|assignPlan|discard|report|deadline)$/);
         if(req.method==='POST'&&requestAction){
           const action=requestAction[1],flow=direct.flow;
           const result=action==='cancel-queued'?await flow.cancelQueued(input):action==='get'?flow.get(input.humanRequestId):action==='inputs'?flow.inputs(input.humanRequestId,input.workId):action==='results'?flow.results(input.humanRequestId,input.workId):action==='retry'||action==='resume'?await flow.continue(input,action==='retry'):await flow[action](input);
