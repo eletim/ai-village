@@ -4,7 +4,7 @@ const rules=new AgentRules('http://localhost'),data=text=>JSON.parse(text.split(
 test('long report keeps IDs, chronology and omitted references for all human constraints',()=>{
  const human=Array.from({length:30},(_,i)=>({id:'i'+i,workId:'w',createdAt:String(i),source:'inbox',text:'補'.repeat(16000)}));
  const text=rules.reportData({id:'q',rootWorkId:'w',instruction:'Q'.repeat(16000)},{id:'r',finalOutput:'RESULT'+ '\n"'.repeat(15000)},{human,material:[]});
- const d=data(text);assert(d.evidence.finalResult.text.startsWith('RESULT'));assert(d.humanInstructions.original.truncated);assert(d.evidence.finalResult.truncated);assert.equal(d.humanInstructions.omitted.length,18);assert.equal(d.humanInstructions.omitted[0].id,'i0');assert.equal(d.humanInstructions.amendments[0].id,'i18');assert(d.humanInstructions.amendments.every(x=>x.truncated));assert(text.includes('requests inputs q w'));assert(text.length<60000);
+ const d=data(text);assert(d.evidence.finalResult.text.startsWith('RESULT'));assert(d.humanInstructions.original.truncated);assert(d.evidence.finalResult.truncated);assert.equal(d.humanInstructions.omitted.length,18);assert.equal(d.humanInstructions.omitted[0].id,'i0');assert.equal(d.humanInstructions.amendments[0].id,'i18');assert(d.humanInstructions.amendments.every(x=>x.truncated));assert(text.includes('requests inputs q WORK_ID'));assert(text.length<60000);
 });
 test('source evidence separates humans, programs, agents and unknown legacy; no content guessing or writes',()=>{
  const input=(id,text,source)=>({id,kind:'supplement',text,createdAt:'2026-01-01T00:00:00Z',...(source?{source:{actor:source}}:{})});
@@ -26,4 +26,13 @@ test('report revision and envelope change without changing work rules or bootstr
 test('report retries use the boundary actor and human retry text, never generated report data',()=>{
  const q={id:'q',requestGraph:{nodes:[]}},r={id:'r',humanRequestId:'q',workId:'w',origin:'continuation',phase:'report',instruction:'generated report packet',retryInstruction:'結論だけに訂正',runModel:{createdBy:'program'}};
  assert.equal(reportInputs(q,[r]).human.length,0);const input=reportInputs(q,[{...r,instructionSource:{actor:'human'}}]).human[0];assert.equal(input.text,'結論だけに訂正');assert.equal(input.proof,'instruction-source');
+});
+test('root reply target is not replaced by newer human instructions scoped to a child',()=>{
+ const q={id:'q',rootWorkId:'w',instruction:'全体の到達点は？'},inputs={human:[{id:'root-edit',workId:'w',text:'短く答えて'},{id:'child-edit',workId:'child',text:'実装を続けて'}],material:[]};
+ const text=rules.reportData(q,{id:'r',output:'done'},inputs),d=data(text);
+ assert.equal(d.responseTarget.latestHumanInputId,'root-edit');assert.deepEqual(d.humanInstructions.amendments.map(i=>i.id),['root-edit']);assert.equal(d.scopedHumanInstructions.items[0].id,'child-edit');assert.deepEqual(d.completeness,{hasOmissions:false,missing:[]});assert(!text.includes('全文を取得してください'));assert(text.includes('省略なし'));
+});
+test('actual omissions enumerate exactly the source references needing retrieval',()=>{
+ const d=data(rules.reportData({id:'q',rootWorkId:'w',instruction:'short'},{id:'r',workId:'w',output:'x'.repeat(12001)},{human:[{id:'i',source:'inbox',workId:'child',text:'z'.repeat(1501)}],material:[]}));
+ assert.equal(d.completeness.hasOmissions,true);assert.deepEqual(d.completeness.missing.map(i=>[i.id,i.workId,i.source,i.reason]),[['i','child','inbox','truncated'],['r','w','run','truncated']]);
 });

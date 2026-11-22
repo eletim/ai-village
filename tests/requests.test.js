@@ -1,3 +1,4 @@
+import {reportInputs} from '../server/report-inputs.mjs';
 import {readPartitionSnapshot} from '../server/partition-store.mjs';
 import {compatibilityDTO} from '../server/request-compatibility.mjs';
 import {changeRun} from '../server/run-lifecycle.mjs';
@@ -166,7 +167,7 @@ test('finish then overloaded failure never notifies; bounded durable retry sends
  assert.equal(testView(r.recovery).status,'scheduled');assert(r.recovery.nextAt>Date.now());assert.equal(f.sent.length,1);
  r.recovery.nextAt=0;await s.save();s=await f.restart();await Promise.all([s.tick(),s.tick()]);
  q=s.flow.root(r.humanRequestId);w=q.requestGraph.nodes[0];let retry=s.flow.run(w.currentRunId);
- assert.equal(retry.runModel.createdBy,'program');assert.notEqual(retry.id,r.id);assert.equal(retry.workId,r.workId);assert.equal(retry.origin,'retry');assert.equal(w.metadata.autoRetry.attempts,1);assert.equal(w.finish,undefined);assert.equal(f.sent.length,2);
+ assert.equal(retry.runModel.createdBy,'program');assert.equal(retry.instructionSource.actor,'program');const projected=s.rules.reportData(q,retry,reportInputs(q,s.data.runs));assert.equal(JSON.parse(projected.split('\n')[1]).humanInstructions.amendments.length,0);assert.equal(reportInputs(q,s.data.runs).material.find(i=>i.id===retry.id).actor,'program');assert.notEqual(retry.id,r.id);assert.equal(retry.workId,r.workId);assert.equal(retry.origin,'retry');assert.equal(w.metadata.autoRetry.attempts,1);assert.equal(w.finish,undefined);assert.equal(f.sent.length,2);
  assert.match(retry.instruction,/既存変更/);assert.match(retry.instruction,/再委任を避け/);
  await s.tick();await s.tick();assert.equal(f.sent.length,2);assert.equal(testView(retry).state,'awaiting_input');
  s=await f.restart();await s.tick();retry=s.flow.run(retry.id);assert.equal(testView(retry).state,'awaiting_input');assert.equal(f.sent.length,2);

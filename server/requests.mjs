@@ -221,8 +221,8 @@ export class RequestFlow {
   applyGraph(this.d.data,q,{type:'complete',actor:'human',requestId:q.rootWorkId,reason:x.reason||'人間が成果を確認して完了扱い'});
   q.revision++;await this.settle();await this.d.save();return this.get(q.id);
  }));}
- async continue(x,retry=false){return this.d.locked('request-graph',()=>this.continueLocked(x,retry));}
- async continueLocked(x,retry=false,extra={}){return this.d.persist(async()=>{
+ async continue(x,retry=false){return this.d.locked('request-graph',()=>this.continueLocked(x,retry,{},'human'));}
+ async continueLocked(x,retry,extra,actor){return this.d.persist(async()=>{
   const q=this.root(x.humanRequestId),w=this.work(q,x.workId);operation(x.operationId);instruction(x.instruction);
   const key=runKey(q.id,(retry?'retry:':'resume:')+x.operationId),old=this.d.data.runs.find(r=>r.requestId===key);
   if(old){if(old.workId!==w.id||(old.retryInstruction||old.instruction)!==x.instruction)fail('operationIdの再利用です');return old;}
@@ -234,7 +234,7 @@ export class RequestFlow {
   if(x.agentId&&x.agentId!==w.assignee){for(let ancestor=w.parentId?this.work(q,w.parentId):null;ancestor;ancestor=ancestor.parentId?this.work(q,ancestor.parentId):null)if(ancestor.assignee===x.agentId)fail('祖先Agentへの担当交代はできません');for(const candidate of q.requestGraph.nodes.filter(c=>c.assignee===x.agentId)){let descendant=candidate;while(descendant.parentId&&descendant.parentId!==w.id)descendant=this.work(q,descendant.parentId);if(descendant.parentId===w.id)fail('子孫Agentへの担当交代はできません');}const target=this.d.writableAgent(this.d.agent(x.agentId));if(!target.tabId||['terminated','stopping'].includes(agentControls(target).state))fail('交代先Agentを利用できません');applyGraph(this.d.data,q,{type:'assign',actor:'human',requestId:w.id,agentId:x.agentId});if(!w.parentId)q.finalAgentId=x.agentId;}
   this.d.writableAgent(this.d.agent(w.assignee));
   delete w.metadata.latestResultId;
-  const r=this.enqueue(q,w,q.report&&!w.parentId?this.reportPrompt(q):x.instruction,(retry?'retry:':'resume:')+x.operationId,retry?'retry':'continuation',{...extra,instructionSource:{actor:extra.legacyAgentRunId?'agent':'human'},...(retry?{retryFrom:last.id}:{}),...(q.report&&!w.parentId?{phase:'report',retryInstruction:x.instruction}:{} )});
+  const r=this.enqueue(q,w,q.report&&!w.parentId?this.reportPrompt(q):x.instruction,(retry?'retry:':'resume:')+x.operationId,retry?'retry':'continuation',{...extra,instructionSource:{actor},...(retry?{retryFrom:last.id}:{}),...(q.report&&!w.parentId?{phase:'report',retryInstruction:x.instruction}:{} )});
   // Include this newly accepted correction before the report can be dispatched.
   if(r.phase==='report')r.instruction=this.reportPrompt(q);q.revision++;await this.d.save();return r;
  });}
@@ -325,7 +325,7 @@ export class RequestFlow {
     if(!this.recoveryBoundary(r,snapshot,a.runtime)){r.recovery=transitionRecovery(r.recovery,{type:'manual',reason:'終了後の入力またはセッションを確認できません。手動で復旧してください'});await this.d.save();return;}
     if(!agentControls(a).canSend)return;
     r.recovery=transitionRecovery(r.recovery,{type:'enqueue'});w.metadata.autoRetry.attempts++;
-    await this.continueLocked({humanRequestId:q.id,workId:w.id,revision:q.revision,operationId:'auto-recovery-'+r.id,instruction:this.recoveryPrompt(q,w)},true,{autoRecoveryFrom:r.id,recoveryDeadline:w.metadata.autoRetry.firstFailureAt+600000});
+    await this.continueLocked({humanRequestId:q.id,workId:w.id,revision:q.revision,operationId:'auto-recovery-'+r.id,instruction:this.recoveryPrompt(q,w)},true,{autoRecoveryFrom:r.id,recoveryDeadline:w.metadata.autoRetry.firstFailureAt+600000},'program');
    });
   }
  }

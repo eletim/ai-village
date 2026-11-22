@@ -11,10 +11,10 @@ const cases=JSON.parse(await readFile(new URL('../tests/fixtures/report-evaluati
 const hash=s=>createHash('sha256').update(s).digest('hex');
 const manifest=[];
 for(const c of cases){
- const inbox=c.amendments.map((a,i)=>({id:'input-'+i,kind:'supplement',text:a.text,createdAt:`2026-01-01T00:00:${String(i+1).padStart(2,'0')}Z`,...(a.actor==='unknown'?{}:{source:{actor:a.actor}})}));
- const q={id:'eval-'+c.id,rootWorkId:'root',createdAt:'2026-01-01T00:00:00Z',instruction:c.question,requestGraph:{nodes:[{id:'root',createdBy:'human',inbox}],operations:[]}},source={id:'work-result',workId:'root',finalOutput:c.output};
+ const inbox=c.amendments.map((a,i)=>({id:'input-'+i,kind:'supplement',workId:a.workId||'root',text:a.text,createdAt:`2026-01-01T00:00:${String(i+1).padStart(2,'0')}Z`,...(a.actor==='unknown'?{}:{source:{actor:a.actor}})}));
+ const q={id:'eval-'+c.id,rootWorkId:'root',createdAt:'2026-01-01T00:00:00Z',instruction:c.question,requestGraph:{nodes:[...new Set(['root',...inbox.map(i=>i.workId)])].map(id=>({id,createdBy:'human',inbox:inbox.filter(i=>i.workId===id)})),operations:[]}},source={id:'work-result',workId:'root',finalOutput:c.output};
  for(const variant of ['old','new']){
-  const r=variant==='old'?old:rules,system=r.specification('report').text,user=variant==='old'?old.reportData(q,source,inbox.map(i=>i.text)):rules.reportData(q,source,reportInputs(q));
+  const r=variant==='old'?old:rules,system=r.specification('report').text,user=variant==='old'?old.reportData(q,source,inbox.filter(i=>i.workId==='root').map(i=>i.text)):rules.reportData(q,source,reportInputs(q));
   const packet={caseId:c.id,variant,system,user,restrictions:'固定資料だけで報告本文を生成する。ツール・ネットワーク・外部操作は使用しない。情報不足は明示する。',criteria:c.criteria};
   const file=c.id+'.'+variant+'.json';await writeFile(join(output,file),JSON.stringify(packet,null,2)+'\n');
   manifest.push({caseId:c.id,variant,file,systemHash:hash(system),inputHash:hash(user),rulesRevision:r.specification('report').revision});
