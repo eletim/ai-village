@@ -32,7 +32,7 @@ export class RequestUnits {
   // Include records created inside this command, before they enter an index.
   for(const q of (d.requests||[]).slice(scope.requestCount??d.requests.length))ids.add(q.id);
   const requests=[...ids].map(id=>this.maps.requests.get(id)).filter(Boolean);
-  for(const q of requests)for(const n of q.requestGraph.nodes)if(n.assignee)agents.add(n.assignee);
+  for(const q of requests)for(const n of q.requestGraph?.nodes||[])if(n.assignee)agents.add(n.assignee);
   const runs=[...ids].flatMap(id=>[...this.runsByRequest.get(id)||[]]);
   if(scope.agentIds)runs.push(...d.runs.filter(r=>scope.agentIds.has(r.agentId)&&!r.humanRequestId));
   return {requests,runs,agents:[...agents].map(id=>this.maps.agents.get(id)).filter(Boolean)};

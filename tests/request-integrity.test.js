@@ -33,10 +33,12 @@ for(const [name,mutate] of Object.entries(mutations))test('startup isolates '+na
 
 test('quarantine prevents an otherwise pending completion notification; healthy requests continue',async t=>{
  const dir=await mkdtemp(join(tmpdir(),'integrity-notify-'));t.after(()=>rm(dir,{recursive:true,force:true}));const data=fixture();
+ for(const r of data.runs)r.createdAt='2026-01-01T00:00:00.000Z';
  for(const q of data.requests){q.requestModel.state={kind:'completed',by:'program',reason:'done'};q.finalRunId=q.id+'r';}
  data.requests[0].rootWorkId='missing';await writeFile(join(dir,'direct.json'),JSON.stringify(data));const delivered=[];
- const d=new DirectAgents({dir,remote:async()=>{throw Error('remote forbidden');},notifier:{status:()=>({}),enqueue:async x=>{delivered.push(x.id);return {status:'sent'};}}});await d.init({watch:false});t.after(()=>d.close());await d.flow.notifications();await d.flow.notifications();
+ const d=new DirectAgents({dir,remote:async()=>{throw Error('remote forbidden');},notifier:{status:()=>({}),enqueue:async x=>{delivered.push(x.id);return {status:'sent'};}}});await d.init({watch:false});t.after(()=>d.close());await d.progress();await d.flow.notifications();
  assert.deepEqual(delivered,['request:good']);assert.equal(d.data.requests[0].notification.status,'pending');
+ assert.equal(d.store.jobs.has('q'),false);
 });
 
 test('legacy broken root and run ownership migrate into isolation without discarding records',async t=>{
