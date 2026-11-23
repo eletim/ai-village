@@ -1,3 +1,5 @@
+import {closeSelfResume,consumeSelfResume} from './self-resume.ts';
+import type {SelfResume} from './self-resume.ts';
 import {accept,reject} from './common.ts';
 import type {Actor,Result} from './common.ts';
 import {isTerminal} from './run.ts';
@@ -11,7 +13,7 @@ export type Replacement={replacementId:string;actorRunId:string;resultId:string;
 export type InboxItem={source?:{actor:Actor};id:string;kind:'request'|'supplement'|'result';text:string;createdAt:string;result?:Omit<Response,'decision'>&{outcome?:string;reason?:string|null};attempts:string[];handledBy?:string;retiredBy?:string};
 export type InputClaim={runId:string;ids:string[];operationId:string};
 export type Recipient={kind:'human'}|{kind:'request';requestId:string};
-export type Node={recipient:Recipient;createdBy:Actor;planned:boolean;inbox?:InboxItem[];inputClaims?:InputClaim[];metadata:Record<string,unknown>;claims:Claim[];replacements:Replacement[];invalidatedRuns:string[];replacementId?:string;id:string;parentId:string|null;requester:{kind:'human'}|{kind:'agent';agentId:string;requestId:string};assignee:string|null;runAgents:Record<string,string>;runIds:string[];currentRunId:string|null;reportRunId:string|null;reportMode:boolean;state:RequestState;submissions:Submission[];handling:Handling[];declarations:{id:string;runId:string;at:number;invalidated?:string}[];decisions:{actor:Actor;reason:string}[]};
+export type Node={selfResume?:SelfResume;recipient:Recipient;createdBy:Actor;planned:boolean;inbox?:InboxItem[];inputClaims?:InputClaim[];metadata:Record<string,unknown>;claims:Claim[];replacements:Replacement[];invalidatedRuns:string[];replacementId?:string;id:string;parentId:string|null;requester:{kind:'human'}|{kind:'agent';agentId:string;requestId:string};assignee:string|null;runAgents:Record<string,string>;runIds:string[];currentRunId:string|null;reportRunId:string|null;reportMode:boolean;state:RequestState;submissions:Submission[];handling:Handling[];declarations:{id:string;runId:string;at:number;invalidated?:string}[];decisions:{actor:Actor;reason:string}[]};
 export type Graph={version:3;rootId:string;nodes:Node[];operations:{id:string;payload:string;acceptedPayload?:string;allowOmittedResults?:true}[]};
 export type Evidence={run:Run;ownerId:string;agentId:string}[];
 export const node=(g:Graph,id:string)=>g.nodes.find(n=>n.id===id);
@@ -26,7 +28,7 @@ export function dependencies(g:Graph,n:Node){return g.nodes.filter(c=>c.parentId
 export function resolved(g:Graph,n:Node):boolean{return dependencies(g,n).every(c=>{if(c.replacementId||c.planned&&c.state.kind==='withdrawn')return true;const s=latest(c);return !!s&&([...n.handling].reverse().find(h=>h.resultId===s.id&&h.version===s.version)?.decision==='accept')&&['completed','withdrawn'].includes(c.state.kind);});}
 export function ready(g:Graph,n:Node,runs:Evidence):boolean{
  const r=current(n,runs);
- return !(n.inbox||[]).some(i=>!i.handledBy&&!i.retiredBy)&&normal(r)&&(r?.phase==='report'||!dependencies(g,n).length||n.declarations.some(d=>d.runId===r?.id&&!d.invalidated))&&resolved(g,n);
+ return n.selfResume?.current?.status!=='scheduled'&&!(n.inbox||[]).some(i=>!i.handledBy&&!i.retiredBy)&&normal(r)&&(r?.phase==='report'||!dependencies(g,n).length||n.declarations.some(d=>d.runId===r?.id&&!d.invalidated))&&resolved(g,n);
 }
 /** Derived continuation evidence, never a second persisted lifecycle. */
 export function waitingReason(g:Graph,n:Node,runs:Evidence):string|null{
@@ -34,6 +36,7 @@ export function waitingReason(g:Graph,n:Node,runs:Evidence):string|null{
  if(n.planned)return n.assignee?'not-started':'unassigned';
  const r=current(n,runs);
  if(r&&!r.supersededBy&&!isTerminal(r))return r.phase==='result'?'result-processing':r.phase==='report'?'report-processing':r.state.kind==='queued'?'queued':r.state.kind==='sent'?'awaiting-input':'running';
+ if(normal(r)&&n.selfResume?.current?.status==='scheduled')return 'self-resume';
  if(n.inbox?.some(i=>!i.handledBy&&!i.retiredBy&&i.attempts.length<2))return 'input-pending';
  if(graphSteps(g,runs).some(step=>step.requestId===n.id&&step.type==='deliver-result'))return 'result-delivery';
  if(dependencies(g,n).some(c=>!c.replacementId&&c.planned&&c.state.kind==='active'))return 'children-planned';
@@ -55,6 +58,9 @@ export function refreshProgressReviews(g:Graph,runs:Evidence):Graph{
 /** Immutable structured facts only; no text, I/O, notification or clock. */
 export function reconcileGraph(source:Graph,runs:Evidence):Graph{
  const g=structuredClone(source);
+ for(const n of g.nodes){
+  if(['completed','withdrawn'].includes(n.state.kind))closeSelfResume(n,'request-ended');
+ }
  // Declarations are audit facts. Only the declaring run's observed normal end can commit them.
  for(const n of g.nodes)for(const i of n.inbox||[]){if(!i.result||i.handledBy||i.retiredBy)continue;const c=node(g,i.result.requestId);if(c&&(c.replacementId||latest(c)?.id!==i.result.resultId))i.retiredBy=c.replacementId||c.currentRunId||undefined;}
  let committed=false;
@@ -62,6 +68,11 @@ export function reconcileGraph(source:Graph,runs:Evidence):Graph{
   const r=owned(n,runs).find(r=>r.id===claim.runId);
   if(!normal(r)||!correlated(r)||r?.supersededBy||n.invalidatedRuns.includes(claim.runId))continue;
   for(const id of claim.ids){const item=n.inbox?.find(i=>i.id===id);if(item&&!item.handledBy&&!item.retiredBy){item.handledBy=claim.runId;committed=true;}}
+ }
+ for(const n of g.nodes){
+  consumeSelfResume(n);
+  const r=current(n,runs);
+  if(normal(r)&&correlated(r)&&!r?.supersededBy&&!n.invalidatedRuns.includes(r!.id)&&n.declarations.some(d=>d.runId===r!.id&&!d.invalidated))closeSelfResume(n,'finish-confirmed',r!.id);
  }
  for(const n of g.nodes)for(const claim of n.claims){
   const r=owned(n,runs).find(r=>r.id===claim.actorRunId),c=node(g,claim.requestId),s=c&&latest(c);
@@ -136,7 +147,7 @@ export function transitionGraph(source:Graph,e:Event,runs:Evidence):Result<Graph
  const n=node(g,e.requestId);if(!n)return reject('request-missing');
  if(e.type==='deliver-human'){
   if(n.recipient?.kind!=='human'||n.state.kind!=='submitted'||latest(n)?.id!==e.resultId)return reject('result-not-ready');
-  n.state={kind:'completed',by:'program',reason:'result-delivered:'+e.resultId};return accept(g);
+  n.state={kind:'completed',by:'program',reason:'result-delivered:'+e.resultId};closeSelfResume(n,'request-ended');return accept(g);
  }
  if(e.type==='plan-assign'){if(!n.planned||n.state.kind!=='active')return reject('request-already-started');n.assignee=e.agentId;return accept(g);}
  if(e.type==='discard-plan'){if(!n.planned||n.state.kind!=='active')return reject('request-already-started');n.state={kind:'withdrawn',reason:'plan-discarded'};n.decisions.push({actor:e.actor,reason:'plan-discarded'});return accept(g);}
@@ -214,7 +225,7 @@ export function transitionGraph(source:Graph,e:Event,runs:Evidence):Result<Graph
    return accept(reconcileGraph(g,runs));
   }
   case 'review':if(n.state.kind==='active')n.state.review=[...new Set([...n.state.review,e.reason])];return accept(g);
-  case 'withdraw':{const r=current(n,runs);if(r&&isTerminal(r)&&!n.submissions.some(s=>s.runId===r.id))n.submissions.push({id:r.id,runId:r.id,requestId:n.id,version:n.submissions.length+1,outcome:r.state.kind==='ended'?r.state.outcome:'cancelled'});for(const c of g.nodes){let p=c;while(p.parentId&&p.parentId!==n.id)p=node(g,p.parentId)!;if(p.parentId===n.id&&(c.state.kind==='active'||c.state.kind==='submitted')){c.state={kind:'withdrawn',reason:e.reason};c.decisions.push({actor:'human',reason:e.reason});}}n.state={kind:'withdrawn',reason:e.reason};n.decisions.push({actor:'human',reason:e.reason});return accept(g);}
+  case 'withdraw':{const r=current(n,runs);if(r&&isTerminal(r)&&!n.submissions.some(s=>s.runId===r.id))n.submissions.push({id:r.id,runId:r.id,requestId:n.id,version:n.submissions.length+1,outcome:r.state.kind==='ended'?r.state.outcome:'cancelled'});for(const c of g.nodes){let p=c;while(p.parentId&&p.parentId!==n.id)p=node(g,p.parentId)!;if(p.parentId===n.id&&(c.state.kind==='active'||c.state.kind==='submitted')){c.state={kind:'withdrawn',reason:e.reason};c.decisions.push({actor:'human',reason:e.reason});}}n.state={kind:'withdrawn',reason:e.reason};n.decisions.push({actor:'human',reason:e.reason});for(const item of g.nodes)if(['completed','withdrawn'].includes(item.state.kind))closeSelfResume(item,'request-ended');return accept(g);}
   case 'complete':{
    const descendants=(parent:Node):Node[]=>dependencies(g,parent).flatMap(c=>[...descendants(c),c]);
    const children=descendants(n).filter(c=>!(c.planned&&c.state.kind==='withdrawn'));
@@ -226,7 +237,7 @@ export function transitionGraph(source:Graph,e:Event,runs:Evidence):Result<Graph
     parent.handling.push({requestId:c.id,resultId:s.id,version:s.version,decision:'accept',actor:'human',actorRunId:parent.currentRunId!,operationId:'human-complete:'+n.id});
     if(c.state.kind==='active'||c.state.kind==='submitted'){c.state={kind:'completed',by:'human',reason:e.reason};c.decisions.push({actor:'human',reason:e.reason});}
    }
-   n.state={kind:'completed',by:'human',reason:e.reason};n.decisions.push({actor:'human',reason:e.reason});return accept(g);
+   n.state={kind:'completed',by:'human',reason:e.reason};n.decisions.push({actor:'human',reason:e.reason});for(const item of g.nodes)if(['completed','withdrawn'].includes(item.state.kind))closeSelfResume(item,'request-ended');return accept(g);
   }
  }
 }

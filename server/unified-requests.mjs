@@ -27,6 +27,12 @@ export function validateGraph(data,q){
   if(n.state.kind==='submitted'&&(!n.recipient&&!n.parentId||n.state.resultId!==latest(n)?.id||latest(n)?.outcome!=='normal'))throw Error('Invalid submitted result');
   if(n.replacementId){const replacement=node(g,n.replacementId);if(!replacement||replacement.parentId!==n.parentId)throw Error('Invalid replacement');const visited=new Set([n.id]);let next=n;while(next.replacementId){if(visited.has(next.replacementId))throw Error('Replacement cycle');visited.add(next.replacementId);next=node(g,next.replacementId);if(!next)throw Error('Missing replacement');}}
   const seen=new Set([n.id]);let p=n;while(p.parentId){if(seen.has(p.parentId)||!node(g,p.parentId))throw Error('Request parent cycle/missing');seen.add(p.parentId);p=node(g,p.parentId);}
+  if(n.selfResume){
+   const s=n.selfResume,c=s.current;
+   const valid=r=>r&&typeof r.id==='string'&&Number.isFinite(Date.parse(r.at))&&typeof r.text==='string'&&r.text.length>0&&r.text.length<=4000&&n.runIds.includes(r.actorRunId)&&['scheduled','delivered','cancelled','consumed'].includes(r.status);
+   if(!Number.isInteger(s.version)||s.version<1||!Array.isArray(s.history)||c&&!valid(c)||s.history.some(e=>!valid(e.reservation)||!Number.isInteger(e.version)||e.version>s.version))throw Error('Invalid self resume reservation');
+   if(c&&['delivered','consumed'].includes(c.status)&&!n.inbox?.some(i=>i.id===c.id&&i.source?.actor==='program'))throw Error('Self resume delivery missing');
+  }
   for(const id of n.runIds)if(!data.runs.some(r=>r.id===id&&r.workId===n.id&&r.humanRequestId===q.id&&r.agentId===n.runAgents[id]))throw Error('Invalid request run owner');
   for(const s of n.submissions)if(!['normal','failed','interrupted','unconfirmed','cancelled'].includes(s.outcome)||s.requestId!==n.id||s.id!==s.runId||!n.runIds.includes(s.runId)||!Number.isInteger(s.version)||s.version<1)throw Error('Invalid result version/owner');
   for(const [i,s] of n.submissions.entries()){const r=data.runs.find(r=>r.id===s.runId)?.runModel;if(s.version!==i+1||!r||!['ended','cancelled'].includes(r.state.kind)||s.outcome!==(r.state.kind==='ended'?r.state.outcome:'cancelled'))throw Error('Result lacks native terminal evidence');}

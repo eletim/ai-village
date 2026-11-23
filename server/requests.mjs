@@ -1,3 +1,4 @@
+import {selfResume} from './request-self-resume.mjs';
 import {reportInputs} from './report-inputs.mjs';
 import {transitionRecovery,transitionDelivery,transitionReportDelivery} from './state/auxiliary.ts';
 import {RequestReports,initialDeadlines,deadline} from './request-reports.mjs';
@@ -23,7 +24,7 @@ const instruction=text=>{if(typeof text!=='string'||!text.trim()||text.length>16
 const runKey=(root,op)=>'flow-'+createHash('sha256').update(root+':'+op).digest('hex');
 export class RequestFlow {
  constructor(direct){this.d=direct;this.protocol=1;this.dispatching=new Map();this.reporting=new RequestReports(this);
-  for(const name of ['report','deadline','humanDeadline','plan','launch','assignPlan','discard','humanCompose','amend','supplement','delegate','respond','finish','complete','continue','cancelQueued','cancel']){
+  for(const name of ['selfResume','report','deadline','humanDeadline','plan','launch','assignPlan','discard','humanCompose','amend','supplement','delegate','respond','finish','complete','continue','continueChild','cancelQueued','cancel']){
    const command=this[name].bind(this);
    this[name]=(x,...args)=>this.d.units.run(x.humanRequestId,()=>command(x,...args));
   }
@@ -60,7 +61,7 @@ export class RequestFlow {
   if(origin==='inbox')initializeResume(r,previous);
   else if(extra.steerTarget)initializeSupplement(r,this.run(extra.steerTarget.runId));
   else if(extra.retryFrom)initializeRetry(r,this.run(extra.retryFrom),{actor:extra.autoRecoveryFrom?'program':extra.legacyAgentRunId?'agent':'human',legacyAgentRunId:extra.legacyAgentRunId,leafRoot:!w.parentId&&!q.requestGraph.nodes.some(c=>c.parentId===w.id),boundaryConfirmed:!!extra.autoRecoveryFrom,agentIdle:!!extra.autoRecoveryFrom});
-  else initializeRun(r,{actor:r.phase==='report'||origin==='result'?'program':origin==='delegation'||origin==='agent'||extra.legacyAgentRunId?'agent':'human',parentRunId:w.parentId?this.work(q,w.parentId).currentRunId:null,resultOf:extra.resultId||null,recipientRunId:previous?.id||null});
+  else initializeRun(r,{actor:r.phase==='report'||origin==='result'?'program':origin==='delegation'||origin==='agent'||extra.legacyAgentRunId||extra.childContinuation?'agent':'human',parentRunId:w.parentId?this.work(q,w.parentId).currentRunId:null,resultOf:extra.resultId||null,recipientRunId:previous?.id||null});
   if(previous&&previous.workId===w.id&&r.phase!=='report'&&!r.runModel.retryOf)r.runModel={...r.runModel,retryOf:previous.id};
   this.d.data.runs.push(r);
   if(w.inbox&&['human','agent','delegation'].includes(origin)&&!w.inbox.length)w.inbox.push({id:randomUUID(),kind:'request',text,createdAt:r.createdAt,attempts:[r.id]});
@@ -138,6 +139,7 @@ export class RequestFlow {
   try{await this.d.attemptRun(r);}catch(error){if(!error.persistenceFailure)throw error;}
   return r;
  }
+ selfResume(x){return selfResume(this,x);}
  report(x){return this.reporting.report(x);}
  deadline(x){return this.reporting.change(x);}
  humanDeadline(x){return this.reporting.change(x,'human');}
@@ -221,6 +223,46 @@ export class RequestFlow {
   applyGraph(this.d.data,q,{type:'complete',actor:'human',requestId:q.rootWorkId,reason:x.reason||'人間が成果を確認して完了扱い'});
   q.revision++;await this.settle();await this.d.save();return this.get(q.id);
  }));}
+ childContinuationBoundary(r,snapshot,status){
+  return !!r&&r.runModel.state.kind==='ended'&&['normal','failed','interrupted'].includes(r.runModel.state.outcome)&&
+   r.runModel.facts.some(f=>f.type==='terminal')&&terminalBoundary(snapshot,status)&&snapshot.sessionId===r.sessionId&&
+   snapshot.turns.at(-1)?.id===r.turnId&&correlate(r,snapshot).state===runState(r);
+ }
+ // This Agent boundary never exposes human retry/assignment privileges.
+ async continueChild(x){return this.d.locked('request-graph',async()=>{
+  const q=this.root(x.humanRequestId),w=this.work(q,x.workId);operation(x.operationId);instruction(x.instruction);
+  if(x.agentId!==undefined)fail('担当変更はできません。別担当への再依頼はreworkとdelegateを使ってください',400);
+  if(!w.parentId)fail('直接委任した子依頼だけ継続できます');
+  const parent=this.work(q,w.parentId),actor=await this.actor(q,parent,x.actorRunId);
+  if(actor.runModel.state.kind!=='running'||actor.phase==='report')fail('現在実行中の依頼元runが必要です');
+  const payload=JSON.stringify({workId:w.id,actorRunId:actor.id,targetRunId:x.targetRunId,revision:x.revision,instruction:x.instruction});
+  const key=runKey(q.id,'child-continue:'+x.operationId),old=this.d.data.runs.find(r=>r.requestId===key);
+  if(old){if(old.childContinuation?.payload!==payload)fail('operationIdの再利用です');return structuredClone(old);}
+  this.active(q);this.version(q,x.revision);
+  if(q.report||!['active','submitted'].includes(w.state.kind)||w.replacementId)fail('継続可能な子依頼ではありません');
+  const last=this.run(w.currentRunId);
+  if(!last||last.id!==x.targetRunId)fail('対象の最新runをrequests getで確認してください');
+  if(last.runModel.state.kind!=='ended'||!['normal','failed','interrupted'].includes(last.runModel.state.outcome)||!last.runModel.facts.some(f=>f.type==='terminal')||last.runModel.supersededBy)fail('実行の終了が確認できません。実行中・受付不明は再送しません');
+  const result=w.submissions.find(s=>s.runId===last.id);
+  const effective=id=>{const r=this.run(id);return r&&!parent.invalidatedRuns.includes(id)&&!r.runModel.supersededBy&&((r.id===parent.currentRunId&&r.runModel.state.kind==='running')||(r.runModel.state.kind==='ended'&&r.runModel.state.outcome==='normal'));};
+  if(result){
+   const handled=parent.handling.some(h=>h.resultId===result.id&&h.decision!=='review');
+   const claimed=parent.claims.some(c=>c.resultId===result.id&&!c.invalidated&&c.decision!=='review'&&effective(c.actorRunId));
+   // A replacement already launched is an external fact even if its parent failed.
+   const replacement=w.replacements.some(c=>c.resultId===result.id&&(effective(c.actorRunId)||q.requestGraph.nodes.some(n=>n.id===c.replacementId&&n.state.kind!=='withdrawn')));
+   if(handled||claimed||replacement)fail('結果への対応申告・置換予約と継続は併用できません');
+  }
+  const a=this.d.writableAgent(this.d.agent(w.assignee));
+  return this.d.locked(a.id,async()=>{
+   const snapshot=await this.d.observe(a);
+   if(!a.tabId||!agentControls(a).canSend||!this.childContinuationBoundary(last,snapshot,a.runtime))fail('担当の終了境界とidleを確認できません。再送せず状況を確認してください');
+   if(this.d.data.runs.some(r=>r.agentId===a.id&&r.id!==last.id&&['queued','sent','running'].includes(r.runModel?.state.kind)))fail('担当に別の未終了runがあります');
+   return this.d.persist(async()=>{
+    const r=this.enqueue(q,w,x.instruction,'child-continue:'+x.operationId,'continuation',{instructionSource:{actor:'agent',actorRunId:actor.id},childContinuation:{operationId:x.operationId,payload}});
+    q.revision++;await this.d.save();return structuredClone(r);
+   });
+  });
+ });}
  async continue(x,retry=false){return this.d.locked('request-graph',()=>this.continueLocked(x,retry,{},'human'));}
  async continueLocked(x,retry,extra,actor){return this.d.persist(async()=>{
   const q=this.root(x.humanRequestId),w=this.work(q,x.workId);operation(x.operationId);instruction(x.instruction);
@@ -268,6 +310,15 @@ export class RequestFlow {
  async settleChanges(requests=this.requests){
   let changed=false;
   for(const q of requests){
+   if(!q.integrity)for(const r of this.d.data.runs.filter(r=>r.humanRequestId===q.id&&r.origin==='inbox'&&r.runModel.state.kind==='queued')){
+    const w=this.work(q,r.workId),ids=new Set(w.selfResume?.history.map(e=>e.reservation.id)||[]);
+    if(!r.inboxBatch?.some(id=>ids.has(id)))continue;
+    if(['completed','withdrawn'].includes(w.state.kind)||r.inboxBatch.every(id=>w.inbox.find(i=>i.id===id)?.retiredBy)){
+     changeRun(r,{type:'cancel-inbox-reservation',actor:'program'});r.queueCancelledAt=now();r.error='self-resume-input-retired';
+     if(w.currentRunId===r.id&&w.state.kind==='active')w.currentRunId=r.runModel.retryOf;
+     changed=true;
+    }
+   }
    if(q.integrity||requestStatus(q)!=='active'&&(requestStatus(q)!=='completed'||q.completedAt))continue;
    const before=JSON.stringify(q);
    for(const w of q.requestGraph.nodes)if(w.inbox?.some(i=>i.result&&('decision' in i.result||!i.result.outcome))){const inputs=this.inputs(q.id,w.id);for(const i of w.inbox)if(i.result)i.result=inputs.find(x=>x.id===i.id).result;}

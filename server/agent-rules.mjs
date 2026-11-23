@@ -2,12 +2,14 @@ import {resolve} from 'node:path';
 import {createHash} from 'node:crypto';
 // The only source of Agent-facing policy and Agent decision-operation schemas.
 export const agentActions=Object.freeze({
+ selfResume:{fields:'{humanRequestId,workId,actorRunId,operationId,expectedVersion,at:日時|null,text?}',description:'現在担当する自分の作業を後で確認する単発予約。初回versionは0、以後getのselfResume.versionを指定。未来の時刻と確認内容で作成/置換、at:nullで取消。人間の期限は変えない。待機はinputs/resultsを明示してrespondし応答を終える。finishが正常終了で確定すると予約と未対応の予約入力は取消。失敗/中断/受付不明を予約で再送しない。'},
  report:{fields:'{humanRequestId,workId,actorRunId,operationId,kind:progress|question|extension,text,proposedCompletionAt?,proposedReportAt?}',description:'途中報告を保存して即時配送。延長は提案のみ。'},
  deadline:{fields:'{humanRequestId,workId,actorRunId,operationId,expectedVersion,completionAt,reportAt,reason}',description:'管理する直接の子依頼の期限を変更。日時はタイムゾーン付き、期限なしはnull。'},
  plan:{fields:'{humanRequestId,parentWorkId,actorRunId,operationId,instruction,agentId?,reportAt?,completionAt?}',description:'子依頼を開始前として保存。結果は親へ返る。担当は後から選べる。'},
  launch:{fields:'{humanRequestId,workId,actorRunId,operationId,agentId?}',description:'開始前の直接の子依頼を担当Agentへ実行予約。親の現在runから操作する。'},
  assignPlan:{fields:'{humanRequestId,workId,actorRunId,operationId,agentId}',description:'開始前の直接の子依頼の担当を選ぶ。実行は開始しない。'},
  discard:{fields:'{humanRequestId,workId,actorRunId,operationId}',description:'開始前の直接の子依頼を取り下げる。実行済みは対象外。'},
+ continueChild:{fields:'{humanRequestId,workId,actorRunId,targetRunId,revision,operationId,instruction}',description:'requests get/results/inputsで直接の子の終了・残成果・実施済み外部操作を確認してから、同じ担当へ未完了分を継続指示。最新targetRunId/revisionが必須。実行中・受付不明・採用/差し戻し申告済みは不可。別担当はreworkとdelegate。応答不明は同じoperationIdと同じ内容で再試行。外部副作用の重複防止は別途確認する。'},
  amend:{fields:'{humanRequestId,workId,actorRunId,operationId,instruction}',description:'直接の子依頼へ補足。'},
  delegate:{fields:'{humanRequestId,parentWorkId,actorRunId,agentId,operationId,instruction,replacesRequestId?,reportAt?,completionAt?}',description:'子依頼を作成・開始。再作業はrework後replacesRequestIdで置換予約。'},
  respond:{fields:'{humanRequestId,workId,runId,operationId,inputs?:[入力ID],results:[{requestId,resultId,version,decision:accept|rework}]}',description:'入力と直接の子結果への対応を申告。'},
