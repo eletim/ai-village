@@ -1,14 +1,11 @@
+import {supplementSource} from '../src/input-source.js';
 // Read-only projection. No content/name heuristics, and no repair of legacy records.
 export function reportInputs(q,runs=[]){
  const inputs=[],seen=new Set(),nodes=q.requestGraph?.nodes||[];
  const add=item=>{const key=item.operationId?'operation:'+item.operationId:item.id;if(seen.has(key))return;seen.add(key);inputs.push(item);};
  for(const n of nodes)for(const i of n.inbox||[]){
   if(i.kind!=='supplement'||i.retiredBy)continue;
-  let actor=i.source?.actor,proof=actor?'transition-actor':'unknown';
-  if(!actor&&i.operationId){
-   const op=q.requestGraph.operations?.find(o=>o.id===i.operationId&&o.inputId===i.id);let p;try{p=JSON.parse(op?.payload);}catch{}
-   if(p?.type==='supplement'&&p.requestId===n.id&&p.text===i.text&&Object.hasOwn(p,'actorRunId')){actor=p.actorRunId===null?'human':typeof p.actorRunId==='string'?'agent':undefined;proof='supplement-operation';}
-  }
+  const {actor,proof}=supplementSource(q,n,i);
   add({id:i.id,workId:n.id,operationId:i.operationId,createdAt:i.createdAt,actor:actor||'unknown',proof,text:i.text,source:'inbox'});
  }
  for(const r of runs){

@@ -1,6 +1,6 @@
 import {requestProgress} from './request-progress.js';
 import {escapeReport as esc} from './report-content.js';
-export const isHumanInput=r=>!!r.external||r.origin==null||r.origin==='human'||!!r.inputReceipt;
+export const isHumanInput=r=>!!r.external||r.origin==null||r.origin==='human'||!!r.inputReceipt&&!['program','agent'].includes(r.inputSource?.actor);
 const originLabel={steering:'補足の配送',delegation:'実装・作業依頼',retry:'再試行',continuation:'再開',report:'報告作成',result:'成果の受け取り・レビュー',agent:'他Agentからの依頼',inbox:'入力の配送'};
 export function exchangeLabel(entry,state){
  const q=state.requests?.find(q=>q.id===entry.humanRequestId),nodes=q?.requestGraph?.nodes||[];

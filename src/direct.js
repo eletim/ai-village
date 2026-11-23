@@ -124,7 +124,13 @@ function recoveryHTML(r){
  return `<div class="recovery"><p>${esc(reason)}</p><button data-retry-run="${esc(r.id)}">再試行</button><button data-complete-request="${esc(q.id)}">完了扱い</button><button data-cancel-request="${esc(q.id)}">取り下げ</button></div>`;
 }
 function entryHTML(a,r,divider){
- if(r.inputReceipt)return `${divider(r.createdAt)}<div class="run" data-entry="${esc(r.id)}">${bubble('user',r.instruction,r.createdAt,travelSummary(r.travelContexts)+attachmentHTML(r.attachments)+`<small>補足 · ${esc(r.targetLabel)} · ${esc(r.inputStatus)}</small>`)}</div>`;
+ if(r.inputReceipt){
+  const actor=r.inputSource?.actor,internal=actor==='program'||actor==='agent';
+  const label=actor==='program'?'依頼の通知':actor==='agent'?'Agentからの補足':actor==='human'?'補足':'補足（由来不明・旧形式）';
+  const extra=travelSummary(r.travelContexts)+attachmentHTML(r.attachments)+`<small>${esc(label)} · ${esc(r.targetLabel)} · ${esc(r.inputStatus)}</small>`;
+  const content=internal?'<div class="message internal">'+chatBodyHTML(r,'input','<pre>'+linkedText(r.instruction||'')+'</pre>'+extra,true,label)+timeHTML(r.createdAt)+'</div>':bubble('user',r.instruction,r.createdAt,extra);
+  return `${divider(r.createdAt)}<div class="run" data-entry="${esc(r.id)}">${content}</div>`;
+ }
  const request=state.requests?.find(q=>q.id===r.humanRequestId),current=request?.requestGraph?.nodes.find(n=>n.id===r.workId)?.currentRunId===r.id;
  const waiting=current?requestWaitingText(request,r.workId):'';
  const node=request?.requestGraph?.nodes.find(n=>n.id===r.workId),parent=request?.requestGraph?.nodes.find(n=>n.id===node?.parentId);

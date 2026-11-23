@@ -1,3 +1,4 @@
+import {fixtureModels} from './model-fixtures.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,writeFile,rm} from 'node:fs/promises';
@@ -11,7 +12,9 @@ test('workspace HTTP pages reduce bytes while legacy GET and formal requests ret
  const dir=await mkdtemp(join(tmpdir(),'pages-http-'));t.after(()=>rm(dir,{recursive:true,force:true}));const agentId=randomUUID(),qid=randomUUID(),workId=randomUUID();
  const runs=Array.from({length:235},(_,i)=>({id:randomUUID(),agentId,humanRequestId:qid,workId,requestId:randomUUID(),state:'completed',createdAt:new Date(1700000000000+i*1000).toISOString(),instruction:'question '+i,output:'reply '+i+' body'.repeat(1000)}));
  const q={id:qid,status:'completed',revision:0,works:[{id:workId,agentId,currentRunId:runs.at(-1).id,runIds:runs.map(r=>r.id)}],inbox:[],ticket:{state:'consumed'}};
- await writeFile(join(dir,'direct.json'),JSON.stringify({version:1,workshops:[],projects:[],agents:[{id:agentId,name:'test',state:'terminated',connection:{connectionType:'local'}}],runs,requests:[q]}));
+ const data=fixtureModels({version:1,workshops:[],projects:[],agents:[{id:agentId,name:'test',state:'terminated',connection:{connectionType:'local'}}],runs,requests:[q]});
+ q.requestGraph.nodes[0].inbox=['program','program','program','agent','human'].map((actor,i)=>({id:'notice'+i,kind:'supplement',source:{actor},text:'notice body '+i,createdAt:'2010-01-01T00:00:00.000Z',attempts:[]}));
+ await writeFile(join(dir,'direct.json'),JSON.stringify(data));
  const bin=join(dir,'pmux');await writeFile(bin,'#!/bin/sh\nexit 1\n',{mode:0o700});const socket=createServer();socket.listen(0,'127.0.0.1');await once(socket,'listening');const port=socket.address().port;await new Promise(r=>socket.close(r));
  const child=spawn(process.execPath,['scripts/dev.mjs','--port',String(port)],{env:{...process.env,HOME:dir,VILLAGE_STATE_DIR:dir,VILLAGE_PMUX_BIN:bin,VILLAGE_NOTIFICATIONS:'false',VILLAGE_AUTH_FILE:'',VILLAGE_PUBLIC_ORIGIN:'',VILLAGE_VPN_ADDRESS:'',CODEX_HOME:dir},stdio:['ignore','pipe','pipe']});t.after(async()=>{if(child.exitCode===null){const done=once(child,'exit');child.kill();await done;}});
  await new Promise((ok,no)=>{const timer=setTimeout(()=>no(Error('timeout')),10000);child.once('exit',()=>{clearTimeout(timer);no(Error('exit'));});child.stdout.on('data',b=>{if(b.toString().includes('AI村 →')){clearTimeout(timer);ok();}});});
@@ -23,6 +26,9 @@ test('workspace HTTP pages reduce bytes while legacy GET and formal requests ret
  const focused=JSON.parse(await get('?view=workspace&focus='+encodeURIComponent(JSON.stringify([agentId]))));assert.equal(focused.conversations[agentId].entries.length,100);
  const invalidFocus=await fetch(url+'?view=workspace&focus='+encodeURIComponent('{}'));assert.equal(invalidFocus.status,400);
  const cursor=s.conversations[agentId].cursor,older=JSON.parse(await get('/agents/'+agentId+'/history?before='+encodeURIComponent(cursor)));assert.equal(older.entries.length,100);assert.equal(older.entries.at(-1).id,runs[134].id);
+ const oldest=JSON.parse(await get('/agents/'+agentId+'/history?before='+encodeURIComponent(older.cursor)));
+ const notices=oldest.entries.filter(e=>e.inputReceipt);assert.deepEqual(notices.map(e=>e.inputSource.actor),['program','program','program','agent','human']);assert.equal(notices[0].instruction,'notice body 0');
+ const expanded=JSON.parse(await get('?view=workspace&ranges='+encodeURIComponent(JSON.stringify({[agentId]:oldest.cursor}))));assert.equal(expanded.conversations[agentId].entries.filter(e=>e.inputReceipt).length,5);
  const bad=await fetch(url+'/agents/'+agentId+'/history?before=bad');assert.equal(bad.status,400);
  const formal=await fetch(url+'/requests/get',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({humanRequestId:qid})});const raw=await formal.json();assert.equal(raw.runs.length,235);assert.equal(raw.runs[0].output,runs[0].output);
 });
