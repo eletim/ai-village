@@ -1,3 +1,4 @@
+import {fireSelfResume} from './request-self-resume.mjs';
 import {transitionReporting} from './state/auxiliary.ts';
 import {randomUUID} from 'node:crypto';
 import {applyGraph} from './unified-requests.mjs';
@@ -50,8 +51,10 @@ export class RequestReports {
  }));}
  pending(requests=this.flow.requests){return requests.filter(q=>!q.integrity).flatMap(q=>q.requestGraph.nodes.flatMap(w=>{
   const s=w.metadata.reporting;
-  if(!s||w.planned||w.state.kind!=='active')return [];
-  return ['report','completion'].flatMap(kind=>s[kind+'At']&&!s.expired?.[kind]&&!(kind==='report'&&s.reportReceivedAt)?[{q,w,kind,at:Date.parse(s[kind+'At']),version:s.version}]:[]);
+  if(w.planned||w.state.kind!=='active')return [];
+  const reservation=w.selfResume,extra=reservation?.current?.status==='scheduled'?[{q,w,kind:'resume',at:Date.parse(reservation.current.at),version:reservation.version}]:[];
+  if(!s)return extra;
+  return extra.concat(['report','completion'].flatMap(kind=>s[kind+'At']&&!s.expired?.[kind]&&!(kind==='report'&&s.reportReceivedAt)?[{q,w,kind,at:Date.parse(s[kind+'At']),version:s.version}]:[]));
  }));}
  schedule(changedIds){
   if(!this.enabled)return;
@@ -75,6 +78,7 @@ export class RequestReports {
   for(const id of ids)try{await f.d.units.run(id,()=>f.d.locked('request-graph',()=>f.d.persist(async()=>{
    const q=f.root(id),due=this.pending([q]).filter(e=>e.at<=this.clock());if(!due.length)return;
    for(const {w,kind,version} of due){
+    if(kind==='resume'){fireSelfResume(f,q,w,version);q.revision++;continue;}
     const s=w.metadata.reporting,event={id:randomUUID(),kind:'deadline-exceeded',deadlineKind:kind,workId:w.id,version,at:new Date(this.clock()).toISOString(),deadline:s[kind+'At']};
     w.metadata.reporting=transitionReporting(s,{type:'expire',kind,version,now:this.clock(),event});q.revision++;
     if(w.parentId)notify(f,q,f.work(q,w.parentId),event);
