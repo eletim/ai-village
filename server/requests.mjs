@@ -1,3 +1,4 @@
+import {selfResume} from './request-self-resume.mjs';
 import {reportInputs} from './report-inputs.mjs';
 import {transitionRecovery,transitionDelivery,transitionReportDelivery} from './state/auxiliary.ts';
 import {RequestReports,initialDeadlines,deadline} from './request-reports.mjs';
@@ -23,7 +24,7 @@ const instruction=text=>{if(typeof text!=='string'||!text.trim()||text.length>16
 const runKey=(root,op)=>'flow-'+createHash('sha256').update(root+':'+op).digest('hex');
 export class RequestFlow {
  constructor(direct){this.d=direct;this.protocol=1;this.dispatching=new Map();this.reporting=new RequestReports(this);
-  for(const name of ['report','deadline','humanDeadline','plan','launch','assignPlan','discard','humanCompose','amend','supplement','delegate','respond','finish','complete','continue','continueChild','cancelQueued','cancel']){
+  for(const name of ['selfResume','report','deadline','humanDeadline','plan','launch','assignPlan','discard','humanCompose','amend','supplement','delegate','respond','finish','complete','continue','continueChild','cancelQueued','cancel']){
    const command=this[name].bind(this);
    this[name]=(x,...args)=>this.d.units.run(x.humanRequestId,()=>command(x,...args));
   }
@@ -138,6 +139,7 @@ export class RequestFlow {
   try{await this.d.attemptRun(r);}catch(error){if(!error.persistenceFailure)throw error;}
   return r;
  }
+ selfResume(x){return selfResume(this,x);}
  report(x){return this.reporting.report(x);}
  deadline(x){return this.reporting.change(x);}
  humanDeadline(x){return this.reporting.change(x,'human');}
@@ -308,6 +310,15 @@ export class RequestFlow {
  async settleChanges(requests=this.requests){
   let changed=false;
   for(const q of requests){
+   if(!q.integrity)for(const r of this.d.data.runs.filter(r=>r.humanRequestId===q.id&&r.origin==='inbox'&&r.runModel.state.kind==='queued')){
+    const w=this.work(q,r.workId),ids=new Set(w.selfResume?.history.map(e=>e.reservation.id)||[]);
+    if(!r.inboxBatch?.some(id=>ids.has(id)))continue;
+    if(['completed','withdrawn'].includes(w.state.kind)||r.inboxBatch.every(id=>w.inbox.find(i=>i.id===id)?.retiredBy)){
+     changeRun(r,{type:'cancel-inbox-reservation',actor:'program'});r.queueCancelledAt=now();r.error='self-resume-input-retired';
+     if(w.currentRunId===r.id&&w.state.kind==='active')w.currentRunId=r.runModel.retryOf;
+     changed=true;
+    }
+   }
    if(q.integrity||requestStatus(q)!=='active'&&(requestStatus(q)!=='completed'||q.completedAt))continue;
    const before=JSON.stringify(q);
    for(const w of q.requestGraph.nodes)if(w.inbox?.some(i=>i.result&&('decision' in i.result||!i.result.outcome))){const inputs=this.inputs(q.id,w.id);for(const i of w.inbox)if(i.result)i.result=inputs.find(x=>x.id===i.id).result;}
