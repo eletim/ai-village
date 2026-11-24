@@ -1,3 +1,4 @@
+import {isProjectLeader,leaderMarker} from './leader-marker.js';
 import {modelFields} from './model-usage.js';
 import {registeredRole} from './status-icon.js';
 import {reportHTML} from './report-content.js';
@@ -6,6 +7,7 @@ import {updateReportHTML} from './report-visuals.js';
 export function agentProfileViewer({onMigration}={}){
  const dialog=document.createElement('dialog');dialog.id='agent-profile-dialog';dialog.setAttribute('aria-labelledby','agent-profile-title');
  dialog.innerHTML='<header><h2 id="agent-profile-title">Agentのプロフィール</h2><button type="button" data-close aria-label="プロフィールを閉じる">閉じる</button></header><dl class="profile-fields"></dl><dl class="profile-fields" data-model-fields></dl><section class="profile-guide"><h3>秘書の方針</h3><p data-project></p><p>このProjectの秘書用の方針です。他Project・工房Agent・報告専用工程には適用しません。</p><button type="button" data-reload>再読込</button><button type="button" data-guide-edit hidden>編集</button><div data-editor hidden><label>秘書方針の本文<textarea data-policy maxlength="20000" rows="14"></textarea></label><button type="button" data-save>保存</button><button type="button" data-cancel>編集を取り消す</button></div><p role="status" aria-live="polite"></p><div class="guide-body" tabindex="0" aria-label="方針の本文"></div></section>';
+ const leader=document.createElement('p');leader.className='profile-leader';dialog.querySelector('header').after(leader);
  const migration=document.createElement('button');migration.type='button';migration.textContent='セッションの切替';migration.onclick=()=>onMigration?.(selectedId);dialog.querySelector('header').after(migration);
  document.body.append(dialog);
  const status=dialog.querySelector('[role=status]'),body=dialog.querySelector('.guide-body');let selectedId,current,secretary=false,serial=0,controller,guide;
@@ -45,8 +47,9 @@ export function agentProfileViewer({onMigration}={}){
  };
  dialog.querySelector('[data-close]').onclick=()=>dialog.close();dialog.querySelector('[data-reload]').onclick=load;
  dialog.addEventListener('close',()=>{invalidate();updateReportHTML(body,'');});
- function update(agent){
+ function update(agent,projects=[current].filter(Boolean)){
   if(!dialog.open||agent.id!==selectedId)return;
+  leader.innerHTML=leaderMarker(isProjectLeader(agent,projects));
   const host=dialog.querySelector('[data-model-fields]');if(!host)return;
   const fields=modelFields(agent),key=JSON.stringify(fields);if(host.dataset.fields===key)return;host.dataset.fields=key;
   host.replaceChildren();for(const [label,value] of fields){const dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=label;dd.textContent=value;host.append(dt,dd);}

@@ -1,3 +1,4 @@
+import {leaderMarker} from './leader-marker.js';
 import {subscribeChanges} from './change-stream.js';
 import {compactStatus,connectionStatus} from './compact-status.js';
 import {villageModel,reconcileSelection,workspaceLink} from './village-model.js';
@@ -11,12 +12,12 @@ let snapshot={},online=false,hasSnapshot=false,model=villageModel({},false),sele
 function readHash(){try{const hash=decodeURIComponent(location.hash.slice(1));selection=hash.startsWith('resident-')?{resident:hash.slice(9),place:null}:hash.startsWith('place-')?{place:hash.slice(6),resident:null}:{place:null,resident:null};}catch{selection={place:null,resident:null};}}
 readHash();
 function stateLabel(r){return r.label+(r.attention?' · 要確認':'');}
-function residentButton(r){return `<button class="villager" data-resident="${esc(r.id)}" data-status="${esc(r.status)}" data-attention="${r.attention}" aria-pressed="${selection.resident===r.id}" title="${esc([r.name,r.role,r.project,stateLabel(r)].join(' · '))}"><span class="villager-portrait" aria-hidden="true"><i></i></span><span><b>${esc(r.name)}</b><small>${compactStatus(stateLabel(r),!r.attention)}</small></span></button>`;}
+function residentButton(r){return `<button class="villager" data-resident="${esc(r.id)}" data-status="${esc(r.status)}" data-attention="${r.attention}" aria-pressed="${selection.resident===r.id}" title="${esc([r.name,r.role,r.project,stateLabel(r)].join(' · '))}"><span class="villager-portrait" aria-hidden="true"><i></i></span><span><b>${esc(r.name)}</b>${leaderMarker(r.leader)}<small>${compactStatus(stateLabel(r),!r.attention)}</small></span></button>`;}
 function totals(c){return `${c.total}人 · 作業中 ${c.busy} · 要確認 ${c.attention} · 不明/接続不可 ${c.unknown}`;}
 function replace(selector,html){const el=$(selector);if(el.innerHTML!==html)el.innerHTML=html;}
 function render(){
  model=villageModel(snapshot,online);if(hasSnapshot)selection=reconcileSelection(model,selection);
- const key=JSON.stringify([model.places.map(p=>[p.id,p.name,p.workshop?.iconPattern,p.residents.map(r=>[r.id,r.name,r.role,r.project,r.status,r.attention])]),model.suspendedProjects.map(p=>[p.id,p.name,p.residents.map(r=>[r.id,r.status,r.attention,snapshot.reviews?.[r.id]?.unreviewed])]),selection,online]);
+ const key=JSON.stringify([model.places.map(p=>[p.id,p.name,p.workshop?.iconPattern,p.residents.map(r=>[r.id,r.name,r.role,r.project,r.status,r.attention,r.leader])]),model.suspendedProjects.map(p=>[p.id,p.name,p.residents.map(r=>[r.id,r.status,r.attention,snapshot.reviews?.[r.id]?.unreviewed])]),selection,online]);
  if(key===signature)return;signature=key;
  const focusArea=document.activeElement?.closest('.village-notice')?'.village-notice':'#village-lots';
  const focused=document.activeElement?.closest('[data-resident],[data-place],[data-paused-project]'),focusKey=focused?.dataset.resident?['resident',focused.dataset.resident]:focused?.dataset.place?['place',focused.dataset.place]:focused?.dataset.pausedProject?['paused-project',focused.dataset.pausedProject]:null;
@@ -31,7 +32,7 @@ function render(){
  const place=model.places.find(p=>p.id===selection.place);
  replace('#place-detail',place?`<p class="eyebrow">選択した場所</p><h2>${esc(place.name)}</h2><p>${totals(place.count)}</p><div class="notice-residents">${place.residents.map(residentButton).join('')||'<p>ここにはAgentが配置されていません。</p>'}</div>`:'<p class="eyebrow">村の歩き方</p><h2>どの工房を訪ねますか？</h2><p>建物の看板で場所を、住人で詳細を選べます。村長の家には登録された秘書が集まります。</p>');
  const resident=model.residents.find(r=>r.id===selection.resident);
- replace('#resident-detail',resident?`<p class="eyebrow">選択した住人</p><h2>${esc(resident.name)}</h2><dl class="resident-profile"><dt>役割</dt><dd>${esc(resident.role)}</dd><dt>場所</dt><dd>${esc(place.name)}</dd><dt>Project</dt><dd>${esc(resident.project)}</dd><dt>状態</dt><dd>${esc(stateLabel(resident))}</dd></dl><a class="workspace-door" href="${esc(workspaceLink(resident.id))}">このAgentと話す ↗<small>Agent Workspaceを開く</small></a>`:'');
+ replace('#resident-detail',resident?`<p class="eyebrow">選択した住人</p><h2>${esc(resident.name)}</h2>${leaderMarker(resident.leader)}<dl class="resident-profile"><dt>役割</dt><dd>${esc(resident.role)}</dd><dt>場所</dt><dd>${esc(place.name)}</dd><dt>Project</dt><dd>${esc(resident.project)}</dd><dt>状態</dt><dd>${esc(stateLabel(resident))}</dd></dl><a class="workspace-door" href="${esc(workspaceLink(resident.id))}">このAgentと話す ↗<small>Agent Workspaceを開く</small></a>`:'');
  if(focusKey)document.querySelector(`${focusArea} [data-${focusKey[0]}="${CSS.escape(focusKey[1])}"]`)?.focus({preventScroll:true});
 }
 function choose(next){selection=next;history.replaceState(null,'',next.resident?'#resident-'+encodeURIComponent(next.resident):next.place?'#place-'+encodeURIComponent(next.place):location.pathname);render();if(matchMedia('(max-width: 850px)').matches){$(next.resident?'#resident-detail':next.place?'#place-detail':'.terrain').scrollIntoView({block:'start',behavior:'auto'});}}

@@ -1,3 +1,4 @@
+import {isProjectLeader} from './leader-marker.js';
 import {orderedAgents,isSuspended,orderedProjects} from './board-state.js';
 import {registeredRole} from './status-icon.js';
 import {visualState,agentEntries} from './completions.js';
@@ -10,7 +11,7 @@ export function villageModel(snapshot={},online=true){
   let status=!online||['unknown','disconnected'].includes(a.connectionState)||['unknown','unavailable'].includes(a.lifecycle)?'unknown':a.state;
   if(status==='idle'){const entries=agentEntries({runs:snapshot.runs||[]},a),latest=(a.nativeTurns||[]).filter(t=>!a.observedSessionId||t.sessionId===a.observedSessionId).at(-1)||entries.at(-1);status=['failed','interrupted'].includes(latest?.state)?latest.state:visualState(a,entries);}
   const attention=snapshot.reviews?.[a.id]?.attention===true;
-  const r={id:a.id,name:a.name||'名前未登録',role:({secretary:'秘書',worker:'工房Agent',unknown:'役割不明'})[registeredRole(a)],placeId:place?.id||'unassigned',project:projects.find(p=>p.id===a.projectId)?.name||(a.projectId?'Project未確認':'Project未所属'),status:labels[status]?status:'unknown',label:labels[status]||'状態不明',attention,source:a};
+  const r={leader:isProjectLeader(a,projects),id:a.id,name:a.name||'名前未登録',role:({secretary:'秘書',worker:'工房Agent',unknown:'役割不明'})[registeredRole(a)],placeId:place?.id||'unassigned',project:projects.find(p=>p.id===a.projectId)?.name||(a.projectId?'Project未確認':'Project未所属'),status:labels[status]?status:'unknown',label:labels[status]||'状態不明',attention,source:a};
   if(!place&&!places.some(p=>p.id==='unassigned'))places.push({id:'unassigned',name:'所属確認の広場',kind:'unknown',residents:[]});
   places.find(p=>p.id===r.placeId).residents.push(r);return r;
  });

@@ -1,0 +1,7 @@
+/* Shape and text carry the meaning; colour is not the identifier. */
+.leader-marker{display:inline-flex;align-items:center;gap:3px;font-size:11px;font-weight:600;line-height:1.5;border:1px solid currentColor;border-radius:4px;padding:1px 5px;max-width:100%;vertical-align:middle;color:inherit;white-space:normal}
+.leader-marker svg{width:16px;height:16px;flex:none}
+.leader-marker>span{overflow-wrap:anywhere}
+.panel-info:has(.leader-marker){flex-wrap:wrap}
+.profile-leader:empty{display:none}
+.villager .leader-marker{margin-top:3px;font-size:10px}
