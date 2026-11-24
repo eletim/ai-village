@@ -1,3 +1,4 @@
+import {isProjectLeader,leaderMarker} from './leader-marker.js';
 import {subscribeChanges} from './change-stream.js';
 import {bindRequestComposition} from './request-composition.js';
 import {bindSidebarOrder} from './sidebar-order.js';
@@ -195,7 +196,7 @@ function renderBoard(){
  $('#previous-page').disabled=selectedPage===0;$('#next-page').disabled=selectedPage===pageCount-1;
  for(const [id,card] of cards)if(!live().some(a=>a.id===id)){card.autogrow?.destroy();scrolls.get(id)?.destroy();scrolls.delete(id);fileEditors.get(id)?.destroy();fileEditors.delete(id);card.remove();cards.delete(id);travelDrafts.delete(id);travelEditors.delete(id);positions.delete(id);drafts.delete(id);pending.delete(id);outbox.delete(id);draftVersions.delete(id);storeDrafts();}
  for(const a of live()){
-  profileViewer.update(a);
+  profileViewer.update(a,state.projects||[]);
   let card=cards.get(a.id);
   if(!card){card=document.createElement('article');card.className='agent-panel';card.id='agent-'+a.id;card.setAttribute('aria-labelledby','heading-'+a.id);card.tabIndex=0;card.hidden=true;
    card.innerHTML=`<div class="panel-heading"><span class="dot"></span><h2></h2><span class="request-attention"></span><span class="unread-badge"></span><button data-zoom="${esc(a.id)}" title="このAgentを拡大" aria-label="このAgentを拡大">⤢</button><button data-manage-agent="${esc(a.id)}" title="Agentの操作" aria-label="Agentの操作">…</button></div><div class="panel-info"></div><p class="current-action"></p><div class="agent-recovery-host"></div><div class="runs" tabindex="0" aria-label="会話履歴"></div><form data-send="${esc(a.id)}"><select name="requestTarget" aria-label="依頼・補足先" hidden><option value="">新しい依頼</option></select><textarea name="instruction" aria-label="このAgentに直接指示" placeholder="" maxlength="16000" rows="1"></textarea><button type="submit">送信</button><button type="button" data-reconcile="${esc(a.id)}" hidden>送信結果を確認</button><div class="travel-slot"></div></form>`;
@@ -223,7 +224,7 @@ function renderBoard(){
   if(!name){name=document.createElement('button');name.type='button';name.className='agent-name';name.dataset.profileAgent=a.id;heading.replaceChildren(name);}
   name.textContent=a.name||'名前未登録';name.setAttribute('aria-label',name.textContent+'のプロフィール');name.setAttribute('aria-haspopup','dialog');
   heading.title='名前を押すとプロフィールを表示します';
-  card.querySelector('.panel-info').innerHTML=`<span class="badge">${compactStatus(labels[visualState(a,agentEntries(state,a))]||a.state,!state.reviews?.[a.id]?.attention)}</span><span class="location-name">${esc(placeName(a))}</span>${(state.projects||[]).some(p=>p.leaderAgentId===a.id)?'<span class="badge">Projectリーダー</span>':''}${a.location==='mayor'&&a.projectId?'<span class="badge">仕事のリーダー: '+esc(state.agents.find(l=>l.id===state.projects.find(p=>p.id===a.projectId)?.leaderAgentId)?.name||'未設定')+'</span>':''}${a.terminalUrl?`<a href="${esc(a.terminalUrl)}" target="_blank" rel="noopener" title="PurpleMuxでタブを開く">PurpleMux ↗</a>`:''}`;
+  card.querySelector('.panel-info').innerHTML=`<span class="badge">${compactStatus(labels[visualState(a,agentEntries(state,a))]||a.state,!state.reviews?.[a.id]?.attention)}</span><span class="location-name">${esc(placeName(a))}</span>${leaderMarker(isProjectLeader(a,state.projects||[]))}${a.location==='mayor'&&a.projectId?'<span class="badge">仕事のリーダー: '+esc(state.agents.find(l=>l.id===state.projects.find(p=>p.id===a.projectId)?.leaderAgentId)?.name||'未設定')+'</span>':''}${a.terminalUrl?`<a href="${esc(a.terminalUrl)}" target="_blank" rel="noopener" title="PurpleMuxでタブを開く">PurpleMux ↗</a>`:''}`;
   card.querySelector('.current-action').textContent=[['busy','waiting_input'].includes(a.state)?a.currentAction:null,a.error,a.canSend?null:a.sendReason].filter(Boolean).join(' · ');
   const receipt=pending.get(a.id),known=receipt&&matchingRun(state,a.id,receipt.requestId);
   if(known){
@@ -272,7 +273,7 @@ function placeTitle(id){if(isProject(id))return (state.projects||[]).find(p=>p.i
 function groupTitle(id,page){return placeTitle(id)+(id!=='all'&&page>0?` (${page+1})`:'');}
 function agentMarker(a,sidebar=true){
  const stateName=visualState(a,agentEntries(state,a));
- return statusIcon(a,{mode:displayPreferences().iconMode,workshops:state.workshops,state:stateName,stateLabel:labels[stateName]||stateName,attention:!!state.reviews?.[a.id]?.attention,unread:!!unread.get(a.id),sidebar});
+ return statusIcon(a,{projects:state.projects||[],mode:displayPreferences().iconMode,workshops:state.workshops,state:stateName,stateLabel:labels[stateName]||stateName,attention:!!state.reviews?.[a.id]?.attention,unread:!!unread.get(a.id),sidebar});
 }
 function agentDot(a){return agentMarker(a);}
 function renderPlaces(){
