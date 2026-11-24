@@ -27,6 +27,10 @@ export function validateGraph(data,q){
   if(n.state.kind==='submitted'&&(!n.recipient&&!n.parentId||n.state.resultId!==latest(n)?.id||latest(n)?.outcome!=='normal'))throw Error('Invalid submitted result');
   if(n.replacementId){const replacement=node(g,n.replacementId);if(!replacement||replacement.parentId!==n.parentId)throw Error('Invalid replacement');const visited=new Set([n.id]);let next=n;while(next.replacementId){if(visited.has(next.replacementId))throw Error('Replacement cycle');visited.add(next.replacementId);next=node(g,next.replacementId);if(!next)throw Error('Missing replacement');}}
   const seen=new Set([n.id]);let p=n;while(p.parentId){if(seen.has(p.parentId)||!node(g,p.parentId))throw Error('Request parent cycle/missing');seen.add(p.parentId);p=node(g,p.parentId);}
+  for(const i of (n.inbox||[]).filter(i=>i.procedure)){
+   const p=i.procedure,m=p.missing,r=data.runs.find(r=>r.id===p.targetRunId&&r.workId===n.id&&r.humanRequestId===q.id)?.runModel;
+   if(i.source?.actor!=='program'||!r||r.phase!=='work'||r.state.kind!=='ended'||r.state.outcome!=='normal'||!r.facts.some(f=>f.type==='input')||!m||!Array.isArray(m.inputs)||m.inputs.some(id=>!n.inbox.some(x=>x.id===id&&!x.procedure))||!Array.isArray(m.results)||typeof m.finish!=='boolean'||p.key!==JSON.stringify(m))throw Error('Invalid procedure guidance');
+  }
   if(n.selfResume){
    const s=n.selfResume,c=s.current;
    const valid=r=>r&&typeof r.id==='string'&&Number.isFinite(Date.parse(r.at))&&typeof r.text==='string'&&r.text.length>0&&r.text.length<=4000&&n.runIds.includes(r.actorRunId)&&['scheduled','delivered','cancelled','consumed'].includes(r.status);

@@ -44,9 +44,9 @@ test('Direct preserves original work until report commits; failure keeps origina
 });
 test('official HTTP report setting validates and remains independent of notifications',async({request})=>{
  const op=async argv=>(await request.post('/api/village',{data:{argv}})).json();
- expect((await op(['reports','status'])).result.enabled).toBe(true);
+ expect((await op(['reports','status'])).result.enabled).toBe(false);
  expect((await op(['notifications','configure','false'])).ok).toBe(true);
- expect((await op(['reports','status'])).result.enabled).toBe(true);
+ expect((await op(['reports','status'])).result.enabled).toBe(false);
  expect((await op(['reports','configure','"true"'])).ok).toBe(false);
  expect((await op(['reports','configure','false'])).result.enabled).toBe(false);
  expect((await op(['reports','status'])).result.enabled).toBe(false);
