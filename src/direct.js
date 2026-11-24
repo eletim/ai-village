@@ -25,7 +25,7 @@ import {autogrowInput} from './autogrow-input.js';
 import {linkedText} from './linked-text.js';
 import {attachmentComposer,attachmentHTML} from './attachments.js';
 import {chatScroll} from './chat-scroll.js';
-import {isHumanInput,exchangeLabel,chatBodyHTML} from './run-groups.js';
+import {isHumanInput,isVisibleAnswer,exchangeLabel,chatBodyHTML} from './run-groups.js';
 import {travelComposer} from './travel-composer.js';
 import {travelSummary,sameTravelContexts} from './travel-context.js';
 import {PAGE_SIZE,isSuspended,placeOf,orderedAgents,orderedProjectAgents,orderedProjects,boardLayout} from './board-state.js';
@@ -141,7 +141,7 @@ function entryHTML(a,r,divider){
  const input=human&&!r.suppressUser?bubble('user',r.instruction,r.createdAt,travelSummary(r.travelContexts)+attachmentHTML(r.attachments)):
   '<div class="message internal">'+chatBodyHTML(r,'input',inputBody,true,exchangeLabel(r,state))+timeHTML(r.createdAt)+'</div>';
  // Legacy completed replies have no finalOutput/origin metadata; retain their human-facing answer.
- const showAnswer=published||(human&&!r.hiddenCompletion&&!r.collapsedHistory&&(r.finalOutput||(r.origin==null&&r.state==='completed')));
+ const showAnswer=published||isVisibleAnswer(r);
  const response=r.output||r.finalOutput?'<div class="message assistant">'+chatBodyHTML(r,'output',responseHTML({...r,collapsedHistory:false},{finalLabel}),!showAnswer,r.finalOutput?finalLabel:'途中経過')+timeHTML(r.completedAt)+'</div>':'';
  const normal=!r.error&&!r.errorCode&&!r.attachmentError&&!r.needsReview&&!requestRootState(state.requests?.find(q=>q.id===r.humanRequestId))?.review?.length;
  return `${divider(r.createdAt||r.completedAt)}<div class="run" data-entry="${esc(JSON.stringify([r.external?'native':'run',r.external?(r.sessionId||r.agentSessionId||''):'',r.id]))}">${input}${response}<p class="run-status">${compactStatusPair(r.queueCancelledAt?'送信取消済み':r.reportStatus||labels[r.state]||r.state,r.humanRequestId?({active:'依頼継続中',finalizing:'最終報告の完了待ち',completed:'依頼全体完了',cancelled:'依頼キャンセル'})[state.requests?.find(q=>q.id===r.humanRequestId)?.status]||'依頼照合中':'達成状況: 未判定',normal,r.external?'PurpleMuxからの入力 · ':r.origin==='result'?'子作業結果の配送 · ':r.origin==='steering'?'実行中への補足 · ':'')} ${esc(r.errorCode||'')} ${esc(r.attachmentError||r.error||'')} ${r.notification?' · 通知: '+esc(r.notification.status)+(r.notification.reason?' / '+esc(r.notification.reason):''):''}</p>${canCancelQueued(r)?`<button type="button" data-cancel-queued="${esc(r.id)}" data-queue-agent="${esc(a.id)}">送信待ちを取り消す</button>`:''}${waiting?`<p class="request-waiting">${esc(waiting)}</p>`:''}${r.queueCancelledAt?'':recoveryHTML(r)}</div>`;

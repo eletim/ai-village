@@ -8,9 +8,9 @@ export function registeredRole(agent){
  return role||location||'unknown';
 }
 export const workshopPattern=defaultWorkshopPattern;
-export function roleSVG(agent,workshops=[]){
+export function roleSVG(agent,workshops=[],leader=false){
  const role=registeredRole(agent);
- const shape=role==='secretary'?'<circle cx="8" cy="5" r="3"/><path d="M2 17v-3a6 6 0 0 1 12 0v3z"/><rect x="13" y="9" width="6" height="9" rx="1"/><path d="M15 12h2m-2 3h2"/>':role==='worker'?'<path d="M1 18V8l6-4v4l6-4v4h6v10zM15 8V2h3v6"/>':'<path d="m10 1 9 9-9 9-9-9zM8 7a2 2 0 1 1 3 2c-1 0-1 1-1 2m0 3v1"/>';
+ const shape=leader&&role==='worker'?'<path d="M1 18V9l6-4v4l6-4v4h6v9z"/><path d="M12 9V1"/><path class="leader-icon-flag" d="M12 1h7l-2 2 2 2h-7z" fill="currentColor" stroke-width=".7"/>':role==='secretary'?'<circle cx="8" cy="5" r="3"/><path d="M2 17v-3a6 6 0 0 1 12 0v3z"/><rect x="13" y="9" width="6" height="9" rx="1"/><path d="M15 12h2m-2 3h2"/>':role==='worker'?'<path d="M1 18V8l6-4v4l6-4v4h6v10zM15 8V2h3v6"/>':'<path d="m10 1 9 9-9 9-9-9zM8 7a2 2 0 1 1 3 2c-1 0-1 1-1 2m0 3v1"/>';
  const saved=workshops.find(w=>w.id===agent.workshopId)?.iconPattern;
  const pattern=validWorkshopPattern(saved)?saved:workshopPattern(agent.workshopId);
  const marks=role==='worker'?(pattern?pattern.map((cell,i)=>{
@@ -28,6 +28,6 @@ export function iconLabel(agent,workshops,state,attention=false,unread=false){
 export function statusIcon(agent,{mode='dots',workshops=[],state='',stateLabel=state,attention=false,unread=false,sidebar=false,projects=[]}={}){
  const leader=isProjectLeader(agent,projects);
  const label=escape(iconLabel(agent,workshops,stateLabel,attention,unread)+(leader?' · Projectリーダー（仕事の管理役）':''));
- const flag=leader?'<svg class="leader-icon-flag" viewBox="0 0 14 20" aria-hidden="true" focusable="false"><path d="M2 18V2m0 1h10l-2 4 2 4H2" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>':'';
- return `<span class="dot ${sidebar?'agent-dot':'header-status'}${mode==='roles'?' status-icon':''}${leader?' has-leader':''}" ${sidebar?`data-agent-dot="${escape(agent.id)}"`:''} data-state="${escape(state)}" data-unread="${!!unread}" data-attention="${!!attention}" role="img" title="${label}" aria-label="${label}">${mode==='roles'?roleSVG(agent,workshops):''}${flag}</span>`;
+
+ return `<span class="dot ${sidebar?'agent-dot':'header-status'}${mode==='roles'?' status-icon':''}${leader?' has-leader':''}" ${sidebar?`data-agent-dot="${escape(agent.id)}"`:''} data-state="${escape(state)}" data-unread="${!!unread}" data-attention="${!!attention}" role="img" title="${label}" aria-label="${label}">${mode==='roles'||leader?roleSVG(agent,workshops,leader):''}</span>`;
 }

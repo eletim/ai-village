@@ -1,3 +1,4 @@
+import {accepted,runState} from './run-lifecycle.mjs';
 import {projectState} from './state-projection.mjs';
 import {recoveryRequests} from '../src/run-recovery.js';
 // Human-facing projection only. requests get/results retain the immutable source.
@@ -26,7 +27,7 @@ export function humanProjection(data){
 
  }
  for(const r of view.runs){
-  if(r.conversationId){r.conversationStatus=r.conversationSource?.kind==='human'?'秘書との会話':'リーダーの資料への返答';if(r.conversationSource?.kind!=='human')r.suppressUser=true;r.reportStatus=r.conversationStatus;}
+  if(r.conversationId){r.conversationAnswer=accepted(r)&&runState(r)==='completed';r.conversationStatus=r.conversationSource?.kind==='human'?'秘書との会話':'リーダーの資料への返答';if(r.conversationSource?.kind!=='human')r.suppressUser=true;r.reportStatus=r.conversationStatus;}
   if(r.origin==='inbox')r.suppressUser=true;
   const q=protectedRequests.get(r.humanRequestId);if(!q)continue;
   if(q.status!=='completed'&&r.phase!=='report'){r.hiddenCompletion=true;continue;}
