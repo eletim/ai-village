@@ -21,7 +21,7 @@ test('conversation ends naturally, no graph/claims; one reply notification; surv
  await f.restart();await f.service.tick();assert.equal(f.service.data.runs.length,1);assert.ok(f.service.conversations.get(r.conversationId).runs[0].humanAnswer);
 });
 test('job idempotency, agent provenance, child review and exactly once return during live conversation',async t=>{
- const {f,r,args}=await setup(t);const receipt=await f.service.conversations.job(args);
+ const {f,r,args}=await setup(t);await f.service.conversations.display({conversationId:r.conversationId,actorRunId:r.id,operationId:randomUUID(),expectedVersion:0,mode:'progress'});const receipt=await f.service.conversations.job(args);
  assert.deepEqual(await f.service.conversations.job(args),receipt);
  await assert.rejects(f.service.conversations.job({...args,instruction:'different'}),/再利用/);
  const q=f.service.flow.root(receipt.humanRequestId),w=q.requestGraph.nodes[0];assert.equal(w.createdBy,'agent');assert.equal(w.recipient.kind,'conversation');assert.equal(w.inbox[0].source.actor,'agent');validateGraph(f.service.data,q);
@@ -33,7 +33,8 @@ test('job idempotency, agent provenance, child review and exactly once return du
  await f.complete(resumed);
  const c=f.service.conversations.record(r.conversationId);assert.equal(c.deliveries.length,1);assert.equal(w.state.kind,'completed');validateGraph(f.service.data,q);
  const delivery=f.service.flow.run(c.deliveries[0].runId);assert.equal(runState(delivery),'queued');assert.equal(runState(r),'running');assert.equal(f.notifications.length,0);
- await f.complete(r);await f.submit(delivery);await f.complete(delivery);await f.restart();await f.service.tick();
+ await f.complete(r);assert.equal(f.notifications.length,0);assert.equal(c.deliveries[0].material.output,'Output '+resumed.id);await f.submit(delivery);await f.complete(delivery);await f.restart();await f.service.tick();
+ assert.equal(f.notifications.length,1);assert.equal(f.notifications[0].content,'秘書からの返答\nFinal '+delivery.id);assert.equal(f.service.conversations.get(c.id).runs.find(r=>r.id===delivery.id).humanAnswer,'Final '+delivery.id);
  assert.equal(f.service.conversations.record(c.id).deliveries.length,1);assert.equal(f.sent.filter(s=>s.text.includes(delivery.id)).length,1);
 });
 test('reject unreceived/foreign actors, missing leader, and invented authorization',async t=>{

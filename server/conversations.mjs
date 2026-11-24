@@ -1,3 +1,4 @@
+import {responseText} from '../src/response-text.js';
 import {transitionDelivery} from './state/auxiliary.ts';
 import {randomUUID} from 'node:crypto';
 import {initializeRun,runState,accepted,changeRun} from './run-lifecycle.mjs';
@@ -20,6 +21,7 @@ export class Conversations {
    if(!c.id||ids.has(c.id)||!Number.isSafeInteger(c.sequence)||!Array.isArray(c.operations)||!Array.isArray(c.deliveries))throw Error('Invalid conversation record');ids.add(c.id);
    const runs=this.d.data.runs.filter(r=>r.conversationId===c.id),sequences=new Set(runs.map(r=>r.conversationSequence));
    if(sequences.size!==runs.length||runs.some(r=>r.agentId!==c.agentId||r.humanRequestId||r.runModel.phase!=='conversation'||!Number.isSafeInteger(r.conversationSequence)||r.conversationSequence<1||r.conversationSequence>c.sequence||!['human','leader','program'].includes(r.conversationSource?.kind)||r.runModel.createdBy!==(r.conversationSource.kind==='human'?'human':'program')))throw Error('Invalid conversation run');
+   if(runs.some(r=>r.conversationDisplay&&(!['reply','progress'].includes(r.conversationDisplay.mode)||!Number.isSafeInteger(r.conversationDisplay.version)||r.conversationDisplay.version<1)))throw Error('Invalid conversation display');
    if(new Set(c.deliveries.map(e=>e.id)).size!==c.deliveries.length||c.deliveries.some(e=>!runs.some(r=>r.id===e.runId&&r.conversationSource.deliveryId===e.id)||!this.d.flow.requests.some(q=>q.id===e.humanRequestId&&q.conversationId===c.id)))throw Error('Invalid conversation delivery');
    if(new Set(c.operations.map(o=>o.id)).size!==c.operations.length)throw Error('Duplicate conversation operation');
   }
@@ -38,7 +40,7 @@ export class Conversations {
    // Status is available immediately; materials for a later turn are not injected here.
    return {id:q.id,status:full.status,instruction:q.instruction,leaderAgentId:rootNode(q).assignee,returnPending:c.deliveries.some(e=>e.humanRequestId===q.id&&!deliveries.includes(e)),availableDeliveries:deliveries.filter(e=>e.humanRequestId===q.id).map(e=>e.id),materials:'後続の正式配送ターンで確認してください'};
   });
-  return structuredClone({id:c.id,agentId:c.agentId,projectId:c.projectId,createdAt:c.createdAt,sequence:actor?.conversationSequence??c.sequence,operations:actor?c.operations.filter(o=>runs.some(r=>r.id===JSON.parse(o.payload).input.actorRunId)):c.operations,deliveries,runs:runs.map(r=>({...r,state:runState(r),humanAnswer:accepted(r)&&runState(r)==='completed'?(r.output||''):null})),jobs});
+  return structuredClone({id:c.id,agentId:c.agentId,projectId:c.projectId,createdAt:c.createdAt,sequence:actor?.conversationSequence??c.sequence,operations:actor?c.operations.filter(o=>runs.some(r=>r.id===JSON.parse(o.payload).input.actorRunId)):c.operations,deliveries,runs:runs.map(r=>({...r,state:runState(r),displayMode:r.conversationDisplay?.mode||'reply',displayVersion:r.conversationDisplay?.version||0,humanAnswer:accepted(r)&&runState(r)==='completed'&&r.conversationDisplay?.mode!=='progress'?responseText(r).answer:null,progressText:accepted(r)&&runState(r)==='completed'&&r.conversationDisplay?.mode==='progress'?responseText(r).answer:null})),jobs});
  }
  record(id){return this.d.data.conversations.find(c=>c.id===id)||fail('会話がありません',404);}
  enqueue(c,{requestId,instruction,source,attachments=[],travelContexts=[]}){
@@ -78,6 +80,22 @@ export class Conversations {
   const source=this.d.flow.run(authorization?.runId);
   if(!source||source.conversationId!==c.id||source.conversationSource?.kind!=='human'||source.conversationSequence>r.conversationSequence||!accepted(source)||typeof authorization?.quote!=='string'||!authorization.quote.trim()||!source.instruction.includes(authorization.quote))fail('配送された人間発言のrunIdと正確な引用が必要です',403);
   return {runId:source.id,quote:authorization.quote};
+ }
+ // Optional presentation preference, independent of work authorization and achievement.
+ async display(x){
+  key(x.operationId);
+  if(!['progress','reply'].includes(x.mode)||!Number.isSafeInteger(x.expectedVersion)||x.expectedVersion<0)fail('mode: progress|reply と expectedVersion（初回0）が必要です',400);
+  return this.d.locked('request-graph',()=>this.d.persist(async()=>{
+   const c=this.record(x.conversationId),payload=JSON.stringify({action:'display',input:x});
+   const old=c.operations.find(o=>o.id===x.operationId);
+   if(old){if(old.payload!==payload)fail('operationIdの再利用です');return structuredClone(old.receipt);}
+   const r=this.actor(c,x.actorRunId);
+   if((r.conversationDisplay?.version||0)!==x.expectedVersion)fail('表示指定のversionが変わりました。conversations getで確認してください');
+   r.conversationDisplay={mode:x.mode,version:x.expectedVersion+1,at:now(),operationId:x.operationId};
+   const receipt={conversationId:c.id,runId:r.id,...r.conversationDisplay};
+   c.operations.push({id:x.operationId,payload,receipt:structuredClone(receipt),at:now()});
+   await this.d.save();return structuredClone(receipt);
+  }));
  }
  async mutate(action,x){
   key(x.operationId);
@@ -147,12 +165,19 @@ export class Conversations {
   for(const r of this.d.data.runs.filter(r=>r.conversationId&&r.notificationPolicy==='conversation'&&accepted(r)&&runState(r)==='completed')){
    await this.d.locked('notify-conversation:'+r.id,async()=>{
     const claimed=await this.d.persist(async()=>{
+     if(r.notificationSuppressed)return false;
+     if(r.conversationDisplay?.mode==='progress'&&(!r.notification||r.notification.status==='pending')){
+      r.notificationSuppressed={reason:'explicit-conversation-progress',at:now(),displayVersion:r.conversationDisplay.version};
+      // A pending reservation has not attempted an external effect. Do not leave it pending forever.
+      if(r.notification?.status==='pending')delete r.notification;
+      await this.d.save();return false;
+     }
      if(!r.notification)r.notification=transitionDelivery(null,{type:'prepare',id:'conversation-answer:'+r.id});
      if(r.notification.status!=='pending')return false;
      r.notification=transitionDelivery(r.notification,{type:'claim',at:now()});await this.d.save();return true;
     });
     if(!claimed)return;
-    try{const result=await this.d.notifier.enqueue({id:'conversation-answer:'+r.id,role:'assistant',kind:'conversation',agentId:r.agentId,content:'秘書からの返答\n'+(r.output||'会話を村で確認してください。')});await this.d.persist(async()=>{r.notification=transitionDelivery(r.notification,{type:'result',result});await this.d.save();});}
+    try{const result=await this.d.notifier.enqueue({id:'conversation-answer:'+r.id,role:'assistant',kind:'conversation',agentId:r.agentId,content:'秘書からの返答\n'+(responseText(r).answer||'会話を村で確認してください。')});await this.d.persist(async()=>{r.notification=transitionDelivery(r.notification,{type:'result',result});await this.d.save();});}
     catch{await this.d.persist(async()=>{r.notification=transitionDelivery(r.notification,{type:'unknown',reason:'notification-outcome-unknown'});await this.d.save();});}
    });
   }

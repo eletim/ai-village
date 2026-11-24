@@ -1,0 +1,21 @@
+import {test,expect,notifySnapshot} from './helpers/change-events.js';
+import {conversationFixture} from '../helpers/conversation-answer-fixture.mjs';
+import {humanProjection} from '../../server/report-view.mjs';
+import {workspaceSnapshot,historyPage} from '../../server/conversation-pages.mjs';
+for(const width of [1440,390])test('progress closed, question and confirmed reply visible, history and redraw '+width,async({page},info)=>{
+ await page.setViewportSize({width,height:1000});const data=conversationFixture();data.agents[0].agentModel.observation.process='alive';
+ for(const i of [1,103])Object.assign(data.runs[i],{instruction:'内部の成果資料',output:'成果を確認しています。\n\n確認した成果を説明します。',finalOutput:'確認した成果を説明します。'});
+ Object.assign(data.runs[102],{output:'依頼しました。',finalOutput:'依頼しました。',conversationDisplay:{mode:'progress',version:1}});
+ Object.assign(data.runs[104],{output:'どちらを優先しますか？',finalOutput:'どちらを優先しますか？'});
+ const view=()=>humanProjection(data);
+ await page.route('**/api/**',r=>{const u=new URL(r.request().url());if(u.pathname.endsWith('/history'))return r.fulfill({json:historyPage(view(),'s',u.searchParams.get('before'))});if(u.pathname==='/api/direct')return r.fulfill({json:workspaceSnapshot(view(),JSON.parse(u.searchParams.get('ranges')||'{}'))});return r.fulfill({json:{providers:{}}});});
+ await page.goto('/agents');const row=id=>page.locator('[data-entry]').filter({has:page.locator(`[data-disclosure="chat:${id}:input"]`)}),current=row('r103'),progress=page.locator('[data-disclosure="response:r103:progress"]');
+ await expect(progress).not.toHaveAttribute('open','');await expect(current.getByText('成果を確認しています。',{exact:true})).toBeHidden();await expect(current.locator('.response-final')).toBeVisible();await expect(current.locator('.message.internal pre')).toBeHidden();await expect(page.getByText('依頼しました。',{exact:true})).toBeHidden();await expect(page.getByText('どちらを優先しますか？',{exact:true})).toBeVisible();
+ const shot=name=>page.screenshot({path:process.env.CONVERSATION_PROGRESS_EVIDENCE?`${process.env.CONVERSATION_PROGRESS_EVIDENCE}/${name}-${width}.png`:info.outputPath(`${name}-${width}.png`)});
+ await current.scrollIntoViewIfNeeded();await shot('accepted-conversation');
+ await progress.locator('summary').click();await expect(current.getByText('成果を確認しています。',{exact:true})).toBeVisible();
+ await current.locator('[data-disclosure="chat:r103:input"] > summary').click();await notifySnapshot(page);await expect(progress).toHaveAttribute('open','');await expect(current.locator('[data-disclosure="chat:r103:input"]')).toHaveAttribute('open','');
+ await progress.locator('summary').click();await notifySnapshot(page);await expect(progress).not.toHaveAttribute('open','');
+ await page.locator('[data-disclosure="chat:r102:output"] > summary').click();await expect(page.getByText('依頼しました。',{exact:true})).toBeVisible();await notifySnapshot(page);await expect(page.locator('[data-disclosure="chat:r102:output"]')).toHaveAttribute('open','');
+ await page.getByRole('button',{name:'古い会話を読み込む'}).click();await row('r1').scrollIntoViewIfNeeded();await expect(row('r1').getByText('成果を確認しています。',{exact:true})).toBeHidden();await expect(row('r1').locator('.response-final')).toBeVisible();await shot('accepted-history');
+});
