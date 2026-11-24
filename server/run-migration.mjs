@@ -22,7 +22,7 @@ export async function migrateRunStore(dir,data){
  if(data.runStateVersion===VERSION){
   for(const r of data.runs){
    const m=r.runModel,s=m?.state;
-   if(!m||m.id!==r.id||(!quarantinedRun(data,r)&&m.requestId!==(r.humanRequestId||''))||!s||!['queued','sent','running','ended','cancelled'].includes(s.kind)||!Array.isArray(m.facts)||!Array.isArray(m.decisions)||!Number.isInteger(m.retryBudget?.count)||m.retryBudget.count<0||
+   if(!m||m.id!==r.id||(!quarantinedRun(data,r)&&m.requestId!==(r.humanRequestId||(r.conversationId?r.requestId:'')))||!s||!['queued','sent','running','ended','cancelled'].includes(s.kind)||!Array.isArray(m.facts)||!Array.isArray(m.decisions)||!Number.isInteger(m.retryBudget?.count)||m.retryBudget.count<0||
     s.kind==='sent'&&(!Number.isFinite(s.sentAt)||(s.sessionId!==null&&typeof s.sessionId!=='string'))||
     s.kind==='running'&&(!s.sessionId||!s.turnId||!s.inputId)||
     s.kind==='ended'&&(!['normal','failed','interrupted','unconfirmed'].includes(s.outcome)||typeof s.reason!=='string'))throw Error('Invalid run model: '+r.id);

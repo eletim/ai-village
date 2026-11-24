@@ -1,12 +1,12 @@
 import {randomUUID} from 'node:crypto';
 import {agentActions} from './agent-rules.mjs';
-import {dependencies,resolved} from './state/requests.ts';
+import {dependencies,resolved,waitingForConversation} from './state/requests.ts';
 const pending=i=>!i.handledBy&&!i.retiredBy;
 const normal=r=>r?.runModel.state.kind==='ended'&&r.runModel.state.outcome==='normal'&&r.runModel.facts.some(f=>f.type==='input')&&!r.runModel.supersededBy;
 export function missingProcedure(q,w,r){
  const items=(w.inbox||[]).filter(i=>!i.procedure&&pending(i)&&i.attempts.includes(r?.id));
  const results=items.filter(i=>i.result).map(i=>({requestId:i.result.requestId,resultId:i.result.resultId,version:i.result.version}));
- const finish=!!dependencies(q.requestGraph,w).length&&resolved(q.requestGraph,w)&&!w.declarations.some(d=>d.runId===r?.id&&!d.invalidated);
+ const finish=!waitingForConversation(w,r?.runModel)&&!!dependencies(q.requestGraph,w).length&&resolved(q.requestGraph,w)&&!w.declarations.some(d=>d.runId===r?.id&&!d.invalidated);
  return {inputs:items.map(i=>i.id),results,finish};
 }
 export function procedureText(m){return '手続きの補完案内（人間の追加指示ではありません）。外部作業や既存成果をやり直さず、requests get / inputs / resultsで最新状態と全文を確認してください。\n'+JSON.stringify(m)+'\ninputsは対応した入力IDを明示。resultsは内容を確認しrequestId/resultId/versionとdecision:accept|reworkを自分で選びます（採否は自動決定しません）。待機ならrespond、完了を申告するならfinish。詳細は rules get work respond または rules get work finish。';}
