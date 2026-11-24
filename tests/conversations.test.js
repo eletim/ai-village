@@ -111,3 +111,57 @@ test('secretary can request correction using the original human authorization af
  const delivery=f.service.flow.run(f.service.conversations.record(r.conversationId).deliveries[0].runId);await f.submit(delivery);
  const correction=await f.service.conversations.job({...args,actorRunId:delivery.id,operationId:randomUUID(),instruction:'元の許可範囲で不足を修正する'});assert.notEqual(correction.humanRequestId,first.humanRequestId);assert.equal(f.service.flow.root(correction.humanRequestId).requestedBy.authorization.runId,r.id);
 });
+for(const mode of ['migration-required','legacy','startup-v1',undefined])test('new job rejects leader startup mode '+mode+' before creating graph or receipt',async t=>{
+ const {f,r,args}=await setup(t),a=f.service.agent(f.agents[2].id);
+ a.inputEnvelope=mode?{mode}:undefined;
+ // Legacy compatibility for old requests must not admit this new conversation job.
+ a.legacyContract={version:1};await f.service.save();
+ assert.equal(f.service.instructionStatus(a.id).requiresFreshSession,true);
+ await assert.rejects(f.service.conversations.job(args),/起動契約の移行/);
+ assert.equal(f.service.data.requests.length,0);assert.equal(f.service.data.runs.length,1);
+ assert.equal(f.service.conversations.record(r.conversationId).operations.length,0);
+});
+test('verified instruction downgrade rejects new job before graph creation',async t=>{
+ const {f,args}=await setup(t),a=f.service.agent(f.agents[2].id);
+ f.promptState('changed');await f.service.verifyInstructions(a);
+ assert.equal(a.inputEnvelope.mode,'migration-required');
+ await assert.rejects(f.service.conversations.job(args),/起動契約の移行/);
+ assert.equal(f.service.data.requests.length,0);assert.equal(f.service.data.runs.length,1);
+});
+test('prepared leader preserves admitted job across restart and adoption; new jobs require adopted startup-v2',async t=>{
+ const {f,r,args}=await setup(t),leaderId=f.agents[2].id,donorId=f.agents[3].id;
+ const first=await f.service.conversations.job(args);
+ const a=f.service.agent(leaderId),b=f.service.agent(donorId);
+ Object.assign(b,{provider:a.provider,location:a.location,projectId:a.projectId,workshopId:a.workshopId,cwd:a.cwd,connection:structuredClone(a.connection)});
+ await f.service.prepareRuntime(a.id,{operationId:randomUUID(),revision:a.metadataRevision||0});
+ assert.equal(a.runtimeUpgrade.state,'prepared');
+ const next={...args,operationId:randomUUID()};
+ await assert.rejects(f.service.conversations.job(next),/リーダーを利用できません/);
+ assert.deepEqual(await f.service.conversations.job(args),first);
+ await f.service.tick();assert.equal(runState(f.service.flow.run(first.runId)),'queued');
+ assert.equal(f.sent.filter(s=>s.agentId===leaderId).length,0);
+ await f.restart();assert.equal(f.service.agent(leaderId).runtimeUpgrade.state,'prepared');
+ await assert.rejects(f.service.conversations.job(next),/リーダーを利用できません/);
+ assert.deepEqual(await f.service.conversations.job(args),first);
+ assert.equal(f.service.data.requests.length,1);assert.equal(f.service.data.runs.length,2);
+ await f.service.adoptRuntime(leaderId,{operationId:randomUUID(),revision:f.service.agent(leaderId).metadataRevision,replacementRevision:f.service.agent(donorId).metadataRevision||0,replacementAgentId:donorId});
+ assert.equal(f.service.agent(leaderId).runtimeUpgrade.state,'adopted');
+ assert.equal(f.service.instructionStatus(leaderId).requiresFreshSession,false);
+ const second=await f.service.conversations.job(next);assert.notEqual(second.humanRequestId,first.humanRequestId);
+ await f.service.tick();assert.equal(f.sent.filter(s=>s.agentId===leaderId).length,1);
+ assert.equal(f.service.flow.run(first.runId).id,first.runId);assert.equal(runState(f.service.flow.run(first.runId)),'awaiting_input');
+ assert.equal(runState(f.service.flow.run(second.runId)),'queued');
+ assert.equal(f.service.conversations.record(r.conversationId).operations.length,2);
+});
+test('startup hash migration on restart blocks new jobs while retaining already admitted job',async t=>{
+ const {f,r,args}=await setup(t),first=await f.service.conversations.job(args);
+ f.service.agent(first.leaderAgentId).inputEnvelope.hash='obsolete-contract-hash';await f.service.save();
+ await f.restart();const a=f.service.agent(first.leaderAgentId);
+ assert.equal(a.inputEnvelope.mode,'migration-required');
+ await assert.rejects(f.service.conversations.job({...args,operationId:randomUUID()}),/起動契約の移行/);
+ assert.deepEqual(await f.service.conversations.job(args),first);
+ await f.service.tick();assert.equal(runState(f.service.flow.run(first.runId)),'queued');
+ assert.equal(f.service.data.requests.length,1);assert.equal(f.service.data.runs.length,2);
+ assert.equal(f.service.conversations.record(r.conversationId).operations.length,1);
+ assert.equal(f.sent.filter(s=>s.agentId===a.id).length,0);
+});

@@ -92,6 +92,7 @@ export class Conversations {
     const p=this.d.writableProject(c.projectId);
     if(!p.leaderAgentId)fail('Projectのリーダーが未設定です');
     const a=this.d.writableAgent(this.d.agent(p.leaderAgentId));
+    if(this.d.instructionStatus(a.id).requiresFreshSession)fail('リーダーの起動契約の移行が必要です。正式なstartup-v2セッションを採用してください');
     if(a.projectId!==p.id||a.location!=='workshop'||!a.tabId||a.runtimeUpgrade?.state==='prepared'||a.agentModel?.intent==='stop'||['terminated','stopping','unknown'].includes(agentControls(a).state))fail('設定されたリーダーを利用できません。担当と稼働状態を確認してください');
     const q={id:randomUUID(),commonRequests:true,inputProtocol:1,projectId:c.projectId,conversationId:c.id,requestedBy:{kind:'agent',agentId:c.agentId,actorRunId:actor.id,authorization},reportMode:false,clientRequestId:'conversation:'+c.id+':'+x.operationId,instruction:x.instruction,travelContexts:[],attachments:[],originAgentId:a.id,finalAgentId:a.id,revision:0,createdAt:now(),requestGraph:{version:3,nodes:[],operations:[]}};
     const w=newNode(q,{id:randomUUID(),assignee:a.id,createdBy:'agent',metadata:{reporting:initialDeadlines({})}});
