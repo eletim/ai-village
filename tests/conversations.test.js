@@ -134,6 +134,7 @@ test('prepared leader preserves admitted job across restart and adoption; new jo
  const {f,r,args}=await setup(t),leaderId=f.agents[2].id,donorId=f.agents[3].id;
  const first=await f.service.conversations.job(args);
  const a=f.service.agent(leaderId),b=f.service.agent(donorId);
+ a.cwd='/fixture/work';f.service.data.workshops.push({id:a.workshopId,...a.connection,workplaces:[a.cwd]});
  Object.assign(b,{provider:a.provider,location:a.location,projectId:a.projectId,workshopId:a.workshopId,cwd:a.cwd,connection:structuredClone(a.connection)});
  await f.service.prepareRuntime(a.id,{operationId:randomUUID(),revision:a.metadataRevision||0});
  assert.equal(a.runtimeUpgrade.state,'prepared');
