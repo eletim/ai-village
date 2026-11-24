@@ -100,7 +100,7 @@ export class DirectAgents {
     }
     for(const p of this.data.projects)if(!p.deletedAt)await this.projectGuides.initialize(p);
     this.data.conversations ||= [];
-    this.flow.init();this.conversations.validate();
+    this.flow.init();this.conversations.init();
     await this.save();
     if(watch){this.flow.reporting.start();this.monitor=new EventMonitor(this,this.hostFactory?{hostFactory:this.hostFactory}:{});this.monitor.start();void this.progress().catch(()=>{});}
   }
@@ -561,6 +561,7 @@ export class DirectAgents {
           if(q)await this.units.run(id,async()=>{await this.flow.pump(false,[q],false);await this.flow.notifications([q]);});
           this.store.acknowledge(id,version);
         }
+        await this.conversations.notifications();
         await this.flow.dispatchReady();
       }
     })();

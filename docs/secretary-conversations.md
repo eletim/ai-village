@@ -2,7 +2,7 @@
 
 ## 境界（実装前の設計）
 
-通常の会話を依頼graphから外す。明示的な会話モードで作るconversationとrunにはworkIdもinputProtocolも付けず、正常なnative終了が会話ターンの終わりになる。仕事達成、秘書の成果採用、人間の了承とは別。分類器は置かない。従来の送信・進行中依頼の補足は従来契約で完了する。
+通常の会話を依頼graphから外す。明示的なプロトコル境界（村長が切り替えるモードではない）で作るconversationとrunにはworkIdもinputProtocolも付けず、正常なnative終了が会話ターンの終わりになる。仕事達成、秘書の成果採用、人間の了承とは別。分類器は置かない。従来の送信・進行中依頼の補足は従来契約で完了する。
 
 秘書の窓口は `conversations get/job/amend/withdraw`。jobは実際に配送された人間発言への参照と引用、目的・制約を必須とし、受付中の秘書会話runだけが操作できる。引用が存在することは検証するが、曖昧な発言の意味を機械的に許可へ変換しない。秘書が明示依頼と権限範囲を判断し、不明なら会話で確認する。目的の改訂もAgent由来を維持。既存の一般操作の許可条件は変えない。
 
@@ -28,13 +28,13 @@ jobは独立した既存graph（createdBy=agent、root recipient=conversation）
 
 ## 実装した入口と保存境界
 
-- ブラウザの秘書欄に「秘書との会話」と従来の「新しい仕事」を表示。既存のactive依頼は従来補足先として残す。会話送信は既存runs endpointに `mode:"conversation"`。会話ID未指定は同Agent・Projectの最新会話を使う。別Projectへ移した後の会話は新IDになる。
+- 導入済み秘書の通常送信は常に会話。村長が相談/仕事を切り替えるUIは設けず、同じ秘書が明示依頼を判断してjobを選ぶ。既存のactive依頼は別の従来補足先として残す。工房Agentへの直接依頼は維持。会話送信は既存runs endpointに `mode:"conversation"`。会話ID未指定は同Agent・Projectの最新会話を使う。別Projectへ移した後の会話は新IDになる。
 - `POST /api/direct/conversations/get {conversationId,actorRunId?}`、`job/amend/withdraw` はCLIと同じサービス。Agentのgetは今回actorRunIdを必ず渡し、そのsequenceまでの人間発言/資料だけを読む。後着成果は状態だけ確認でき、後続正式配送の資料本文を先読み注入しない。actorRunIdなしは管理者用の全記録読取であり、今回ターンのモデル用コンテキストには使わない。
 - job/amend/withdraw: `{conversationId,actorRunId,operationId,instruction,authorization:{runId,quote},humanRequestId?}`。amend/withdrawのみ仕事ID必須。同会話の受付済み人間発言引用は監査用根拠。意味上の実行許可の判断は秘書が担い、サーバーは分類器・許可推論器を持たない。既存と同じ信頼済みローカルAPIの権限モデルであり、同一ホストの悪意あるCLIから人間用APIを隔離する新認証基盤は追加しない。
 - `projects leader PROJECT_ID REVISION AGENT_ID|-` またはProject操作UI。担当変更は今後のjobだけ。既存graphの委任/採否/finishを変更しない。仕事の通知先だけをconversationへ分け、グローバル報告書換え設定に依存せず秘書が成果説明する。
 - 保存collectionはconversations。graph単位のRequestUnitsにも関連conversationと配送runを含める。operationとgraph生成、成果/相談の受信箱と配送run作成は同じSQLite保存。送信は保存後に既存のnative照合を使用。
 - getのhumanAnswerは受付照合＋正常終端した表示対象回答。人間が実際に読んだこと・了承したことは意味しない。内部資料はdeliveries、回答はrunsとして分ける。run失敗/不明はhumanAnswer=null、配送を自動再送しない。後続の新規人間発言は別のrunとして配送可能。
-- question/extensionと正常成果、失敗/中断/不明終端、人間による完了/取消を戻す。progressの全注入はしない。人間による状態変更とprogramによる失敗観測はprogram由来、元資料の人間記録を保持。会話への配送は業務完了通知を発火しない。
+- question/extensionと正常成果、失敗/中断/不明終端、人間による完了/取消を戻す。progressの全注入はしない。人間による状態変更とprogramによる失敗観測はprogram由来、元資料の人間記録を保持。会話への資料配送とjob提出完了は業務完了通知を発火しない。秘書が正常に返答した時点で既存Notifierへ `conversation-answer:RUN_ID` を一度通知する。通常相談の返答も同じ応答通知であり、業務達成通知ではない。通知OFFならdisabledを記録して後日ONでも再送しない。送信受付不明/再起動中のattemptingはdelivery_unknownとして保持し自動再送しない。機器の受信/人間の既読は保証しない。
 - 秘書の未完了job/配送がある間のAgent削除・Project移動を拒否。リーダー未設定/消失/停止/不明時はjob受付を拒否。受付済み仕事の担当変更・失敗runの再送は自動で行わず、既存の確認・復旧手続きへ戻す。
 
 ## 検証結果と限界
@@ -60,3 +60,5 @@ jobは独立した既存graph（createdBy=agent、root recipient=conversation）
 7. 隔離サーバー再起動後にrun/配送IDが増えないことを記録。不明・失敗・429があれば受付/終端/プロバイダ出力を保存し、受付不明の自動再送をしない。API成功だけでAI受入成功としない。
 
 各段階で人間入力、rulesRevision、モデル/effort、native生入出力、API受付、conversation/get（管理者全文とターン別）、requests get/results、UI画像、成果ファイルhash、時刻を専用証拠dirへ保存する。判定は成功/失敗/未確認を分ける。
+
+親の設計レビューを反映: authorizationの元人間発言は同じ権限範囲のレビュー差戻し・追加検証jobで再利用でき、新しい人間発言を毎回要求しない。業務graphの提出済み表示にはreturnDelivery（配送待ち/受付照合/秘書確認中/返答済み/失敗・不明）を添え、成果が保存されていることと秘書の回答状態を区別する。ターン別getでは未来の本文を渡さないが、管理者全記録APIは引き続き読取可能。意味上の重複発言を完全保証する機構ではない。

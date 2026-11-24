@@ -238,21 +238,20 @@ function renderBoard(){
   const choice=card.querySelector('[name=requestTarget]');
   if(state.capabilities?.requestInbox){
    choice.hidden=false;const conversational=state.capabilities?.secretaryConversations&&a.location==='mayor'&&a.projectId;
-   const hasOldWork=(state.requests||[]).some(q=>q.status==='active'&&q.requestGraph?.nodes.some(n=>n.assignee===a.id));
-   const selected=inputTargets.has(a.id)?inputTargets.get(a.id):(choice.value||(conversational&&!hasOldWork?'conversation':''));
+   const selected=inputTargets.get(a.id)||choice.value||'';
    const options=(state.requests||[]).filter(q=>q.status==='active'&&!q.integrity).flatMap(q=>(q.requestGraph?.nodes||[]).filter(n=>n.assignee===a.id&&['active','submitted'].includes(n.state.kind)).map(n=>({value:q.id+':'+n.id,label:(n.metadata.instruction||q.instruction||'依頼').slice(0,50)})));
-   const unavailable=selected&&selected!=='conversation'&&!options.some(x=>x.value===selected);
-   const html=(conversational?'<option value="conversation">秘書との会話（申告不要）</option>':'')+'<option value="">新しい仕事（従来の依頼管理）</option>'+(unavailable?`<option value="${esc(selected)}" disabled>補足先は終了済み・選び直してください</option>`:'')+options.map(x=>`<option value="${esc(x.value)}">補足：${esc(x.label)}</option>`).join('');
+   const unavailable=selected&&!options.some(x=>x.value===selected);
+   const html=(conversational?'<option value="">秘書との会話</option>':'<option value="">新しい依頼</option>')+(unavailable?`<option value="${esc(selected)}" disabled>補足先は終了済み・選び直してください</option>`:'')+options.map(x=>`<option value="${esc(x.value)}">補足：${esc(x.label)}</option>`).join('');
    if(choice.innerHTML!==html){choice.innerHTML=html;choice.value=selected;}
    choice.onchange=()=>{inputTargets.set(a.id,choice.value);storeDrafts();void refresh(true);};
   }
 
   fileEditors.get(a.id).lock(card.dataset.pending==='true'||pending.has(a.id));
   travelEditors.get(a.id).lock(card.dataset.pending==='true'||pending.has(a.id));
-  const supplement=!!choice.value&&choice.value!=='conversation';
+  const supplement=!!choice.value;
   send.disabled=!!choice.selectedOptions[0]?.disabled||(!supplement&&!connected)||(!supplement&&a.canSend!==true&&a.canSteer!==true&&a.canQueue!==true)||card.dataset.pending==='true'||pending.has(a.id);
   card.querySelector('[data-reconcile]').hidden=!pending.has(a.id)||card.dataset.pending==='true';
-  const sendLabel=send.form.dataset.sending==='true'?'送信中…':pending.has(a.id)?'送信結果を確認中':supplement?'補足を送信':choice.value==='conversation'?'会話を送信':!state.capabilities?.requestInbox&&a.canSteer?'実行中に補足':a.canQueue&&!a.canSend?'待機キューへ':'送信';
+  const sendLabel=send.form.dataset.sending==='true'?'送信中…':pending.has(a.id)?'送信結果を確認中':supplement?'補足を送信':state.capabilities?.secretaryConversations&&a.location==='mayor'&&a.projectId?'会話を送信':!state.capabilities?.requestInbox&&a.canSteer?'実行中に補足':a.canQueue&&!a.canSend?'待機キューへ':'送信';
   send.innerHTML=sendLabel==='送信'?actionSVG('send'):esc(sendLabel);
   send.classList.toggle('icon-send',sendLabel==='送信');send.setAttribute('aria-label',sendLabel);
   const claudeSteering=a.canSteer&&a.provider==='claude'?'作業中か終了直後のどちらに反映されるかは保証されません。':'';
@@ -536,8 +535,8 @@ $('#agent-form').onsubmit=e=>{e.preventDefault();const f=e.currentTarget;f.datas
 $('#agents').onsubmit=async e=>{
  e.preventDefault();const f=e.target,id=f.dataset.send;if(!id||pending.has(id)||f.querySelector('button').disabled||(!f.elements.instruction.value.trim()&&!fileEditors.get(id).count))return;
  if(travelEditors.get(id).value.length&&!state.capabilities?.travelContexts){$('#error').textContent='出張先の送信にはサーバー更新の反映が必要です。下書きは保持しています。';return;}
- const selection=f.elements.requestTarget?.value,conversation=selection==='conversation';
- const requestTarget=conversation?null:selection;
+ const requestTarget=f.elements.requestTarget?.value;
+ const conversation=!requestTarget&&state.capabilities?.secretaryConversations&&state.agents.some(a=>a.id===id&&a.location==='mayor'&&a.projectId);
  const target=state.agents.find(a=>a.id===id),steerTarget=!state.capabilities?.requestInbox&&target?.canSteer?structuredClone(target.steerTarget):null;
  const receipt={...(conversation?{mode:'conversation'}:{}),...(requestTarget?{requestTarget}:{}),...(steerTarget?{steerTarget}:{}),instruction:f.elements.instruction.value,attachments:[],travelContexts:structuredClone(travelEditors.get(id).value),requestId:newRequestId()};
  const message={...receipt,createdAt:new Date().toISOString(),draftVersion:draftVersions.get(id)||0,files:fileEditors.get(id).summaries,mode:requestTarget||steerTarget?'steering':!target?.canSend?'queue':'direct',stage:fileEditors.get(id).count?'uploading':'preparing'};

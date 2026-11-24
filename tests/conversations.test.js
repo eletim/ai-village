@@ -14,9 +14,9 @@ async function setup(t){
  return {f,r,args,p};
 }
 async function claim(f,r,finish=false){return f.service.flow[finish?'finish':'respond']({humanRequestId:r.humanRequestId,workId:r.workId,runId:r.id,operationId:randomUUID(),inputs:f.service.flow.inputs(r.humanRequestId,r.workId).filter(i=>i.attempts.includes(r.id)&&!i.handledBy&&!i.retiredBy).map(i=>i.id),results:f.service.flow.results(r.humanRequestId,r.workId).filter(e=>!e.handled&&!e.superseded).map(e=>({requestId:e.requestId,resultId:e.id,version:e.version,decision:'accept'}))});}
-test('conversation ends naturally, no graph/claims/notification; survives restart',async t=>{
+test('conversation ends naturally, no graph/claims; one reply notification; survives restart',async t=>{
  const {f,r}=await setup(t);assert.equal(r.humanRequestId,undefined);assert.match(f.sent[0].text,/"mode":"conversation"/);
- await f.complete(r);assert.equal(f.service.data.requests.length,0);assert.equal(f.service.data.runs.length,1);assert.equal(f.notifications.length,0);
+ await f.complete(r);assert.equal(f.service.data.requests.length,0);assert.equal(f.service.data.runs.length,1);assert.equal(f.notifications.length,1);
  await f.restart();await f.service.tick();assert.equal(f.service.data.runs.length,1);assert.ok(f.service.conversations.get(r.conversationId).runs[0].humanAnswer);
 });
 test('job idempotency, agent provenance, child review and exactly once return during live conversation',async t=>{
@@ -76,7 +76,7 @@ test('failed return is not human delivery and never automatically retried; resta
  const next=await f.service.send(r.agentId,{mode:'conversation',requestId:randomUUID(),instruction:'先ほどの件について'});assert(next.conversationSequence>f.service.flow.run(deliveryId).conversationSequence);
  await f.restart();await f.service.tick();assert.equal(runState(f.service.flow.run(deliveryId)),'queued');
  const original=f.service.flow.run(r.id);await f.complete(original);const delivery=f.service.flow.run(deliveryId);await f.submit(delivery);await f.complete(delivery,'failed');
- await f.service.tick();assert.equal(f.sent.filter(s=>s.text.includes(delivery.id)).length,1);assert.equal(f.service.conversations.get(c.id).runs.find(r=>r.id===delivery.id).humanAnswer,null);
+ await f.service.tick();assert.equal(f.sent.filter(s=>s.text.includes(delivery.id)).length,1);assert.equal(f.service.conversations.get(c.id).runs.find(r=>r.id===delivery.id).humanAnswer,null);assert.equal(f.service.flow.get(receipt.humanRequestId).returnDelivery.state,'failed');
  assert.equal(f.service.data.runs.filter(r=>r.conversationSource?.kind==='leader').length,1);
 });
 test('failed leader sends one attention, never a successful result; secretary cannot move while job remains',async t=>{
@@ -100,4 +100,14 @@ test('turn-scoped history excludes future human input and arriving material, wit
  const all=f.service.conversations.get(r.conversationId);assert.equal(all.deliveries.length,1);assert.equal(all.runs.length,3);
  await f.complete(r);const delivery=f.service.flow.run(all.deliveries[0].runId);await f.submit(delivery);
  const visible=f.service.conversations.get(r.conversationId,delivery.id);assert.equal(visible.deliveries.length,1);assert.equal(visible.runs.length,2);assert.equal(visible.jobs[0].availableDeliveries.length,1);assert.equal(visible.jobs[0].runs,undefined);
+});
+test('reply notification has one stable key; unknown external receipt is never resent',async t=>{
+ const {f,r}=await setup(t);let calls=0;f.service.notifier.enqueue=async message=>{calls++;assert.equal(message.id,'conversation-answer:'+r.id);throw Error('receipt lost');};
+ await f.complete(r);assert.equal(calls,1);assert.equal(r.notification.status,'delivery_unknown');await f.service.tick();assert.equal(calls,1);
+ await f.restart();await f.service.tick();assert.equal(f.notifications.length,0);assert.equal(f.service.flow.run(r.id).notification.status,'delivery_unknown');
+});
+test('secretary can request correction using the original human authorization after result delivery',async t=>{
+ const {f,r,args}=await setup(t);const first=await f.service.conversations.job(args);await f.service.tick();const leader=f.service.flow.run(first.runId);await f.submit(leader);await claim(f,leader);await f.complete(leader);await f.complete(r);
+ const delivery=f.service.flow.run(f.service.conversations.record(r.conversationId).deliveries[0].runId);await f.submit(delivery);
+ const correction=await f.service.conversations.job({...args,actorRunId:delivery.id,operationId:randomUUID(),instruction:'元の許可範囲で不足を修正する'});assert.notEqual(correction.humanRequestId,first.humanRequestId);assert.equal(f.service.flow.root(correction.humanRequestId).requestedBy.authorization.runId,r.id);
 });

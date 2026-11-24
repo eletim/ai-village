@@ -1,3 +1,4 @@
+import {transitionDelivery} from './state/auxiliary.ts';
 import {randomUUID} from 'node:crypto';
 import {initializeRun,runState,accepted,changeRun} from './run-lifecycle.mjs';
 import {agentControls} from './agent-lifecycle.mjs';
@@ -12,6 +13,7 @@ const key=value=>{if(typeof value!=='string'||! /^[\w-]{8,100}$/.test(value))fai
 // Conversations are not request nodes. Only an explicit job crosses into the graph.
 export class Conversations {
  constructor(d){this.d=d;}
+ init(){for(const r of this.d.data.runs.filter(r=>r.conversationId&&r.notification?.status==='attempting'))r.notification=transitionDelivery(r.notification,{type:'unknown',reason:'restart-during-delivery'});this.validate();}
  validate(){
   const ids=new Set();
   for(const c of this.d.data.conversations){
@@ -135,6 +137,20 @@ export class Conversations {
    applyGraph(this.d.data,q,{type:'deliver-conversation',actor:'program',requestId:w.id,resultId:s.id});
   }
   return c.deliveries.length!==before;
+ }
+ async notifications(){
+  for(const r of this.d.data.runs.filter(r=>r.conversationId&&r.notificationPolicy==='conversation'&&accepted(r)&&runState(r)==='completed')){
+   await this.d.locked('notify-conversation:'+r.id,async()=>{
+    const claimed=await this.d.persist(async()=>{
+     if(!r.notification)r.notification=transitionDelivery(null,{type:'prepare',id:'conversation-answer:'+r.id});
+     if(r.notification.status!=='pending')return false;
+     r.notification=transitionDelivery(r.notification,{type:'claim',at:now()});await this.d.save();return true;
+    });
+    if(!claimed)return;
+    try{const result=await this.d.notifier.enqueue({id:'conversation-answer:'+r.id,role:'assistant',kind:'conversation',agentId:r.agentId,content:'秘書からの返答\n'+(r.output||'会話を村で確認してください。')});await this.d.persist(async()=>{r.notification=transitionDelivery(r.notification,{type:'result',result});await this.d.save();});}
+    catch{await this.d.persist(async()=>{r.notification=transitionDelivery(r.notification,{type:'unknown',reason:'notification-outcome-unknown'});await this.d.save();});}
+   });
+  }
  }
  context(r){return this.d.rules.dynamic(r)+this.d.rules.context({mode:'conversation',conversationId:r.conversationId,runId:r.id,phase:'work',historyRead:['conversations','get',r.conversationId,r.id],source:r.conversationSource,sequence:r.conversationSequence});}
 }

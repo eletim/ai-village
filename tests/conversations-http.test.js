@@ -58,7 +58,7 @@ test('conversation HTTP: authority, durable job, in-flight return, restart and h
   const returned=await submit(delivery);await complete(returned,'人間への成果説明');
   const final=(await post('/conversations/get',{conversationId:conversation.conversationId})).body;
   assert.equal(final.deliveries.length,1);assert.equal(final.jobs[0].status,'completed');assert.equal(final.runs.find(r=>r.id===delivery.id).humanAnswer,'人間への成果説明');
-  assert.equal((await lines(notices)).length,0);
+  await until(async()=>(await lines(notices)).length===2);assert.equal((await lines(notices)).length,2);
   const snapshot=await (await fetch(base+'/api/direct?view=workspace')).json();assert(snapshot.conversations[agents[0].id].entries.some(e=>e.output==='人間への成果説明'));
  }finally{await stop();fixtureProcess.kill();await rm(dir,{recursive:true,force:true});}
 });
