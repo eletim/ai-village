@@ -2,7 +2,7 @@ import {EventEmitter} from 'node:events';import {EventMonitor} from '../server/e
 import test from 'node:test';import assert from 'node:assert/strict';import {randomUUID} from 'node:crypto';
 import {fixture} from './inbox-fixture.js';
 const handle=(s,r,finish=true)=>s.flow[finish?'finish':'respond']({humanRequestId:r.humanRequestId,workId:r.workId,runId:r.id,operationId:randomUUID(),inputs:s.flow.inputs(r.humanRequestId,r.workId).filter(i=>!i.handledBy&&!i.retiredBy&&i.attempts.includes(r.id)).map(i=>i.id),results:s.flow.results(r.humanRequestId,r.workId).filter(e=>!e.handled&&!e.superseded).map(e=>({requestId:e.workId,resultId:e.id,version:e.version,decision:'accept'}))});
-const setup=async(t,options)=>{const f=await fixture(t,options),[a,b]=f.agents;Object.assign(b,{workshopId:a.workshopId,location:a.location,projectId:a.projectId,cwd:a.cwd,connection:structuredClone(a.connection)});return {...f,a,b};};
+const setup=async(t,options)=>{const f=await fixture(t,options),[a,b]=f.agents;a.cwd='/fixture/work';f.service.data.workshops.push({id:a.workshopId,...a.connection,workplaces:[a.cwd]});Object.assign(b,{workshopId:a.workshopId,location:a.location,projectId:a.projectId,cwd:a.cwd,connection:structuredClone(a.connection)});return {...f,a,b};};
 const adopt=(s,a,b,op=randomUUID())=>s.adoptRuntime(a.id,{operationId:op,revision:a.metadataRevision||0,replacementRevision:b.metadataRevision||0,replacementAgentId:b.id,handover:'既存成果を維持。外部操作の成否不明は再実行せず確認。'});
 test('queued initial run adopts new runtime under the same Agent entry and dispatches once, including restart',async t=>{
  const f=await setup(t),s=f.service,{a,b}=f;a.inputEnvelope={mode:'legacy'};

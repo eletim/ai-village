@@ -1,3 +1,4 @@
+import {sameRuntimeAttributes,currentRuntimeWorkplaceAllowed} from './runtime-connection-identity.js';
 import {escapeReport as esc} from './report-content.js';
 
 // A pending human operation is an immutable receipt, not a new request on retry.
@@ -15,7 +16,7 @@ export function runtimeMigration({api,newId}){
  };
  const owned=a=>(snapshot?.requests||[]).flatMap(q=>(q.requestGraph?.nodes||[]).filter(n=>n.assignee===a?.id).map(n=>({q,n})));
  const unused=a=>!(snapshot?.runs||[]).some(r=>r.agentId===a.id)&&!owned(a).length&&!(a.nativeTurns||[]).length;
- const compatible=(a,b)=>['provider','location','projectId','workshopId','cwd'].every(k=>(a[k]||null)===(b[k]||null))&&JSON.stringify(a.connection)===JSON.stringify(b.connection);
+ const compatible=(a,b)=>sameRuntimeAttributes(a,b)&&currentRuntimeWorkplaceAllowed(a,snapshot?.workshops?.find(w=>w.id===a.workshopId));
  const candidates=()=>snapshot?.agents.filter(b=>b.id!==id&&!b.deletedAt&&!b.runtimeRetiredTo&&b.inputEnvelope?.mode==='startup-v2')||[];
  const editable=()=>!busy&&!pending&&!storageError&&verified;
  function persist(value){localStorage.setItem(key(id),JSON.stringify(value));pending=value;}
@@ -29,7 +30,7 @@ export function runtimeMigration({api,newId}){
    <p>このAgentと依頼のIDは維持します。他のAgentは停止しません。切替準備後も実行中の処理は正常終了を待ちます。</p>
    ${a.legacyContract?'<p>旧契約で継続中です。確認日が過ぎても自動停止しません。</p>':''}
    ${!v2&&!a.runtimeRetiredTo?`<label>新セッション候補<select name="donor" ${!editable()?'disabled':''}><option value="">選択してください</option>${candidates().map(b=>`<option value="${esc(b.id)}" ${b.id===selected?'selected':''}>${esc(b.name)} — ${compatible(a,b)?'属性適合':'属性不一致'} / ${unused(b)?'登録履歴未使用':'使用済み'} / ${idle(b)?'待機中':'実行状態を確認'}</option>`).join('')}</select></label>
-   <p>属性適合はProject・場所・AI・工房・作業場所・接続の一致です。実機の未使用状態は切替時にサーバーでも確認します。</p>
+   <p>属性適合はProject・場所・AI・工房・作業場所・実行接続の一致と、現在の工房での作業場所の許可です。実機の未使用状態は切替時にサーバーでも確認します。</p>
    <label>引継ぎメモ<textarea name="handover" rows="8" maxlength="30000" ${!editable()?'disabled':''} placeholder="元の目的、完了事項、未完事項、実施済み外部操作、不明点を確認して記入">${esc(notes)}</textarea></label>
    <p>秘密情報や認証情報は記入しないでください。過去の依頼・補足・子結果は新セッションから取得できます。未記録の操作は推測しません。</p>
    <button type="button" data-prepare ${!editable()||prepared?'disabled':''}>このAgentの切替を準備</button>

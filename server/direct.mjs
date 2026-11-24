@@ -1,3 +1,4 @@
+import {sameRuntimeAttributes,currentRuntimeWorkplaceAllowed} from '../src/runtime-connection-identity.js';
 import {Conversations} from './conversations.mjs';
 import {enrollLegacy,legacyAllowed,legacyContext,legacyReviewDue} from './legacy-contract.mjs';
 import {migrateCommonRequests} from './common-request-migration.mjs';
@@ -240,7 +241,12 @@ export class DirectAgents {
       if(receipt){if(receipt.payload!==payload)fail('operationIdの再利用です');return structuredClone(receipt);}
       this.writableAgent(a);this.writableAgent(b);
       if((a.metadataRevision||0)!==x.revision||(b.metadataRevision||0)!==x.replacementRevision)fail('Agentが更新されています。再読込してください');
-      if(['provider','location','projectId','workshopId','cwd'].some(k=>(a[k]||null)!==(b[k]||null))||JSON.stringify(a.connection)!==JSON.stringify(b.connection))fail('同じ場所・Project・provider・接続の未使用Agentを指定してください');
+      const checkIdentity=()=>{
+        if(!sameRuntimeAttributes(a,b))fail('同じ場所・Project・provider・接続の未使用Agentを指定してください');
+        const workshop=this.data.workshops.find(w=>w.id===a.workshopId);
+        if(!currentRuntimeWorkplaceAllowed(a,workshop))fail('現在の工房の接続先と作業場所の許可を確認してください');
+      };
+      checkIdentity();
       if(!b.tabId||b.tabId===a.tabId||!b.workspaceId||b.workspaceId===a.workspaceId)fail('独立した新ランタイムが必要です');
       if(this.data.runs.some(r=>r.agentId===b.id)||this.data.requests.some(q=>q.requestGraph?.nodes.some(n=>n.assignee===b.id)))fail('移行元ランタイムは未使用である必要があります');
       if(this.data.runs.some(r=>r.agentId===id&&['sent','running'].includes(modelOf(r).state.kind)))fail('受付不明・実行中runの追跡が残っています。自動再送せず終端を確認してください');
@@ -255,6 +261,8 @@ export class DirectAgents {
       const fields=o=>Object.fromEntries(keys.filter(k=>o[k]!==undefined).map(k=>[k,structuredClone(o[k])]));
       const old=fields(a),replacement=fields(b);
       return this.persist(async()=>{
+        // Workshop edits can occur during native observation. Recheck at the atomic swap.
+        checkIdentity();
         // No request, run, input, result or notification is reissued or reassigned.
         const record={operationId:x.operationId,payload,at:now(),agentId:id,replacementAgentId:b.id,oldRuntime:structuredClone(old),newRuntime:structuredClone(replacement),handover:x.handover||null,requestContexts:this.data.requests.flatMap(q=>(q.requestGraph?.nodes||[]).filter(n=>n.assignee===id).map(n=>({humanRequestId:q.id,workId:n.id})))};
         a.nativeTurns=(a.nativeTurns||[]).map(t=>({...t,sessionId:t.sessionId||a.observedSessionId}));
