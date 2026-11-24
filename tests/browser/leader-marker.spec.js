@@ -1,21 +1,22 @@
 import {test,expect,notifySnapshot} from './helpers/change-events.js';
-const evidence='/home/eletim/leader-marker-evidence-20261124/worker';
-for(const width of [1440,390])test('leader assignment, replacement and removal across views '+width,async({page})=>{
+const evidence=process.env.LEADER_MARKER_EVIDENCE;
+for(const width of [1440,390])test('leader assignment, replacement and removal across views '+width,async({page},testInfo)=>{
+ const screenshot=name=>page.screenshot({path:evidence?`${evidence}/${name}-${width}.png`:testInfo.outputPath(`${name}-${width}.png`),fullPage:true});
  await page.setViewportSize({width,height:900});
  const state={projects:[{id:'p',name:'村アプリ',leaderAgentId:'a'}],workshops:[{id:'w',name:'開発工房',iconPattern:'stripes'}],agents:[{id:'s',name:'秘書',location:'mayor',projectId:'p',state:'idle',connection:{},canSend:true},...['a','b'].map((id,i)=>({id,name:i?'実装担当':'開発リーダー',location:'workshop',workshopId:'w',projectId:'p',state:i?'idle':'busy',connection:{name:'開発工房'},canSend:true}))],runs:[],reviews:{},notification:{enabled:false}};
  await page.route('**/api/**',r=>r.fulfill({json:r.request().url().endsWith('/api/village')?{ok:true,result:{available:false}}:state}));
  await page.goto('/agents');await page.locator('[data-place="all"]').click();
  await expect(page.locator('#agent-a .leader-marker')).toBeVisible();await expect(page.locator('#agent-b .leader-marker,#agent-s .leader-marker')).toHaveCount(0);
  await expect(page.locator('#agent-a .panel-info')).toContainText('作業中');
- await page.screenshot({path:`${evidence}/list-${width}.png`,fullPage:true});
+ await screenshot('list');
  await page.locator('#agent-a [data-profile-agent]').click();await expect(page.locator('#agent-profile-dialog .leader-marker')).toBeVisible();await expect(page.locator('#agent-profile-dialog')).toContainText('工房Agent');
- await page.screenshot({path:`${evidence}/detail-${width}.png`,fullPage:true});
+ await screenshot('detail');
  state.projects[0].leaderAgentId='b';await notifySnapshot(page);await expect(page.locator('#agent-profile-dialog .leader-marker')).toHaveCount(0);await page.keyboard.press('Escape');await expect(page.locator('#agent-a .leader-marker')).toHaveCount(0);await expect(page.locator('#agent-b .leader-marker')).toBeVisible();
  state.projects[0].leaderAgentId=null;await notifySnapshot(page);await expect(page.locator('.leader-marker')).toHaveCount(0);
  state.projects[0].leaderAgentId='a';await page.goto('/');
  await expect(page.locator('#village-lots [data-resident="a"] .leader-marker')).toBeVisible();await expect(page.locator('#village-lots [data-resident="s"] .leader-marker')).toHaveCount(0);
- await page.screenshot({path:`${evidence}/map-${width}.png`,fullPage:true});
- await page.locator('#village-lots [data-resident="a"]').click();await expect(page.locator('#resident-detail .leader-marker')).toBeVisible();await page.screenshot({path:`${evidence}/map-detail-${width}.png`,fullPage:true});
+ await screenshot('map');
+ await page.locator('#village-lots [data-resident="a"]').click();await expect(page.locator('#resident-detail .leader-marker')).toBeVisible();await screenshot('map-detail');
  state.projects[0].leaderAgentId='b';await notifySnapshot(page);await expect(page.locator('#resident-detail .leader-marker')).toHaveCount(0);await expect(page.locator('#village-lots [data-resident="b"] .leader-marker')).toBeVisible();
  state.projects[0].leaderAgentId=null;await notifySnapshot(page);await expect(page.locator('.leader-marker')).toHaveCount(0);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
