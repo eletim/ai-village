@@ -273,7 +273,7 @@ function placeTitle(id){if(isProject(id))return (state.projects||[]).find(p=>p.i
 function groupTitle(id,page){return placeTitle(id)+(id!=='all'&&page>0?` (${page+1})`:'');}
 function agentMarker(a,sidebar=true){
  const stateName=visualState(a,agentEntries(state,a));
- return statusIcon(a,{mode:displayPreferences().iconMode,workshops:state.workshops,state:stateName,stateLabel:labels[stateName]||stateName,attention:!!state.reviews?.[a.id]?.attention,unread:!!unread.get(a.id),sidebar});
+ return statusIcon(a,{projects:state.projects||[],mode:displayPreferences().iconMode,workshops:state.workshops,state:stateName,stateLabel:labels[stateName]||stateName,attention:!!state.reviews?.[a.id]?.attention,unread:!!unread.get(a.id),sidebar});
 }
 function agentDot(a){return agentMarker(a);}
 function renderPlaces(){

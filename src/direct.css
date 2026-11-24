@@ -167,3 +167,10 @@ footer{font-variant-numeric:tabular-nums}
 .runs{overflow-anchor:none}
 
 .request-history-text{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit}.request-tree [data-compose-node]:focus{outline:2px solid var(--accent,#5b9bd5);outline-offset:4px}
+
+/* Keep the complete workshop glyph; the adjacent flag denotes responsibility. */
+.dot.has-leader{display:inline-flex;align-items:center;gap:2px;width:25px;height:20px;background:transparent;color:var(--state-color,#8b9bb5);border-radius:4px;flex-shrink:0}
+.dot.has-leader:not(.status-icon)::before{content:"";width:9px;height:9px;border-radius:50%;background:var(--state-color,#8b9bb5);flex:none}
+.dot.status-icon.has-leader{width:36px}
+.status-icon.has-leader>svg:not(.leader-icon-flag){width:20px;height:20px;flex:none}
+.dot.has-leader>svg.leader-icon-flag{display:block;width:14px;height:20px;flex:none;overflow:visible}

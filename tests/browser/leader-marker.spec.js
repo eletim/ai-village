@@ -8,11 +8,18 @@ for(const width of [1440,390])test('leader assignment, replacement and removal a
  await page.goto('/agents');await page.locator('[data-place="all"]').click();
  await expect(page.locator('#agent-a .leader-marker')).toBeVisible();await expect(page.locator('#agent-b .leader-marker,#agent-s .leader-marker')).toHaveCount(0);
  await expect(page.locator('#agent-a .panel-info')).toContainText('作業中');
+ await expect(page.locator('#agent-a .header-status .leader-icon-flag')).toBeVisible();
+ await expect(page.locator('#agent-a .header-status')).toHaveAttribute('aria-label',/Projectリーダー/);
+ for(const group of ['all','project:p']){const icon=page.locator(`[data-place="${group}"] [data-agent-dot="a"]`);await expect(icon.locator('.leader-icon-flag')).toBeVisible();await expect(icon).toHaveAttribute('aria-label',/Projectリーダー/);}
+ await expect(page.locator('#agent-b .header-status .leader-icon-flag')).toHaveCount(0);
  await screenshot('list');
  await page.locator('#agent-a [data-profile-agent]').click();await expect(page.locator('#agent-profile-dialog .leader-marker')).toBeVisible();await expect(page.locator('#agent-profile-dialog')).toContainText('工房Agent');
  await screenshot('detail');
  state.projects[0].leaderAgentId='b';await notifySnapshot(page);await expect(page.locator('#agent-profile-dialog .leader-marker')).toHaveCount(0);await page.keyboard.press('Escape');await expect(page.locator('#agent-a .leader-marker')).toHaveCount(0);await expect(page.locator('#agent-b .leader-marker')).toBeVisible();
- state.projects[0].leaderAgentId=null;await notifySnapshot(page);await expect(page.locator('.leader-marker')).toHaveCount(0);
+ await expect(page.locator('#agent-a .header-status .leader-icon-flag,[data-agent-dot="a"] .leader-icon-flag')).toHaveCount(0);
+ await expect(page.locator('#agent-b .header-status .leader-icon-flag')).toBeVisible();
+ await expect(page.locator('[data-place="all"] [data-agent-dot="b"]')).toHaveAttribute('aria-label',/Projectリーダー/);
+ state.projects[0].leaderAgentId=null;await notifySnapshot(page);await expect(page.locator('.leader-marker,.leader-icon-flag')).toHaveCount(0);
  state.projects[0].leaderAgentId='a';await page.goto('/');
  await expect(page.locator('#village-lots [data-resident="a"] .leader-marker')).toBeVisible();await expect(page.locator('#village-lots [data-resident="s"] .leader-marker')).toHaveCount(0);
  await screenshot('map');
