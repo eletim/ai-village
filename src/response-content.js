@@ -1,10 +1,10 @@
 import {reportHTML,escapeReport} from './report-content.js';
-// Only a recorded final answer identifies the final section. Legacy text stays intact.
+import {responseText} from './response-text.js';
+// The native record is retained. Only an exact final suffix identifies commentary.
 export function responseHTML(entry,{finalLabel='回答'}={}){
- const output=entry.output||'',final=entry.finalOutput||'';
- let progress=output;
- if(final&&output.trimEnd().endsWith(final.trimEnd()))progress=output.trimEnd().slice(0,-final.trimEnd().length).trimEnd();
- const section=(label,text,kind)=>text?'<section class="response-section response-'+kind+'"><h3>'+label+'</h3>'+reportHTML(text)+'</section>':'';
- const body=final?section('途中報告',progress,'progress')+section(escapeReport(finalLabel),final,'final'):section(entry.state==='running'||entry.state==='busy'?'途中報告':'応答',output,'progress');
+ const {answer,record,recordLabel}=responseText(entry);
+ const section=(label,text,kind)=>text?'<section class="response-section response-'+kind+'"><h3>'+escapeReport(label)+'</h3>'+reportHTML(text)+'</section>':'';
+ const progress=record?'<details class="response-progress" data-disclosure="'+escapeReport('response:'+entry.id+':progress')+'"><summary>'+escapeReport(recordLabel)+'</summary>'+reportHTML(record)+'</details>':'';
+ const body=progress+section(entry.finalOutput?.trim()?finalLabel:entry.state==='running'||entry.state==='busy'?'途中報告':'応答',answer,entry.finalOutput?.trim()?'final':'legacy');
  return entry.collapsedHistory?'<details class="response-history" data-disclosure="'+escapeReport(entry.id)+'"><summary>経過を見る（途中報告・元の最終回答）</summary>'+body+'</details>':body;
 }
