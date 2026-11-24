@@ -93,3 +93,11 @@ for(const guard of ['proof','count','sent','unconfirmed','donor stopped'])test('
  if(guard==='donor stopped')stopped(state.agents[1]);
  await ready(ui);await expect(ui.getByRole('button',{name:'確認した新セッションへ切替'})).toBeDisabled();expect(calls.filter(c=>c.path.endsWith('/adopt-runtime'))).toHaveLength(0);
 });
+
+for(const width of [1440,390])test('retired uncertainty and delayed work remain visible '+width,async({page},testInfo)=>{
+ await page.setViewportSize({width,height:900});const {state,ui}=await fixture(page);
+ state.agents[0].inputEnvelope={mode:'startup-v2'};state.agents[0].runtimeMigrations=[{legacyRetirement:{oldRuns:[{id:'legacy-unconfirmed-run',outcome:'unconfirmed',reason:'legacy-superseded'}]}}];
+ state.runs.push({id:'delayed-old-result',agentId:target,humanRequestId:'old-work',queuedReason:'legacy-retirement-held',error:'旧仕事の自動再開を保留',runModel:{state:{kind:'queued'}}});
+ await ui.getByRole('button',{name:'状態を再確認'}).click();await expect(ui.getByRole('region',{name:'旧履歴退役の保留'})).toContainText('legacy-unconfirmed-run');await expect(ui).toContainText('unconfirmed');await expect(ui).toContainText('delayed-old-result');await expect(ui).toContainText('old-work');await expect(ui.getByRole('button',{name:'対象を確認してレビュー再開'})).toHaveCount(0);
+ await page.screenshot({path:testInfo.outputPath('retirement-'+width+'.png'),fullPage:true});
+});

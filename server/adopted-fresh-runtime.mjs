@@ -1,3 +1,4 @@
+import {latestRetirement,retiredFreshSession} from './legacy-retirement.mjs';
 import {createHash} from 'node:crypto';
 import {launchProfileReady} from './launch-profile.mjs';
 const json=x=>JSON.stringify(x);
@@ -16,6 +17,7 @@ export function adoptionFreshProof(a,b,runs,snapshot){
  return {version:1,oldIdentity:identity(a),newIdentity:identity(b),oldSends:old.map(r=>({id:r.id,digest:digest(record(r))})),startupEvent:structuredClone(b.runtime.lastEvent)};
 }
 export function noCurrentRuntimeSends(a,runs,status,snapshot,contractHash){
+ if(latestRetirement(a))return retiredFreshSession(a,runs,status,snapshot,contractHash);
  const old=sends(a,runs),m=a.runtimeMigrations?.at(-1),p=m?.freshProof;
  if(!old.length&&!p)return true; // unchanged ordinary fresh-session rule
  if(unclassified(a,runs)||!a.launchProfile||!p||p.version!==1||m.agentId!==a.id||!launchProfileReady({...a,runtime:status})||a.inputEnvelope?.mode!=='startup-v2'||a.inputEnvelope.hash!==contractHash)return false;

@@ -1,3 +1,4 @@
+import {retirementOption,retirementRecord,retirementIntact,retirementRunAllowed,latestRetirement} from './legacy-retirement.mjs';
 import {adoptionFreshProof,noCurrentRuntimeSends} from './adopted-fresh-runtime.mjs';
 import {launchProfile as parseLaunchProfile,launchReceiptMatches,launchProfileReady} from './launch-profile.mjs';
 import {stoppedRuntimeEvidence} from '../src/stopped-runtime.js';
@@ -220,6 +221,8 @@ export class DirectAgents {
     const a=this.agent(id),runs=this.data.runs.filter(r=>r.agentId===id),tracking=runs.filter(r=>['sent','running'].includes(modelOf(r).state.kind));
     return {agentId:id,envelope:structuredClone(a.inputEnvelope||{mode:'migration-required'}),requiredContract:2,
       requiresFreshSession:a.inputEnvelope?.mode!=='startup-v2',tracking:tracking.map(r=>({runId:r.id,state:modelOf(r).state.kind,requestId:r.humanRequestId})),
+      legacyRetirement:a.runtimeMigrations?.at(-1)?.legacyRetirement||null,
+      retirementHolds:runs.filter(r=>r.queuedReason==='legacy-retirement-held').map(r=>({runId:r.id,workId:r.workId,humanRequestId:r.humanRequestId,reason:r.error})),
       queued:runs.filter(r=>modelOf(r).state.kind==='queued').map(r=>r.id),
       legacyCompatibility:a.legacyContract||null,legacyDispatchAllowed:legacyAllowed(a),legacyMigrationReviewDue:legacyReviewDue(a),runtimeUpgrade:a.runtimeUpgrade||null,
       conversations:(this.data.conversations||[]).filter(c=>c.agentId===id).map(c=>({conversationId:c.id,requiredRead:['conversations','get',c.id]})),
@@ -235,14 +238,17 @@ export class DirectAgents {
       a.runtimeUpgrade={state:'prepared',operationId:x.operationId,revision:x.revision,at:now()};a.metadataRevision=(a.metadataRevision||0)+1;await this.save();return structuredClone(a.runtimeUpgrade);
     }));
   }
-  async adoptRuntime(id,x){
-    if(!x||typeof x.operationId!=='string'||! /^[\w-]{8,100}$/.test(x.operationId)||typeof x.replacementAgentId!=='string'||x.replacementAgentId===id||!Number.isInteger(x.revision)||!Number.isInteger(x.replacementRevision)||Object.keys(x).some(k=>!['operationId','replacementAgentId','revision','replacementRevision','handover'].includes(k)))fail('runtime adoptionの入力が不正です',400);
+  async adoptRuntime(id,x,{human=false}={}){
+    if(x?.retireLegacyHistory&&!human)fail('限定退役は人間専用画面APIで承認してください',403);
+    if(!x||typeof x.operationId!=='string'||! /^[\w-]{8,100}$/.test(x.operationId)||typeof x.replacementAgentId!=='string'||x.replacementAgentId===id||!Number.isInteger(x.revision)||!Number.isInteger(x.replacementRevision)||Object.keys(x).some(k=>!['operationId','replacementAgentId','revision','replacementRevision','handover','retireLegacyHistory'].includes(k)))fail('runtime adoptionの入力が不正です',400);
     if(x.handover!==undefined&&(typeof x.handover!=='string'||!x.handover.trim()||x.handover.length>30000))fail('handoverは1〜30000文字です',400);
-    const payload=JSON.stringify({replacementAgentId:x.replacementAgentId,revision:x.revision,replacementRevision:x.replacementRevision,...(x.handover!==undefined?{handover:x.handover}:{})});
+    retirementOption(x.retireLegacyHistory);
+    const payload=JSON.stringify({...(x.retireLegacyHistory?{retireLegacyHistory:x.retireLegacyHistory}:{}),replacementAgentId:x.replacementAgentId,revision:x.revision,replacementRevision:x.replacementRevision,...(x.handover!==undefined?{handover:x.handover}:{})});
     return this.locked('projects',()=>this.locked(id,()=>this.locked(x.replacementAgentId,async()=>{
       const a=this.agent(id),b=this.agent(x.replacementAgentId),receipt=a.runtimeMigrations?.find(m=>m.operationId===x.operationId);
       if(receipt){if(receipt.payload!==payload)fail('operationIdの再利用です');return structuredClone(receipt);}
       this.writableAgent(a);this.writableAgent(b);
+      if(latestRetirement(a))fail('限定退役の保留履歴があります。追加のruntime交換は別途設計・確認が必要です');
       if((a.metadataRevision||0)!==x.revision||(b.metadataRevision||0)!==x.replacementRevision)fail('Agentが更新されています。再読込してください');
       const checkIdentity=()=>{
         if(!sameRuntimeAttributes(a,b))fail('同じ場所・Project・provider・接続の未使用Agentを指定してください');
@@ -254,12 +260,13 @@ export class DirectAgents {
       if(this.data.runs.some(r=>r.agentId===b.id)||this.data.requests.some(q=>q.requestGraph?.nodes.some(n=>n.assignee===b.id)))fail('移行元ランタイムは未使用である必要があります');
       if(this.data.runs.some(r=>r.agentId===id&&['sent','running'].includes(modelOf(r).state.kind)))fail('受付不明・実行中runの追跡が残っています。自動再送せず終端を確認してください');
       if(this.data.runs.some(r=>r.agentId===id&&r.dispatchAttemptedAt)&&!x.handover?.trim())fail('過去の外部操作・未完了事項・不明点を確認したhandoverが必要です',400);
+      const retirement=x.retireLegacyHistory?retirementRecord(this.data,a,b,x.retireLegacyHistory):null;
       const stopped=a.agentModel?.intent==='stop';
       const stopProof=()=>JSON.stringify([a.agentModel,a.terminatedAt,a.ownedProcesses,a.processVerification,a.workspaceId,a.tabId,a.sessionName]);
       const proof=stopProof();
       if(stopped&&!stoppedRuntimeEvidence(a))fail('停止済ランタイムの永続証拠が不足しています');
       const unresolved=()=>this.data.runs.some(r=>r.agentId===id&&( ['sent','running'].includes(modelOf(r).state.kind)||modelOf(r).state.outcome==='unconfirmed'));
-      if(stopped&&unresolved())fail('停止済ランタイムに受付不明の履歴が残っています。確認が必要です');
+      if(stopped&&!retirement&&unresolved())fail('停止済ランタイムに受付不明の履歴が残っています。確認が必要です');
       if(stopped&&!x.handover?.trim())fail('停止済ランタイムの外部操作・未完了事項を確認したhandoverが必要です',400);
       const oldSnapshot=stopped?{available:false,inputs:[],turns:a.nativeTurns||[]}:await this.observe(a),fresh=await this.observe(b);
       if((oldSnapshot.inputs.length||oldSnapshot.turns.length)&&!x.handover?.trim())fail('native履歴の外部操作・未完了事項・不明点を確認したhandoverが必要です',400);
@@ -270,7 +277,7 @@ export class DirectAgents {
       await this.verifyInstructions(b);
       if(b.inputEnvelope?.mode!=='startup-v2'||b.inputEnvelope.hash!==createHash('sha256').update(this.startupInstructions()).digest('hex'))fail('新ランタイムの固定起動契約を確認できません');
       let stoppedVerification=null;
-      if(stopped){
+      const verifyStopped=async()=>{
         const checkTab=async()=>{
           const {tabs}=await this.pmux(a,'tab','list','-w',a.workspaceId);
           if(!Array.isArray(tabs)||tabs.some(t=>!t||typeof t.tabId!=='string'||t.tabId===a.tabId||t.sessionName===a.sessionName))fail('旧tabの不在を確認できません');
@@ -280,7 +287,8 @@ export class DirectAgents {
         if(check.absent!==true||check.checked!==a.ownedProcesses.length)fail('旧プロセスの不在を確認できません');
         await checkTab();
         stoppedVerification={at:now(),tabAbsent:true,...check};
-      }
+      };
+      if(stopped)await verifyStopped();
       const freshProof=adoptionFreshProof(a,b,this.data.runs,oldSnapshot);
       const oldObservation=structuredClone(a.agentModel.observation),freshObservation=structuredClone(b.agentModel.observation);
       const keys=['launchProfile','launchEvidence','workspaceId','initialTabId','tabId','sessionName','terminalUrl','runtime','observedSessionId','inputEnvelope','modelInfo','setupRequired','ownedProcesses','processVerification','terminatedAt','lastCheckedAt'];
@@ -289,10 +297,16 @@ export class DirectAgents {
       return this.persist(async()=>{
         // Workshop edits can occur during native observation. Recheck at the atomic swap.
         checkIdentity();
+        if(retirement){
+          await verifyStopped();
+          const lastFresh=await this.observe(b);await this.verifyInstructions(b);
+          if(!(lastFresh.available||b.provider==='claude'&&lastFresh.unrecorded===true)||lastFresh.inputs.length||lastFresh.turns.length)fail('保存前に新runtimeの未使用を確認できません');
+          if(!agentControls(b).canSend||JSON.stringify(retirementRecord(this.data,a,b,x.retireLegacyHistory))!==JSON.stringify(retirement))fail('退役保存前の履歴・予約・新runtime証拠が変化しました');
+        }
         if(JSON.stringify(adoptionFreshProof(a,b,this.data.runs,oldSnapshot))!==JSON.stringify(freshProof))fail('採用前の履歴・runtime証明が変化しました');
-        if(stopped&&(!stoppedRuntimeEvidence(a)||stopProof()!==proof||unresolved()||!agentControls(b).canSend))fail('停止済ランタイムの証拠または追跡状態が変更されました');
+        if(stopped&&(!stoppedRuntimeEvidence(a)||stopProof()!==proof||!retirement&&unresolved()||!agentControls(b).canSend))fail('停止済ランタイムの証拠または追跡状態が変更されました');
         // No request, run, input, result or notification is reissued or reassigned.
-        const record={operationId:x.operationId,payload,...(freshProof?{freshProof}:{}),...(stoppedVerification?{stoppedVerification}:{}),at:now(),agentId:id,replacementAgentId:b.id,oldRuntime:structuredClone(old),newRuntime:structuredClone(replacement),handover:x.handover||null,requestContexts:this.data.requests.flatMap(q=>(q.requestGraph?.nodes||[]).filter(n=>n.assignee===id).map(n=>({humanRequestId:q.id,workId:n.id})))};
+        const record={operationId:x.operationId,payload,...(retirement?{legacyRetirement:retirement}:{}),...(freshProof?{freshProof}:{}),...(stoppedVerification?{stoppedVerification}:{}),at:now(),agentId:id,replacementAgentId:b.id,oldRuntime:structuredClone(old),newRuntime:structuredClone(replacement),handover:x.handover||null,requestContexts:this.data.requests.flatMap(q=>(q.requestGraph?.nodes||[]).filter(n=>n.assignee===id).map(n=>({humanRequestId:q.id,workId:n.id})))};
         a.nativeTurns=(a.nativeTurns||[]).map(t=>({...t,sessionId:t.sessionId||a.observedSessionId}));
         for(const k of keys){delete a[k];delete b[k];}Object.assign(a,replacement);Object.assign(b,old);
         a.agentModel={...a.agentModel,intent:null,observation:freshObservation};
@@ -412,13 +426,17 @@ export class DirectAgents {
     });
   }
   async send(id,input,originKind='human'){return input.mode==='conversation'?this.conversations.start(id,input,originKind):this.flow.start(id,input,originKind);}
+  async holdRetiredRun(r){if(r.queuedReason==='legacy-retirement-held')return r;return this.persist(async()=>{r.queuedReason='legacy-retirement-held';r.error='旧履歴退役の保留。旧仕事・遅延成果は自動再開しません。agents instructions と元依頼を確認し、人間が別途判断してください。';await this.save();return r;});}
   async attemptRun(r){return this.locked(r.agentId,async()=>{
     if(quarantinedRun(this.data,r))return r;
     if(runState(r)!=='queued'||r.nextTransferAt>Date.now()||!this.flow.schedulable(r))return r;
     const a=this.agent(r.agentId);
     const blocked=(reason,message=reason)=>this.persist(async()=>{changeRun(r,{type:modelOf(r).state.kind==='queued'?'dispatch-blocked':'lost',actor:'program',at:Date.now(),reason});r.error=message;await this.save();return r;});
+    const retirementHold=()=>this.holdRetiredRun(r);
+    if(!retirementRunAllowed(this.data,a,r))return retirementHold();
     if(this.agentDeleting(a)||(a.agentModel?.intent==='stop'||agentControls(a).state==='terminated')||!a.tabId)return blocked('target-unavailable-before-dispatch');
     const baseline=await this.observe(a);
+    if(!retirementIntact(this.data,a))return retirementHold();
     if(this.agentDeleting(a))return blocked('project-deletion-before-dispatch');
     if(r.childContinuation&&!this.flow.childContinuationBoundary(this.flow.run(r.runModel.retryOf),baseline,a.runtime))return blocked('dispatch-boundary-changed','継続元の終了境界が変わりました。自動送信せず状況確認が必要です。');
     const allowed=snapshot=>launchProfileReady(a)&&(r.steerTarget?this.steeringBoundary(r,a,snapshot):agentControls(a).canSend);
@@ -441,7 +459,7 @@ export class DirectAgents {
     }
     // The adopted, unspoken session has no native transcript yet: refresh after
     // asynchronous contract verification, then recheck the proof in the save boundary.
-    if(confirmed.unrecorded===true&&a.runtimeMigrations?.at(-1)?.freshProof){
+    if(confirmed.unrecorded===true&&(a.runtimeMigrations?.at(-1)?.freshProof||latestRetirement(a))){
       confirmed=await this.observe(a);
       if(!allowed(confirmed))return r;
     }
@@ -449,6 +467,7 @@ export class DirectAgents {
     if(runState(r)!=='queued'||r.phase==='report'&&!this.flow.reportCurrent(r))return r;
     const deliveredInstruction=await this.persist(async()=>{
       if(this.agentDeleting(a)||runState(r)!=='queued'||r.phase==='report'&&!this.flow.reportCurrent(r))return null;
+      if(!retirementIntact(this.data,a)||!retirementRunAllowed(this.data,a,r))return null;
       const compatibility=legacyAllowed(a);if(a.inputEnvelope?.mode!=='startup-v2'&&!compatibility)return null;
       if(confirmed.unrecorded===true&&!noCurrentRuntimeSends(a,this.data.runs,a.runtime,confirmed,createHash('sha256').update(this.startupInstructions()).digest('hex')))return null;
       const instruction=r.phase==='report'?this.flow.reportPrompt(this.flow.root(r.humanRequestId)):r.instruction;
