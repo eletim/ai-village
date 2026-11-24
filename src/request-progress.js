@@ -12,6 +12,7 @@ export function requestProgress(q,id,agents=[]){
  else if(handling?.decision==='rework'){label='差し戻し';waiting=(parent?name(parent.assignee):'依頼元')+'の再依頼待ち';}
  else if(n.planned){label=n.assignee?'開始前':'担当未定';waiting='依頼元の開始指示待ち';}
  else if(n.state.kind==='submitted'){label='成果提出済み';waiting=parent?name(parent.assignee)+'の確認待ち':'人間向けの報告待ち';}
+ else if(q.waiting?.[id]==='conversation-answer'){label='秘書回答待ち';waiting='質問・延長相談への回答待ち（最終提出ではありません）';}
  else if(!n.state.review?.length&&n.selfResume?.current?.status==='scheduled'){label=q.waiting?.[id]==='self-resume'?'再確認待ち':'再確認予約あり';waiting=new Date(n.selfResume.current.at).toLocaleString('ja-JP')+' に '+n.selfResume.current.text;}
  else {label='進行中';waiting=n.state.review?.length?name(n.assignee)+'の状況確認が必要':name(n.assignee)+'の作業・対応待ち';}
  return {label,waiting,...(next?{replacementId:next.id}:{}),...(previous?{replacesId:previous.id}:{})};

@@ -62,3 +62,5 @@ jobは独立した既存graph（createdBy=agent、root recipient=conversation）
 各段階で人間入力、rulesRevision、モデル/effort、native生入出力、API受付、conversation/get（管理者全文とターン別）、requests get/results、UI画像、成果ファイルhash、時刻を専用証拠dirへ保存する。判定は成功/失敗/未確認を分ける。
 
 親の設計レビューを反映: authorizationの元人間発言は同じ権限範囲のレビュー差戻し・追加検証jobで再利用でき、新しい人間発言を毎回要求しない。業務graphの提出済み表示にはreturnDelivery（配送待ち/受付照合/秘書確認中/返答済み/失敗・不明）を添え、成果が保存されていることと秘書の回答状態を区別する。ターン別getでは未来の本文を渡さないが、管理者全記録APIは引き続き読取可能。意味上の重複発言を完全保証する機構ではない。
+
+会話宛てrootのquestion/extensionは永続的な秘書回答待ちを作る。respond正常終了だけでは最終成果を提出しない。秘書のamendを正式入力として配送し、その入力の正常処理後に従来の提出条件を評価する。相談を自分で解消して提出する場合はfinishの正常確定が必要。通常progress・会話以外のleaf完了規則は変更しない。取消は待機を再開せず終える。

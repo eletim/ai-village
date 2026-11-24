@@ -1,4 +1,5 @@
 import {test} from 'node:test';
+import {requestProgress} from '../src/request-progress.js';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {fixture} from './inbox-fixture.js';
@@ -164,4 +165,41 @@ test('startup hash migration on restart blocks new jobs while retaining already 
  assert.equal(f.service.data.requests.length,1);assert.equal(f.service.data.runs.length,2);
  assert.equal(f.service.conversations.record(r.conversationId).operations.length,1);
  assert.equal(f.sent.filter(s=>s.agentId===a.id).length,0);
+});
+for(const kind of ['question','extension'])test(kind+' waits for secretary amendment across restart, then resumes and submits once',async t=>{
+ const {f,r,args}=await setup(t),job=await f.service.conversations.job(args);await f.complete(r);
+ const leader=f.service.flow.run(job.runId);await f.submit(leader);
+ const report={humanRequestId:job.humanRequestId,workId:job.workId,actorRunId:leader.id,operationId:randomUUID(),kind,text:'秘書の判断を待つ'};
+ await f.service.flow.report(report);await claim(f,leader);await f.complete(leader);await f.restart();await f.service.tick();
+ assert.equal(f.service.flow.get(job.humanRequestId).status,'active');
+ assert.equal(requestProgress(f.service.flow.get(job.humanRequestId),job.workId).label,'秘書回答待ち');
+ assert.deepEqual(f.service.conversations.get(r.conversationId).deliveries.map(e=>e.kind),[kind]);
+ assert.equal(f.service.data.runs.filter(x=>x.humanRequestId===job.humanRequestId).length,1);
+ assert.deepEqual(await f.service.flow.report(report),f.service.flow.root(job.humanRequestId).requestGraph.nodes[0].metadata.reporting.reports[0]);
+ const delivery=f.service.flow.run(f.service.conversations.get(r.conversationId).deliveries[0].runId);await f.submit(delivery);
+ const amend={...args,actorRunId:delivery.id,operationId:randomUUID(),humanRequestId:job.humanRequestId,instruction:'許可範囲でこの文言を使ってください'};
+ const receipt=await f.service.conversations.amend(amend);assert.deepEqual(await f.service.conversations.amend(amend),receipt);
+ await f.service.tick();const resumed=f.service.flow.run(f.service.flow.root(job.humanRequestId).requestGraph.nodes[0].currentRunId);
+ assert.notEqual(resumed.id,leader.id);await f.submit(resumed);await claim(f,resumed);await f.complete(resumed);
+ assert.equal(f.service.flow.get(job.humanRequestId).status,'completed');
+ await f.restart();await f.service.tick();assert.deepEqual(f.service.conversations.get(r.conversationId).deliveries.map(e=>e.kind),[kind,'result']);
+});
+test('explicit normal finish can resolve consultation; withdrawal never produces a final result',async t=>{
+ for(const end of ['finish','withdraw']){
+ const {f,r,args}=await setup(t),job=await f.service.conversations.job(args);await f.service.tick();const leader=f.service.flow.run(job.runId);await f.submit(leader);
+ await f.service.flow.report({humanRequestId:job.humanRequestId,workId:job.workId,actorRunId:leader.id,operationId:randomUUID(),kind:'question',text:'確認'});
+ if(end==='finish')await claim(f,leader,true);else await f.service.conversations.withdraw({...args,operationId:randomUUID(),humanRequestId:job.humanRequestId,instruction:'取り下げ'});
+ await f.complete(leader);await f.restart();await f.service.tick();
+ assert.equal(f.service.flow.get(job.humanRequestId).status,end==='finish'?'completed':'cancelled');
+ assert.equal(f.service.conversations.get(r.conversationId).deliveries.filter(e=>e.kind==='result').length,end==='finish'?1:0);
+ }
+});
+test('failed finish cannot resolve consultation and ordinary human leaf reports keep legacy completion',async t=>{
+ const {f,r,args}=await setup(t),job=await f.service.conversations.job(args);await f.service.tick();const leader=f.service.flow.run(job.runId);await f.submit(leader);
+ await f.service.flow.report({humanRequestId:job.humanRequestId,workId:job.workId,actorRunId:leader.id,operationId:randomUUID(),kind:'question',text:'確認'});
+ await claim(f,leader,true);await f.complete(leader,'failed');await f.restart();await f.service.tick();
+ assert.equal(f.service.flow.get(job.humanRequestId).status,'active');assert(!f.service.conversations.get(r.conversationId).deliveries.some(e=>e.kind==='result'));
+ const direct=await f.service.send(f.agents[3].id,{requestId:randomUUID(),instruction:'従来のleaf'});await f.submit(direct);
+ await f.service.flow.report({humanRequestId:direct.humanRequestId,workId:direct.workId,actorRunId:direct.id,operationId:randomUUID(),kind:'question',text:'従来仕様'});
+ await claim(f,direct);await f.complete(direct);assert.equal(f.service.flow.get(direct.humanRequestId).status,'completed');
 });

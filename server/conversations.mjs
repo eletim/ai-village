@@ -104,7 +104,11 @@ export class Conversations {
    }else{
     const q=this.d.flow.root(x.humanRequestId),w=rootNode(q);
     if(q.conversationId!==c.id)fail('この会話が依頼した仕事ではありません',403);
-    if(action==='amend')applyGraph(this.d.data,q,{type:'supplement',actor:'agent',requestId:w.id,input:{id:randomUUID(),kind:'supplement',text:x.instruction,createdAt:now(),attempts:[]}});
+    if(action==='amend'){
+     const id=randomUUID();
+     applyGraph(this.d.data,q,{type:'supplement',actor:'agent',requestId:w.id,input:{id,kind:'supplement',text:x.instruction,createdAt:now(),attempts:[]}});
+     const current=rootNode(q);if(current.conversationWait)current.conversationWait.answerInputId=id;
+    }
     else if(action==='withdraw'){
      applyGraph(this.d.data,q,{type:'withdraw-conversation',actor:'agent',conversationId:c.id,requestId:w.id,reason:x.instruction});
      // Withdrawal prevents queued effects. Already dispatched work is NOT stopped or replayed.
