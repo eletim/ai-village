@@ -11,3 +11,10 @@ export function sameRuntimeConnection(a,b){
  const identity=runtimeConnectionIdentity(a);
  return identity!==null&&identity===runtimeConnectionIdentity(b);
 }
+// Shared UI preflight/server validation. Native eligibility remains server-owned.
+export function sameRuntimeAttributes(a,b){
+ return !!a&&!!b&&['provider','location','projectId','workshopId','cwd'].every(k=>(a[k]||null)===(b[k]||null))&&sameRuntimeConnection(a.connection,b.connection);
+}
+export function currentRuntimeWorkplaceAllowed(agent,workshop){
+ return !!agent&&!!workshop&&agent.workshopId===workshop.id&&typeof agent.cwd==='string'&&Array.isArray(workshop.workplaces)&&workshop.workplaces.includes(agent.cwd)&&sameRuntimeConnection(agent.connection,workshop);
+}

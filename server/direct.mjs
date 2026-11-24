@@ -1,4 +1,4 @@
-import {sameRuntimeConnection} from './runtime-connection-identity.mjs';
+import {sameRuntimeAttributes,currentRuntimeWorkplaceAllowed} from '../src/runtime-connection-identity.js';
 import {Conversations} from './conversations.mjs';
 import {enrollLegacy,legacyAllowed,legacyContext,legacyReviewDue} from './legacy-contract.mjs';
 import {migrateCommonRequests} from './common-request-migration.mjs';
@@ -242,9 +242,9 @@ export class DirectAgents {
       this.writableAgent(a);this.writableAgent(b);
       if((a.metadataRevision||0)!==x.revision||(b.metadataRevision||0)!==x.replacementRevision)fail('Agentが更新されています。再読込してください');
       const checkIdentity=()=>{
-        if(['provider','location','projectId','workshopId','cwd'].some(k=>(a[k]||null)!==(b[k]||null))||!sameRuntimeConnection(a.connection,b.connection))fail('同じ場所・Project・provider・接続の未使用Agentを指定してください');
+        if(!sameRuntimeAttributes(a,b))fail('同じ場所・Project・provider・接続の未使用Agentを指定してください');
         const workshop=this.data.workshops.find(w=>w.id===a.workshopId);
-        if(!workshop||typeof a.cwd!=='string'||!Array.isArray(workshop.workplaces)||!workshop.workplaces.includes(a.cwd)||!sameRuntimeConnection(a.connection,workshop))fail('現在の工房の接続先と作業場所の許可を確認してください');
+        if(!currentRuntimeWorkplaceAllowed(a,workshop))fail('現在の工房の接続先と作業場所の許可を確認してください');
       };
       checkIdentity();
       if(!b.tabId||b.tabId===a.tabId||!b.workspaceId||b.workspaceId===a.workspaceId)fail('独立した新ランタイムが必要です');

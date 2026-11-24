@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {fixture} from './inbox-fixture.js';
-import {runtimeConnectionIdentity,sameRuntimeConnection} from '../server/runtime-connection-identity.mjs';
+import {runtimeConnectionIdentity,sameRuntimeConnection} from '../src/runtime-connection-identity.js';
 async function setup(t,type='local'){
  const f=await fixture(t),s=f.service,[a,b]=f.agents;
  const w=await s.putWorkshop({name:'fixture',connectionType:type,sshHost:type==='ssh'?'alice@fixture-host':null,baseUrl:'http://127.0.0.1:1',workplaces:['/fixture/work']});

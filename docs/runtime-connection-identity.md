@@ -4,7 +4,7 @@
 
 `adoptRuntime` compared serialized copies of the entire workshop connection. An old Agent and a newly created donor can execute on the same destination while their saved `updatedAt`, `workplaces`, or `iconPattern` differ. The rejected migration evidence had exactly these differences; provider, location, Project, workshop, cwd and local execution identity matched, and the current workshop still permitted the cwd. Evidence was read from saved snapshots only; no existing Agent or donor was operated on.
 
-This change is restricted to the server adoption connection comparison and current workshop authorization. It does not change stopped-runtime eligibility, native idle/unused checks, model inheritance, request state, or runtime ownership transfer behavior.
+This change is restricted to the adoption connection comparison and current workshop authorization, shared by the server and UI after the parent explicitly expanded the scope. It does not change stopped-runtime eligibility, native idle/unused checks, model inheritance, request state, or runtime ownership transfer behavior.
 
 ## Execution-path basis
 
@@ -30,8 +30,16 @@ A completed operation's identical operationId/payload still returns its saved re
 
 51 tests passed on the first run. Coverage includes local/SSH metadata differences, separate SSH host/user, transport/provider/location/Project/workshop/cwd mismatches, missing workshop, current cwd withdrawal before/during observation, current destination change, invalid transport, same-operation restart/idempotency, save failure rollback, queued/history retention, and the existing adopted leader's conversation return path. Execution routing tests use local/remote stubs; no real SSH or production Agent was contacted. Fixtures now include a registered workshop and permitted cwd, reflecting the newly enforced authorization check.
 
-check/typecheck pass. Build is checked separately in the worker evidence. No HTTP service or browser is needed for this server-only comparison; no test port is opened by these targeted tests. No broad suite rerun, merge, deployment, push or PR is part of this worker task.
+check/typecheck pass. Build is checked separately in the worker evidence. The Node tests open no test port. The UI continuation uses the existing browser fixture on dedicated port 15353 with disposable state and notifications OFF. No broad suite rerun, merge, deployment, push or PR is part of this worker task.
 
-## Remaining boundary
+## UI continuation
 
-`src/runtime-migration.js` still uses full serialized connection equality for its UI candidate label/button eligibility. It is deliberately unchanged under this server-only task and was reported to the parent; the CLI/API blocker is fixed, but UI candidate consistency remains a follow-up. Stopped-runtime boundaries and model settings remain for the parent's separate investigation.
+The parent expanded this task to fix the same UI comparison. `src/runtime-connection-identity.js` now exports pure connection, attribute, and current-workplace predicates shared by `DirectAgents.adoptRuntime` and `src/runtime-migration.js`. There is no UI-only interpretation of connection equality. The candidate label and ready button use the current snapshot workshop permission, while the server remains the final authority and rechecks immediately before exchange.
+
+The existing normalBoundary, idle, unused, sent/unknown and pending-operation protections are unchanged. No new polling, implicit adoption or automatic retry is introduced. Stopped-runtime boundaries and model settings remain for the parent's separate investigation.
+
+UI validation: metadata-only drift permits local and SSH candidates and one explicit adoption. Different target/user/transport, changed current workshop destination, and cwd permission withdrawal disable the candidate after explicit refresh. Existing in-flight/failed-terminal handling, same-operation recovery after lost response, double-click suppression and no redundant resume are retained; additional used-donor/unknown/sent guards are exercised. Test fixtures include a valid current workshop and cwd permission rather than relying on missing registration.
+
+Run: `VILLAGE_TEST_PORT=15353 VILLAGE_TEST_STATE=<new temp dir> RUNTIME_IDENTITY_EVIDENCE=<optional evidence dir> npx playwright test tests/browser/runtime-migration.spec.js`. Do not reuse an existing server. Screenshots use the environment-selected path or Playwright output directory, never a machine-specific path inside the test.
+
+Node continuation regression: 64 passed. Browser continuation: 15 passed, no initial failures. check/typecheck/build passed. Images and logs are saved in the parent's connection-fix/worker evidence directory. These are fixture checks, not live adoption of existing Agents or actual SSH sessions.
