@@ -7,6 +7,7 @@ export function requestProgress(q,id,agents=[]){
  let label,waiting='';
  if(n.replacementId){label='差し戻し・再依頼済み';}
  else if(n.state.kind==='withdrawn')label='取り下げ';
+ else if(n.state.kind==='completed'&&q.conversationId&&!n.parentId){label='リーダー提出済み';waiting='秘書への資料配送済み（採用・人間了承とは別）';}
  else if(n.state.kind==='completed')label=handling?.decision==='accept'?'承認済み':'完了';
  else if(handling?.decision==='rework'){label='差し戻し';waiting=(parent?name(parent.assignee):'依頼元')+'の再依頼待ち';}
  else if(n.planned){label=n.assignee?'開始前':'担当未定';waiting='依頼元の開始指示待ち';}

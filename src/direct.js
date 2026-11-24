@@ -223,7 +223,7 @@ function renderBoard(){
   if(!name){name=document.createElement('button');name.type='button';name.className='agent-name';name.dataset.profileAgent=a.id;heading.replaceChildren(name);}
   name.textContent=a.name||'名前未登録';name.setAttribute('aria-label',name.textContent+'のプロフィール');name.setAttribute('aria-haspopup','dialog');
   heading.title='名前を押すとプロフィールを表示します';
-  card.querySelector('.panel-info').innerHTML=`<span class="badge">${compactStatus(labels[visualState(a,agentEntries(state,a))]||a.state,!state.reviews?.[a.id]?.attention)}</span><span class="location-name">${esc(placeName(a))}</span>${a.terminalUrl?`<a href="${esc(a.terminalUrl)}" target="_blank" rel="noopener" title="PurpleMuxでタブを開く">PurpleMux ↗</a>`:''}`;
+  card.querySelector('.panel-info').innerHTML=`<span class="badge">${compactStatus(labels[visualState(a,agentEntries(state,a))]||a.state,!state.reviews?.[a.id]?.attention)}</span><span class="location-name">${esc(placeName(a))}</span>${(state.projects||[]).some(p=>p.leaderAgentId===a.id)?'<span class="badge">Projectリーダー</span>':''}${a.location==='mayor'&&a.projectId?'<span class="badge">仕事のリーダー: '+esc(state.agents.find(l=>l.id===state.projects.find(p=>p.id===a.projectId)?.leaderAgentId)?.name||'未設定')+'</span>':''}${a.terminalUrl?`<a href="${esc(a.terminalUrl)}" target="_blank" rel="noopener" title="PurpleMuxでタブを開く">PurpleMux ↗</a>`:''}`;
   card.querySelector('.current-action').textContent=[['busy','waiting_input'].includes(a.state)?a.currentAction:null,a.error,a.canSend?null:a.sendReason].filter(Boolean).join(' · ');
   const receipt=pending.get(a.id),known=receipt&&matchingRun(state,a.id,receipt.requestId);
   if(known){
@@ -237,19 +237,22 @@ function renderBoard(){
   const send=card.querySelector('[data-send] button:not([data-reconcile])');
   const choice=card.querySelector('[name=requestTarget]');
   if(state.capabilities?.requestInbox){
-   choice.hidden=false;const selected=inputTargets.get(a.id)||choice.value;
+   choice.hidden=false;const conversational=state.capabilities?.secretaryConversations&&a.location==='mayor'&&a.projectId;
+   const hasOldWork=(state.requests||[]).some(q=>q.status==='active'&&q.requestGraph?.nodes.some(n=>n.assignee===a.id));
+   const selected=inputTargets.has(a.id)?inputTargets.get(a.id):(choice.value||(conversational&&!hasOldWork?'conversation':''));
    const options=(state.requests||[]).filter(q=>q.status==='active'&&!q.integrity).flatMap(q=>(q.requestGraph?.nodes||[]).filter(n=>n.assignee===a.id&&['active','submitted'].includes(n.state.kind)).map(n=>({value:q.id+':'+n.id,label:(n.metadata.instruction||q.instruction||'依頼').slice(0,50)})));
-   const unavailable=selected&&!options.some(x=>x.value===selected);
-   const html='<option value="">新しい依頼</option>'+(unavailable?`<option value="${esc(selected)}" disabled>補足先は終了済み・選び直してください</option>`:'')+options.map(x=>`<option value="${esc(x.value)}">補足：${esc(x.label)}</option>`).join('');
+   const unavailable=selected&&selected!=='conversation'&&!options.some(x=>x.value===selected);
+   const html=(conversational?'<option value="conversation">秘書との会話（申告不要）</option>':'')+'<option value="">新しい仕事（従来の依頼管理）</option>'+(unavailable?`<option value="${esc(selected)}" disabled>補足先は終了済み・選び直してください</option>`:'')+options.map(x=>`<option value="${esc(x.value)}">補足：${esc(x.label)}</option>`).join('');
    if(choice.innerHTML!==html){choice.innerHTML=html;choice.value=selected;}
    choice.onchange=()=>{inputTargets.set(a.id,choice.value);storeDrafts();void refresh(true);};
   }
 
   fileEditors.get(a.id).lock(card.dataset.pending==='true'||pending.has(a.id));
   travelEditors.get(a.id).lock(card.dataset.pending==='true'||pending.has(a.id));
-  send.disabled=!!choice.selectedOptions[0]?.disabled||(!choice.value&&!connected)||(!choice.value&&a.canSend!==true&&a.canSteer!==true&&a.canQueue!==true)||card.dataset.pending==='true'||pending.has(a.id);
+  const supplement=!!choice.value&&choice.value!=='conversation';
+  send.disabled=!!choice.selectedOptions[0]?.disabled||(!supplement&&!connected)||(!supplement&&a.canSend!==true&&a.canSteer!==true&&a.canQueue!==true)||card.dataset.pending==='true'||pending.has(a.id);
   card.querySelector('[data-reconcile]').hidden=!pending.has(a.id)||card.dataset.pending==='true';
-  const sendLabel=send.form.dataset.sending==='true'?'送信中…':pending.has(a.id)?'送信結果を確認中':choice.value?'補足を送信':!state.capabilities?.requestInbox&&a.canSteer?'実行中に補足':a.canQueue&&!a.canSend?'待機キューへ':'送信';
+  const sendLabel=send.form.dataset.sending==='true'?'送信中…':pending.has(a.id)?'送信結果を確認中':supplement?'補足を送信':choice.value==='conversation'?'会話を送信':!state.capabilities?.requestInbox&&a.canSteer?'実行中に補足':a.canQueue&&!a.canSend?'待機キューへ':'送信';
   send.innerHTML=sendLabel==='送信'?actionSVG('send'):esc(sendLabel);
   send.classList.toggle('icon-send',sendLabel==='送信');send.setAttribute('aria-label',sendLabel);
   const claudeSteering=a.canSteer&&a.provider==='claude'?'作業中か終了直後のどちらに反映されるかは保証されません。':'';
@@ -533,9 +536,10 @@ $('#agent-form').onsubmit=e=>{e.preventDefault();const f=e.currentTarget;f.datas
 $('#agents').onsubmit=async e=>{
  e.preventDefault();const f=e.target,id=f.dataset.send;if(!id||pending.has(id)||f.querySelector('button').disabled||(!f.elements.instruction.value.trim()&&!fileEditors.get(id).count))return;
  if(travelEditors.get(id).value.length&&!state.capabilities?.travelContexts){$('#error').textContent='出張先の送信にはサーバー更新の反映が必要です。下書きは保持しています。';return;}
- const requestTarget=f.elements.requestTarget?.value;
+ const selection=f.elements.requestTarget?.value,conversation=selection==='conversation';
+ const requestTarget=conversation?null:selection;
  const target=state.agents.find(a=>a.id===id),steerTarget=!state.capabilities?.requestInbox&&target?.canSteer?structuredClone(target.steerTarget):null;
- const receipt={...(requestTarget?{requestTarget}:{}),...(steerTarget?{steerTarget}:{}),instruction:f.elements.instruction.value,attachments:[],travelContexts:structuredClone(travelEditors.get(id).value),requestId:newRequestId()};
+ const receipt={...(conversation?{mode:'conversation'}:{}),...(requestTarget?{requestTarget}:{}),...(steerTarget?{steerTarget}:{}),instruction:f.elements.instruction.value,attachments:[],travelContexts:structuredClone(travelEditors.get(id).value),requestId:newRequestId()};
  const message={...receipt,createdAt:new Date().toISOString(),draftVersion:draftVersions.get(id)||0,files:fileEditors.get(id).summaries,mode:requestTarget||steerTarget?'steering':!target?.canSend?'queue':'direct',stage:fileEditors.get(id).count?'uploading':'preparing'};
  outbox.set(id,message);storeDrafts();scrolls.get(id).latest();
  action(f,async()=>{
@@ -623,6 +627,7 @@ function openProjectActions(id){
  projectActionTarget={...p};
  $('#project-actions-title').textContent=p.name+' の操作';
  $('#project-rename-form').elements.name.value=p.name;
+ options($('#project-leader-form [name=leaderAgentId]'),[{id:'',name:'未設定'},...state.agents.filter(a=>a.projectId===p.id&&a.location==='workshop')]);$('#project-leader-form [name=leaderAgentId]').value=p.leaderAgentId||'';
  $('#project-suspension').textContent=p.suspended?'再開':'休止する';
  $('#project-suspension-help').textContent=p.name+'：表示整理のみです。Agent・所属・会話・依頼・通知はそのまま継続します。';
  $('#project-actions-dialog .dialog-error').textContent='';
@@ -636,6 +641,7 @@ function patchProject(patch){
   if(projectActionTarget===target)$('#project-actions-dialog').close();
  });
 }
+$('#project-leader-form').onsubmit=e=>{e.preventDefault();patchProject({leaderAgentId:e.currentTarget.elements.leaderAgentId.value||null});};
 $('#project-rename-form').onsubmit=e=>{e.preventDefault();patchProject({name:e.currentTarget.elements.name.value});};
 function projectMoveList(){
  const p=state.projects.find(p=>p.id===projectActionTarget?.id);

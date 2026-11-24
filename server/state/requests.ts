@@ -12,8 +12,8 @@ export type Claim=Handling&{invalidated?:string};
 export type Replacement={replacementId:string;actorRunId:string;resultId:string;version:number};
 export type InboxItem={source?:{actor:Actor};id:string;kind:'request'|'supplement'|'result';text:string;createdAt:string;result?:Omit<Response,'decision'>&{outcome?:string;reason?:string|null};attempts:string[];handledBy?:string;retiredBy?:string};
 export type InputClaim={runId:string;ids:string[];operationId:string};
-export type Recipient={kind:'human'}|{kind:'request';requestId:string};
-export type Node={selfResume?:SelfResume;recipient:Recipient;createdBy:Actor;planned:boolean;inbox?:InboxItem[];inputClaims?:InputClaim[];metadata:Record<string,unknown>;claims:Claim[];replacements:Replacement[];invalidatedRuns:string[];replacementId?:string;id:string;parentId:string|null;requester:{kind:'human'}|{kind:'agent';agentId:string;requestId:string};assignee:string|null;runAgents:Record<string,string>;runIds:string[];currentRunId:string|null;reportRunId:string|null;reportMode:boolean;state:RequestState;submissions:Submission[];handling:Handling[];declarations:{id:string;runId:string;at:number;invalidated?:string}[];decisions:{actor:Actor;reason:string}[]};
+export type Recipient={kind:'conversation';conversationId:string}|{kind:'human'}|{kind:'request';requestId:string};
+export type Node={selfResume?:SelfResume;recipient:Recipient;createdBy:Actor;planned:boolean;inbox?:InboxItem[];inputClaims?:InputClaim[];metadata:Record<string,unknown>;claims:Claim[];replacements:Replacement[];invalidatedRuns:string[];replacementId?:string;id:string;parentId:string|null;requester:{kind:'conversation';conversationId:string;agentId:string}|{kind:'human'}|{kind:'agent';agentId:string;requestId:string};assignee:string|null;runAgents:Record<string,string>;runIds:string[];currentRunId:string|null;reportRunId:string|null;reportMode:boolean;state:RequestState;submissions:Submission[];handling:Handling[];declarations:{id:string;runId:string;at:number;invalidated?:string}[];decisions:{actor:Actor;reason:string}[]};
 export type Graph={version:3;rootId:string;nodes:Node[];operations:{id:string;payload:string;acceptedPayload?:string;allowOmittedResults?:true}[]};
 export type Evidence={run:Run;ownerId:string;agentId:string}[];
 export const node=(g:Graph,id:string)=>g.nodes.find(n=>n.id===id);
@@ -122,7 +122,8 @@ export function reconcileGraph(source:Graph,runs:Evidence):Graph{
 }
 export type Event=
  | {type:'add';actor:Actor;request:Node}
- | {type:'deliver-human';actor:'program';requestId:string;resultId:string}
+ | {type:'deliver-human'|'deliver-conversation';actor:'program';requestId:string;resultId:string}
+ | {type:'withdraw-conversation';actor:'agent';requestId:string;conversationId:string;reason:string}
  | {type:'plan-assign';actor:'human'|'agent';requestId:string;agentId:string}
  | {type:'discard-plan';actor:'human'|'agent';requestId:string}
  | {type:'attempt';actor:Actor;requestId:string;runId:string;report:boolean;resolveReview?:boolean}
@@ -134,7 +135,7 @@ export type Event=
  | {type:'withdraw'|'complete';actor:'human';requestId:string;reason:string}
  | {type:'observe';actor:'program'};
 export function transitionGraph(source:Graph,e:Event,runs:Evidence):Result<Graph>{
- const authorities:Record<Event['type'],Actor[]>={add:['agent','human'],'deliver-human':['program'],'plan-assign':['human','agent'],'discard-plan':['human','agent'],supplement:['human','agent','program'],attempt:['agent','human','program'],respond:['agent'],finish:['agent'],review:['program'],withdraw:['human'],complete:['human'],observe:['program'],assign:['human'],replace:['agent']};
+ const authorities:Record<Event['type'],Actor[]>={add:['agent','human'],'deliver-conversation':['program'],'withdraw-conversation':['agent'],'deliver-human':['program'],'plan-assign':['human','agent'],'discard-plan':['human','agent'],supplement:['human','agent','program'],attempt:['agent','human','program'],respond:['agent'],finish:['agent'],review:['program'],withdraw:['human'],complete:['human'],observe:['program'],assign:['human'],replace:['agent']};
  if(!authorities[e.type]?.includes(e.actor))return reject('actor-forbidden');
  let g=structuredClone(source);
  if(e.type==='observe')return accept(reconcileGraph(g,runs));
@@ -145,8 +146,13 @@ export function transitionGraph(source:Graph,e:Event,runs:Evidence):Result<Graph
   g.nodes.push(n);return accept(g);
  }
  const n=node(g,e.requestId);if(!n)return reject('request-missing');
- if(e.type==='deliver-human'){
-  if(n.recipient?.kind!=='human'||n.state.kind!=='submitted'||latest(n)?.id!==e.resultId)return reject('result-not-ready');
+ if(e.type==='withdraw-conversation'){
+  if(n.parentId||n.recipient.kind!=='conversation'||n.recipient.conversationId!==e.conversationId||!['active','submitted'].includes(n.state.kind))return reject('conversation-authority-mismatch');
+  for(const item of g.nodes)if(['active','submitted'].includes(item.state.kind)){item.state={kind:'withdrawn',reason:e.reason};item.decisions.push({actor:'agent',reason:e.reason});closeSelfResume(item,'request-ended');}
+  return accept(g);
+ }
+ if(e.type==='deliver-human'||e.type==='deliver-conversation'){
+  if(n.recipient?.kind!==(e.type==='deliver-human'?'human':'conversation')||n.state.kind!=='submitted'||latest(n)?.id!==e.resultId)return reject('result-not-ready');
   n.state={kind:'completed',by:'program',reason:'result-delivered:'+e.resultId};closeSelfResume(n,'request-ended');return accept(g);
  }
  if(e.type==='plan-assign'){if(!n.planned||n.state.kind!=='active')return reject('request-already-started');n.assignee=e.agentId;return accept(g);}

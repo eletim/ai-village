@@ -35,13 +35,15 @@ export class RequestUnits {
   for(const q of requests)for(const n of q.requestGraph.nodes)if(n.assignee)agents.add(n.assignee);
   const runs=[...ids].flatMap(id=>[...this.runsByRequest.get(id)||[]]);
   if(scope.agentIds)runs.push(...d.runs.filter(r=>scope.agentIds.has(r.agentId)&&!r.humanRequestId));
-  return {requests,runs,agents:[...agents].map(id=>this.maps.agents.get(id)).filter(Boolean)};
+  const conversations=(d.conversations||[]).filter(c=>requests.some(q=>q.conversationId===c.id)||agents.has(c.agentId));
+  runs.push(...d.runs.filter(r=>r.conversationId&&conversations.some(c=>c.id===r.conversationId)));
+  return {requests,runs,conversations,agents:[...agents].map(id=>this.maps.agents.get(id)).filter(Boolean)};
  }
  checkpoint(){
   const scope=this.context.getStore();if(!scope)return null;
   scope.requestCount??=this.d.data.requests.length;
-  const data=this.d.data,arrays={requests:data.requests.length,runs:data.runs.length,agents:data.agents.length},restore=checkpoint(this.selection());
-  return ()=>{restore();for(const [key,length] of Object.entries(arrays))data[key].length=length;this.reset();};
+  const data=this.d.data,arrays={requests:data.requests.length,runs:data.runs.length,agents:data.agents.length,conversations:data.conversations?.length||0},restore=checkpoint(this.selection());
+  return ()=>{restore();for(const [key,length] of Object.entries(arrays))if(data[key])data[key].length=length;this.reset();};
  }
  affected(changes){
   this.sync();const ids=new Set(),agents=new Set();

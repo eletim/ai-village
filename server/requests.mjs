@@ -72,9 +72,10 @@ export class RequestFlow {
   return r;
  }
  context(r){
+  if(r.conversationId)return this.d.conversations.context(r);
   const q=this.root(r.humanRequestId),w=this.work(q,r.workId);
   const inputs=w.inbox&&r.phase!=='report'?this.inputs(q.id,w.id).filter(i=>i.attempts.includes(r.id)).map(({id,kind,text,result,textSourceUnavailable})=>({id,kind,...(text&&r.instruction.includes(text)?{textInInstruction:true}:{text:text.slice(0,2000),truncated:text.length>2000}),textSourceUnavailable,result})):undefined;
-  return this.d.rules.dynamic(r)+this.d.rules.context({humanRequestId:q.id,workId:w.id,runId:r.id,origin:r.origin,phase:r.phase||'work',inputProtocol:q.inputProtocol||0,...(r.runtimeHandover?{sessionHandover:r.runtimeHandover}:{}),...(w.metadata.reporting?{deadline:{version:w.metadata.reporting.version,completionAt:w.metadata.reporting.completionAt,reportAt:w.metadata.reporting.reportAt,expired:w.metadata.reporting.expired,latestReport:w.metadata.reporting.reports.at(-1)}}:{}),...(inputs?{inputs}:{})});
+  return this.d.rules.dynamic(r)+this.d.rules.context({humanRequestId:q.id,workId:w.id,runId:r.id,origin:r.origin,phase:r.phase||'work',inputProtocol:q.inputProtocol||0,...(q.conversationId?{requester:q.requestedBy,recipient:{kind:'conversation',conversationId:q.conversationId}}:{}),...(r.runtimeHandover?{sessionHandover:r.runtimeHandover}:{}),...(w.metadata.reporting?{deadline:{version:w.metadata.reporting.version,completionAt:w.metadata.reporting.completionAt,reportAt:w.metadata.reporting.reportAt,expired:w.metadata.reporting.expired,latestReport:w.metadata.reporting.reports.at(-1)}}:{}),...(inputs?{inputs}:{})});
  }
  // originKind tags who actually dispatched this independent new request. The browser's own
  // /api/direct/agents/:id/runs route does not pass
@@ -321,12 +322,13 @@ export class RequestFlow {
      changed=true;
     }
    }
+   if(!q.integrity&&q.conversationId&&this.d.conversations.settle(q))changed=true;
    if(q.integrity||requestStatus(q)!=='active'&&(requestStatus(q)!=='completed'||q.completedAt))continue;
    const before=JSON.stringify(q);
    for(const w of q.requestGraph.nodes)if(w.inbox?.some(i=>i.result&&('decision' in i.result||!i.result.outcome))){const inputs=this.inputs(q.id,w.id);for(const i of w.inbox)if(i.result)i.result=inputs.find(x=>x.id===i.id).result;}
    const root=rootNode(q),head=this.run(root.currentRunId);
    observeRequest(this.d.data,q);
-   await settleHumanDelivery(this,q);
+   if(!q.conversationId)await settleHumanDelivery(this,q);
    for(const w of q.requestGraph.nodes)if(w.state.kind==='active'&&!w.planned&&!this.d.data.agents.some(a=>a.id===w.assignee))applyGraph(this.d.data,q,{type:'review',actor:'program',requestId:w.id,reason:'next-step-agent-unavailable'});
    if(requestStatus(q)==='active'){
     for(const e of resultEntries(this.d.data,q).filter(e=>!e.superseded&&!e.handled)){
@@ -344,7 +346,7 @@ export class RequestFlow {
     q.completedAt=now();q.finalRunId=rootNode(q).reportRunId||rootNode(q).currentRunId;
 
     // Stable delivery key; historical notification records are never reset.
-    q.notification=transitionDelivery(q.notification,{type:'prepare',id:'request:'+q.id});
+    if(!q.conversationId)q.notification=transitionDelivery(q.notification,{type:'prepare',id:'request:'+q.id});
    }
 
    if(before!==JSON.stringify(q)){q.revision++;changed=true;}
@@ -427,13 +429,13 @@ export class RequestFlow {
  if(!dispatch)return queued;
  await this.dispatchReady(queued,wait);
  }
- async dispatchReady(queued=this.d.data.runs.filter(r=>runState(r)==='queued'&&r.humanRequestId),wait=false){
+ async dispatchReady(queued=this.d.data.runs.filter(r=>runState(r)==='queued'&&(r.humanRequestId||r.conversationId)),wait=false){
  const first=new Map();for(const r of queued.sort((a,b)=>a.createdAt.localeCompare(b.createdAt)))if(this.schedulable(r)&&!first.has(r.agentId))first.set(r.agentId,r);
- const dispatched=Promise.allSettled([...first.values()].map(r=>this.d.units.run(r.humanRequestId,()=>this.dispatchQueued(r))));
+ const dispatched=Promise.allSettled([...first.values()].map(r=>r.conversationId?this.d.units.agent(r.agentId,()=>this.dispatchQueued(r)):this.d.units.run(r.humanRequestId,()=>this.dispatchQueued(r))));
  if(wait){await dispatched;await Promise.allSettled([...this.dispatching.values()]);}
  }
  async notifications(requests=this.requests){
-  for(const q of requests.filter(q=>requestStatus(q)==='completed'&&q.notification?.status==='pending')){
+  for(const q of requests.filter(q=>!q.conversationId&&requestStatus(q)==='completed'&&q.notification?.status==='pending')){
    await this.d.locked('notify:'+q.id,async()=>{
     const claimed=await this.d.persist(async()=>{
      // Recheck after waiting for any in-flight settlement to commit or roll back.
