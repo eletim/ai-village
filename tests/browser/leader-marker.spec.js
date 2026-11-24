@@ -14,7 +14,7 @@ for(const width of [1440,390])for(const mode of ['roles','dots'])test('leader as
  for(const group of ['all','project:p']){const icon=page.locator(`[data-place="${group}"] [data-agent-dot="a"]`);await expect(icon.locator('.leader-icon-flag')).toBeVisible();await expect(icon).toHaveAttribute('aria-label',/Projectリーダー/);}
  await expect(page.locator('#agent-b .header-status .leader-icon-flag')).toHaveCount(0);
  const pair=page.locator('[data-place="all"] .place-dots');
- for(const id of ['a','b']){const box=await page.locator(`[data-place="all"] [data-agent-dot="${id}"]`).boundingBox();expect(box.width).toBe(id==='a'||mode==='roles'?20:9);expect(box.height).toBe(id==='a'||mode==='roles'?20:9);}
+ for(const id of ['a','b']){const icon=page.locator(`[data-place="all"] [data-agent-dot="${id}"]`),size=(id==='a'||mode==='roles'?20:9)+'px';await expect(icon).toBeVisible();await expect(icon).toHaveCSS('width',size);await expect(icon).toHaveCSS('height',size);}
  await expect(page.locator('#agent-a .header-status > svg')).toHaveCount(1);
  await pair.screenshot({path:evidence?`${evidence}/icon-pair-${width}-${mode}.png`:testInfo.outputPath(`icon-pair-${width}-${mode}.png`)});
  await screenshot('list');
