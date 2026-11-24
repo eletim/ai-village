@@ -1,3 +1,4 @@
+import {stoppedRuntimeEvidence} from './stopped-runtime.js';
 import {sameRuntimeAttributes,currentRuntimeWorkplaceAllowed} from './runtime-connection-identity.js';
 import {escapeReport as esc} from './report-content.js';
 
@@ -24,9 +25,9 @@ export function runtimeMigration({api,newId}){
  function render(){
   const a=agent(),donor=snapshot?.agents.find(b=>b.id===selected),prepared=a?.runtimeUpgrade?.state==='prepared',v2=a?.inputEnvelope?.mode==='startup-v2';
   const notes=dialog.querySelector('[name=handover]')?.value||pending?.body?.handover||'',resumeText=dialog.querySelector('[name=resumeText]')?.value||'',resumeTarget=dialog.querySelector('[name=resumeTarget]')?.value||'';
-  const ready=a&&prepared&&idle(a)&&normalBoundary(a)&&!activeRuns(a).length&&donor&&compatible(a,donor)&&unused(donor)&&idle(donor);
+  const ready=a&&prepared&&(idle(a)&&a.agentModel?.intent!=='stop'&&normalBoundary(a)||stoppedRuntimeEvidence(a)&&!(snapshot?.runs||[]).some(r=>r.agentId===a.id&&(r.runModel?.state?.outcome==='unconfirmed'||['unconfirmed','send_unknown','unknown'].includes(r.state))))&&!activeRuns(a).length&&donor&&compatible(a,donor)&&unused(donor)&&idle(donor);
   dialog.innerHTML=`<header><h2>セッションの切替</h2><button type="button" data-close>閉じる</button></header><p role="status">${esc(storageError?'操作記録を保存・読込できません。記録を消去せず管理者に確認してください。':message)}</p><button type="button" data-refresh ${busy?'disabled':''}>状態を再確認</button>${a?`
-   <h3>${esc(a.name)}</h3><p>現在の契約: <strong>${v2?'短い起動契約（v2）':a.runtimeRetiredTo?'旧セッション保管':'移行待ち'}</strong> ／ ${idle(a)?'待機中':'実行状態の確認が必要'} ／ 追跡中 ${activeRuns(a).length}件</p>${!normalBoundary(a)?'<p>直近の実行の正常終了を確認できません。失敗・中断・不明は確認し、強制切替しないでください。</p>':''}
+   <h3>${esc(a.name)}</h3><p>現在の契約: <strong>${v2?'短い起動契約（v2）':a.runtimeRetiredTo?'旧セッション保管':'移行待ち'}</strong> ／ ${stoppedRuntimeEvidence(a)?'正式停止の証拠あり（切替時に実機不在を再確認）':idle(a)?'待機中':'実行状態の確認が必要'} ／ 追跡中 ${activeRuns(a).length}件</p>${!normalBoundary(a)&&!stoppedRuntimeEvidence(a)?'<p>直近の実行の正常終了を確認できません。失敗・中断・不明は確認し、強制切替しないでください。</p>':''}
    <p>このAgentと依頼のIDは維持します。他のAgentは停止しません。切替準備後も実行中の処理は正常終了を待ちます。</p>
    ${a.legacyContract?'<p>旧契約で継続中です。確認日が過ぎても自動停止しません。</p>':''}
    ${!v2&&!a.runtimeRetiredTo?`<label>新セッション候補<select name="donor" ${!editable()?'disabled':''}><option value="">選択してください</option>${candidates().map(b=>`<option value="${esc(b.id)}" ${b.id===selected?'selected':''}>${esc(b.name)} — ${compatible(a,b)?'属性適合':'属性不一致'} / ${unused(b)?'登録履歴未使用':'使用済み'} / ${idle(b)?'待機中':'実行状態を確認'}</option>`).join('')}</select></label>

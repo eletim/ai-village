@@ -95,3 +95,19 @@ for pid,record in items.items():
 if untracked:raise RuntimeError('作業場所に所有関係未確認のプロセスが残っています。推測で停止しません: '+str(untracked))
 print(json.dumps({'trackedProcesses':len(known),'remainingOwned':0,'untrackedInDirectory':0}))
 `;
+
+// Deliberately independent of the signal-capable stop script. Any extant PID,
+// including reuse, is refused; only ENOENT proves absence. No signals or writes.
+export const verifyAbsentProcessesScript = `import os,json,sys
+owned=json.loads(sys.argv[1])
+if not isinstance(owned,list) or not owned:raise RuntimeError('missing ownership records')
+for r in owned:
+ if type(r.get('pid')) is not int or r['pid']<=0 or not isinstance(r.get('start'),str) or not r['start'].isdigit():raise RuntimeError('invalid ownership record')
+ try:
+  with open('/proc/'+str(r['pid'])+'/stat') as f:text=f.read()
+ except FileNotFoundError:continue
+ tail=text[text.rfind(')')+2:].split()
+ if len(tail)<20:raise RuntimeError('unreadable process identity')
+ raise RuntimeError('recorded PID still exists or has been reused')
+print(json.dumps({'absent':True,'checked':len(owned)}))
+`;

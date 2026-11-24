@@ -77,3 +77,19 @@ for(const guard of ['unused','unknown','sent'])test('identity match does not byp
  if(guard==='sent')state.runs.push({id:'inflight',agentId:target,runModel:{state:{kind:'sent'}}});
  await ui.getByRole('button',{name:'状態を再確認'}).click();await expect(ui.getByRole('button',{name:'確認した新セッションへ切替'})).toBeDisabled();expect(calls.filter(c=>c.path.endsWith('/adopt-runtime'))).toHaveLength(0);
 });
+function stopped(a){Object.assign(a,{sessionName:'old-pane',workspaceId:'old-workspace',tabId:'old-tab',terminatedAt:'2026-11-10T00:00:00Z',ownedProcesses:[{pid:123,start:'456'}],processVerification:{trackedProcesses:1,remainingOwned:0}});a.agentModel={intent:'stop',observation:{connected:true,process:'absent',activity:'unknown'}};}
+test('formal stopped evidence offers explicit adoption with server final authority',async({page},info)=>{
+ const {state,ui,calls}=await fixture(page);stopped(state.agents[0]);state.runs.push({id:'old-failed',agentId:target,runModel:{state:{kind:'ended',outcome:'interrupted'}}});await ready(ui);
+ await expect(ui).toContainText('正式停止の証拠あり');await expect(ui.getByRole('button',{name:'確認した新セッションへ切替'})).toBeEnabled();
+ await page.screenshot({path:process.env.RUNTIME_IDENTITY_EVIDENCE?`${process.env.RUNTIME_IDENTITY_EVIDENCE}/stopped-ready.png`:info.outputPath('stopped-ready.png')});
+ await ui.getByRole('button',{name:'確認した新セッションへ切替'}).click();await expect(ui).toContainText('短い起動契約（v2）');expect(calls.filter(c=>c.path.endsWith('/adopt-runtime'))).toHaveLength(1);expect(state.requests[0].requestGraph.nodes[0].assignee).toBe(target);
+});
+for(const guard of ['proof','count','sent','unconfirmed','donor stopped'])test('stopped UI refuses '+guard,async({page})=>{
+ const {state,ui,calls}=await fixture(page);stopped(state.agents[0]);
+ if(guard==='proof')delete state.agents[0].ownedProcesses;
+ if(guard==='count')state.agents[0].processVerification.trackedProcesses=2;
+ if(guard==='sent')state.runs.push({id:'sent',agentId:target,runModel:{state:{kind:'sent'}}});
+ if(guard==='unconfirmed')state.runs.push({id:'unknown',agentId:target,runModel:{state:{kind:'ended',outcome:'unconfirmed'}}});
+ if(guard==='donor stopped')stopped(state.agents[1]);
+ await ready(ui);await expect(ui.getByRole('button',{name:'確認した新セッションへ切替'})).toBeDisabled();expect(calls.filter(c=>c.path.endsWith('/adopt-runtime'))).toHaveLength(0);
+});
