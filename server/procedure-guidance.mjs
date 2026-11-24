@@ -14,10 +14,14 @@ export function procedureText(m){return '手続きの補完案内（人間の追
 export function updateProcedureGuidance(flow,q){
  let changed=false;
  for(const w of q.requestGraph.nodes){
-  const r=flow.run(w.currentRunId),guides=(w.inbox||[]).filter(i=>i.procedure);
+  const r=flow.run(w.currentRunId),confirmed=normal(r)&&!w.invalidatedRuns.includes(r.id),guides=(w.inbox||[]).filter(i=>i.procedure);
   for(const i of guides.filter(pending)){
-   const m=i.procedure.missing,remaining=m.inputs.some(id=>w.inbox.some(x=>x.id===id&&pending(x))),finishPending=m.finish&&!w.declarations.some(d=>d.runId===r?.id&&!d.invalidated)&&w.state.kind==='active';
-   if(w.state.kind!=='active'||!remaining&&!finishPending||normal(r)&&i.attempts.includes(r.id)){i.retiredBy='procedure-guidance-finished';changed=true;}
+   const m=i.procedure.missing,remaining=m.inputs.some(id=>w.inbox.some(x=>x.id===id&&pending(x))),finishPending=m.finish&&!(confirmed&&w.declarations.some(d=>d.runId===r.id&&!d.invalidated))&&w.state.kind==='active';
+   // A queued second attempt may carry both the original and its guide. Preserve
+   // that batch, but never dispatch a delayed guide for an exhausted original.
+   const undispatched=!i.attempts.some(id=>flow.run(id)?.runModel.facts.some(f=>f.type==='dispatch'));
+   const exhausted=undispatched&&m.inputs.some(id=>{const x=w.inbox.find(x=>x.id===id);return x&&pending(x)&&x.attempts.length>=2&&!(r?.runModel.state.kind==='queued'&&i.attempts.includes(r.id)&&x.attempts.includes(r.id));});
+   if(w.state.kind!=='active'||!remaining&&!finishPending||confirmed&&i.attempts.includes(r.id)||exhausted){i.retiredBy='procedure-guidance-finished';changed=true;}
   }
   if(w.state.kind!=='active'||!w.inbox||!normal(r)||r.runModel.phase!=='work'||w.invalidatedRuns.includes(r.id)||w.selfResume?.current?.status==='scheduled')continue;
   const children=dependencies(q.requestGraph,w).filter(c=>!c.replacementId&&!(c.planned&&c.state.kind==='withdrawn'));
