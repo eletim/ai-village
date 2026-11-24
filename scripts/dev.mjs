@@ -88,7 +88,7 @@ const handleRequest = async (req, res) => {
         const runtimePreparation=pathname.match(/^\/api\/direct\/human\/agents\/([0-9a-f-]{36})\/prepare-runtime$/);
         if(req.method==='POST'&&runtimePreparation)return json(res,200,await direct.prepareRuntime(runtimePreparation[1],input));
         const runtimeAdoption=pathname.match(/^\/api\/direct\/human\/agents\/([0-9a-f-]{36})\/adopt-runtime$/);
-        if(req.method==='POST'&&runtimeAdoption)return json(res,200,await direct.adoptRuntime(runtimeAdoption[1],input));
+        if(req.method==='POST'&&runtimeAdoption)return json(res,200,await direct.adoptRuntime(runtimeAdoption[1],input,{human:true}));
         const humanAction=pathname.match(/^\/api\/direct\/human\/requests\/(retry|resume|cancel|complete|cancel-queued|supplement|plan|launch|assignPlan|discard|deadline)$/);
         if(req.method==='POST'&&humanAction){
           const action=humanAction[1],flow=direct.flow;

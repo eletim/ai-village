@@ -1,3 +1,4 @@
+import {retirementRunAllowed} from './legacy-retirement.mjs';
 import {updateProcedureGuidance,operationGuidance} from './procedure-guidance.mjs';
 import {selfResume} from './request-self-resume.mjs';
 import {reportInputs} from './report-inputs.mjs';
@@ -411,6 +412,8 @@ export class RequestFlow {
   const queued=[];
   for(const r of this.d.data.runs.filter(r=>runState(r)==='queued'&&requests.some(q=>q.id===r.humanRequestId))){
    if(quarantinedRun(this.d.data,r))continue;
+   const owner=this.d.data.agents.find(a=>a.id===r.agentId);
+   if(owner&&!retirementRunAllowed(this.d.data,owner,r)){await this.d.holdRetiredRun(r);continue;}
    const q=this.root(r.humanRequestId);if(q.integrity)continue;
    if(r.runModel.phase==='result'&&!r.dispatchAttemptedAt){
     const result=resultEntries(this.d.data,q).find(e=>e.id===r.runModel.resultOf);
@@ -430,7 +433,8 @@ export class RequestFlow {
  await this.dispatchReady(queued,wait);
  }
  async dispatchReady(queued=this.d.data.runs.filter(r=>runState(r)==='queued'&&(r.humanRequestId||r.conversationId)),wait=false){
- const first=new Map();for(const r of queued.sort((a,b)=>a.createdAt.localeCompare(b.createdAt)))if(this.schedulable(r)&&!first.has(r.agentId))first.set(r.agentId,r);
+ const eligible=[];for(const r of queued){const a=this.d.data.agents.find(a=>a.id===r.agentId);if(a&&!retirementRunAllowed(this.d.data,a,r)){await this.d.holdRetiredRun(r);continue;}eligible.push(r);}
+ const first=new Map();for(const r of eligible.sort((a,b)=>a.createdAt.localeCompare(b.createdAt)))if(this.schedulable(r)&&!first.has(r.agentId))first.set(r.agentId,r);
  const dispatched=Promise.allSettled([...first.values()].map(r=>r.conversationId?this.d.units.agent(r.agentId,()=>this.dispatchQueued(r)):this.d.units.run(r.humanRequestId,()=>this.dispatchQueued(r))));
  if(wait){await dispatched;await Promise.allSettled([...this.dispatching.values()]);}
  }
