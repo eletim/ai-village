@@ -1,3 +1,4 @@
+import {launchProfile as parseLaunchProfile,launchReceiptMatches,launchProfileReady} from './launch-profile.mjs';
 import {stoppedRuntimeEvidence} from '../src/stopped-runtime.js';
 import {sameRuntimeAttributes,currentRuntimeWorkplaceAllowed} from '../src/runtime-connection-identity.js';
 import {Conversations} from './conversations.mjs';
@@ -263,6 +264,8 @@ export class DirectAgents {
       if((oldSnapshot.inputs.length||oldSnapshot.turns.length)&&!x.handover?.trim())fail('native履歴の外部操作・未完了事項・不明点を確認したhandoverが必要です',400);
       if((!stopped&&(!agentControls(a).canSend||!oldSnapshot.available))||!agentControls(b).canSend||!(fresh.available||b.provider==='claude'&&fresh.unrecorded===true)||fresh.inputs.length||fresh.turns.length)fail('両ランタイムのidleと新ランタイムの未使用を確認できません');
       if(this.data.runs.some(r=>r.agentId===id&&['sent','running'].includes(modelOf(r).state.kind)))fail('受付中runが発生しました');
+      if(!launchProfileReady(b))fail('新ランタイムのlaunchProfile/startup観測を確認できません');
+      if(a.launchProfile&&JSON.stringify(a.launchProfile)!==JSON.stringify(b.launchProfile))fail('移行前のlaunchProfileを保持してください');
       await this.verifyInstructions(b);
       if(b.inputEnvelope?.mode!=='startup-v2'||b.inputEnvelope.hash!==createHash('sha256').update(this.startupInstructions()).digest('hex'))fail('新ランタイムの固定起動契約を確認できません');
       let stoppedVerification=null;
@@ -278,7 +281,7 @@ export class DirectAgents {
         stoppedVerification={at:now(),tabAbsent:true,...check};
       }
       const oldObservation=structuredClone(a.agentModel.observation),freshObservation=structuredClone(b.agentModel.observation);
-      const keys=['workspaceId','initialTabId','tabId','sessionName','terminalUrl','runtime','observedSessionId','inputEnvelope','modelInfo','setupRequired','ownedProcesses','processVerification','terminatedAt','lastCheckedAt'];
+      const keys=['launchProfile','launchEvidence','workspaceId','initialTabId','tabId','sessionName','terminalUrl','runtime','observedSessionId','inputEnvelope','modelInfo','setupRequired','ownedProcesses','processVerification','terminatedAt','lastCheckedAt'];
       const fields=o=>Object.fromEntries(keys.filter(k=>o[k]!==undefined).map(k=>[k,structuredClone(o[k])]));
       const old=fields(a),replacement=fields(b);
       return this.persist(async()=>{
@@ -376,16 +379,18 @@ export class DirectAgents {
   async pmux(a,...args){return JSON.parse(await this.execute(a,['purplemux',...args]));}
   async runtime(a,status){this.runtimeReader ||= new RuntimeReader(this.dir);return this.runtimeReader.read(a,status,(agent,args)=>this.observationCommand(agent,args));}
   async create(input){return this.locked('projects',()=>this.locked('create:'+input.requestId,()=>this.createOnce(input)));}
-  async createOnce({workshopId,cwd,name='Agent',requestId,provider='codex',location='workshop',projectId=null}){
+  async createOnce({workshopId,cwd,name='Agent',requestId,provider='codex',location='workshop',projectId=null,launchProfile}){
+    launchProfile=parseLaunchProfile(launchProfile,provider);
     if(typeof requestId!=='string'||! /^[\w-]{8,100}$/.test(requestId))fail('requestIdが必要です',400);
-    const creationInput={workshopId,cwd,name,provider,location,projectId:projectId||null};
+    const creationInput={workshopId,cwd,name,provider,location,projectId:projectId||null,...(launchProfile?{launchProfile}:{})};
     const old=this.data.agents.find(a=>a.requestId===requestId);if(old){const original=old.creationInput||{workshopId:old.workshopId,cwd:old.cwd,name:old.name,provider:old.provider||'codex',location:old.location||'workshop',projectId:old.projectId||null};if(JSON.stringify(original)!==JSON.stringify(creationInput))fail('requestIdの再利用です');return old;}
     projectId ||= null;if(projectId)this.writableProject(projectId);
     if(!['codex','claude'].includes(provider)||!['mayor','workshop'].includes(location))fail('Agent種類または場所が不正です',400);
     const w=this.data.workshops.find(w=>w.id===workshopId);if(!w||!w.workplaces.includes(cwd))fail('工房と登録済み作業場所を選んでください',400);
     if(location==='mayor'&&w.connectionType!=='local')fail('秘書はローカル工房の実行環境を選んでください',400);
     if(typeof name!=='string'||!name.trim()||name.length>120)fail('Agent名が不正です',400);
-    const a={id:randomUUID(),requestId,creationInput,workshopId,connection:structuredClone(w),cwd,name,provider,location,projectId,metadataRevision:0,createdAt:now()};
+    const a={...(launchProfile?{launchProfile}:{}),id:randomUUID(),requestId,creationInput,workshopId,connection:structuredClone(w),cwd,name,provider,location,projectId,metadataRevision:0,createdAt:now()};
+    if(launchProfile){const cap=await this.pmux(a,'tab','capabilities');if(cap?.launchProfile?.version!==1||cap.launchProfile.provider!=='claude'||cap.launchProfile.arguments!==true||cap.launchProfile.sessionStart!==true)fail('PurpleMuxがlaunchProfileをサポートしていません',400);}
     await this.persist(async()=>{bindAgent(a);agentChange(a,{type:'start',actor:'human'});this.data.agents.push(a);await this.save();});
     return this.locked(a.id,async()=>{
       try{
@@ -394,10 +399,11 @@ export class DirectAgents {
         if(!ws.id||!ws.initialTab?.tabId)throw Error('workspace応答の識別情報が不足しています');
         await this.persist(async()=>{Object.assign(a,{workspaceId:ws.id,initialTabId:ws.initialTab.tabId});await this.save();});
         await this.installInstructions(a);
-        const tab=await this.pmux(a,'tab','create','-w',a.workspaceId,'-n',name,'-t',provider==='claude'?'claude-code':'codex-cli');
+        const tab=await this.pmux(a,'tab','create','-w',a.workspaceId,'-n',name,'-t',provider==='claude'?'claude-code':'codex-cli',...(launchProfile?['--launch-profile',JSON.stringify(launchProfile)]:[]));
         if(!tab.tabId||!tab.sessionName)throw Error('tab応答の識別情報が不足しています');
         const url=new URL(w.baseUrl);url.searchParams.set('workspace',ws.id);url.searchParams.set('tab',tab.tabId);
-        await this.persist(async()=>{Object.assign(a,{tabId:tab.tabId,sessionName:tab.sessionName,terminalUrl:url.href});await this.save();});
+        await this.persist(async()=>{Object.assign(a,{tabId:tab.tabId,sessionName:tab.sessionName,terminalUrl:url.href,...(launchProfile?{launchEvidence:tab.launchEvidence}: {})});await this.save();});
+        if(launchProfile&&!launchReceiptMatches(a,tab.launchEvidence))throw Error('launchProfileの引数適用受付を照合できません');
       }catch(error){if(error.persistenceFailure)throw error;await this.persist(async()=>{agentChange(a,{type:'observe',actor:'program',observation:{connected:false,process:'unknown',activity:'unknown',canSteer:false}});a.error='起動結果不明。自動再試行しません。PurpleMuxで確認してください。';await this.save();});}
       return a;
     });
@@ -412,7 +418,8 @@ export class DirectAgents {
     const baseline=await this.observe(a);
     if(this.agentDeleting(a))return blocked('project-deletion-before-dispatch');
     if(r.childContinuation&&!this.flow.childContinuationBoundary(this.flow.run(r.runModel.retryOf),baseline,a.runtime))return blocked('dispatch-boundary-changed','継続元の終了境界が変わりました。自動送信せず状況確認が必要です。');
-    const allowed=snapshot=>r.steerTarget?this.steeringBoundary(r,a,snapshot):agentControls(a).canSend;
+    const allowed=snapshot=>launchProfileReady(a)&&(r.steerTarget?this.steeringBoundary(r,a,snapshot):agentControls(a).canSend);
+    if(!launchProfileReady(a)){await this.persist(async()=>{r.queuedReason='launch-profile-unverified';await this.save();});return r;}
     if(!allowed(baseline)){
       if(r.steerTarget)return blocked('dispatch-boundary-changed','補足対象の実行状態が変わりました。自動送信しません。');
       await this.persist(async()=>{r.queuedReason=agentControls(a).sendReason;await this.save();});return r;

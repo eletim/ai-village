@@ -28,7 +28,7 @@ test('native Codex context and Claude message record actual model and speed with
  const dir=await mkdtemp(join(tmpdir(),'model-native-'));t.after(()=>rm(dir,{recursive:true,force:true}));const sid='11111111-2222-3333-4444-555555555555';await mkdir(join(dir,'sessions'));await mkdir(join(dir,'.claude/projects/test'),{recursive:true});
  const file=join(dir,'sessions',sid+'.jsonl');await writeFile(file,[{type:'turn_context',timestamp:'2026-11-08T10:00:00Z',payload:{model:'gpt-test',service_tier:'priority',token:'SECRET'}},{type:'turn_context',timestamp:'2026-11-08T10:01:00Z',payload:{model:'gpt-other'}}].map(JSON.stringify).join('\n')+'\n');
  const read=provider=>JSON.parse(execFileSync('python3',['-c',runtimeScript,provider,sid],{env:{...process.env,CODEX_HOME:dir,HOME:dir}}));let s=read('codex');assert.equal(s.modelInfo.model,'gpt-other');assert.equal(s.modelInfo.serviceTier,null);assert(!JSON.stringify(s.modelInfo).includes('SECRET'));
- await writeFile(join(dir,'.claude/projects/test',sid+'.jsonl'),[{type:'user',uuid:'u',message:{content:'hello'}},{type:'assistant',uuid:'a',parentUuid:'u',timestamp:'2026-11-08T10:02:00Z',message:{model:'claude-test',usage:{speed:'fast'},content:[]}}].map(JSON.stringify).join('\n')+'\n');s=read('claude');assert.equal(s.modelInfo.model,'claude-test');assert.equal(s.modelInfo.serviceTier,'fast');
+ await writeFile(join(dir,'.claude/projects/test',sid+'.jsonl'),[{type:'user',uuid:'u',message:{content:'hello'}},{type:'assistant',uuid:'a',parentUuid:'u',effort:'high',timestamp:'2026-11-08T10:02:00Z',message:{model:'claude-test',usage:{speed:'fast'},content:[]}}].map(JSON.stringify).join('\n')+'\n');s=read('claude');assert.equal(s.modelInfo.model,'claude-test');assert.equal(s.modelInfo.serviceTier,'fast');assert.equal(s.modelInfo.effort,'high');
 });
 test('Direct model observation follows each registered local/SSH target and clears unavailable current session',async t=>{
  const {DirectAgents}=await import('../server/direct.mjs');const dir=await mkdtemp(join(tmpdir(),'model-routing-'));t.after(()=>rm(dir,{recursive:true,force:true}));
@@ -38,4 +38,10 @@ test('Direct model observation follows each registered local/SSH target and clea
  const local={id:'local',state:'idle',provider:'codex',tabId:'tab-local',workspaceId:'ws-local',connection:{connectionType:'local'}},remote={id:'remote',state:'idle',provider:'claude',tabId:'tab-remote',workspaceId:'ws-remote',connection:{connectionType:'ssh',sshHost:'registered-ssh'}};d.data.agents=[local,remote];
  await d.observe(local);await d.observe(remote);assert.equal(local.modelInfo.model,'model-local');assert.equal(remote.modelInfo.model,'model-remote');assert.equal(remote.modelInfo.serviceTier,'fast');assert.deepEqual(calls,['local','local','remote','remote']);
  mismatch=true;await d.observe(remote);assert.equal(remote.modelInfo.available,false);assert.equal(local.modelInfo.available,true);offline=true;await d.observe(local);assert.equal(local.modelInfo.available,false);
+});
+
+test('synthetic/API error model is not an inheritance source',async t=>{
+ const dir=await mkdtemp(join(tmpdir(),'model-error-'));t.after(()=>rm(dir,{recursive:true,force:true}));const sid='11111111-2222-4333-8444-555555555555';await mkdir(join(dir,'.claude/projects/test'),{recursive:true});
+ await writeFile(join(dir,'.claude/projects/test',sid+'.jsonl'),[{type:'user',uuid:'u',message:{content:'hello'}},{type:'assistant',uuid:'a',parentUuid:'u',isApiErrorMessage:true,message:{model:'<synthetic>',content:[],stop_reason:'end_turn'}}].map(JSON.stringify).join('\n')+'\n');
+ const s=JSON.parse(execFileSync('python3',['-c',runtimeScript,'claude',sid],{env:{...process.env,HOME:dir}}));assert(!s.modelInfo?.model);
 });

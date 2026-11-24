@@ -60,7 +60,7 @@ def parse_event(db,provider,x,offset):
     body=x['attachment'].get('prompt')
     if isinstance(body,str):db.input({'explicitTurn':True,'source':'claude-queued','id':uid,'turnId':tid,'hash':digest(body),'offset':offset,'text':body})
    if x.get('type')=='assistant':
-    db.put('model','model',{'model':m.get('model'),'serviceTier':(m.get('usage') or {}).get('speed'),'recordedAt':at})
+    if not x.get('isApiErrorMessage') and m.get('model')!='<synthetic>':db.put('model','model',{'model':m.get('model'),**({'effort':x['effort']} if x.get('effort') in ('low','medium','high','xhigh','max') else {}),'serviceTier':(m.get('usage') or {}).get('speed'),'recordedAt':at})
     t=db.get('turn',tid);body=text(content)
     if body:message(tid,uid,body)
     if x.get('isApiErrorMessage') is True:t.update(state='failed',outputFromMessages=True,outputThrough=offset,error=x.get('error') or 'runtime-api-error',completedAt=at,completionEvent=uid,completionOffset=offset)
