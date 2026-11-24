@@ -1,3 +1,4 @@
+import {adoptionFreshProof,noCurrentRuntimeSends} from './adopted-fresh-runtime.mjs';
 import {launchProfile as parseLaunchProfile,launchReceiptMatches,launchProfileReady} from './launch-profile.mjs';
 import {stoppedRuntimeEvidence} from '../src/stopped-runtime.js';
 import {sameRuntimeAttributes,currentRuntimeWorkplaceAllowed} from '../src/runtime-connection-identity.js';
@@ -280,6 +281,7 @@ export class DirectAgents {
         await checkTab();
         stoppedVerification={at:now(),tabAbsent:true,...check};
       }
+      const freshProof=adoptionFreshProof(a,b,this.data.runs,oldSnapshot);
       const oldObservation=structuredClone(a.agentModel.observation),freshObservation=structuredClone(b.agentModel.observation);
       const keys=['launchProfile','launchEvidence','workspaceId','initialTabId','tabId','sessionName','terminalUrl','runtime','observedSessionId','inputEnvelope','modelInfo','setupRequired','ownedProcesses','processVerification','terminatedAt','lastCheckedAt'];
       const fields=o=>Object.fromEntries(keys.filter(k=>o[k]!==undefined).map(k=>[k,structuredClone(o[k])]));
@@ -287,9 +289,10 @@ export class DirectAgents {
       return this.persist(async()=>{
         // Workshop edits can occur during native observation. Recheck at the atomic swap.
         checkIdentity();
+        if(JSON.stringify(adoptionFreshProof(a,b,this.data.runs,oldSnapshot))!==JSON.stringify(freshProof))fail('採用前の履歴・runtime証明が変化しました');
         if(stopped&&(!stoppedRuntimeEvidence(a)||stopProof()!==proof||unresolved()||!agentControls(b).canSend))fail('停止済ランタイムの証拠または追跡状態が変更されました');
         // No request, run, input, result or notification is reissued or reassigned.
-        const record={operationId:x.operationId,payload,...(stoppedVerification?{stoppedVerification}:{}),at:now(),agentId:id,replacementAgentId:b.id,oldRuntime:structuredClone(old),newRuntime:structuredClone(replacement),handover:x.handover||null,requestContexts:this.data.requests.flatMap(q=>(q.requestGraph?.nodes||[]).filter(n=>n.assignee===id).map(n=>({humanRequestId:q.id,workId:n.id})))};
+        const record={operationId:x.operationId,payload,...(freshProof?{freshProof}:{}),...(stoppedVerification?{stoppedVerification}:{}),at:now(),agentId:id,replacementAgentId:b.id,oldRuntime:structuredClone(old),newRuntime:structuredClone(replacement),handover:x.handover||null,requestContexts:this.data.requests.flatMap(q=>(q.requestGraph?.nodes||[]).filter(n=>n.assignee===id).map(n=>({humanRequestId:q.id,workId:n.id})))};
         a.nativeTurns=(a.nativeTurns||[]).map(t=>({...t,sessionId:t.sessionId||a.observedSessionId}));
         for(const k of keys){delete a[k];delete b[k];}Object.assign(a,replacement);Object.assign(b,old);
         a.agentModel={...a.agentModel,intent:null,observation:freshObservation};
@@ -427,7 +430,7 @@ export class DirectAgents {
     const files=[];
     try{for(const record of r.attachments||[])files.push(await this.transferAttachment(a,record,await this.attachments.content(record.id)));}
     catch{await this.persist(async()=>{r.attachmentError='添付を接続先へ転送できません。送信前に再試行します。';r.nextTransferAt=Date.now()+30000;await this.save();});return r;}
-    const confirmed=r.attachments?.length?await this.observe(a):baseline;
+    let confirmed=r.attachments?.length?await this.observe(a):baseline;
     if(!allowed(confirmed)||this.agentDeleting(a)){if(r.steerTarget)return blocked('dispatch-boundary-changed','添付転送中に補足対象が変わりました。自動送信しません。');return r;}
     if(r.childContinuation&&!this.flow.childContinuationBoundary(this.flow.run(r.runModel.retryOf),confirmed,a.runtime))return blocked('dispatch-boundary-changed','添付転送中に継続元の終了境界が変わりました。自動送信しません。');
     if(r.autoRecoveryFrom&&(Date.now()>r.recoveryDeadline||!this.flow.recoveryBoundary(this.flow.run(r.autoRecoveryFrom),confirmed,a.runtime)))return blocked('dispatch-boundary-changed','自動再試行前に新しい入力または状態変化を検出しました。requests getで確認し手動で復旧してください。');
@@ -436,11 +439,18 @@ export class DirectAgents {
       if(r.queuedReason==='startup-contract-migration-required')return r;
       return this.persist(async()=>{r.queuedReason='startup-contract-migration-required';r.error='起動契約の更新待ち。未送信のまま保留しています。runtime adoption後に同じrunを送信します。';await this.save();return r;});
     }
+    // The adopted, unspoken session has no native transcript yet: refresh after
+    // asynchronous contract verification, then recheck the proof in the save boundary.
+    if(confirmed.unrecorded===true&&a.runtimeMigrations?.at(-1)?.freshProof){
+      confirmed=await this.observe(a);
+      if(!allowed(confirmed))return r;
+    }
     const status=a.runtime;
     if(runState(r)!=='queued'||r.phase==='report'&&!this.flow.reportCurrent(r))return r;
     const deliveredInstruction=await this.persist(async()=>{
       if(this.agentDeleting(a)||runState(r)!=='queued'||r.phase==='report'&&!this.flow.reportCurrent(r))return null;
       const compatibility=legacyAllowed(a);if(a.inputEnvelope?.mode!=='startup-v2'&&!compatibility)return null;
+      if(confirmed.unrecorded===true&&!noCurrentRuntimeSends(a,this.data.runs,a.runtime,confirmed,createHash('sha256').update(this.startupInstructions()).digest('hex')))return null;
       const instruction=r.phase==='report'?this.flow.reportPrompt(this.flow.root(r.humanRequestId)):r.instruction;
       r.instruction=instruction;r.attachmentFiles=files;r.attachmentError=null;delete r.queuedReason;delete r.error;
       const migration=a.runtimeMigrations?.at(-1);
@@ -510,7 +520,7 @@ export class DirectAgents {
       return await this.persist(async()=>{
       const before=this.observationKey(a,roots.runs);
       if(!a.agentModel)bindAgent(a);
-      const freshClaude=a.provider==='claude'&&snapshot.unrecorded===true&&s.alive&&ready(s)&&s.lastEvent?.name==='session-start'&&!s.lastUserMessage&&!this.data.runs.some(r=>r.agentId===a.id&&r.dispatchAttemptedAt);
+      const freshClaude=a.provider==='claude'&&snapshot.unrecorded===true&&s.alive&&ready(s)&&s.lastEvent?.name==='session-start'&&!s.lastUserMessage&&noCurrentRuntimeSends(a,this.data.runs,s,snapshot,createHash('sha256').update(this.startupInstructions()).digest('hex'));
       a.error=null;a.lastCheckedAt=now();a.runtime=s;
       a.modelInfo=sessionModel(snapshot,s);
       a.setupRequired=setupRequired;
