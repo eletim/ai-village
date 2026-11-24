@@ -1,3 +1,4 @@
+import {updateProcedureGuidance,operationGuidance} from './procedure-guidance.mjs';
 import {selfResume} from './request-self-resume.mjs';
 import {reportInputs} from './report-inputs.mjs';
 import {transitionRecovery,transitionDelivery,transitionReportDelivery} from './state/auxiliary.ts';
@@ -26,7 +27,7 @@ export class RequestFlow {
  constructor(direct){this.d=direct;this.protocol=1;this.dispatching=new Map();this.reporting=new RequestReports(this);
   for(const name of ['selfResume','report','deadline','humanDeadline','plan','launch','assignPlan','discard','humanCompose','amend','supplement','delegate','respond','finish','complete','continue','continueChild','cancelQueued','cancel']){
    const command=this[name].bind(this);
-   this[name]=(x,...args)=>this.d.units.run(x.humanRequestId,()=>command(x,...args));
+   this[name]=(x,...args)=>this.d.units.run(x.humanRequestId,()=>command(x,...args)).catch(error=>{throw operationGuidance(error,name);});
   }
   const start=this.start.bind(this);this.start=(id,...args)=>this.d.units.agent(id,()=>start(id,...args));
  }
@@ -36,7 +37,7 @@ export class RequestFlow {
   for(const r of this.d.data.runs)if(!r.humanRequestId)r.notificationPolicy ||= 'legacy-untracked';
   for(const q of this.d.data.requests)if(!q.integrity&&q.notification?.status==='attempting')q.notification=transitionDelivery(q.notification,{type:'unknown',reason:'restart-during-delivery'});
  }
- reportStatus(){return {enabled:this.d.data.reportSettings?.enabled!==false};}
+ reportStatus(){return {enabled:this.d.data.reportSettings?.enabled===true};}
  async configureReport(enabled){
   if(typeof enabled!=='boolean')fail('報告モードはtrue/falseで指定してください',400);
   return this.d.locked('request-graph',()=>this.d.persist(async()=>{
@@ -310,11 +311,12 @@ export class RequestFlow {
  async settleChanges(requests=this.requests){
   let changed=false;
   for(const q of requests){
+   if(!q.integrity){const prior=JSON.stringify(q);observeRequest(this.d.data,q);updateProcedureGuidance(this,q);if(prior!==JSON.stringify(q))changed=true;}
    if(!q.integrity)for(const r of this.d.data.runs.filter(r=>r.humanRequestId===q.id&&r.origin==='inbox'&&r.runModel.state.kind==='queued')){
-    const w=this.work(q,r.workId),ids=new Set(w.selfResume?.history.map(e=>e.reservation.id)||[]);
+    const w=this.work(q,r.workId),ids=new Set([...(w.selfResume?.history.map(e=>e.reservation.id)||[]),...(w.inbox||[]).filter(i=>i.procedure).map(i=>i.id)]);
     if(!r.inboxBatch?.some(id=>ids.has(id)))continue;
     if(['completed','withdrawn'].includes(w.state.kind)||r.inboxBatch.every(id=>w.inbox.find(i=>i.id===id)?.retiredBy)){
-     changeRun(r,{type:'cancel-inbox-reservation',actor:'program'});r.queueCancelledAt=now();r.error='self-resume-input-retired';
+     changeRun(r,{type:'cancel-inbox-reservation',actor:'program'});r.queueCancelledAt=now();r.error='scheduled-input-retired';
      if(w.currentRunId===r.id&&w.state.kind==='active')w.currentRunId=r.runModel.retryOf;
      changed=true;
     }

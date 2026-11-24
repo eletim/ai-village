@@ -5,7 +5,7 @@ import {matchesRunInput} from '../server/input-envelope.mjs';import {correlate} 
 test('stable startup delegates to the versioned single-source specification without repeating schemas',()=>{
  const rules=new AgentRules('http://127.0.0.1:5394');
  const startup=rules.startup();assert(startup.includes('rules get work'));assert(!startup.includes('requests finish JSON'));
- for(const name of Object.keys(agentActions))assert(rules.specification().text.includes(actionUsage(name)));
+ for(const name of Object.keys(agentActions))assert(rules.action(name).text===actionUsage(name));
  const before=rules.startup(),revision=rules.specification().revision;rules.work=()=> 'updated operation contract';assert.equal(rules.startup(),before);assert.notEqual(rules.specification().revision,revision);
  for(const phase of ['work','report']){const envelope=rules.context({humanRequestId:'q',phase});assert(!envelope.includes('requests finish'));assert(envelope.length<250);}
 });

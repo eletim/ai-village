@@ -275,7 +275,7 @@ test('accepted steering survives restart and only its final run consumes the ori
 
 test('report mode default, persistence, validation, snapshot and OFF/legacy isolation',async t=>{
  const f=await fixture(t),s=f.service;
- delete s.data.reportSettings;assert.equal(s.flow.reportStatus().enabled,true);
+ delete s.data.reportSettings;assert.equal(s.flow.reportStatus().enabled,false);
  await assert.rejects(s.flow.configureReport('true'),/true\/false/);
  await s.flow.configureReport(false);
  const old=await s.send(f.agents[0].id,{requestId:'report-off-request',instruction:'OFF'});
@@ -384,7 +384,7 @@ test('compact work context retains completion and receipt rules with discoverabl
  const f=await fixture(t),r=await f.service.send(f.agents[0].id,{instruction:'context test',requestId:'compact-context-test'});
  const text=f.service.rules.specification().text;
  assert(text.length<4000);
- for(const token of ['requests finish','operationId','正常終了','委任','受付不明','/api/direct/requests/get','village-image:UUID'])assert(text.includes(token),token);
+ for(const token of ['requests finish','operationId','正常終了','委任','受付不明','/api/direct/requests/get','rules get work ACTION'])assert(text.includes(token),token);
  const envelope=f.service.flow.context(r);assert(envelope.includes(r.id));assert(envelope.includes(r.workId));assert(envelope.includes(r.humanRequestId));
 });
 test('steering partitions progress at actual acceptance through multiple supplements and restart',async t=>{

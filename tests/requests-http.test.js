@@ -21,7 +21,7 @@ test('real HTTP + native JSONL + durable inbox + isolated notify CLI: 0 interim,
  const startup=new AgentRules(base).startup();for(const a of agents){a.inputEnvelope={mode:'startup-v2',hash:inputHash(startup)};const root=join(dir,'.purplemux/workspaces',a.workspaceId);await mkdir(root,{recursive:true});await writeFile(join(root,'codex-prompt.md'),'# purplemux context\n'+startup);}
  const nativeDir=join(dir,'sessions');await mkdir(nativeDir);
  for(const a of agents)await writeFile(join(nativeDir,a.nativeSession+'.jsonl'),JSON.stringify({type:'session_meta',payload:{id:a.nativeSession}})+'\n');
- await writeFile(join(dir,'direct.json'),JSON.stringify({version:1,workshops:[],agents,runs:[{id:'legacy',agentId:agents[0].id,state:'completed',output:'old without receipt'}]}));
+ await writeFile(join(dir,'direct.json'),JSON.stringify({version:1,reportSettings:{enabled:true},workshops:[],agents,runs:[{id:'legacy',agentId:agents[0].id,state:'completed',output:'old without receipt'}]}));
  await writeFile(join(dir,'agents-fixture.json'),JSON.stringify(agents));
  const pmux=join(dir,'fake-pmux.cjs'),notify=join(dir,'fake-notify.cjs');
  await writeFile(pmux,"#!/usr/bin/env node\nconst fs=require('fs');const agents=JSON.parse(fs.readFileSync(process.env.FIXTURE_AGENTS,'utf8'));const args=process.argv.slice(2),a=agents.find(a=>args.includes(a.workspaceId));if(args[1]==='status')console.log(JSON.stringify({alive:true,cliState:fs.existsSync(process.env.FIXTURE_CAPTURE+'.busy')?'busy':'idle',agentSessionId:a.nativeSession}));else if(args[1]==='send'){fs.appendFileSync(process.env.FIXTURE_CAPTURE,JSON.stringify({agentId:a.id,text:args.at(-1)})+'\\n');console.log('{\"status\":\"sent\"}');}else process.exit(3);\n",{mode:0o700});
@@ -98,6 +98,8 @@ test('real HTTP + native JSONL + durable inbox + isolated notify CLI: 0 interim,
   const retried=await post('/human/requests/retry',retryPayload);assert.equal(retried.status,200);assert.equal((await post('/human/requests/retry',retryPayload)).body.id,retried.body.id);
   await until(async()=>(await run(retried.body.id)).state==='awaiting_input');
   assert.equal((await post('/human/requests/retry',{...retryPayload,revision:(await request(failed.humanRequestId)).revision,operationId:'http-uncertain-retry'})).status,409);
+  await until(async()=>(await lines(capture)).some(e=>e.text.includes(retried.body.id)));
+  await until(async()=>(await lines(capture)).some(e=>e.text.includes(attachmentOnly.body.id)));
   const count=(await lines(capture)).length;const fq=await request(failed.humanRequestId);
   assert.equal((await post('/human/requests/cancel',{humanRequestId:fq.id,revision:fq.revision})).status,200);
   await stop();await start();assert.equal((await lines(capture)).length,count);assert.equal((await lines(notices)).length,1);

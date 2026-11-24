@@ -55,7 +55,7 @@ const handleRequest = async (req, res) => {
     if(pathname.startsWith('/api/direct/human/')&&!humanIntent.allow(req))return json(res,403,{error:'人間専用の操作です。村の画面を再読み込みして操作してください。'});
     if (pathname.startsWith('/api/')) {
       if (pathname.startsWith('/api/direct')) {
-        if(req.method==='GET'&&pathname==='/api/direct/rules')return json(res,200,direct.rules.specification(new URL(req.url,'http://localhost').searchParams.get('phase')||'work'));
+        if(req.method==='GET'&&pathname==='/api/direct/rules'){const params=new URL(req.url,'http://localhost').searchParams;return json(res,200,params.get('action')&&params.get('phase')==='work'?direct.rules.action(params.get('action')):direct.rules.specification(params.get('phase')||'work'));}
         if(req.method==='GET'&&pathname==='/api/direct/events')return changeStream.connect(req,res);
         if(req.method==='GET' && pathname==='/api/direct/usage')return json(res,200,await weeklyUsage.get());
         if(req.method==='GET' && pathname==='/api/direct/requests')return json(res,200,{requests:direct.flow.list()});
