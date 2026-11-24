@@ -1,0 +1,19 @@
+# リーダーの統合アイコンと秘書の会話回答
+
+## 修正境界
+
+リーダーのサイドバー/カード見出しアイコンは通常工房と同じ20×20の単一SVGとし、工房の屋根上の旗で識別する。36pxの横追加を廃止し、下部の工房模様、currentColorによる状態色、未読/要確認属性、アクセシブル名を保持する。dots設定ではリーダーだけ20×20の統合図柄、一般Agentは従来の点。カード/地図/プロフィールの旗ラベルは維持する。設定変更や解除は従来のsnapshot通知に追随する。
+
+秘書会話のleader資料起点runはorigin=conversation-deliveryであり、isHumanInput=false、suppressUser=trueになる。従来entryHTMLが回答の展開にもisHumanInputを使っていたため、受付照合済み正常終了でも回答が折りたたまれた。
+
+humanProjectionが既存のaccepted/runStateからconversationAnswerを導出し、workspaceとhistoryページへ保持する。入力由来と回答公開を分離し、会話回答はhuman/leader起点を問わず受付照合済みnormal終了のみ通常表示する。入力資料は内部吹き出しで初期折りたたみのまま。失敗/中断/不明/未受付/supersededは通常公開条件にしない。既存reportModeのhiddenCompletion/collapsedHistory保護を優先する。表示DTOだけであり保存データ・権限・状態遷移は変更しない。正常終了の表示は成果の採用や人間の了承を意味しない。
+
+## 検証と限界
+
+関連Node 38件、実HTTP snapshot/history 1件、PC1440/スマホ390・roles/dots・会話ページング/再描画を含むブラウザ15件成功。check/typecheck/build成功。工房模様と未読属性もNodeで確認。
+
+初回はvendor未生成でテストを読込できなかった。準備後、新規fixtureの旧形式completedがunconfirmedに移行されていたためNodeとブラウザが失敗。正式dispatch/input/terminal遷移を使うfixtureへ修正し、実装の受付条件は緩めていない。HTTP初回は保存形式の版情報不足でlegacy移行が走りInvalid conversation runとなったため、fixtureに現行版情報を明示して再検証。旧showAnswer式ではfalse、新表示条件ではtrueとなる再現記録を保存。
+
+HTTPとブラウザはport15345・一時state・通知OFFのみ。スクリーンショットはLEADER_MARKER_EVIDENCE/LEADER_ANSWER_EVIDENCE指定先、未指定ならPlaywrightのtestInfo.outputPathへ保存する。実AI・本番反映は未実施。表示更新は既存の通信に依存し、通信断中の最新情報は保証しない。
+
+レビューはroles/dotsのリーダーと一般工房の横並び画像、担当交代/解除、同一秘書会話の現在と過去ページを確認する。回答は開閉操作なしで見え、内部資料は開いた場合だけ読めること、再描画後にその開閉状態を保持することを確認する。

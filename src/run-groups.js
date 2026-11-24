@@ -19,3 +19,6 @@ export function chatBodyHTML(entry,side,body,fold,label='途中経過'){
  if(!body)return `<span class="chat-placeholder">…（${esc(label)}）</span>`;
  return `<details class="chat-body" data-disclosure="${esc('chat:'+entry.id+':'+side)}"><summary>…（${esc(label)}）</summary>${body}</details>`;
 }
+
+// Input provenance does not decide whether a secretary's completed reply is public.
+export const isVisibleAnswer=r=>!r.hiddenCompletion&&!r.collapsedHistory&&(r.conversationId?r.conversationAnswer===true:isHumanInput(r)&&!!(r.finalOutput||(r.origin==null&&r.state==='completed')));

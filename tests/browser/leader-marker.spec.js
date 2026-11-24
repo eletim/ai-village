@@ -1,7 +1,8 @@
 import {test,expect,notifySnapshot} from './helpers/change-events.js';
 const evidence=process.env.LEADER_MARKER_EVIDENCE;
-for(const width of [1440,390])test('leader assignment, replacement and removal across views '+width,async({page},testInfo)=>{
- const screenshot=name=>page.screenshot({path:evidence?`${evidence}/${name}-${width}.png`:testInfo.outputPath(`${name}-${width}.png`),fullPage:true});
+for(const width of [1440,390])for(const mode of ['roles','dots'])test('leader assignment, replacement and removal across views '+width+' '+mode,async({page},testInfo)=>{
+ const screenshot=name=>page.screenshot({path:evidence?`${evidence}/${name}-${width}-${mode}.png`:testInfo.outputPath(`${name}-${width}-${mode}.png`),fullPage:true});
+ await page.addInitScript(mode=>localStorage.setItem('village-display',JSON.stringify({iconMode:mode})),mode);
  await page.setViewportSize({width,height:900});
  const state={projects:[{id:'p',name:'村アプリ',leaderAgentId:'a'}],workshops:[{id:'w',name:'開発工房',iconPattern:'stripes'}],agents:[{id:'s',name:'秘書',location:'mayor',projectId:'p',state:'idle',connection:{},canSend:true},...['a','b'].map((id,i)=>({id,name:i?'実装担当':'開発リーダー',location:'workshop',workshopId:'w',projectId:'p',state:i?'idle':'busy',connection:{name:'開発工房'},canSend:true}))],runs:[],reviews:{},notification:{enabled:false}};
  await page.route('**/api/**',r=>r.fulfill({json:r.request().url().endsWith('/api/village')?{ok:true,result:{available:false}}:state}));
@@ -12,6 +13,10 @@ for(const width of [1440,390])test('leader assignment, replacement and removal a
  await expect(page.locator('#agent-a .header-status')).toHaveAttribute('aria-label',/Projectリーダー/);
  for(const group of ['all','project:p']){const icon=page.locator(`[data-place="${group}"] [data-agent-dot="a"]`);await expect(icon.locator('.leader-icon-flag')).toBeVisible();await expect(icon).toHaveAttribute('aria-label',/Projectリーダー/);}
  await expect(page.locator('#agent-b .header-status .leader-icon-flag')).toHaveCount(0);
+ const pair=page.locator('[data-place="all"] .place-dots');
+ for(const id of ['a','b']){const box=await page.locator(`[data-place="all"] [data-agent-dot="${id}"]`).boundingBox();expect(box.width).toBe(id==='a'||mode==='roles'?20:9);expect(box.height).toBe(id==='a'||mode==='roles'?20:9);}
+ await expect(page.locator('#agent-a .header-status > svg')).toHaveCount(1);
+ await pair.screenshot({path:evidence?`${evidence}/icon-pair-${width}-${mode}.png`:testInfo.outputPath(`icon-pair-${width}-${mode}.png`)});
  await screenshot('list');
  await page.locator('#agent-a [data-profile-agent]').click();await expect(page.locator('#agent-profile-dialog .leader-marker')).toBeVisible();await expect(page.locator('#agent-profile-dialog')).toContainText('工房Agent');
  await screenshot('detail');
