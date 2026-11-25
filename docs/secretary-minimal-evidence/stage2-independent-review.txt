@@ -1,0 +1,63 @@
+PR #155 段階2 独立再レビュー（Codex、実装者とは別担当）
+対象: 675466e02f180d8c7a85995003622f91e9b898c4
+固定別clone: /tmp/village-review-155-r3-codex（detached HEAD）
+前回: a3f40f1。今回主要修正: 667d06b..675466e。
+設計書は9章まで確認済み。旧レビュー /tmp/review155-r2-report.txt 全文と初回レビュー第2結果を照合。
+
+結論: 高0、中0、低0、情報2。中以上残数0。
+前回の中1「継続後の新成果を過去の判断で処理済みと誤認」は解消。新たな修正必須指摘なし。
+統合済み段階1の既報低3件も96d2a47の修正が入り、今回の全体試験で回帰なし。
+
+旧M1の再検証
+場所: server/secretary-commands.mjs:104。
+変更はview.decision.deliveryId===event.idの一致を処理済み拒否の条件に追加するもの。
+再現手順: 初回成果→正式followup→新成果配送→判断せず終了→後の人間回でstatus→accept/ask。
+以前は「判断記録なし」と表示しながら旧continue判断により拒否した。現在は両操作とも新成果のdeliveryIdに判断を記録できる。独立probeではさらに後の人間回から同成果の再判断が拒否されることも確認。
+相談→正式ask→人間回答→followup/resume→正常成果→未判断終了→後のaccept/askも追加回帰が通過。
+修正の妥当性: 新成果と旧判断を区別し、旧成果の処理済み拒否は維持。purposeBoundaryを変更していない。既存server/conversations.mjs:159-179の目的一致、最新依頼、目的version、受付済み配送、時系列、後着入力、正常成果ID/版、pending判断、達成後再開照合は維持されている。
+修正案: 追加修正不要。今回の回帰を維持する。
+
+前回指摘・重点項目
+- 旧初回M1: 後の人間回でstatus→全文→任意PURPOSE付きaccept/askが可能。今回修正で継続/相談再開後も確認。
+- 旧L1/L2/L3: server/conversations.mjs:33,37-38。終了しました、停止理由、具体的JSON引数による全文取得案内を維持。12,000字全文取得テスト通過。
+- 旧L4: tests/secretary-plain-delivery.test.js:117,126に継続/相談再開の各accept/ask回帰を追加。同ファイル15件通過。前回未カバーだったM1を検出できる内容。
+- 段階1低3件: server/secretary-commands.mjs:51,57とtests/secretary-commands.test.js。受付観測失敗時は送信繰返し禁止とstatus確認を案内、許可引用はtrimStart後500字、正式相談/障害配送および実拒否リテラルに結び付いた案内テストを維持。
+- 未配送成果: server/secretary-commands.mjs:25の新案内を独立probeで実際に発生させ、「返答を終え、報告が届いた回で判断」を確認。元の拒否を保持し、送信再実行を促していない。
+- 曖昧な目的省略、別会話目的、現行配送と別目的、古い成果版、後着人間入力、人間終了済み成果は拒否。
+- operationId: 省略と目的ID先頭指定は同一receipt、判断記録は1件。現在配送と後の人間回の両経路で確認。
+- 処理済み成果の別回での再判断は拒否。同一操作の再取得は既存receiptを返す。
+- statusは受付済みかつactor以前の配送だけ全文索引に掲載。queuedの未来成果は索引に出ず判断も拒否。
+- 未判断時は追加通知・自動再配送なし。設計9章に合致。後の正式判断の通知は既存規則を維持（独立probeでaccept/askともnotify:true）。実外部通知なし。
+- ブラウザ追加2件は1440/390幅。未判断表示、後の全文取得と採用、表示消去、横溢れなしを確認。390幅画像も目視確認。
+
+I1 [情報] 配送文面の版は配送作成時に固定
+場所: server/conversations.mjs:275（deliver）。
+根拠: startupContractで文面を選んで保存。版2の前置き/JSON資料/既存判断回復と版3の平文・未判断時の追加配送なしを回帰確認。
+対応案: 移行前に作成した配送が旧形式のまま届くことを段階4の移行記録に含める。修正必須ではない。
+
+I2 [情報] resultOnlyは後の判断への追加制約として維持
+場所: server/secretary-commands.mjs:105、server/conversations.mjs:171-173。
+根拠: 後の人間回だけresultOnly:trueを渡し、askにも正常な最新成果照合を適用。現在の質問配送でのaskは維持。今回のID一致条件追加でこの照合は緩まない。
+対応案: 現在相談と後の成果判断を区別した回帰を維持。追加修正不要。
+
+検証結果
+- npm ci、npm run check、npm run typecheck成功。
+- 通知OFF単体全体918件: 912 pass / 5 fail / 1 skipped（25.5秒）。5 failは通知成功を期待するnotifier.test.jsと通知OFF指定の競合。
+- notifier.test.js全文を確認し、一時ディレクトリの偽通知実行ファイルとスタブのみを使用する同ファイルに限ってOFF変数を外して別実行: 7/7 pass。外部通知は送信していない。一括試験を全件greenとは記載しない。
+- 独立probe14/14 pass。前回の不具合存在assertを、今回の成功と新成果二重判断拒否assertへ変更した。未配送成果の新案内もassert。
+- ブラウザ結果は末尾追記。15406専用ポート・mkdtemp一時state・通知OFF。
+
+範囲・限界
+段階3 8ab79e6..5246960はsecretary-commands.mjsと関連単体テスト2ファイルのみの差分であり、段階3固有コードが不変であることを確認。ただし5246960の全試験を今回再実行したとは扱わない。
+ブラウザ追加2件はAPIをfixture snapshotに置き換える表示検証と、サービス直接操作の組合せ。実HTTPを通した後日判断の全経路やClaude実機会話の検証完了を意味しない。段階4は別途必要。
+コード修正、PR操作、本番反映、旧Claude起動、旧操作再送なし。正式な依頼完了申告以外の本番書込みなし。
+
+成果物
+/tmp/review155-r3-report.txt
+/tmp/review155-r3-probes.test.mjs
+/tmp/review155-r3-probes.log
+/tmp/review155-r3-unit.log
+/tmp/review155-r3-notifier.log
+/tmp/review155-r3-ui.log
+
+最終確認: ブラウザ236/236 pass（32.5秒）。git status --shortは空、固定cloneの追跡ファイル無変更。
