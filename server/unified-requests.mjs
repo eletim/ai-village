@@ -41,7 +41,17 @@ export function validateGraph(data,q){
   }
   for(const id of n.runIds)if(!data.runs.some(r=>r.id===id&&r.workId===n.id&&r.humanRequestId===q.id&&r.agentId===n.runAgents[id]))throw Error('Invalid request run owner');
   for(const s of n.submissions)if(!['normal','failed','interrupted','unconfirmed','cancelled'].includes(s.outcome)||s.requestId!==n.id||s.id!==s.runId||!n.runIds.includes(s.runId)||!Number.isInteger(s.version)||s.version<1)throw Error('Invalid result version/owner');
-  for(const [i,s] of n.submissions.entries()){const r=data.runs.find(r=>r.id===s.runId)?.runModel;if(s.version!==i+1||!r||!['ended','cancelled'].includes(r.state.kind)||s.outcome!==(r.state.kind==='ended'?r.state.outcome:'cancelled'))throw Error('Result lacks native terminal evidence');}
+  let expectedVersion=1;
+  for(const s of n.submissions){
+   const raw=data.runs.find(r=>r.id===s.runId),r=raw?.runModel,c=(n.observationCorrections||[]).filter(c=>c.runId===s.runId);
+   if(c.length){
+    const correction=c[0],proof=raw?.observationReconciliation,prior=correction.priorSubmission,index=r?.facts.findIndex(f=>f.type==='reconcile-observation'&&f.operationId===correction.operationId),input=r?.facts.find(f=>f.type==='input');
+    if(c.length!==1||n.parentId||!proof||proof.operationId!==correction.operationId||!Number.isInteger(index)||index<1||r.facts[index-1].type!=='lost'||proof.priorRunState?.kind!=='ended'||proof.priorRunState.outcome!=='unconfirmed'||proof.priorRunState.reason!=='session-changed'||prior.id!==s.id||prior.runId!==s.runId||prior.requestId!==n.id||prior.outcome!=='unconfirmed'||prior.version!==expectedVersion||prior.observationRetraction||proof.proof?.sessionId!==input?.sessionId||proof.proof?.turnId!==input?.turnId||proof.proof?.inputId!==input?.inputId||proof.proof?.fileIdentity!==raw.baselineRuntime?.fileIdentity||proof.proof?.inputHash!==raw.inputCorrelation?.digest||!proof.proof?.contractHash||proof.proof.contractHash!==proof.priorEnvelope?.hash||proof.proof.status?.agentSessionId!==input?.sessionId||!g.operations.some(o=>o.id===correction.operationId&&o.observationReconciliation?.runId===s.runId&&o.observationReconciliation?.workId===n.id&&o.observationReconciliation?.humanRequestId===q.id&&o.observationReconciliation?.sent===false))throw Error('Invalid observation reconciliation proof');
+    if(s.observationRetraction){if(s.observationRetraction!==correction.operationId||s.outcome!==prior.outcome||s.version!==prior.version||r.state.kind!=='running')throw Error('Invalid retracted observation');expectedVersion++;continue;}
+    if(r.state.kind!=='ended'||!['terminal','lost'].includes(r.facts.at(-1)?.type)||r.state.outcome==='normal'&&r.facts.at(-1)?.type!=='terminal')throw Error('Reconciled result lacks native terminal');expectedVersion++;
+   }else if(s.observationRetraction)throw Error('Missing observation reconciliation proof');
+   if(s.version!==expectedVersion++||!r||!['ended','cancelled'].includes(r.state.kind)||s.outcome!==(r.state.kind==='ended'?r.state.outcome:'cancelled'))throw Error('Result lacks native terminal evidence');
+  }
   if(new Set(n.submissions.map(s=>s.id)).size!==n.submissions.length||new Set(n.submissions.map(s=>s.version)).size!==n.submissions.length)throw Error('Duplicate result');
   for(const h of n.handling){const c=node(g,h.requestId),s=c?.submissions.find(s=>s.id===h.resultId&&s.version===h.version);if(c?.parentId!==n.id||!s||!n.runIds.includes(h.actorRunId)||!['agent','program','human'].includes(h.actor)||!['accept','rework','review'].includes(h.decision))throw Error('Invalid result handling');}
   for(const h of [...n.claims,...n.handling]){

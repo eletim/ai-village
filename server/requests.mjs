@@ -1,3 +1,4 @@
+import {reconcileObservation} from './request-observation-reconcile.mjs';
 import {retirementRunAllowed} from './legacy-retirement.mjs';
 import {updateProcedureGuidance,operationGuidance} from './procedure-guidance.mjs';
 import {selfResume} from './request-self-resume.mjs';
@@ -26,7 +27,7 @@ const instruction=text=>{if(typeof text!=='string'||!text.trim()||text.length>16
 const runKey=(root,op)=>'flow-'+createHash('sha256').update(root+':'+op).digest('hex');
 export class RequestFlow {
  constructor(direct){this.d=direct;this.protocol=1;this.dispatching=new Map();this.reporting=new RequestReports(this);
-  for(const name of ['selfResume','report','deadline','humanDeadline','plan','launch','assignPlan','discard','humanCompose','amend','supplement','delegate','respond','finish','complete','continue','continueChild','cancelQueued','cancel']){
+  for(const name of ['reconcileObservation','selfResume','report','deadline','humanDeadline','plan','launch','assignPlan','discard','humanCompose','amend','supplement','delegate','respond','finish','complete','continue','continueChild','cancelQueued','cancel']){
    const command=this[name].bind(this);
    this[name]=(x,...args)=>this.d.units.run(x.humanRequestId,()=>command(x,...args)).catch(error=>{throw operationGuidance(error,name);});
   }
@@ -142,6 +143,7 @@ export class RequestFlow {
   try{await this.d.attemptRun(r);}catch(error){if(!error.persistenceFailure)throw error;}
   return r;
  }
+ reconcileObservation(x){return reconcileObservation(this,x);}
  selfResume(x){return selfResume(this,x);}
  report(x){return this.reporting.report(x);}
  deadline(x){return this.reporting.change(x);}

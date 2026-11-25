@@ -32,7 +32,7 @@ test('leading whitespace is canonicalized before transport and fingerprint, incl
  const r=await send(f,original);assert.equal(r.instruction,original);assert.equal(r.baselineRuntime.sessionId,'');
  const text=f.sent.at(-1).text;assert.equal(text,text.trim());assert.equal(r.inputCorrelation.digest,inputHash(text));
  cold=false;unobserved(f,r);
- const view=await f.service.conversations.read(r.conversationId,r.id);assert.equal(view.runs[0].state,'running');assert(accepted(r));
+ const view=await f.service.conversations.read(r.conversationId,r.id);assert.equal(view.current.state,'running');assert(accepted(r));
  await f.complete(r);assert.equal(runState(r),'completed');assert.equal(f.service.conversations.get(r.conversationId).runs[0].humanAnswer,'Final '+r.id);
  const next=await send(f);await f.submit(next);await f.complete(next);assert.equal(f.sent.length,2);assert.equal(native.inputs.length,2);
 });
@@ -68,8 +68,10 @@ test('leader busy or migration blocked never locks secretary mailbox; projection
  const c=f.service.conversations.record(r.conversationId),delivery=f.service.flow.run(c.deliveries[0].runId);
  a=workspaceSnapshot(f.service.snapshot(),{},[r.agentId]).agents.find(a=>a.id===r.agentId);
  assert.equal(a.conversationWork.jobs[0].code,'evaluating');await f.submit(delivery);await f.complete(delivery);
- a=f.service.snapshot().agents.find(a=>a.id===r.agentId);assert.equal(a.conversationWork.jobs[0].code,'attention');assert.equal(a.conversationWork.jobs[0].humanApproval,'not-inferred');
+ a=f.service.snapshot().agents.find(a=>a.id===r.agentId);assert.equal(a.conversationWork.jobs[0].code,'evaluating');assert.equal(a.conversationWork.jobs[0].humanApproval,'not-inferred');
  assert.equal(f.sent.filter(s=>s.text.includes(delivery.id)).length,1);
+ const reminder=f.service.flow.run(c.deliveries.find(e=>e.decisionRecovery).runId);await f.submit(reminder);
+ await f.service.conversations.decide({conversationId:c.id,actorRunId:reminder.id,operationId:randomUUID(),decision:'accept',reason:'保存成果を確認'});await f.complete(reminder);
  const third=await send(f);await f.submit(third);const secondJob=await job(f,third);
  f.service.agent(leader.agentId).inputEnvelope.mode='migration-required';await f.service.save();await f.service.tick();
  const held=f.service.flow.run(secondJob.runId);assert.equal(runState(held),'queued');assert(!held.dispatchAttemptedAt);

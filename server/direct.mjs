@@ -1,3 +1,4 @@
+import {retireDecisionReminder} from './conversation-decision-recovery.mjs';
 import {secretaryHandoverPlan,handoverSecretary} from './secretary-handover.mjs';
 import {retirementOption,retirementRecord,retirementIntact,retirementRunAllowed,latestRetirement} from './legacy-retirement.mjs';
 import {adoptionFreshProof,noCurrentRuntimeSends} from './adopted-fresh-runtime.mjs';
@@ -469,6 +470,7 @@ export class DirectAgents {
     const status=a.runtime;
     if(runState(r)!=='queued'||r.phase==='report'&&!this.flow.reportCurrent(r))return r;
     const deliveredInstruction=await this.persist(async()=>{
+      if(retireDecisionReminder(this.data,r)){await this.save();return null;}
       if(this.agentDeleting(a)||runState(r)!=='queued'||r.phase==='report'&&!this.flow.reportCurrent(r))return null;
       if(!retirementIntact(this.data,a)||!retirementRunAllowed(this.data,a,r))return null;
       const compatibility=legacyAllowed(a);if(a.inputEnvelope?.mode!=='startup-v2'&&!compatibility)return null;
@@ -633,6 +635,7 @@ export class DirectAgents {
           if(q)await this.units.run(id,async()=>{await this.flow.pump(false,[q],false);await this.flow.notifications([q]);});
           this.store.acknowledge(id,version);
         }
+        await this.conversations.recoverDecisions();
         await this.conversations.notifications();
         await this.flow.dispatchReady();
       }

@@ -28,8 +28,8 @@ test('light secretary reads compact context, continues using bound permission, t
  const compact=await f.service.conversations.read(human.conversationId,one.delivery.id),raw=f.service.conversations.get(human.conversationId);
  assert(JSON.stringify(compact).length<JSON.stringify(raw).length*.75);
  assert(!JSON.stringify(compact).includes('secret-native'));
- assert.equal(compact.deliveries[0].material.output,one.event.material.output);
- assert.equal(compact.runs[0].instruction,human.instruction);assert(compact.runs[0].humanAnswer);
+ assert.equal(compact.currentDeliveries[0].material.output,one.event.material.output);
+ const full=await f.service.conversations.material(human.conversationId,one.delivery.id,{kind:'turn',id:human.id});assert.equal(full.content.instruction,human.instruction);assert(full.content.humanAnswer);
  one.delivery.baselineRuntime=baseline;one.delivery.output=output;
  const input={conversationId:human.conversationId,actorRunId:one.delivery.id,operationId:randomUUID(),continue:true,instruction:'不足点だけを修正する'};
  const next=await invoke('job',input);assert.deepEqual(await invoke('job',input),next);
@@ -46,6 +46,7 @@ test('simple operations never select a latest job on a human turn or accept mixe
  const {f,human,auth,first,completeJob}=await purposeFixture(t),one=await completeJob(first);
  const base={conversationId:human.conversationId,actorRunId:one.delivery.id,operationId:randomUUID(),continue:true,instruction:'修正'};
  for(const extra of [{authorization:auth},{humanRequestId:first.humanRequestId},{deliveryId:one.event.id},{expectedPurposeVersion:0}])await assert.rejects(f.service.conversations.job({...base,...extra}),/別の対象や許可/);
+ delete one.event.decisionRecoveryVersion; // explicit legacy compatibility path
  await f.complete(one.delivery);
  const human2=await f.service.send(human.agentId,{mode:'conversation',requestId:randomUUID(),instruction:'状況を教えて'});await f.submit(human2);
  await assert.rejects(f.service.conversations.job({...base,actorRunId:human2.id}),/今回の正式配送/);
@@ -63,12 +64,12 @@ test('simple judgment and continuation retain late-human-input fence and failure
  }
 });
 
-test('missing judgment is visible and a later secretary turn recovers using saved result without replay',async t=>{
+test('missing judgment returns saved results autonomously without human prompting or work replay',async t=>{
  const {f,human,first,completeJob,args,view}=await purposeFixture(t),one=await completeJob(first);
  await f.complete(one.delivery);await f.restart();
  const status=()=>f.service.conversations.get(human.conversationId).jobs[0].lifecycle;
- assert.equal(status().code,'attention');assert.match(status().next,/保存/);
- const h=await f.service.send(human.agentId,{mode:'conversation',requestId:randomUUID(),instruction:'保存済みの成果を確認して報告して'});await f.submit(h);
- await f.service.conversations.decide({...args(one),actorRunId:h.id,decision:'accept'});await f.complete(h);
+ assert.equal(status().code,'evaluating');
+ const c=f.service.conversations.record(human.conversationId),event=c.deliveries.find(e=>e.decisionRecovery),r=f.service.flow.run(event.runId);await f.submit(r);
+ await f.service.conversations.decide({...args(one),actorRunId:r.id,decision:'accept'});await f.complete(r);
  assert.equal(status().code,'completed');assert.equal(view().decision.state,'committed');assert.equal(f.service.data.requests.length,1);
 });
