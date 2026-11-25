@@ -1,3 +1,4 @@
+import {conversationRequestOwner} from './conversation-request-owner.mjs';
 import {node,graphSteps,transitionGraph,latest,handled} from './state/requests.ts';
 export const evidence=(data,q)=>data.runs.filter(r=>r.humanRequestId===q.id).map(r=>({run:r.runModel,ownerId:r.workId,agentId:r.agentId}));
 export const rootNode=q=>node(q.requestGraph,q.rootWorkId);
@@ -20,13 +21,18 @@ export function validateGraph(data,q){
  if(g.nodes.filter(n=>n.parentId===null).length!==1||!node(g,g.rootId)||node(g,g.rootId).parentId!==null)throw Error('Invalid request root');
  const ids=new Set();for(const n of g.nodes){
   if(q.commonRequests&&(!n.recipient||!['human','agent'].includes(n.createdBy)||typeof n.planned!=='boolean'))throw Error('Invalid common request contract');
-  if(n.recipient&&(n.recipient.kind==='request'?n.recipient.requestId!==n.parentId:n.recipient.kind!=='human'||!!n.parentId))throw Error('Invalid result recipient');
+  if(n.recipient&&(n.recipient.kind==='request'?n.recipient.requestId!==n.parentId:!['human','conversation'].includes(n.recipient.kind)||!!n.parentId))throw Error('Invalid result recipient');
+  if(n.recipient?.kind==='conversation'&&(n.recipient.conversationId!==q.conversationId||n.requester.kind!=='conversation'||n.requester.conversationId!==q.conversationId||n.createdBy!=='agent'||!conversationRequestOwner(data,data.conversations?.find(c=>c.id===q.conversationId),q,n)))throw Error('Invalid conversation recipient');
   if(n.planned&&(n.runIds.length||n.currentRunId))throw Error('Planned request has execution');
   if(ids.has(n.id)||(!(n.planned&&n.assignee===null)&&typeof n.assignee!=='string')||!Array.isArray(n.runIds)||(!n.planned&&!n.runIds.includes(n.currentRunId))||new Set(n.runIds).size!==n.runIds.length||!n.metadata||typeof n.metadata!=='object'||Array.isArray(n.metadata)||['agentId','parentWorkId','runIds','currentRunId'].some(key=>Object.hasOwn(n.metadata,key))||!['active','submitted','completed','withdrawn'].includes(n.state?.kind)||!Array.isArray(n.submissions)||!Array.isArray(n.claims)||!Array.isArray(n.replacements)||!Array.isArray(n.invalidatedRuns)||!Array.isArray(n.handling)||!Array.isArray(n.declarations)||!Array.isArray(n.decisions))throw Error('Invalid request node: '+n.id);ids.add(n.id);
   if(!n.recipient&&n.requester?.kind!==(n.parentId?'agent':'human')||n.parentId&&n.requester.requestId!==n.parentId||n.state.kind==='active'&&!Array.isArray(n.state.review)||!n.runAgents)throw Error('Invalid request authority/state');
   if(n.state.kind==='submitted'&&(!n.recipient&&!n.parentId||n.state.resultId!==latest(n)?.id||latest(n)?.outcome!=='normal'))throw Error('Invalid submitted result');
   if(n.replacementId){const replacement=node(g,n.replacementId);if(!replacement||replacement.parentId!==n.parentId)throw Error('Invalid replacement');const visited=new Set([n.id]);let next=n;while(next.replacementId){if(visited.has(next.replacementId))throw Error('Replacement cycle');visited.add(next.replacementId);next=node(g,next.replacementId);if(!next)throw Error('Missing replacement');}}
   const seen=new Set([n.id]);let p=n;while(p.parentId){if(seen.has(p.parentId)||!node(g,p.parentId))throw Error('Request parent cycle/missing');seen.add(p.parentId);p=node(g,p.parentId);}
+  for(const i of (n.inbox||[]).filter(i=>i.procedure)){
+   const p=i.procedure,m=p.missing,r=data.runs.find(r=>r.id===p.targetRunId&&r.workId===n.id&&r.humanRequestId===q.id)?.runModel;
+   if(i.source?.actor!=='program'||!r||r.phase!=='work'||r.state.kind!=='ended'||r.state.outcome!=='normal'||!r.facts.some(f=>f.type==='input')||!m||!Array.isArray(m.inputs)||m.inputs.some(id=>!n.inbox.some(x=>x.id===id&&!x.procedure))||!Array.isArray(m.results)||typeof m.finish!=='boolean'||p.key!==JSON.stringify(m))throw Error('Invalid procedure guidance');
+  }
   if(n.selfResume){
    const s=n.selfResume,c=s.current;
    const valid=r=>r&&typeof r.id==='string'&&Number.isFinite(Date.parse(r.at))&&typeof r.text==='string'&&r.text.length>0&&r.text.length<=4000&&n.runIds.includes(r.actorRunId)&&['scheduled','delivered','cancelled','consumed'].includes(r.status);
@@ -35,7 +41,17 @@ export function validateGraph(data,q){
   }
   for(const id of n.runIds)if(!data.runs.some(r=>r.id===id&&r.workId===n.id&&r.humanRequestId===q.id&&r.agentId===n.runAgents[id]))throw Error('Invalid request run owner');
   for(const s of n.submissions)if(!['normal','failed','interrupted','unconfirmed','cancelled'].includes(s.outcome)||s.requestId!==n.id||s.id!==s.runId||!n.runIds.includes(s.runId)||!Number.isInteger(s.version)||s.version<1)throw Error('Invalid result version/owner');
-  for(const [i,s] of n.submissions.entries()){const r=data.runs.find(r=>r.id===s.runId)?.runModel;if(s.version!==i+1||!r||!['ended','cancelled'].includes(r.state.kind)||s.outcome!==(r.state.kind==='ended'?r.state.outcome:'cancelled'))throw Error('Result lacks native terminal evidence');}
+  let expectedVersion=1;
+  for(const s of n.submissions){
+   const raw=data.runs.find(r=>r.id===s.runId),r=raw?.runModel,c=(n.observationCorrections||[]).filter(c=>c.runId===s.runId);
+   if(c.length){
+    const correction=c[0],proof=raw?.observationReconciliation,prior=correction.priorSubmission,index=r?.facts.findIndex(f=>f.type==='reconcile-observation'&&f.operationId===correction.operationId),input=r?.facts.find(f=>f.type==='input');
+    if(c.length!==1||n.parentId||!proof||proof.operationId!==correction.operationId||!Number.isInteger(index)||index<1||r.facts[index-1].type!=='lost'||proof.priorRunState?.kind!=='ended'||proof.priorRunState.outcome!=='unconfirmed'||proof.priorRunState.reason!=='session-changed'||prior.id!==s.id||prior.runId!==s.runId||prior.requestId!==n.id||prior.outcome!=='unconfirmed'||prior.version!==expectedVersion||prior.observationRetraction||proof.proof?.sessionId!==input?.sessionId||proof.proof?.turnId!==input?.turnId||proof.proof?.inputId!==input?.inputId||proof.proof?.fileIdentity!==raw.baselineRuntime?.fileIdentity||proof.proof?.inputHash!==raw.inputCorrelation?.digest||!proof.proof?.contractHash||proof.proof.contractHash!==proof.priorEnvelope?.hash||proof.proof.status?.agentSessionId!==input?.sessionId||!g.operations.some(o=>o.id===correction.operationId&&o.observationReconciliation?.runId===s.runId&&o.observationReconciliation?.workId===n.id&&o.observationReconciliation?.humanRequestId===q.id&&o.observationReconciliation?.sent===false))throw Error('Invalid observation reconciliation proof');
+    if(s.observationRetraction){if(s.observationRetraction!==correction.operationId||s.outcome!==prior.outcome||s.version!==prior.version||r.state.kind!=='running')throw Error('Invalid retracted observation');expectedVersion++;continue;}
+    if(r.state.kind!=='ended'||!['terminal','lost'].includes(r.facts.at(-1)?.type)||r.state.outcome==='normal'&&r.facts.at(-1)?.type!=='terminal')throw Error('Reconciled result lacks native terminal');expectedVersion++;
+   }else if(s.observationRetraction)throw Error('Missing observation reconciliation proof');
+   if(s.version!==expectedVersion++||!r||!['ended','cancelled'].includes(r.state.kind)||s.outcome!==(r.state.kind==='ended'?r.state.outcome:'cancelled'))throw Error('Result lacks native terminal evidence');
+  }
   if(new Set(n.submissions.map(s=>s.id)).size!==n.submissions.length||new Set(n.submissions.map(s=>s.version)).size!==n.submissions.length)throw Error('Duplicate result');
   for(const h of n.handling){const c=node(g,h.requestId),s=c?.submissions.find(s=>s.id===h.resultId&&s.version===h.version);if(c?.parentId!==n.id||!s||!n.runIds.includes(h.actorRunId)||!['agent','program','human'].includes(h.actor)||!['accept','rework','review'].includes(h.decision))throw Error('Invalid result handling');}
   for(const h of [...n.claims,...n.handling]){

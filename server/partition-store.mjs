@@ -1,6 +1,6 @@
 import {DatabaseSync} from 'node:sqlite';
 import {resolve} from 'node:path';
-const collections=['agents','runs','requests','projects','workshops'];
+const collections=['agents','runs','requests','projects','workshops','conversations'];
 const encode=(kind,value)=>JSON.stringify(kind==='agents'?Object.fromEntries(Object.entries(value).filter(([k])=>!['runtime','lastCheckedAt'].includes(k))):value);
 // A commit contains selected records and their durable wake-up reservations.
 // Historical JSON is an import source only; SQLite is the sole writable store.

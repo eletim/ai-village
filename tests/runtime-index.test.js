@@ -196,6 +196,47 @@ test('Claude queued_command continues parent chain and indexed restart matches m
  const input=snapshot.inputs[1];assert.equal(correlate(r,{...snapshot,inputs:[...snapshot.inputs,{...input,id:'foreign',text:'outside',offset:input.offset+1}]}).state,'unknown');
 });
 
+test('Claude background-task notices are not human input; a real queued human message still is',async t=>{
+ const f=await setup(t),file=join(f.dir,'.claude/projects/test',sid+'.jsonl');await mkdir(join(file,'..'),{recursive:true});
+ const env={...f.env,HOME:f.dir},execute=async(a,args)=>execFileSync(args[0],args.slice(1),{env}).toString(),agent={...f.a,provider:'claude'};
+ await writeFile(file,lines([{type:'user',uuid:'u',message:{content:'work ai-village-run-owned'}},{type:'assistant',uuid:'tool',parentUuid:'u',message:{stop_reason:'tool_use',content:[]}}]));
+ const baseline=await f.reader.read(agent,f.status,execute),owned=baseline.inputs[0];
+ const r={id:'owned',inputMarker:'ai-village-run-owned',inputId:owned.id,turnId:'u',sessionId:sid,priorInputs:[],baselineRuntime:{...baseline,cursor:0},dispatchAttemptedAt:'now'};
+ // Both observed shapes: commandMode only (most), and commandMode with origin.
+ const notice=(uuid,parent,origin)=>({type:'attachment',uuid,parentUuid:parent,attachment:{type:'queued_command',prompt:'<task-notification>\n<task-id>b1</task-id>\n<status>completed</status>\n</task-notification>',commandMode:'task-notification',...(origin?{origin:{kind:'task-notification',producer:'session-task'}}:{})}});
+ await appendFile(file,lines([notice('n1','tool',false),{type:'user',uuid:'r1',parentUuid:'n1',message:{content:[{type:'tool_result',content:'ok'}]}},notice('n2','r1',true),{type:'assistant',uuid:'more',parentUuid:'n2',message:{stop_reason:'tool_use',content:[]}}]));
+ f.reader=new RuntimeReader(f.dir);const running=await f.reader.read(agent,f.status,execute);
+ assert.equal(running.turns.length,1);assert.deepEqual(running.inputs.map(i=>i.id),['u']);assert.equal(correlate(r,running).state,'running');
+ await appendFile(file,lines([{type:'assistant',uuid:'end',parentUuid:'more',message:{stop_reason:'end_turn',content:'DONE'}}]));
+ const done=await f.reader.read(agent,f.status,execute);assert.equal(correlate(r,done).state,'completed');assert.equal(correlate(r,done).output,'DONE');
+ // A human message queued into the same turn is still foreign input to the owning run.
+ await appendFile(file,lines([{type:'attachment',uuid:'human',parentUuid:'end',attachment:{type:'queued_command',prompt:'人間の追加指示',commandMode:'prompt',origin:{kind:'human'}}}]));
+ const steered=await f.reader.read(agent,f.status,execute);
+ assert.deepEqual(steered.inputs.map(i=>[i.id,i.source]),[['u','claude-user'],['human','claude-queued']]);assert.equal(correlate(r,steered).state,'unknown');assert.equal(correlate(r,steered).reason,'additional-input-in-owned-turn');
+});
+
+test('a background-task notice that arrives while Claude is idle starts a turn but is never input',async t=>{
+ const f=await setup(t),file=join(f.dir,'.claude/projects/test',sid+'.jsonl');await mkdir(join(file,'..'),{recursive:true});
+ const env={...f.env,HOME:f.dir},execute=async(a,args)=>execFileSync(args[0],args.slice(1),{env}).toString(),agent={...f.a,provider:'claude'};
+ const notice=(uuid,parent)=>({type:'user',uuid,parentUuid:parent,origin:{kind:'task-notification'},message:{role:'user',content:'<task-notification>\n<task-id>b1</task-id>\n<status>completed</status>\n</task-notification>'}});
+ const reply=(uuid,parent,text)=>({type:'assistant',uuid,parentUuid:parent,message:{stop_reason:'end_turn',content:[{type:'text',text}]}});
+ await writeFile(file,lines([{type:'user',uuid:'u1',message:{content:'first ai-village-run-one'}},reply('a1','u1','ONE')]));
+ // Notice before the next run's input: the run was dispatched while the notice turn was pending.
+ const baseline=await f.reader.read(agent,f.status,execute);
+ const r={id:'two',inputMarker:'ai-village-run-two',baselineRuntime:baseline,dispatchAttemptedAt:'now'};
+ await appendFile(file,lines([notice('n1','a1'),reply('na1','n1','noted'),{type:'user',uuid:'u2',parentUuid:'na1',message:{content:'second ai-village-run-two'}},reply('a2','u2','TWO')]));
+ f.reader=new RuntimeReader(f.dir);let snapshot=await f.reader.read(agent,f.status,execute);
+ assert.deepEqual(snapshot.inputs.map(i=>[i.id,i.source]),[['u1','claude-user'],['u2','claude-user']]);
+ assert.deepEqual(snapshot.turns.map(t=>[t.id,t.trigger||null]),[['u1',null],['n1','task-notification'],['u2',null]]);
+ assert.equal(correlate(r,snapshot).state,'completed');assert.equal(correlate(r,snapshot).output,'TWO');
+ // Notice after the run finished: the run's result is unaffected.
+ await appendFile(file,lines([notice('n2','a2'),reply('na2','n2','noted again')]));snapshot=await f.reader.read(agent,f.status,execute);
+ assert.equal(snapshot.inputs.length,2);assert.equal(correlate(r,snapshot).state,'completed');assert.equal(correlate(r,snapshot).output,'TWO');
+ // A person's plain message (no task-notification origin) is still input, even with the same text.
+ await appendFile(file,lines([{...notice('h1','na2'),origin:{kind:'human'}}]));snapshot=await f.reader.read(agent,f.status,execute);
+ assert.deepEqual(snapshot.inputs.map(i=>i.id),['u1','u2','h1']);
+});
+
 test('middle equal-length rewrite invalidates host and restarted replica; append preserves identity',async t=>{
  const f=await setup(t),padding={type:'padding',value:'x'.repeat(20000)};
  const content=lines([padding,start,input,done,padding]);await writeFile(f.file,content);
@@ -234,4 +275,20 @@ test('100 MiB continuously appended history accepts every poll and detects a per
  for(let n=20;!s.available&&n<30;n++)await poll(n);
  assert(s.available);assert(!s.inputs.some(i=>i.text.includes('ai-village-run-hello')));assert(s.inputs.some(i=>i.text.includes('ai-village-run-other')),JSON.stringify(s.inputs.map(i=>i.text)));
  t.diagnostic(JSON.stringify({sourceMiB:101,normalPolls:12,acceptanceDelayPolls:0,auditPositions:positions.slice(0,12),auditRoundCalls:4,auditRoundMs:Math.round(timings.slice(3,7).reduce((a,b)=>a+b)),normalPollTotalMs:Math.round(timings.slice(0,12).reduce((a,b)=>a+b)),normalPollMaxMs:Math.round(Math.max(...timings.slice(0,12))),rewriteDetectedAfterPolls:detected}));
+});
+test('lazy first Codex session with typed environment metadata correlates canonical transport but not old whitespace digest',async t=>{
+ const f=await setup(t),body='\n\n初回の相談\n<ai-village-request>{"runId":"first"}</ai-village-request>',wire=body.trim();
+ const cold=await f.reader.read(f.a,{agentSessionId:null},f.execute);assert.equal(cold.cursor,0);assert.equal(cold.sessionId,'');
+ await writeFile(f.file,lines([start,
+  {type:'response_item',payload:{role:'user',content:[{type:'input_text',text:'<environment_context>test</environment_context>'}],internal_chat_message_metadata_passthrough:{turn_id:'t',content_item_kinds:['environments.environment_context']}}},
+  {type:'response_item',payload:{role:'user',id:'first-input',content:[{type:'input_text',text:wire}],internal_chat_message_metadata_passthrough:{turn_id:'t',content_item_kinds:['user.text']}}},
+  answer('正常な回答'),done]));
+ const snapshot=await f.reader.read(f.a,f.status,f.execute);
+ assert.equal(snapshot.inputs.length,1);
+ const r={id:'first',baselineRuntime:{sessionId:'',cursor:0},dispatchAttemptedAt:new Date().toISOString(),inputCorrelation:{version:1,provider:'codex',digest:inputHash(wire)}};
+ assert.equal(correlate(r,snapshot).state,'completed');
+ assert.equal(correlate({...r,inputCorrelation:{...r.inputCorrelation,digest:inputHash(body)}},snapshot).state,'unknown');
+ // Competing user input remains a hard rejection, even with the exact matching run envelope.
+ await appendFile(f.file,lines([{type:'response_item',payload:{role:'user',id:'competing',turn_id:'t',content:[{type:'input_text',text:'別の入力'}]}}]));
+ const next=await f.reader.read(f.a,f.status,f.execute);assert.equal(correlate(r,next).state,'unknown');
 });

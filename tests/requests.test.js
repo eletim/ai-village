@@ -275,7 +275,7 @@ test('accepted steering survives restart and only its final run consumes the ori
 
 test('report mode default, persistence, validation, snapshot and OFF/legacy isolation',async t=>{
  const f=await fixture(t),s=f.service;
- delete s.data.reportSettings;assert.equal(s.flow.reportStatus().enabled,true);
+ delete s.data.reportSettings;assert.equal(s.flow.reportStatus().enabled,false);
  await assert.rejects(s.flow.configureReport('true'),/true\/false/);
  await s.flow.configureReport(false);
  const old=await s.send(f.agents[0].id,{requestId:'report-off-request',instruction:'OFF'});
@@ -382,9 +382,9 @@ test('both report settings survive restart; failed persistence does not falsely 
 
 test('compact work context retains completion and receipt rules with discoverable detailed operations',async t=>{
  const f=await fixture(t),r=await f.service.send(f.agents[0].id,{instruction:'context test',requestId:'compact-context-test'});
- const text=f.service.rules.specification().text;
+ const text=f.service.rules.action('leader').text;
  assert(text.length<4000);
- for(const token of ['requests finish','operationId','正常終了','委任','受付不明','/api/direct/requests/get','village-image:UUID'])assert(text.includes(token),token);
+ for(const token of ['requests finish','operationId','正常終了','委任','受付不明','/api/direct/requests/get','rules get work ACTION'])assert(text.includes(token),token);
  const envelope=f.service.flow.context(r);assert(envelope.includes(r.id));assert(envelope.includes(r.workId));assert(envelope.includes(r.humanRequestId));
 });
 test('steering partitions progress at actual acceptance through multiple supplements and restart',async t=>{
@@ -444,16 +444,16 @@ test('event-to-response upgrade preserves Direct steering boundary and supersede
  await f.finish(f.service.flow.run(third.id));await f.complete(f.service.flow.run(third.id));assert.equal(f.notifications.length,1);
 });
 
-test('startup envelope retains literal human input and dynamic identity; report specifications remain discoverable',async t=>{
+test('startup envelope retains saved literal input and fingerprints canonical Codex transport; report specifications remain discoverable',async t=>{
  const f=await fixture(t,{reportMode:true}),s=f.service,a=f.agents[0];
  a.inputEnvelope={mode:'startup-v2',hash:inputHash(s.startupInstructions())};
  const human='  本文 <pasted_content>\nそのまま  ';
  const r=await s.send(a.id,{instruction:human,requestId:randomUUID()});
  const delivered=f.sent.at(-1).text;
- assert(delivered.startsWith(human+'\n'));assert(delivered.includes(r.id));assert.equal(r.inputMarker,undefined);
+ assert.equal(r.instruction,human);assert(delivered.startsWith(human.trimStart()+'\n'));assert.equal(r.inputCorrelation.digest,inputHash(delivered));assert(delivered.includes(r.id));assert.equal(r.inputMarker,undefined);
  assert(delivered.includes('ai-village-discovery'));assert(delivered.includes(a.id));
  assert(!delivered.includes('requests finish'));assert(!delivered.includes('図は必要時のみ'));
- assert(s.rules.specification().text.includes('requests finish'));assert(s.startupInstructions().includes('phase=report'));
+ assert(s.rules.action('leader').text.includes('requests finish'));assert(s.startupInstructions().includes('phase=report'));
  assert(s.rules.specification().text.includes('projects guide PROJECT_ID'));
  await f.submit(r);await f.finish(r);await f.complete(r);await s.tick();
  const q=s.flow.get(r.humanRequestId),report=s.flow.run(q.requestGraph.nodes[0].reportRunId);

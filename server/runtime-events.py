@@ -51,16 +51,26 @@ def parse_event(db,provider,x,offset):
    return
   if x.get('type')=='user' and not x.get('isMeta') and not (isinstance(content,list) and any(b.get('type')=='tool_result' for b in content)):
    if not uid:return
-   db.current=uid;turn(uid);db.parent(uid,uid)
+   db.current=uid;t=turn(uid);db.parent(uid,uid)
+   # A background task finishing while Claude is idle starts a turn of its own with a plain user
+   # line marked origin.kind=task-notification. It is the harness, not a person: the turn is kept
+   # (its output is the Agent's), but it records no input, so it never competes with a run's input.
+   if (x.get('origin') or {}).get('kind')=='task-notification':
+    t['trigger']='task-notification';db.put('turn',uid,t);return
    body=text(content)
    db.input({'explicitTurn':True,'source':'claude-user','id':uid,'turnId':uid,'hash':digest(body),'offset':offset,'text':body})
   elif uid and db.parent(parent):
    tid=db.parent(parent);db.parent(uid,tid)
-   if x.get('type')=='attachment' and (x.get('attachment') or {}).get('type')=='queued_command':
-    body=x['attachment'].get('prompt')
+   queued=(x.get('attachment') or {}) if x.get('type')=='attachment' else {}
+   # A background task's completion notice is delivered as a queued_command too, but it is the
+   # harness reporting its own work, not a human/steering input; counting it made the owning run
+   # look interrupted by foreign input. It still continues the turn (parent chain above).
+   notice=queued.get('commandMode')=='task-notification' or (queued.get('origin') or {}).get('kind')=='task-notification'
+   if queued.get('type')=='queued_command' and not notice:
+    body=queued.get('prompt')
     if isinstance(body,str):db.input({'explicitTurn':True,'source':'claude-queued','id':uid,'turnId':tid,'hash':digest(body),'offset':offset,'text':body})
    if x.get('type')=='assistant':
-    db.put('model','model',{'model':m.get('model'),'serviceTier':(m.get('usage') or {}).get('speed'),'recordedAt':at})
+    if not x.get('isApiErrorMessage') and m.get('model')!='<synthetic>':db.put('model','model',{'model':m.get('model'),**({'effort':x['effort']} if x.get('effort') in ('low','medium','high','xhigh','max') else {}),'serviceTier':(m.get('usage') or {}).get('speed'),'recordedAt':at})
     t=db.get('turn',tid);body=text(content)
     if body:message(tid,uid,body)
     if x.get('isApiErrorMessage') is True:t.update(state='failed',outputFromMessages=True,outputThrough=offset,error=x.get('error') or 'runtime-api-error',completedAt=at,completionEvent=uid,completionOffset=offset)

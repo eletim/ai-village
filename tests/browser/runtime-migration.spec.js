@@ -1,8 +1,8 @@
 import {test,expect} from './helpers/change-events.js';
 const target='old',donor='fresh';
 function setup(){
- const common={provider:'codex',location:'mayor',projectId:'p',workshopId:'w',cwd:'/not-for-display',connection:{name:'local'},state:'idle',canSend:true,metadataRevision:0,agentModel:{observation:{connected:true,process:'alive',activity:'idle'}}};
- return {projects:[{id:'p',name:'Project'}],workshops:[],agents:[{...structuredClone(common),id:target,name:'既存秘書',inputEnvelope:{mode:'legacy'},legacyContract:{version:1}},{...structuredClone(common),id:donor,name:'未使用の新セッション',inputEnvelope:{mode:'startup-v2'}},{...structuredClone(common),id:'wrong',name:'別Project',projectId:'other',inputEnvelope:{mode:'startup-v2'}}],runs:[],requests:[{id:'q',instruction:'既存のレビュー',requestGraph:{nodes:[{id:'work',assignee:target,state:{kind:'active'},inbox:[],metadata:{instruction:'既存のレビュー'}}]}}],reviews:{},notification:{enabled:false}};
+ const common={provider:'codex',location:'mayor',projectId:'p',workshopId:'w',cwd:'/not-for-display',connection:{name:'local',connectionType:'local'},state:'idle',canSend:true,metadataRevision:0,agentModel:{observation:{connected:true,process:'alive',activity:'idle'}}};
+ return {projects:[{id:'p',name:'Project'}],workshops:[{id:'w',connectionType:'local',workplaces:['/not-for-display']}],agents:[{...structuredClone(common),id:target,name:'既存秘書',inputEnvelope:{mode:'legacy'},legacyContract:{version:1}},{...structuredClone(common),id:donor,name:'未使用の新セッション',inputEnvelope:{mode:'startup-v2'}},{...structuredClone(common),id:'wrong',name:'別Project',projectId:'other',inputEnvelope:{mode:'startup-v2'}}],runs:[],requests:[{id:'q',instruction:'既存のレビュー',requestGraph:{nodes:[{id:'work',assignee:target,state:{kind:'active'},inbox:[],metadata:{instruction:'既存のレビュー'}}]}}],reviews:{},notification:{enabled:false}};
 }
 async function fixture(page,opts={}){
  const state=setup(),calls=[];let lost=!!opts.lost,refuse=!!opts.refuse;
@@ -49,4 +49,55 @@ test('failed terminal is not an idle normal boundary; draft stays safe on a narr
  const {state,ui,calls}=await fixture(page);state.runs.push({id:'failed',agentId:target,createdAt:'2026-01-01',runModel:{state:{kind:'ended',outcome:'failed'}}});await ready(ui);
  await expect(ui).toContainText('正常終了を確認できません');await expect(ui.getByRole('button',{name:'確認した新セッションへ切替'})).toBeDisabled();expect(calls).toHaveLength(1);
  await page.setViewportSize({width:390,height:844});expect(await ui.evaluate(e=>e.getBoundingClientRect().width)).toBeLessThanOrEqual(390);await expect(ui.getByLabel('引継ぎメモ')).toHaveValue(/目的: レビュー/);
+});
+for(const transport of ['local','ssh'])test('metadata drift permits '+transport+' donor and explicit switch',async({page},info)=>{
+ const {state,calls,ui}=await fixture(page);const [a,b]=state.agents,w=state.workshops[0];
+ for(const connection of [a.connection,b.connection,w])Object.assign(connection,{connectionType:transport,sshHost:transport==='ssh'?'alice@fixture-host':null});
+ Object.assign(a.connection,{updatedAt:'old',workplaces:['/not-for-display']});Object.assign(b.connection,{updatedAt:'new',name:'new label',baseUrl:'http://127.0.0.1:1',iconPattern:Array(8).fill('none'),workplaces:['/not-for-display','/other']});
+ await ui.getByRole('button',{name:'状態を再確認'}).click();await ready(ui);
+ await expect(ui.locator('option[value="fresh"]')).toContainText('属性適合');await expect(ui.getByRole('button',{name:'確認した新セッションへ切替'})).toBeEnabled();
+ await page.screenshot({path:process.env.RUNTIME_IDENTITY_EVIDENCE?`${process.env.RUNTIME_IDENTITY_EVIDENCE}/compatible-${transport}.png`:info.outputPath(`compatible-${transport}.png`)});
+ await ui.getByRole('button',{name:'確認した新セッションへ切替'}).click();await expect(ui).toContainText('短い起動契約（v2）');expect(calls.filter(c=>c.path.endsWith('/adopt-runtime'))).toHaveLength(1);expect(state.requests[0].requestGraph.nodes[0].assignee).toBe(target);
+});
+for(const mismatch of ['target','user','transport','cwd permission','current target'])test('candidate rejects '+mismatch+' after explicit refresh',async({page})=>{
+ const {state,calls,ui}=await fixture(page);const [a,b]=state.agents,w=state.workshops[0];
+ for(const connection of [a.connection,b.connection,w])Object.assign(connection,{connectionType:'ssh',sshHost:'alice@fixture-host'});
+ await ready(ui);await expect(ui.getByRole('button',{name:'確認した新セッションへ切替'})).toBeEnabled();
+ if(mismatch==='target')b.connection.sshHost='alice@other-host';
+ if(mismatch==='user')b.connection.sshHost='bob@fixture-host';
+ if(mismatch==='transport')b.connection.connectionType='local';
+ if(mismatch==='cwd permission')w.workplaces=['/other'];
+ if(mismatch==='current target')w.sshHost='alice@other-host';
+ await ui.getByRole('button',{name:'状態を再確認'}).click();await expect(ui.locator('option[value="fresh"]')).toContainText('属性不一致');await expect(ui.getByRole('button',{name:'確認した新セッションへ切替'})).toBeDisabled();expect(calls.filter(c=>c.path.endsWith('/adopt-runtime'))).toHaveLength(0);
+});
+for(const guard of ['unused','unknown','sent'])test('identity match does not bypass '+guard+' protection',async({page})=>{
+ const {state,ui,calls}=await fixture(page);await ready(ui);
+ if(guard==='unused')state.runs.push({id:'donor-old',agentId:donor,runModel:{state:{kind:'ended',outcome:'normal'}}});
+ if(guard==='unknown')state.agents[1].agentModel.observation.activity='unknown';
+ if(guard==='sent')state.runs.push({id:'inflight',agentId:target,runModel:{state:{kind:'sent'}}});
+ await ui.getByRole('button',{name:'状態を再確認'}).click();await expect(ui.getByRole('button',{name:'確認した新セッションへ切替'})).toBeDisabled();expect(calls.filter(c=>c.path.endsWith('/adopt-runtime'))).toHaveLength(0);
+});
+function stopped(a){Object.assign(a,{sessionName:'old-pane',workspaceId:'old-workspace',tabId:'old-tab',terminatedAt:'2026-11-10T00:00:00Z',ownedProcesses:[{pid:123,start:'456'}],processVerification:{trackedProcesses:1,remainingOwned:0}});a.agentModel={intent:'stop',observation:{connected:true,process:'absent',activity:'unknown'}};}
+test('formal stopped evidence offers explicit adoption with server final authority',async({page},info)=>{
+ const {state,ui,calls}=await fixture(page);stopped(state.agents[0]);state.runs.push({id:'old-failed',agentId:target,runModel:{state:{kind:'ended',outcome:'interrupted'}}});await ready(ui);
+ await expect(ui).toContainText('正式停止の証拠あり');await expect(ui.getByRole('button',{name:'確認した新セッションへ切替'})).toBeEnabled();
+ await page.screenshot({path:process.env.RUNTIME_IDENTITY_EVIDENCE?`${process.env.RUNTIME_IDENTITY_EVIDENCE}/stopped-ready.png`:info.outputPath('stopped-ready.png')});
+ await ui.getByRole('button',{name:'確認した新セッションへ切替'}).click();await expect(ui).toContainText('短い起動契約（v2）');expect(calls.filter(c=>c.path.endsWith('/adopt-runtime'))).toHaveLength(1);expect(state.requests[0].requestGraph.nodes[0].assignee).toBe(target);
+});
+for(const guard of ['proof','count','sent','unconfirmed','donor stopped'])test('stopped UI refuses '+guard,async({page})=>{
+ const {state,ui,calls}=await fixture(page);stopped(state.agents[0]);
+ if(guard==='proof')delete state.agents[0].ownedProcesses;
+ if(guard==='count')state.agents[0].processVerification.trackedProcesses=2;
+ if(guard==='sent')state.runs.push({id:'sent',agentId:target,runModel:{state:{kind:'sent'}}});
+ if(guard==='unconfirmed')state.runs.push({id:'unknown',agentId:target,runModel:{state:{kind:'ended',outcome:'unconfirmed'}}});
+ if(guard==='donor stopped')stopped(state.agents[1]);
+ await ready(ui);await expect(ui.getByRole('button',{name:'確認した新セッションへ切替'})).toBeDisabled();expect(calls.filter(c=>c.path.endsWith('/adopt-runtime'))).toHaveLength(0);
+});
+
+for(const width of [1440,390])test('retired uncertainty and delayed work remain visible '+width,async({page},testInfo)=>{
+ await page.setViewportSize({width,height:900});const {state,ui}=await fixture(page);
+ state.agents[0].inputEnvelope={mode:'startup-v2'};state.agents[0].runtimeMigrations=[{legacyRetirement:{oldRuns:[{id:'legacy-unconfirmed-run',outcome:'unconfirmed',reason:'legacy-superseded'}]}}];
+ state.runs.push({id:'delayed-old-result',agentId:target,humanRequestId:'old-work',queuedReason:'legacy-retirement-held',error:'旧仕事の自動再開を保留',runModel:{state:{kind:'queued'}}});
+ await ui.getByRole('button',{name:'状態を再確認'}).click();await expect(ui.getByRole('region',{name:'旧履歴退役の保留'})).toContainText('legacy-unconfirmed-run');await expect(ui).toContainText('unconfirmed');await expect(ui).toContainText('delayed-old-result');await expect(ui).toContainText('old-work');await expect(ui.getByRole('button',{name:'対象を確認してレビュー再開'})).toHaveCount(0);
+ await page.screenshot({path:testInfo.outputPath('retirement-'+width+'.png'),fullPage:true});
 });

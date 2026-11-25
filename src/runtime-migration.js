@@ -1,3 +1,5 @@
+import {stoppedRuntimeEvidence} from './stopped-runtime.js';
+import {sameRuntimeAttributes,currentRuntimeWorkplaceAllowed} from './runtime-connection-identity.js';
 import {escapeReport as esc} from './report-content.js';
 
 // A pending human operation is an immutable receipt, not a new request on retry.
@@ -15,7 +17,7 @@ export function runtimeMigration({api,newId}){
  };
  const owned=a=>(snapshot?.requests||[]).flatMap(q=>(q.requestGraph?.nodes||[]).filter(n=>n.assignee===a?.id).map(n=>({q,n})));
  const unused=a=>!(snapshot?.runs||[]).some(r=>r.agentId===a.id)&&!owned(a).length&&!(a.nativeTurns||[]).length;
- const compatible=(a,b)=>['provider','location','projectId','workshopId','cwd'].every(k=>(a[k]||null)===(b[k]||null))&&JSON.stringify(a.connection)===JSON.stringify(b.connection);
+ const compatible=(a,b)=>sameRuntimeAttributes(a,b)&&currentRuntimeWorkplaceAllowed(a,snapshot?.workshops?.find(w=>w.id===a.workshopId));
  const candidates=()=>snapshot?.agents.filter(b=>b.id!==id&&!b.deletedAt&&!b.runtimeRetiredTo&&b.inputEnvelope?.mode==='startup-v2')||[];
  const editable=()=>!busy&&!pending&&!storageError&&verified;
  function persist(value){localStorage.setItem(key(id),JSON.stringify(value));pending=value;}
@@ -23,19 +25,20 @@ export function runtimeMigration({api,newId}){
  function render(){
   const a=agent(),donor=snapshot?.agents.find(b=>b.id===selected),prepared=a?.runtimeUpgrade?.state==='prepared',v2=a?.inputEnvelope?.mode==='startup-v2';
   const notes=dialog.querySelector('[name=handover]')?.value||pending?.body?.handover||'',resumeText=dialog.querySelector('[name=resumeText]')?.value||'',resumeTarget=dialog.querySelector('[name=resumeTarget]')?.value||'';
-  const ready=a&&prepared&&idle(a)&&normalBoundary(a)&&!activeRuns(a).length&&donor&&compatible(a,donor)&&unused(donor)&&idle(donor);
+  const ready=a&&prepared&&(idle(a)&&a.agentModel?.intent!=='stop'&&normalBoundary(a)||stoppedRuntimeEvidence(a)&&!(snapshot?.runs||[]).some(r=>r.agentId===a.id&&(r.runModel?.state?.outcome==='unconfirmed'||['unconfirmed','send_unknown','unknown'].includes(r.state))))&&!activeRuns(a).length&&donor&&compatible(a,donor)&&unused(donor)&&idle(donor);
   dialog.innerHTML=`<header><h2>セッションの切替</h2><button type="button" data-close>閉じる</button></header><p role="status">${esc(storageError?'操作記録を保存・読込できません。記録を消去せず管理者に確認してください。':message)}</p><button type="button" data-refresh ${busy?'disabled':''}>状態を再確認</button>${a?`
-   <h3>${esc(a.name)}</h3><p>現在の契約: <strong>${v2?'短い起動契約（v2）':a.runtimeRetiredTo?'旧セッション保管':'移行待ち'}</strong> ／ ${idle(a)?'待機中':'実行状態の確認が必要'} ／ 追跡中 ${activeRuns(a).length}件</p>${!normalBoundary(a)?'<p>直近の実行の正常終了を確認できません。失敗・中断・不明は確認し、強制切替しないでください。</p>':''}
+   <h3>${esc(a.name)}</h3><p>現在の契約: <strong>${v2?'短い起動契約（v2）':a.runtimeRetiredTo?'旧セッション保管':'移行待ち'}</strong> ／ ${stoppedRuntimeEvidence(a)?'正式停止の証拠あり（切替時に実機不在を再確認）':idle(a)?'待機中':'実行状態の確認が必要'} ／ 追跡中 ${activeRuns(a).length}件</p>${!normalBoundary(a)&&!stoppedRuntimeEvidence(a)?'<p>直近の実行の正常終了を確認できません。失敗・中断・不明は確認し、強制切替しないでください。</p>':''}
+   ${a.runtimeMigrations?.at(-1)?.legacyRetirement?`<section aria-label="旧履歴退役の保留"><h3>旧履歴は未確認のまま保管</h3><p>新しい仕事のみ受付。旧仕事・遅延成果は自動再開しません。過去の外部操作結果は成功扱いしていません。</p><ul>${a.runtimeMigrations.at(-1).legacyRetirement.oldRuns.map(r=>`<li>${esc(r.id)} — ${esc(r.outcome||'未確認')} / ${esc(r.reason||'記録保持')}</li>`).join('')}</ul><ul>${(a.runtimeMigrations.at(-1).legacyRetirement.oldWorks||[]).map(w=>`<li>旧依頼 ${esc(w.humanRequestId)} / 作業 ${esc(w.workId)} — 自動再開保留</li>`).join('')}</ul><p>根拠: 正式停止・旧runtime不在確認と、この操作専用の人間承認。詳細は agents instructions で確認できます。</p>${(snapshot.runs||[]).filter(r=>r.agentId===a.id&&r.queuedReason==='legacy-retirement-held').map(r=>`<p>保留 ${esc(r.id)} / 旧依頼 ${esc(r.humanRequestId||r.conversationSource?.humanRequestId||'未分類')} — ${esc(r.error)}</p>`).join('')}</section>`:''}
    <p>このAgentと依頼のIDは維持します。他のAgentは停止しません。切替準備後も実行中の処理は正常終了を待ちます。</p>
-   ${a.legacyContract?'<p>旧契約で継続中です。確認日が過ぎても自動停止しません。</p>':''}
+   ${a.legacyContract&&!v2?'<p>旧契約で継続中です。確認日が過ぎても自動停止しません。</p>':''}
    ${!v2&&!a.runtimeRetiredTo?`<label>新セッション候補<select name="donor" ${!editable()?'disabled':''}><option value="">選択してください</option>${candidates().map(b=>`<option value="${esc(b.id)}" ${b.id===selected?'selected':''}>${esc(b.name)} — ${compatible(a,b)?'属性適合':'属性不一致'} / ${unused(b)?'登録履歴未使用':'使用済み'} / ${idle(b)?'待機中':'実行状態を確認'}</option>`).join('')}</select></label>
-   <p>属性適合はProject・場所・AI・工房・作業場所・接続の一致です。実機の未使用状態は切替時にサーバーでも確認します。</p>
+   <p>属性適合はProject・場所・AI・工房・作業場所・実行接続の一致と、現在の工房での作業場所の許可です。実機の未使用状態は切替時にサーバーでも確認します。</p>
    <label>引継ぎメモ<textarea name="handover" rows="8" maxlength="30000" ${!editable()?'disabled':''} placeholder="元の目的、完了事項、未完事項、実施済み外部操作、不明点を確認して記入">${esc(notes)}</textarea></label>
    <p>秘密情報や認証情報は記入しないでください。過去の依頼・補足・子結果は新セッションから取得できます。未記録の操作は推測しません。</p>
    <button type="button" data-prepare ${!editable()||prepared?'disabled':''}>このAgentの切替を準備</button>
    <button type="button" data-adopt ${!editable()||!ready?'disabled':''}>確認した新セッションへ切替</button>
    ${prepared?`<p>${ready?'引継ぎメモを確認して切替できます。':'次の送信を保留しています。正常終了・待機状態と候補を確認してください。強制停止はしません。'}</p>`:''}`:''}
-   ${v2?`<section><h3>同じ依頼のレビューを再開</h3><p>結果配送や実行が進んでいる場合は追加送信しません。再開が必要な依頼だけ選び、補足を明示送信します。成果の採否・完了は変更しません。</p><label>対象の依頼<select name="resumeTarget" ${!editable()?'disabled':''}><option value="">選択してください</option>${owned(a).filter(({n})=>n.state.kind==='active').map(({q,n})=>`<option value="${esc(q.id+':'+n.id)}" ${q.id+':'+n.id===resumeTarget?'selected':''}>${esc((n.metadata?.instruction||q.instruction||'依頼').slice(0,100))}</option>`).join('')}</select></label><label>再開する内容<textarea name="resumeText" rows="3" maxlength="12000" ${!editable()?'disabled':''}>${esc(resumeText)}</textarea></label><button type="button" data-resume ${!editable()?'disabled':''}>対象を確認してレビュー再開</button></section>`:''}`:''}
+   ${v2&&!a.runtimeMigrations?.at(-1)?.legacyRetirement?`<section><h3>同じ依頼のレビューを再開</h3><p>結果配送や実行が進んでいる場合は追加送信しません。再開が必要な依頼だけ選び、補足を明示送信します。成果の採否・完了は変更しません。</p><label>対象の依頼<select name="resumeTarget" ${!editable()?'disabled':''}><option value="">選択してください</option>${owned(a).filter(({n})=>n.state.kind==='active').map(({q,n})=>`<option value="${esc(q.id+':'+n.id)}" ${q.id+':'+n.id===resumeTarget?'selected':''}>${esc((n.metadata?.instruction||q.instruction||'依頼').slice(0,100))}</option>`).join('')}</select></label><label>再開する内容<textarea name="resumeText" rows="3" maxlength="12000" ${!editable()?'disabled':''}>${esc(resumeText)}</textarea></label><button type="button" data-resume ${!editable()?'disabled':''}>対象を確認してレビュー再開</button></section>`:''}`:''}
    ${pending?`<p>未確認の操作: ${esc(pending.label)}。内容と操作IDを保持しています。新しい操作を作らず同じ内容で受付を確認します。</p><button type="button" data-retry ${busy?'disabled':''}>同じ操作で受付を確認</button>`:''}`;
   dialog.querySelector('[data-close]').onclick=()=>dialog.close();dialog.querySelector('[data-refresh]').onclick=load;
   dialog.querySelector('[name=donor]')?.addEventListener('change',e=>{selected=e.target.value;render();});

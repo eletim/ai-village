@@ -54,6 +54,6 @@ test('selfResume HTTP and CLI: normal end waits, timer delivers one native-corre
   assert.equal(node.inbox.filter(i=>i.id===reserved.body.current.id).length,1);assert.equal(node.inbox.find(i=>i.id===reserved.body.current.id).source.actor,'program');
   assert.equal(node.selfResume.current.status,'consumed');
   assert.equal((await lines(capture)).filter(e=>e.text.includes(next.id)).length,1);
-  assert.equal((await lines(notices)).length,0);
+  assert.equal((await lines(notices)).length,1);
  }finally{await stop();fixtureProcess.kill();await rm(dir,{recursive:true,force:true});}
 });

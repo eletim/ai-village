@@ -36,6 +36,7 @@ export class RequestReports {
   const event={id:randomUUID(),kind:x.kind,workId:w.id,at:new Date(this.clock()).toISOString(),actorRunId:x.actorRunId,text:x.text,proposedCompletionAt:deadline(x.proposedCompletionAt),proposedReportAt:deadline(x.proposedReportAt)};
   const current=w.metadata.reporting||initialDeadlines({});
   w.metadata.reporting=transitionReporting(current,{type:'report',event});
+  if(!w.parentId&&w.recipient.kind==='conversation'&&['question','extension'].includes(x.kind))w.conversationWait={reportId:event.id,runId:x.actorRunId};
   // Persisted immediately, independently of a later native execution outcome.
   if(w.parentId)notify(this.flow,q,this.flow.work(q,w.parentId),event);
   return event;

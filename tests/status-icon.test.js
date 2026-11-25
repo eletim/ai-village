@@ -16,3 +16,13 @@ test('labels and attributes are escaped; SVG never contains names, IDs, URLs or 
  const html=statusIcon(a,{mode:'roles',sidebar:true,state:'" onclick="evil',attention:true});assert(!html.includes('<script>'));assert(!html.includes('<img'));assert(!html.includes(' onerror="evil'));assert.match(html,/&lt;script&gt;/);assert(!roleSVG(a).includes(a.workshopId));assert(!roleSVG(a).includes('http'));assert.equal((html.match(/<svg/g)||[]).length,1);
  assert(!statusIcon(a).includes('<svg'));assert.equal(normalizeDisplay().iconMode,'roles');assert.equal(normalizeDisplay({iconMode:'bad'}).iconMode,'roles');assert.deepEqual(normalizeDisplay({iconMode:'roles',theme:'sepia',font:'serif',viewer:'plain'}),{projectView:'secretary',textSize:'medium',iconMode:'roles',theme:'sepia',font:'serif',viewer:'plain'});
 });
+
+test('leader flag supplements workshop shape and state in role and dot modes',()=>{
+ const a={id:'a',name:'担当',location:'workshop',workshopId:'w'};
+ for(const mode of ['roles','dots']){
+  const options={mode,unread:true,state:'busy',attention:true,sidebar:true,projects:[{id:'p',leaderAgentId:'a'}]};
+  const html=statusIcon(a,options);assert.match(html,/has-leader/);assert.match(html,/leader-icon-flag/);assert.match(html,/Projectリーダー（仕事の管理役）/);assert.match(html,/data-state="busy"/);assert.match(html,/data-attention="true"/);assert.match(html,/data-unread="true"/);
+  assert(html.includes(roleSVG(a,[],true)));assert.equal(roleSVG(a,[],true).split('<g fill="currentColor">')[1],roleSVG(a).split('<g fill="currentColor">')[1]);assert.equal((html.match(/<svg/g)||[]).length,1);assert.match(html,/viewBox="0 0 20 20"/);
+  for(const leaderAgentId of ['b',null])assert(!statusIcon(a,{...options,projects:[{id:'p',leaderAgentId}]}).includes('leader-icon-flag'));
+ }
+});

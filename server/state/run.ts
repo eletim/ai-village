@@ -5,13 +5,14 @@ export type RunState = { kind:'queued' } | { kind:'sent'; sessionId:string|null;
  | { kind:'running'; sessionId:string; turnId:string; inputId:string }
  | { kind:'ended'; outcome:Outcome; reason:string; errorCode?:string }
  | { kind:'cancelled' };
-export type Fact = Readonly<{ type:string; at:number; sessionId?:string; turnId?:string; inputId?:string; outcome?:Outcome; errorCode?:string }>;
+export type Fact = Readonly<{ type:string; at:number; operationId?:string; sessionId?:string; turnId?:string; inputId?:string; outcome?:Outcome; errorCode?:string }>;
 export type Run = Readonly<{
- id:string; requestId:string; parentRunId:string|null; retryOf:string|null; phase:'work'|'report'|'result'; resultOf:string|null; recipientRunId:string|null;
+ id:string; requestId:string; parentRunId:string|null; retryOf:string|null; phase:'work'|'report'|'result'|'conversation'; resultOf:string|null; recipientRunId:string|null;
  createdBy?:Actor; supersededBy?:string; state:RunState; facts:readonly Fact[]; decisions:readonly {actor:Actor; reason:string}[];
  retryBudget:Readonly<{count:number; firstFailureAt:number|null}>;
 }>;
 export type RunEvent =
+ | Command<'reconcile-observation','program',{at:number;operationId:string;sessionId:string;turnId:string;inputId:string}>
  | Command<'dispatch','program',{at:number; sessionId:string|null; agentIdle:boolean}>
  | Command<'transport-ack','program',{at:number}>
  | Command<'input','program',{at:number; sessionId:string; turnId:string; inputId:string; text:string; matchedRunId?:string; competing:boolean}>
@@ -20,12 +21,14 @@ export type RunEvent =
  | Command<'dispatch-blocked','program',{at:number; reason:string}>
  | Command<'supersede','human',{successorId:string}> | Command<'restore','human',{successorId:string}>
  | Command<'cancel-result-reservation','program',{resultId:string;reason:'handled'|'superseded'}>
+ | Command<'cancel-conversation-job','agent',{requestId:string}>
+ | Command<'cancel-decision-reminder','program'>
  | Command<'cancel-inbox-reservation','program'>
  | Command<'cancel-report-reservation','program'>
  | Command<'cancel','human'> | Command<'close-tracking','human',{reason:string}>;
-export const runAuthorities = {dispatch:['program'],'transport-ack':['program'],input:['program'],terminal:['program'],lost:['program'],'dispatch-blocked':['program'],supersede:['human'],restore:['human'],cancel:['human'],'cancel-inbox-reservation':['program'],'cancel-report-reservation':['program'],'cancel-result-reservation':['program'],'close-tracking':['human']} as const;
-export type RunKind = {phase:'work'} | {phase:'report'} | {phase:'result'; resultOf:string; recipientRunId:string};
-export const creationAuthorities = {work:['human','agent'],report:['program'],result:['program']} as const;
+export const runAuthorities = {'reconcile-observation':['program'],dispatch:['program'],'transport-ack':['program'],input:['program'],terminal:['program'],lost:['program'],'dispatch-blocked':['program'],supersede:['human'],restore:['human'],cancel:['human'],'cancel-conversation-job':['agent'],'cancel-decision-reminder':['program'],'cancel-inbox-reservation':['program'],'cancel-report-reservation':['program'],'cancel-result-reservation':['program'],'close-tracking':['human']} as const;
+export type RunKind = {phase:'conversation'} | {phase:'work'} | {phase:'report'} | {phase:'result'; resultOf:string; recipientRunId:string};
+export const creationAuthorities = {conversation:['human','program'],work:['human','agent'],report:['program'],result:['program']} as const;
 export function newRun(id:string, requestId:string, actor:Actor, parentRunId:string|null=null, kind:RunKind={phase:'work'}, compatibility:{allowAgentRoot?:boolean}={}): Result<Run> {
  if (!id || !requestId) return reject('missing-id');
  if (!(creationAuthorities[kind.phase] as readonly string[]).includes(actor) || (actor==='agent'&&!parentRunId&&!compatibility.allowAgentRoot)) return reject('actor-forbidden');
@@ -40,6 +43,11 @@ export function resumeRun(previous:Run,id:string):Result<Run> {
 }
 export function transitionRun(r:Run,e:RunEvent):Result<Run> {
  if (!(runAuthorities[e.type] as readonly string[]).includes(e.actor)) return reject('actor-forbidden');
+ if(e.type==='reconcile-observation'){
+  const input=[...r.facts].reverse().find(f=>f.type==='input');
+  if(r.state.kind!=='ended'||r.state.outcome!=='unconfirmed'||r.state.reason!=='session-changed'||r.facts.at(-1)?.type!=='lost'||!input||input.sessionId!==e.sessionId||input.turnId!==e.turnId||input.inputId!==e.inputId||!e.operationId||r.phase!=='work')return reject('not-reconcilable-observation');
+  return accept({...r,state:{kind:'running',sessionId:e.sessionId,turnId:e.turnId,inputId:e.inputId},facts:[...r.facts,{type:e.type,at:e.at,operationId:e.operationId,sessionId:e.sessionId,turnId:e.turnId,inputId:e.inputId}]});
+ }
  if (isTerminal(r)) return reject('run-terminal');
  const record=(state:RunState):Result<Run>=>accept({...r,state,facts:[...r.facts,{type:e.type,at:'at' in e?e.at:0,...('sessionId' in e&&e.sessionId?{sessionId:e.sessionId}:{}),...('turnId' in e?{turnId:e.turnId}:{}),...('inputId' in e?{inputId:e.inputId}:{}),...('outcome' in e?{outcome:e.outcome}:{}),...('errorCode' in e?{errorCode:e.errorCode}:{})}]});
  switch(e.type) {
@@ -69,6 +77,8 @@ export function transitionRun(r:Run,e:RunEvent):Result<Run> {
    const {supersededBy,...rest}=r;return accept(rest);
   }
   case 'cancel-result-reservation': return r.state.kind==='queued'&&r.phase==='result'&&r.resultOf===e.resultId&&['handled','superseded'].includes(e.reason)?accept({...r,state:{kind:'cancelled'},decisions:[...r.decisions,{actor:'program',reason:'result-'+e.reason+'-before-dispatch'}]}):reject('not-cancellable-result-reservation');
+  case 'cancel-conversation-job': return r.state.kind==='queued'&&r.phase==='work'&&r.requestId===e.requestId?accept({...r,state:{kind:'cancelled'},decisions:[...r.decisions,{actor:'agent',reason:'conversation-job-withdrawn'}]}):reject('not-cancellable-conversation-job');
+  case 'cancel-decision-reminder': return r.state.kind==='queued'&&r.phase==='conversation'&&r.createdBy==='program'&&r.facts.length===0&&r.requestId.startsWith('conversation-delivery:decision-recovery:')?accept({...r,state:{kind:'cancelled'},decisions:[...r.decisions,{actor:'program',reason:'decision-reminder-context-changed-before-dispatch'}]}):reject('not-cancellable-decision-reminder');
   case 'cancel-inbox-reservation': return r.state.kind==='queued'&&r.phase==='work'&&r.createdBy==='program'&&!!r.retryOf?accept({...r,state:{kind:'cancelled'},decisions:[...r.decisions,{actor:'program',reason:'inbox-inputs-retired-before-dispatch'}]}):reject('not-cancellable-inbox-reservation');
   case 'cancel-report-reservation': return r.state.kind==='queued'&&r.phase==='report'?accept({...r,state:{kind:'cancelled'},decisions:[...r.decisions,{actor:'program',reason:'report-superseded-before-dispatch'}]}):reject('not-cancellable-report');
   case 'cancel': return r.state.kind==='queued' ? accept({...r,state:{kind:'cancelled'},decisions:[...r.decisions,{actor:'human',reason:'cancel-before-send'}]}) : reject('already-dispatched');

@@ -17,11 +17,11 @@ test('real HTTP + native JSONL + durable inbox + isolated notify CLI: 0 interim,
  const fixtureProcess=spawn('bash',['-c','exec -a codex sleep 120']);
  const bin=join(dir,'bin');await mkdir(bin);await writeFile(join(bin,'tmux'),'#!/bin/sh\necho '+fixtureProcess.pid+'\n',{mode:0o700});
  const probe=createServer();probe.listen(0,'127.0.0.1');await once(probe,'listening');const port=probe.address().port;await new Promise(r=>probe.close(r));const base='http://127.0.0.1:'+port;
- const agents=[0,1,2].map(i=>({id:randomUUID(),name:'Fixture '+i,location:i===1?'workshop':'mayor',connection:{connectionType:'local',name:'Fixture'},workspaceId:'ws-'+i,tabId:'tab-'+i,sessionName:'pane-'+i,provider:'codex',state:'idle',nativeSession:randomUUID()}));
+ const agents=[0,1,2].map(i=>({id:randomUUID(),name:'Fixture '+i,workshopId:'fixture-workshop',cwd:dir,location:i===1?'workshop':'mayor',connection:{connectionType:'local',name:'Fixture'},workspaceId:'ws-'+i,tabId:'tab-'+i,sessionName:'pane-'+i,provider:'codex',state:'idle',nativeSession:randomUUID()}));
  const startup=new AgentRules(base).startup();for(const a of agents){a.inputEnvelope={mode:'startup-v2',hash:inputHash(startup)};const root=join(dir,'.purplemux/workspaces',a.workspaceId);await mkdir(root,{recursive:true});await writeFile(join(root,'codex-prompt.md'),'# purplemux context\n'+startup);}
  const nativeDir=join(dir,'sessions');await mkdir(nativeDir);
  for(const a of agents)await writeFile(join(nativeDir,a.nativeSession+'.jsonl'),JSON.stringify({type:'session_meta',payload:{id:a.nativeSession}})+'\n');
- await writeFile(join(dir,'direct.json'),JSON.stringify({version:1,workshops:[],agents,runs:[{id:'legacy',agentId:agents[0].id,state:'completed',output:'old without receipt'}]}));
+ await writeFile(join(dir,'direct.json'),JSON.stringify({version:1,reportSettings:{enabled:true},workshops:[{id:'fixture-workshop',connectionType:'local',workplaces:[dir]}],agents,runs:[{id:'legacy',agentId:agents[0].id,state:'completed',output:'old without receipt'}]}));
  await writeFile(join(dir,'agents-fixture.json'),JSON.stringify(agents));
  const pmux=join(dir,'fake-pmux.cjs'),notify=join(dir,'fake-notify.cjs');
  await writeFile(pmux,"#!/usr/bin/env node\nconst fs=require('fs');const agents=JSON.parse(fs.readFileSync(process.env.FIXTURE_AGENTS,'utf8'));const args=process.argv.slice(2),a=agents.find(a=>args.includes(a.workspaceId));if(args[1]==='status')console.log(JSON.stringify({alive:true,cliState:fs.existsSync(process.env.FIXTURE_CAPTURE+'.busy')?'busy':'idle',agentSessionId:a.nativeSession}));else if(args[1]==='send'){fs.appendFileSync(process.env.FIXTURE_CAPTURE,JSON.stringify({agentId:a.id,text:args.at(-1)})+'\\n');console.log('{\"status\":\"sent\"}');}else process.exit(3);\n",{mode:0o700});
@@ -49,9 +49,12 @@ test('real HTTP + native JSONL + durable inbox + isolated notify CLI: 0 interim,
   const migration={operationId:'http-adopt-runtime',revision:1,replacementRevision:0,replacementAgentId:agents[2].id};
   const migrationPath='/api/direct/human/agents/'+agents[0].id+'/adopt-runtime';
   const denied=await fetch(base+migrationPath,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(migration)});assert.equal(denied.status,403);
+  const exception={...migration,retireLegacyHistory:{version:1,mode:'new-work-only',acknowledgement:'isolated fixture acknowledgement'}};
+  assert.equal((await fetch(base+migrationPath,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(exception)})).status,403);
+  assert.equal((await post('/agents/'+agents[0].id+'/adopt-runtime',exception)).status,404);
   await cli('adopt-runtime',migration);assert.equal((await post('/human/agents/'+agents[0].id+'/adopt-runtime',migration)).status,200);
   for(const key of ['workspaceId','tabId','sessionName','nativeSession']){const value=agents[0][key];agents[0][key]=agents[2][key];agents[2][key]=value;}await writeFile(join(dir,'agents-fixture.json'),JSON.stringify(agents));
-  const spec=await (await fetch(base+'/api/direct/rules?phase=work')).json();assert.equal(spec.revision,new AgentRules(base).specification().revision);assert(spec.text.includes('requests report'));assert.equal((await fetch(base+'/api/direct/rules?phase=invalid')).status,400);const fileResponse=await fetch(base+'/api/attachments?name=sample.json',{method:'POST',headers:{'Content-Type':'application/json'},body:'{"hello":"world"}'});assert.equal(fileResponse.status,201);const file=await fileResponse.json();const attachments=[file.id];
+  const spec=await (await fetch(base+'/api/direct/rules?phase=work')).json();assert.equal(spec.revision,new AgentRules(base).specification().revision);assert(spec.text.includes('rules get work leader'));const leaderSpec=await (await fetch(base+'/api/direct/rules?phase=work&action=leader')).json();assert.equal(leaderSpec.revision,spec.revision);assert(leaderSpec.text.includes('requests report'));assert.equal((await fetch(base+'/api/direct/rules?phase=invalid')).status,400);const fileResponse=await fetch(base+'/api/attachments?name=sample.json',{method:'POST',headers:{'Content-Type':'application/json'},body:'{"hello":"world"}'});assert.equal(fileResponse.status,201);const file=await fileResponse.json();const attachments=[file.id];
   const travelContexts=[{name:'出張先',sshHost:'dev@travel-pc',cwd:'/tmp/work with spaces; $(noop)',notes:'参照情報のみ'}];const root=(await post('/agents/'+agents[0].id+'/runs',{instruction:'Human collaboration request',requestId:'http-human-request',travelContexts,attachments})).body;
   assert.deepEqual(root.travelContexts,travelContexts);assert.equal(root.attachments[0].id,file.id);assert.equal(await readFile(root.attachmentFiles[0].path,'utf8'),'{"hello":"world"}');assert((await lines(capture))[0].text.includes('出張先添付'));
   assert.equal((await post('/agents/'+agents[0].id+'/runs',{instruction:'Human collaboration request',requestId:'http-human-request',travelContexts:[{...travelContexts[0],cwd:'/different'}]})).status,409);
@@ -98,6 +101,8 @@ test('real HTTP + native JSONL + durable inbox + isolated notify CLI: 0 interim,
   const retried=await post('/human/requests/retry',retryPayload);assert.equal(retried.status,200);assert.equal((await post('/human/requests/retry',retryPayload)).body.id,retried.body.id);
   await until(async()=>(await run(retried.body.id)).state==='awaiting_input');
   assert.equal((await post('/human/requests/retry',{...retryPayload,revision:(await request(failed.humanRequestId)).revision,operationId:'http-uncertain-retry'})).status,409);
+  await until(async()=>(await lines(capture)).some(e=>e.text.includes(retried.body.id)));
+  await until(async()=>(await lines(capture)).some(e=>e.text.includes(attachmentOnly.body.id)));
   const count=(await lines(capture)).length;const fq=await request(failed.humanRequestId);
   assert.equal((await post('/human/requests/cancel',{humanRequestId:fq.id,revision:fq.revision})).status,200);
   await stop();await start();assert.equal((await lines(capture)).length,count);assert.equal((await lines(notices)).length,1);

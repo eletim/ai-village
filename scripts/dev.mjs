@@ -2,7 +2,10 @@ import {ChangeStream} from '../server/change-stream.mjs';
 import {humanUI} from '../server/human-ui.mjs';
 import {receiveUpload} from '../server/upload-limits.mjs';
 import {apiValue} from '../server/state-projection.mjs';
-import {workspaceSnapshot,historyPage} from '../server/conversation-pages.mjs';
+import {workspaceSnapshot,historyPage,entryBody} from '../server/conversation-pages.mjs';
+import {mapSnapshot} from '../server/map-view.mjs';
+// Rollback switch for the lean views (docs/lean-fetch.md): VILLAGE_LEGACY_FETCH=1 restores the full payloads.
+const leanFetch=process.env.VILLAGE_LEGACY_FETCH!=='1';
 import {WorkspaceSync} from '../server/workspace-sync.mjs';
 import {syncResponse} from '../server/sync-response.mjs';
 const workspaceSync=new WorkspaceSync();
@@ -55,7 +58,7 @@ const handleRequest = async (req, res) => {
     if(pathname.startsWith('/api/direct/human/')&&!humanIntent.allow(req))return json(res,403,{error:'人間専用の操作です。村の画面を再読み込みして操作してください。'});
     if (pathname.startsWith('/api/')) {
       if (pathname.startsWith('/api/direct')) {
-        if(req.method==='GET'&&pathname==='/api/direct/rules')return json(res,200,direct.rules.specification(new URL(req.url,'http://localhost').searchParams.get('phase')||'work'));
+        if(req.method==='GET'&&pathname==='/api/direct/rules'){const params=new URL(req.url,'http://localhost').searchParams;return json(res,200,params.get('action')&&params.get('phase')==='work'?direct.rules.action(params.get('action')):direct.rules.specification(params.get('phase')||'work'));}
         if(req.method==='GET'&&pathname==='/api/direct/events')return changeStream.connect(req,res);
         if(req.method==='GET' && pathname==='/api/direct/usage')return json(res,200,await weeklyUsage.get());
         if(req.method==='GET' && pathname==='/api/direct/requests')return json(res,200,{requests:direct.flow.list()});
@@ -65,17 +68,20 @@ const handleRequest = async (req, res) => {
           if(params.get('view')==='workspace'){
             let ranges;try{ranges=JSON.parse(params.get('ranges')||'{}');}catch{return json(res,400,{error:'Invalid history ranges'});}
             let focus=null;if(params.has('focus')){try{focus=JSON.parse(params.get('focus'));}catch{return json(res,400,{error:'Invalid focus agents'});}}
-            const snapshot=workspaceSnapshot(direct.presentation(),ranges,focus);
+            const snapshot=workspaceSnapshot(direct.presentation(),ranges,focus,{lean:leanFetch,lazyBodies:leanFetch&&params.get('bodies')==='lazy'});
             if(params.get('sync')==='1')return await syncResponse(req,res,workspaceSync.reply({client:params.get('client'),since:params.get('since'),scope:(params.get('ranges')||'{}')+'|'+(params.get('focus')||'')},snapshot));
             return json(res,200,snapshot);
           }
+          if(params.get('view')==='map'&&leanFetch)return json(res,200,mapSnapshot(direct.presentation()));
           return json(res,200,direct.snapshot());
         }
         const history=pathname.match(/^\/api\/direct\/agents\/([^/]+)\/history$/);
         if(req.method==='GET'&&history){
-          const params=new URL(req.url,'http://localhost').searchParams,page=historyPage(direct.presentation(),history[1],params.get('before'));
+          const params=new URL(req.url,'http://localhost').searchParams,page=historyPage(direct.presentation(),history[1],params.get('before'),{lazyBodies:leanFetch&&params.get('bodies')==='lazy'});
           return json(res,200,params.get('boundaryOnly')==='1'?{cursor:page.cursor,hasMore:page.hasMore}:page);
         }
+        const entryBodyRoute=pathname.match(/^\/api\/direct\/agents\/([^/]+)\/entry-body$/);
+        if(req.method==='GET'&&entryBodyRoute){const params=new URL(req.url,'http://localhost').searchParams;return json(res,200,entryBody(direct.presentation(),entryBodyRoute[1],params.get('entry'),params.get('side')));}
         const deletion=pathname.match(/^\/api\/direct\/projects\/([0-9a-f-]{36})\/(delete-plan|delete)$/);
         if(deletion&&req.method==='GET'&&deletion[2]==='delete-plan')return json(res,200,direct.projectDeletePlan(deletion[1]));
         if(!['POST','PUT'].includes(req.method))return json(res,405,{error:'Method not allowed'});
@@ -87,14 +93,18 @@ const handleRequest = async (req, res) => {
         if(req.method==='PUT'&&guide)return json(res,200,await direct.putProjectGuide(guide[1],input));
         const runtimePreparation=pathname.match(/^\/api\/direct\/human\/agents\/([0-9a-f-]{36})\/prepare-runtime$/);
         if(req.method==='POST'&&runtimePreparation)return json(res,200,await direct.prepareRuntime(runtimePreparation[1],input));
+        const presence=pathname.match(/^\/api\/direct\/human\/agents\/([0-9a-f-]{36})\/presence$/);
+        if(req.method==='POST'&&presence)return json(res,200,direct.markPresence(presence[1],input||{}));
         const runtimeAdoption=pathname.match(/^\/api\/direct\/human\/agents\/([0-9a-f-]{36})\/adopt-runtime$/);
-        if(req.method==='POST'&&runtimeAdoption)return json(res,200,await direct.adoptRuntime(runtimeAdoption[1],input));
+        if(req.method==='POST'&&runtimeAdoption)return json(res,200,await direct.adoptRuntime(runtimeAdoption[1],input,{human:true}));
         const humanAction=pathname.match(/^\/api\/direct\/human\/requests\/(retry|resume|cancel|complete|cancel-queued|supplement|plan|launch|assignPlan|discard|deadline)$/);
         if(req.method==='POST'&&humanAction){
           const action=humanAction[1],flow=direct.flow;
           return json(res,200,action==='deadline'?await flow.humanDeadline(input):['plan','launch','assignPlan','discard'].includes(action)?await flow.humanCompose(input,action):action==='cancel-queued'?await flow.cancelQueued(input):action==='retry'||action==='resume'?await flow.continue(input,action==='retry'):await flow[action](input));
         }
-        const requestAction=pathname.match(/^\/api\/direct\/requests\/(get|results|inputs|selfResume|delegate|continueChild|amend|respond|finish|plan|launch|assignPlan|discard|report|deadline)$/);
+        const conversationAction=pathname.match(/^\/api\/direct\/conversations\/(get|read|job|followup|amend|withdraw|display|decide)$/);
+        if(req.method==='POST'&&conversationAction){const action=conversationAction[1];return json(res,200,action==='get'?await direct.conversations.read(input.conversationId,input.actorRunId):action==='read'?await direct.conversations.material(input.conversationId,input.actorRunId,input.selector):await direct.conversations[action](input));}
+        const requestAction=pathname.match(/^\/api\/direct\/requests\/(get|results|inputs|reconcileObservation|selfResume|delegate|continueChild|amend|respond|finish|plan|launch|assignPlan|discard|report|deadline)$/);
         if(req.method==='POST'&&requestAction){
           const action=requestAction[1],flow=direct.flow;
           const result=action==='cancel-queued'?await flow.cancelQueued(input):action==='get'?flow.get(input.humanRequestId):action==='inputs'?flow.inputs(input.humanRequestId,input.workId):action==='results'?flow.results(input.humanRequestId,input.workId):action==='retry'||action==='resume'?await flow.continue(input,action==='retry'):await flow[action](input);

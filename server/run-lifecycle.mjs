@@ -8,7 +8,7 @@ function commit(r,model){r.runModel=model;return r;}
 export const runState=r=>runView(modelOf(r)).state;
 export const accepted=r=>!!r?.runModel?.facts.some(f=>f.type==='input');
 export function initializeRun(r,{actor='human',parentRunId=null,resultOf=null,recipientRunId=null}={}){
- const kind=r.phase==='report'?{phase:'report'}:r.origin==='result'?{phase:'result',resultOf,recipientRunId}:{phase:'work'};
+ const kind=r.conversationId?{phase:'conversation'}:r.phase==='report'?{phase:'report'}:r.origin==='result'?{phase:'result',resultOf,recipientRunId}:{phase:'work'};
  const result=newRun(r.id,r.humanRequestId||r.requestId,actor,parentRunId,kind,{allowAgentRoot:r.origin==='agent'});
  if(!result.ok)throw Error('run creation rejected: '+result.reason);
  return commit(r,result.value);

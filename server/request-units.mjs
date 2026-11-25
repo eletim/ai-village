@@ -1,12 +1,13 @@
 import {AsyncLocalStorage} from 'node:async_hooks';
 import {checkpoint} from './persistence-boundary.mjs';
+import {recordedNodes} from './request-integrity.mjs';
 // Establish the ownership boundary at command entry, before any mutation.
 export class RequestUnits {
  constructor(d){this.d=d;this.context=new AsyncLocalStorage();this.reset();}
  reset(){this.maps={requests:new Map(),runs:new Map(),agents:new Map()};this.lengths={requests:0,runs:0,agents:0};this.arrays={};this.runsByRequest=new Map();this.requestsByAgent=new Map();this.members=new Map();}
  indexRequest(q){
   for(const a of this.members.get(q.id)||[])this.requestsByAgent.get(a)?.delete(q.id);
-  const members=new Set((q.requestGraph?.nodes||[]).filter(n=>['active','submitted'].includes(n.state.kind)).map(n=>n.assignee).filter(Boolean));
+  const members=new Set(recordedNodes(q).filter(n=>['active','submitted'].includes(n.state?.kind)).map(n=>n.assignee).filter(Boolean));
   this.members.set(q.id,members);
   for(const a of members){if(!this.requestsByAgent.has(a))this.requestsByAgent.set(a,new Set());this.requestsByAgent.get(a).add(q.id);}
  }
@@ -32,16 +33,18 @@ export class RequestUnits {
   // Include records created inside this command, before they enter an index.
   for(const q of (d.requests||[]).slice(scope.requestCount??d.requests.length))ids.add(q.id);
   const requests=[...ids].map(id=>this.maps.requests.get(id)).filter(Boolean);
-  for(const q of requests)for(const n of q.requestGraph.nodes)if(n.assignee)agents.add(n.assignee);
+  for(const q of requests)for(const n of recordedNodes(q))if(n.assignee)agents.add(n.assignee);
   const runs=[...ids].flatMap(id=>[...this.runsByRequest.get(id)||[]]);
   if(scope.agentIds)runs.push(...d.runs.filter(r=>scope.agentIds.has(r.agentId)&&!r.humanRequestId));
-  return {requests,runs,agents:[...agents].map(id=>this.maps.agents.get(id)).filter(Boolean)};
+  const conversations=(d.conversations||[]).filter(c=>requests.some(q=>q.conversationId===c.id)||agents.has(c.agentId));
+  runs.push(...d.runs.filter(r=>r.conversationId&&conversations.some(c=>c.id===r.conversationId)));
+  return {requests,runs,conversations,agents:[...agents].map(id=>this.maps.agents.get(id)).filter(Boolean)};
  }
  checkpoint(){
   const scope=this.context.getStore();if(!scope)return null;
   scope.requestCount??=this.d.data.requests.length;
-  const data=this.d.data,arrays={requests:data.requests.length,runs:data.runs.length,agents:data.agents.length},restore=checkpoint(this.selection());
-  return ()=>{restore();for(const [key,length] of Object.entries(arrays))data[key].length=length;this.reset();};
+  const data=this.d.data,arrays={requests:data.requests.length,runs:data.runs.length,agents:data.agents.length,conversations:data.conversations?.length||0},restore=checkpoint(this.selection());
+  return ()=>{restore();for(const [key,length] of Object.entries(arrays))if(data[key])data[key].length=length;this.reset();};
  }
  affected(changes){
   this.sync();const ids=new Set(),agents=new Set();

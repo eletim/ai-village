@@ -39,6 +39,17 @@ test('quarantine prevents an otherwise pending completion notification; healthy 
  assert.deepEqual(delivered,['request:good']);assert.equal(d.data.requests[0].notification.status,'pending');
 });
 
+test('a graph-less quarantined record does not stop wakeups of healthy requests',async t=>{
+ const dir=await mkdtemp(join(tmpdir(),'integrity-wakeup-'));t.after(()=>rm(dir,{recursive:true,force:true}));const data=fixture();
+ for(const r of data.runs)r.createdAt='2026-01-01T00:00:00.000Z';
+ for(const q of data.requests){q.requestModel.state={kind:'completed',by:'program',reason:'done'};q.finalRunId=q.id+'r';}
+ data.requests[0].rootWorkId='missing';await writeFile(join(dir,'direct.json'),JSON.stringify(data));const delivered=[];
+ const d=new DirectAgents({dir,remote:async()=>{throw Error('remote forbidden');},notifier:{status:()=>({}),enqueue:async x=>{delivered.push(x.id);return {status:'sent'};}}});await d.init({watch:false});t.after(()=>d.close());
+ const q=d.data.requests[0];assert(q.integrity);assert.equal(q.requestGraph,undefined);
+ d.store.commit({changes:[],wakeups:['q','good']});d.store.reloadJobs();const before=JSON.stringify(d.data.requests[0]);await d.progress();assert.equal(d.store.jobs.has('q'),false);assert.equal(JSON.stringify(d.data.requests[0]),before);
+ assert.deepEqual(delivered,['request:good']);assert.equal(q.notification.status,'pending');assert.equal(q.requestGraph,undefined);
+});
+
 test('legacy broken root and run ownership migrate into isolation without discarding records',async t=>{
  const dir=await mkdtemp(join(tmpdir(),'integrity-legacy-'));t.after(()=>rm(dir,{recursive:true,force:true}));const data=fixture();
  for(const key of ['runStateVersion','requestStateVersion','canonicalStateVersion','markerVersion'])delete data[key];
