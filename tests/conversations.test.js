@@ -6,6 +6,8 @@ import {randomUUID} from 'node:crypto';
 import {fixture} from './inbox-fixture.js';
 import {runState} from '../server/run-lifecycle.mjs';
 import {validateGraph} from '../server/unified-requests.mjs';
+// A human who waited longer than the presence window is notified (quick replies are covered in notification-policy tests).
+const longReply=r=>{r.createdAt=new Date(Date.now()-10*60*1000).toISOString();};
 async function setup(t){
  const f=await fixture(t);const p=await f.service.putProject({requestId:randomUUID(),name:'Conversation project'});
  for(const a of f.agents)a.projectId=p.id;
@@ -18,7 +20,7 @@ async function setup(t){
 async function claim(f,r,finish=false){return f.service.flow[finish?'finish':'respond']({humanRequestId:r.humanRequestId,workId:r.workId,runId:r.id,operationId:randomUUID(),inputs:f.service.flow.inputs(r.humanRequestId,r.workId).filter(i=>i.attempts.includes(r.id)&&!i.handledBy&&!i.retiredBy).map(i=>i.id),results:f.service.flow.results(r.humanRequestId,r.workId).filter(e=>!e.handled&&!e.superseded).map(e=>({requestId:e.requestId,resultId:e.id,version:e.version,decision:'accept'}))});}
 test('conversation ends naturally, no graph/claims; one reply notification; survives restart',async t=>{
  const {f,r}=await setup(t);assert.equal(r.humanRequestId,undefined);assert.match(f.sent[0].text,/"mode":"conversation"/);
- await f.complete(r);assert.equal(f.service.data.requests.length,0);assert.equal(f.service.data.runs.length,1);assert.equal(f.notifications.length,1);
+ longReply(r);await f.complete(r);assert.equal(f.service.data.requests.length,0);assert.equal(f.service.data.runs.length,1);assert.equal(f.notifications.length,1);
  await f.restart();await f.service.tick();assert.equal(f.service.data.runs.length,1);assert.ok(f.service.conversations.get(r.conversationId).runs[0].humanAnswer);
 });
 test('job idempotency, agent provenance, child review and exactly once return during live conversation',async t=>{
@@ -105,7 +107,7 @@ test('turn-scoped history excludes future human input and arriving material, wit
  const visible=f.service.conversations.get(r.conversationId,delivery.id);assert.equal(visible.deliveries.length,1);assert.equal(visible.runs.length,2);assert.equal(visible.jobs[0].availableDeliveries.length,1);assert.equal(visible.jobs[0].runs,undefined);
 });
 test('reply notification has one stable key; unknown external receipt is never resent',async t=>{
- const {f,r}=await setup(t);let calls=0;f.service.notifier.enqueue=async message=>{calls++;assert.equal(message.id,'conversation-answer:'+r.id);throw Error('receipt lost');};
+ const {f,r}=await setup(t);longReply(r);let calls=0;f.service.notifier.enqueue=async message=>{calls++;assert.equal(message.id,'conversation-answer:'+r.id);throw Error('receipt lost');};
  await f.complete(r);assert.equal(calls,1);assert.equal(r.notification.status,'delivery_unknown');await f.service.tick();assert.equal(calls,1);
  await f.restart();await f.service.tick();assert.equal(f.notifications.length,0);assert.equal(f.service.flow.run(r.id).notification.status,'delivery_unknown');
 });

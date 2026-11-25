@@ -58,6 +58,17 @@ export class VillageNotifier {
     await appendFile(resolve(this.dir,'notifications.jsonl'),JSON.stringify(entry)+'\n',{mode:0o600});
     this.latest=entry;
   }
+  // Journal a deliberate non-delivery so it can be explained later. Nothing is sent and the
+  // message ID is consumed, so a later enqueue of the same ID cannot turn it into a send.
+  suppress({id,kind='reply',agentId,reason}) {
+    if(!this.journalAvailable||this.seen.has(id))return Promise.resolve({status:'duplicate_or_unavailable',delivered:false});
+    this.seen.add(id);
+    const task=this.queue.catch(()=>{}).then(async()=>{
+      const entry={messageId:id,kind,...(agentId?{agentId}:{}),at:new Date().toISOString(),status:'suppressed',reason,delivered:false};
+      await appendFile(resolve(this.dir,'notifications.jsonl'),JSON.stringify(entry)+'\n',{mode:0o600});return entry;
+    });
+    this.queue=task.catch(()=>{});return task;
+  }
   enqueue(message) {
     if(!this.journalAvailable)return Promise.resolve({status:'notification_journal_unavailable',delivered:false});
     if(message.role!=='assistant' || this.seen.has(message.id))return Promise.resolve({status:'duplicate_or_internal',delivered:false});

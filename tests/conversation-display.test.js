@@ -20,7 +20,7 @@ test('optional progress has explicit text and durable suppression, next question
  assert.equal(shown.humanAnswer,null);assert.equal(shown.progressText,'Final '+r.id);assert.equal(shown.displayMode,'progress');assert.equal(f.notifications.length,0);assert.equal(shown.notificationSuppressed.reason,'explicit-conversation-progress');
  assert.equal(historyPage(humanProjection(f.service.data),r.agentId).entries[0].displayMode,'progress');
  await f.restart();await f.service.tick();assert.deepEqual(await f.service.conversations.display(x),receipt);assert.equal(f.notifications.length,0);
- const q=await f.service.send(r.agentId,{mode:'conversation',conversationId:r.conversationId,requestId:randomUUID(),instruction:'何を選べますか？'});await f.submit(q);await f.complete(q);
+ const q=await f.service.send(r.agentId,{mode:'conversation',conversationId:r.conversationId,requestId:randomUUID(),instruction:'何を選べますか？'});await f.submit(q);q.createdAt=new Date(Date.now()-10*60*1000).toISOString();await f.complete(q);
  shown=f.service.conversations.get(r.conversationId).runs.at(-1);assert.equal(shown.displayMode,'reply');assert.equal(shown.progressText,null);assert.equal(shown.humanAnswer,'Final '+q.id);assert.equal(f.notifications.length,1);assert.equal(f.notifications[0].content,'秘書からの返答\nFinal '+q.id);
  assert(ops.commands.some(o=>o.name==='conversations display'));
 });
