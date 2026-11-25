@@ -1,0 +1,80 @@
+PR #156 段階3 独立再レビュー（Codex、実装担当とは別）
+対象: 8ab79e6e89cdc5fd0447f5c4b4575d09fdc95115
+専用clone: /tmp/village-review-156-r2-codex、detached HEAD、git status clean。
+前回 /tmp/review156-report.txt 全文確認。43e60f7..8ab79e6を読み、統合済み段階1/2との差分も区別した。
+
+判定
+段階3の前回中2・低2は今回の固定commitで解消確認。段階3自体の残件は高0、中0、低0、情報2。前回43e60f7を成功だったとは扱わない。
+ただし8ab79e6全体には、段階2の既報中1件と段階1の既報低3件が残る。全体の中以上残数は1件。全段階合格・反映可とは判断しない。
+
+前回中2・低2の再検証
+旧M1 新runtimeへ方針通知済み記録が残る: 解消。
+場所: server/direct.mjs:319、336。
+secretaryGuideSeenがruntime交換対象になった。旧runtime側へ旧記録を保存し、未使用新runtime側にはseenがない状態になる。正式prepare→同属性の未使用版3→adopt後、初回だけ方針案内が出る。2回目・再起動後には出ない。旧runtimeはmigration-required/runtime-retiredとruntimeRetiredToを維持。既存追加テストと独自probeで確認。
+
+旧M2 migration-requiredの版3を版2hashとしてreconcile拒否: 解消。
+場所: server/direct.mjs:347、server/request-observation-reconcile.mjs:21-26、server/input-envelope.mjs:63。
+startupInstructionsは保存済みcontractを参照する。配送方式のstartupContractはmode条件を維持し、migration-requiredでは版3配送を有効化しない。版3のsession誤観測を既存reconcileで成功、sent:false、追加送信0、同operationIdの同一receipt、再起動後もstartup-v2/contract3維持を独自probeで確認。
+hash/session/fileIdentity/prompt不一致、許可されないmigration理由では引き続き拒否し、unconfirmedと送信数0を保持。保存済み版を参照する変更が既存拒否条件を弱めていないことを確認。
+
+旧L1 同内容保存でも方針更新通知: 解消。
+場所: server/direct.mjs:524-525。
+Project ID＋内容hash比較へ変更。同内容の再保存と再起動後は案内なし。内容変更は追加テストで再案内を確認。同一内容を持つ別Projectへの正式所属変更後は初回案内を出すことも独自probeで確認。Project IDを含めるため別Projectの方針を既読と誤認しない。
+
+旧L2 requiredContract:2固定: 解消。
+場所: server/direct.mjs:247-248。
+requiredContractは保存済み契約版、newSessionContractは新規作成対象版を返す。版3秘書は3/3、既存版2秘書は2/3でrequiresFreshSession:false、工房は2/2。版3migration-requiredでもrequiredContract:3かつrequiresFreshSession:true。独自probeで確認。
+
+残る中（段階2から継承、今回固定commitでも再現）
+S2-M1 [中] 差し戻し後の新成果を過去のcontinue判断で処理済みと誤認する。
+場所: server/secretary-commands.mjs:103。
+再現: 初回成果→followup→修正仕事正常完了→新成果配送を未判断で正常終了→後の人間回でaccept/ask PURPOSE。statusは「秘書の確認待ち（判断記録なし）」だが、「判断済み、または判断の確定待ち」で拒否。accept/ask両方をこのcloneで再現。
+原因: purposeViewの最後の判断は旧成果へのcontinue/state=continued。今回選んだ新成果への判断かを見ず、目的全体に判断があるだけで拒否する。
+修正案: 選択成果の依頼/配送と判断の対応を照合する。旧continue/resumeで新成果を止めず、今回成果の処理済み・pendingは拒否する。既存purposeBoundary、最新結果ID/版、現在run、後着入力チェックを維持。同じ新成果を既存詳細API＋resultOnly:trueで判断すると通るため、新機構の追加は不要。
+今回追加のブラウザテストは初回成果のみで、この修正ループを通らない。旧レポート /tmp/review155-r2-report.txt のM1は未解消。
+
+残る低（段階1から継承、今回の段階3修正による新規指摘ではない）
+S1-L1 [低] server/secretary-commands.mjs:50。sentだがnative受付証拠がない時、context内readが生の「受付照合済みrunを指定」エラーを返す。受付をまだ確認できないことと、送信を繰り返さず確認する手順を案内すべき。
+S1-L2 [低] server/secretary-commands.mjs:56。先頭500文字が空白の有効な人間入力は、生成quoteも空白だけになりauthorizeで拒否。trimStart後の非空白を含む正確な部分文字列を最大500文字選ぶ修正を推奨。
+S1-L3 [低] tests/secretary-commands.test.js:98付近。相談テストのkind書換えと限定的な案内確認だけでは、正式相談/障害配送の新CLI一連経路や案内表全パターンを覆わない。正式配送fixtureと実拒否文の回帰を追加。
+これらの再現根拠は /tmp/review154-r2-report.txt /tmp/review154-r2-probes.test.mjs。今回も該当実装に修正なし。段階3の件数へ新規として重複計上しない。
+
+情報
+I1 [情報] 字数目標50以下は未達だが、9章に従いUUIDタグを保持する。
+場所: tests/secretary-contract3.test.js:53、server/direct.mjs:524-526、docs/secretary-minimal-prompt.md:9章。
+実測: タグ単体53文字、区切り改行込み54文字、初回Project方針案内込みの付け足し144文字（UUID形式Project ID、本文「会話」、添付なし）。通常回はタグと改行だけ。追加テストは旧「60以下」から53/54の厳密値へ変更済み。
+対応: この数値を段階4成果へ記載し、50字以下を達成と報告しない。短縮ID機構は追加しない。
+
+I2 [情報] 新ブラウザテストは画面とfixture状態遷移を検証し、実Agent会話やHTTP/CLI全経路の実機検証ではない。
+場所: tests/browser/secretary-later-decision.spec.js:6-25。
+根拠: API応答をfixtureのworkspaceSnapshotへrouteし、判断自体はservice.secretaryCommands.acceptを直接呼ぶ。1440/390幅で未判断ラベル、正常判断後の待機表示消去、横はみ出しなしを検証する。両ケース通過。390幅の前後画像を目視し、待機ラベルが読めて判断後に消えることを確認。
+対応: 有効な描画回帰として維持。S2-M1の修正ループを追加し、段階4の新しい隔離Claude実機確認は別に実施する。今回のテストをClaude実機シナリオ完了と呼ばない。
+
+保存設計書
+- docs/secretary-minimal-prompt.mdを全文読んだ。原本 /home/eletim/ai-village-designs/secretary-minimal-prompt.md とdiffなし、SHA-256も一致:
+  543750720e5bde0e655c1af0100dae205c0410cdfa4db7ab990d82178f7817e3
+- 原設計＋8章優先＋9章の補足判断をそのまま保存しており、余分な承認や新機構を加えていない。
+- 初回版3起動説明、--run案内、版2経路維持は前回から保持。mode名startup-v2と保存契約版contract3の分離は今回の修正で状態遷移時も整合。
+
+検証結果
+- npm ci（vendor生成含む）成功。
+- npm run check / npm run typecheck 成功。
+- 単体全体916件（通知OFF、test-concurrency=4）: 910 pass / 5 fail / 0 cancelled / 1 skipped、25.5秒。
+  5 failは通知OFFとnotifier.test.jsの通知期待の衝突。ファイル全文を確認した安全な一時偽通知fixtureに限ってOFF変数を外し同ファイルを実行、7/7 pass。外部通知なし。全体一括全件greenとは報告しない。
+- ブラウザ236/236 pass、32.6秒。追加secretary-later-decisionの1440/390幅2件も通過。専用ポート15406、mkdtemp一時データ、通知OFF。
+- 段階3独自probe9/9 pass（同内容/再起動/別Project、正式adopt、版3復旧成功と5種類の拒否、契約状態）。
+- 継承した段階2中指摘の存在確認2/2 pass。欠陥が再現することをassertするテストであり、欠陥解消の意味ではない。
+- 版2の既存照合・adopt・退役・reconcileは全体テスト内で通過。実稼働Agentや旧Claudeを操作していない。
+
+成果物
+/tmp/review156-r2-report.txt
+/tmp/review156-r2-probes.test.mjs
+/tmp/review156-r2-probes.log
+/tmp/review156-r2-stage2-probes.test.mjs
+/tmp/review156-r2-stage2-probes.log
+/tmp/review156-r2-unit.log
+/tmp/review156-r2-ui.log
+/tmp/review156-r2-notifier.log
+スクリーンショット: 専用clone/test-results/secretary-later-decision-*/missing-decision-*.png, later-decision-*.png
+
+追跡ファイル無変更。コード修正、PR操作、本番反映、旧Claude再起動、旧操作再送は行っていない。本番の書込みは今回委任の正式完了申告のみ。

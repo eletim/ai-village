@@ -1,0 +1,58 @@
+[
+  {
+    "runId": "b7e6a693-cfc7-4cd9-b8b5-5e7f91cc67e3",
+    "scenario": "minimal-live-scenario1",
+    "testedCommit": "8ab79e6",
+    "input": "Projectの方針が更新されました（projects guide 22a8713b-5129-4c91-8389-eb23797dc8a3 secretary で読めます）。\n\n机の上が散らかっていて、少し気が重いんだ。まず何から考えたらいいかな？ 今は相談だけで、仕事の依頼はまだしないでね。\n<village run=\"b7e6a693-cfc7-4cd9-b8b5-5e7f91cc67e3\"/>",
+    "tagCharacters": 53,
+    "tagWithSeparatorCharacters": 54,
+    "policyPrefixCharacters": 90,
+    "totalAddedCharacters": 144,
+    "state": "completed",
+    "output": "更新された方針を確認します。今は相談だけとして、仕事の依頼はしません。\n\n\nまずは「机で何ができると、少し気が楽になるか」から考えるとよさそうです。全部を片づける目標にしなくても大丈夫。\n\nたとえば、飲み物を置ける、本を開ける、パソコンの前に座れる。その一つが決まると、必要な場所も絞れます。捨てるかどうかは、今決めなくていいです。\n\n今いちばん気になるのは、見た目のごちゃごちゃ、使う場所の狭さ、それとも物が見つからないことかな？\n\n更新された方針も確認しました。今は相談だけとして、仕事の依頼はしていません。",
+    "finalOutput": "まずは「机で何ができると、少し気が楽になるか」から考えるとよさそうです。全部を片づける目標にしなくても大丈夫。\n\nたとえば、飲み物を置ける、本を開ける、パソコンの前に座れる。その一つが決まると、必要な場所も絞れます。捨てるかどうかは、今決めなくていいです。\n\n今いちばん気になるのは、見た目のごちゃごちゃ、使う場所の狭さ、それとも物が見つからないことかな？\n\n更新された方針も確認しました。今は相談だけとして、仕事の依頼はしていません。",
+    "displayMode": "reply"
+  },
+  {
+    "runId": "88c067f4-411d-4f66-9ebc-882110a6daf0",
+    "scenario": "minimal-live-scenario2",
+    "testedCommit": "8ab79e6",
+    "input": "じゃあ進めてほしい。机の片付けを5分で始められる、短い3項目のチェックリストをリーダーに作ってもらって。この隔離用作業フォルダに desk-checklist.txt として保存して、内容を確かめたらここで教えてね。外部送信や本番の変更はしないで。\n<village run=\"88c067f4-411d-4f66-9ebc-882110a6daf0\"/>",
+    "tagCharacters": 53,
+    "tagWithSeparatorCharacters": 54,
+    "policyPrefixCharacters": 0,
+    "totalAddedCharacters": 54,
+    "state": "completed",
+    "output": "リーダーに3項目の短いチェックリストを依頼します。指定のフォルダに保存された内容を確認してからお伝えします。\n\n\nリーダーの作成が終わりました。保存されたファイルと報告内容を照合します。\n\n\nリーダーが[desk-checklist.txt](/tmp/secretary-minimal-live-2kcR0o/work/desk-checklist.txt)に保存し、内容を確認しました。\n\n- □ まず1分：5分のタイマーをかけ、袋を1枚用意。目につくゴミを1つ捨てる。\n- □ 次の2分：ペンや小物を机の端に寄せる。迷う物はひとまとめでOK。\n- □ 最後の2分：手のひら2枚分の場所を空け、さっと拭く。タイマーが鳴ったら終了でOK。",
+    "finalOutput": "リーダーが[desk-checklist.txt](/tmp/secretary-minimal-live-2kcR0o/work/desk-checklist.txt)に保存し、内容を確認しました。\n\n- □ まず1分：5分のタイマーをかけ、袋を1枚用意。目につくゴミを1つ捨てる。\n- □ 次の2分：ペンや小物を机の端に寄せる。迷う物はひとまとめでOK。\n- □ 最後の2分：手のひら2枚分の場所を空け、さっと拭く。タイマーが鳴ったら終了でOK。",
+    "displayMode": "reply"
+  },
+  {
+    "runId": "0c90237a-c17d-4608-bef1-36cf7ce08120",
+    "scenario": "conversation-delivery:result:f5343672-8cd9-44a0-861c-919403e26493:ef00cfaa-cad1-47bb-b1ad-00be2893dd2f",
+    "testedCommit": "8ab79e6",
+    "input": "リーダーから報告が届きました（秘書入力最小化・隔離検証：机の片付けを5分で始められる、日本語の短い3項目のチェックリストを作成してくださ…）。\n\n現行の作業ルールを確認してから、取りかかりやすい3項目を指定のファイルに保存し、内容を確かめます。\n\n\n保存し、内容を確認しました。\n\n保存先：[/tmp/secretary-minimal-live-2kcR0o/work/desk-checklist.txt](/tmp/secretary-minimal-live-2kcR0o/work/desk-checklist.txt)\n\n```text\n□ まず1分：5分のタイマーをかけ、袋を1枚用意。目につくゴミを1つ捨てる。\n□ 次の2分：ペンや小物を机の端に寄せる。迷う物はひとまとめでOK。\n□ 最後の2分：手のひら2枚分の場所を空け、さっと拭く。タイマーが鳴ったら終了でOK。\n```\n\n外部送信、本番の変更、mainマージは行っていません。\n<village run=\"0c90237a-c17d-4608-bef1-36cf7ce08120\"/>",
+    "tagCharacters": 53,
+    "tagWithSeparatorCharacters": 54,
+    "policyPrefixCharacters": 0,
+    "totalAddedCharacters": 54,
+    "state": "completed",
+    "output": "報告は確認済みのファイル内容と一致しています。依頼どおりの成果として完了を記録します。\n\n\n報告と保存済みの[desk-checklist.txt](/tmp/secretary-minimal-live-2kcR0o/work/desk-checklist.txt)の内容が一致し、依頼どおりの3項目になっていることを確認しました。これで完了です。\n\n外部送信や本番の変更も行っていないとの報告を確認しました。",
+    "finalOutput": "報告と保存済みの[desk-checklist.txt](/tmp/secretary-minimal-live-2kcR0o/work/desk-checklist.txt)の内容が一致し、依頼どおりの3項目になっていることを確認しました。これで完了です。\n\n外部送信や本番の変更も行っていないとの報告を確認しました。",
+    "displayMode": "reply"
+  },
+  {
+    "runId": "551893f4-378a-43d6-9a40-e0243e38bb37",
+    "scenario": "minimal-live-scenario4",
+    "testedCommit": "8ab79e6",
+    "input": "これは隔離環境での操作案内の確認です。まず一度だけ、わざと --run を付けずに village status を実行してください。拒否されたら、返された案内に従って正しい形に直して status を確認してください。新しい仕事や成果判断は追加せず、確認できたら短く教えてね。\n<village run=\"551893f4-378a-43d6-9a40-e0243e38bb37\"/>",
+    "tagCharacters": 53,
+    "tagWithSeparatorCharacters": 54,
+    "policyPrefixCharacters": 0,
+    "totalAddedCharacters": 54,
+    "state": "completed",
+    "output": "指定どおり、一度だけ `--run` なしで実行し、返された案内に沿って状態を確認します。\n\n\n`--run` なしでは拒否され、案内どおりに付け直すと状態を確認できました。既存の仕事は「完了」です。新しい仕事や成果判断は追加していません。",
+    "finalOutput": "`--run` なしでは拒否され、案内どおりに付け直すと状態を確認できました。既存の仕事は「完了」です。新しい仕事や成果判断は追加していません。",
+    "displayMode": "reply"
+  }
+]
