@@ -1,6 +1,7 @@
 import {createHash} from 'node:crypto';
 import {agentControls} from './agent-lifecycle.mjs';
 import {applyGraph,validateGraph} from './unified-requests.mjs';
+import {recordedNodes} from './request-integrity.mjs';
 const fail=m=>{throw Object.assign(Error(m),{status:409});};
 export function secretaryHandoverPlan(d,id,targetId){
  const a=d.agent(id),b=d.writableAgent(d.agent(targetId));d.writableProject(a.projectId);
@@ -8,8 +9,13 @@ export function secretaryHandoverPlan(d,id,targetId){
  if(d.data.projects.some(p=>p.leaderAgentId===id)||b.inputEnvelope?.mode!=='startup-v2'||b.runtimeUpgrade?.state==='prepared'||['terminated','stopping'].includes(agentControls(b).state))fail('引継ぎ先を利用できません');
  const conversations=d.data.conversations.filter(c=>c.agentId===id);
  const runs=d.data.runs.filter(r=>r.agentId===id);
- const works=d.data.requests.flatMap(q=>q.requestGraph.nodes.filter(w=>w.assignee===id&&['active','submitted'].includes(w.state.kind)).map(w=>({humanRequestId:q.id,workId:w.id,revision:q.revision,currentRunId:w.currentRunId})));
- const plan={sourceAgentId:id,targetAgentId:targetId,sourceRevision:a.metadataRevision||0,targetRevision:b.metadataRevision||0,conversations:conversations.map(c=>({id:c.id,sequence:c.sequence,deliveries:c.deliveries.map(e=>e.id)})),works,queued:runs.filter(r=>r.runModel.state.kind==='queued').map(r=>r.id),runs:runs.map(r=>({id:r.id,state:r.runModel.state,dispatch:r.dispatchAttemptedAt||null,sessionId:r.sessionId||null}))};
+ const conversationIds=new Set(conversations.map(c=>c.id));
+ // A quarantined record cannot be interpreted. Hold the handover only when it is
+ // recorded as part of this secretary's responsibility; unrelated records are ignored.
+ const related=q=>q.originAgentId===id||q.finalAgentId===id||conversationIds.has(q.conversationId)||recordedNodes(q).some(n=>n?.assignee===id)||runs.some(r=>r.humanRequestId===q.id);
+ const quarantined=d.data.requests.filter(q=>q.integrity&&related(q)).map(q=>({humanRequestId:q.id,reasons:structuredClone(q.integrity.reasons||[])}));
+ const works=d.data.requests.filter(q=>!q.integrity).flatMap(q=>q.requestGraph.nodes.filter(w=>w.assignee===id&&['active','submitted'].includes(w.state.kind)).map(w=>({humanRequestId:q.id,workId:w.id,revision:q.revision,currentRunId:w.currentRunId})));
+ const plan={sourceAgentId:id,targetAgentId:targetId,sourceRevision:a.metadataRevision||0,targetRevision:b.metadataRevision||0,conversations:conversations.map(c=>({id:c.id,sequence:c.sequence,deliveries:c.deliveries.map(e=>e.id)})),works,quarantined,queued:runs.filter(r=>r.runModel.state.kind==='queued').map(r=>r.id),runs:runs.map(r=>({id:r.id,state:r.runModel.state,dispatch:r.dispatchAttemptedAt||null,sessionId:r.sessionId||null}))};
  return {...plan,planHash:createHash('sha256').update(JSON.stringify(plan)).digest('hex')};
 }
 // Administrative ownership transfer only: no retries, inferred success, or new work is enqueued.
@@ -23,6 +29,7 @@ export async function handoverSecretary(d,id,x){return d.locked('projects',()=>d
  const q=d.flow.root(actor.humanRequestId),w=d.flow.work(q,actor.workId);await d.flow.actor(q,w,actor.id);
  if(q.projectId!==a.projectId)fail('依頼Projectが一致しません');
  if(plan.planHash!==x.planHash)fail('引継ぎ対象が変わりました');
+ if(plan.quarantined.length)fail('引継ぎ対象に隔離中の依頼記録があります。記録の修復後に計画を取り直してください: '+plan.quarantined.map(x=>x.humanRequestId).join(', '));
  if(agentControls(a).state!=='terminated'||a.processVerification?.remainingOwned!==0)fail('旧runtimeの正式停止とプロセス終了証拠が必要です');
  if(d.data.runs.some(r=>r.agentId===id&&['sent','running'].includes(r.runModel.state.kind)))fail('受付追跡中のrunは移せません');
  const queued=plan.queued.map(rid=>d.flow.run(rid));
@@ -41,6 +48,6 @@ export async function handoverSecretary(d,id,x){return d.locked('projects',()=>d
  for(const item of plan.works){const source=d.flow.root(item.humanRequestId);applyGraph(d.data,source,{type:'handover',actor:'program',requestId:item.workId,agentId:x.targetAgentId,operationId:x.operationId});source.finalAgentId=x.targetAgentId;source.revision++;}
  a.secretaryHandover=receipt;a.metadataRevision=(a.metadataRevision||0)+1;
  d.conversations.validate();
- for(const q of d.data.requests.filter(q=>plan.conversations.some(c=>c.id===q.conversationId)))validateGraph(d.data,q);
+ for(const q of d.data.requests.filter(q=>!q.integrity&&plan.conversations.some(c=>c.id===q.conversationId)))validateGraph(d.data,q);
  await d.save();return structuredClone(receipt);
 })));}

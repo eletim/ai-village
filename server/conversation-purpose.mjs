@@ -17,11 +17,21 @@ export function purposeView(data,q){
  const ds=(c?.purposeDecisions||[]).filter(d=>d.purposeId===id),d=ds.at(-1);
  return {id,requestIds:purposeJobs(data,q).map(q=>q.id),currentRequestId:leaf.id,version:ds.length,decision:d?{...d,state:decisionState(data,c,d)}:null};
 }
+// Failure explanations and state changes are reports, not material to adopt.
+// Only result/question/extension material asks the secretary for a purpose decision.
+export const REPORT_DELIVERY_KINDS=['attention','important-change'];
+export function deliveryOf(c,r){return c?.deliveries.find(e=>e.runId===r.id&&e.id===r.conversationSource?.deliveryId)||null;}
+// Older records flagged every delivery; classify by the durable delivery kind instead.
+export function purposeDecisionRequired(data,r){
+ if(!r.requiresPurposeDecision)return false;
+ const e=deliveryOf(data.conversations?.find(c=>c.id===r.conversationId),r);
+ return !REPORT_DELIVERY_KINDS.includes(e?.kind);
+}
 export function conversationDisplayMode(data,r){
  const c=data.conversations?.find(c=>c.id===r.conversationId);
  const ds=(c?.purposeDecisions||[]).filter(d=>d.actorRunId===r.id);
  if(ds.some(d=>['accept','question'].includes(d.kind)&&decisionState(data,c,d)==='committed'))return 'reply';
  if(ds.some(d=>['continue','resume'].includes(d.kind)))return 'progress';
- if(r.requiresPurposeDecision||ds.length)return 'progress';
+ if(purposeDecisionRequired(data,r)||ds.length)return 'progress';
  return r.conversationDisplay?.mode||'reply';
 }

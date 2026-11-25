@@ -3,6 +3,8 @@ import {runState,accepted} from './run-lifecycle.mjs';
 import {agentControls} from './agent-lifecycle.mjs';
 const state=r=>r?.runModel?runState(r):r?.state;
 const status=(code,label,reason='',next='')=>({code,label,reason,next});
+// Job codes with no remaining scheduled processing for the conversation.
+export const SETTLED_JOB_CODES=['completed','human-closed','withdrawn','legacy-unrecorded'];
 export function runtimeGate(a){
  if(!a||a.deletedAt||a.deletion||a.runtimeRetiredTo)return status('unavailable','担当を利用できません','','プロフィールで担当を確認してください。');
  if(a.inputEnvelope?.mode!=='startup-v2'||a.runtimeUpgrade?.state==='prepared')return status('migration-required','正式セッションへの移行待ち',a.inputEnvelope?.reason||'runtime-prepared','プロフィールでセッションを切り替えてください。');
@@ -27,6 +29,7 @@ export function conversationTurn(r){
  return status('unconfirmed','秘書の受付・結果が未確認',r.error||r.runModel?.state.reason||'','送信結果の確認が必要です。');
 }
 function executionJob(data,q){
+ if(q.integrity)return {id:q.id,humanApproval:'not-inferred',...status('quarantined','依頼記録を隔離中','参照不整合のため処理を止めています。','記録の修復が必要です。')};
  const w=q.requestGraph?.nodes.find(n=>n.id===(q.rootWorkId||q.requestGraph.rootId))||q.requestGraph?.nodes.find(n=>!n.parentId);
  if(!w)return {id:q.id,...status('unknown','仕事の状態を確認できません')};
  const r=data.runs.find(r=>r.id===w.currentRunId),leader=data.agents.find(a=>a.id===w.assignee),gate=runtimeGate(leader);
@@ -66,6 +69,10 @@ export function conversationJob(data,q){
   const delivery=data.runs.find(r=>r.id===execution.deliveryRunId);
   if(delivery&&['failed','interrupted','terminated'].includes(state(delivery)))return {...base,...status('attention','停止中','秘書の確認が完了しませんでした。','成果の確認が必要です。')};
   if(delivery?.requiresPurposeDecision&&state(delivery)==='completed'&&accepted(delivery)&&d?.state!=='pending')return {...base,...status('attention','停止中','成果の確認が終わらないまま返答が終了しました。','成果は保存されています。')};
+  // Legacy deliveries predate purpose-decision records. Nothing is scheduled for them;
+  // show the missing record as such, never as an ongoing check or an inferred adoption.
+  const event=data.conversations?.find(c=>c.id===leaf.conversationId)?.deliveries.find(e=>e.runId===delivery?.id);
+  if(event&&event.decisionRecoveryVersion!==1&&!delivery.requiresPurposeDecision&&state(delivery)==='completed'&&accepted(delivery)&&!d)return {...base,...status('legacy-unrecorded','作業完了・判断記録なし（旧形式）','旧形式の配送のため秘書の判断が記録されていません。成果の採用・達成は推定していません。','')};
   return {...base,...status('evaluating',state(delivery)==='running'?'秘書が確認中':'秘書の確認待ち')};
  }
  return base;
