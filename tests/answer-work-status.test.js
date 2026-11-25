@@ -25,3 +25,13 @@ test('human closure never becomes successful completion because an older result 
  const data={agents:[],runs:[],conversations:[{id:'c',deliveries:[{humanRequestId:'q',kind:'result',runId:'old'}]}]};
  assert.equal(conversationJob(data,q).code,'human-closed');
 });
+
+test('internal instructions stay in profile details, never in answer cards or tooltips',()=>{
+ for(const code of ['working','evaluating','completed']){
+  const jobs=[{id:'a',code,label:'確認中',instruction:'内部指示A追加指示を保存できます。'},{id:'b',code,instruction:'内部指示B'}];
+  const html=answerJobsHTML({answerJobs:jobs});
+  assert.doesNotMatch(html,/内部指示|追加指示|title=/);
+  assert.match(html,/data-answer-job="a"/);assert.match(html,/data-answer-job="b"/);
+  assert.match(conversationWorkHTML({conversationWork:{leader:{code:'ready'},jobs}}),/内部指示A/);
+ }
+});

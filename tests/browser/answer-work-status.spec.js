@@ -14,7 +14,7 @@ for(const width of [1440,390])test('answer-local states: advice, active, complet
  const advice=await reply('『追加指示を保存できます。秘書の応答中は順番に配送します。』という表示について相談です。');await f.complete(advice);
  const work=await reply('資料を作っています。');
  async function job(name){return f.service.conversations.job({conversationId:work.conversationId,actorRunId:work.id,operationId:randomUUID(),instruction:name,authorization:{runId:work.id,quote:work.instruction}});}
- const a=await job('資料A'),b=await job('資料B');await f.complete(work);
+ const a=await job('内部作業指示A 追加指示を保存できます。'),b=await job('内部作業指示B 順番に配送します。');await f.complete(work);
  await f.service.tick();
  const leader=f.service.flow.run(a.runId);await f.submit(leader);
  await f.service.flow.finish({humanRequestId:leader.humanRequestId,workId:leader.workId,runId:leader.id,operationId:randomUUID(),inputs:f.service.flow.inputs(leader.humanRequestId,leader.workId).map(i=>i.id),results:[]});
@@ -38,7 +38,9 @@ for(const width of [1440,390])test('answer-local states: advice, active, complet
  await expect(element('work').locator('.answer-jobs')).toContainText('回答が必要');
  await expect(element('done').locator('.answer-job')).toHaveCount(1);
  await expect(element('done').locator('.answer-jobs')).toContainText('完了');
- await expect(element('done').locator('.answer-jobs')).not.toContainText('資料B');
+ await expect(element('done').locator('.answer-jobs')).not.toContainText('内部作業指示B');
+ await expect(page.locator('.runs .answer-job-title')).toHaveCount(0);
+ expect(await page.locator('.runs .answer-jobs').evaluateAll(es=>es.map(e=>e.outerHTML).join(''))).not.toMatch(/内部作業指示|追加指示を保存|順番に配送/);
  await expect(element('question')).toContainText('公開日を指定してください。');
  await expect(page.locator('body')).not.toContainText('成果確認待ち');
  await expect(page.locator('body')).not.toContainText('会話と仕事の状況は別です');
@@ -55,6 +57,16 @@ for(const width of [1440,390])test('answer-local states: advice, active, complet
  await expect(page.locator('#agent-profile-dialog .conversation-work')).toContainText('依頼一覧');
  await page.locator('#agent-profile-dialog [data-close]').click();
  await page.screenshot({path:info.outputPath('answer-states-'+width+'.png')});
+ for(const code of ['working','evaluating','completed']){
+  await page.evaluate(async code=>{
+   const {answerJobsHTML}=await import('/src/conversation-status.js');
+   const host=document.querySelector('.runs .answer-jobs');
+   host.outerHTML=answerJobsHTML({answerJobs:[{id:'state-probe',code,label:'確認中',instruction:'内部作業指示 追加指示を保存できます。'}]});
+  },code);
+  await expect(page.locator('[data-answer-job="state-probe"]')).toHaveText(({working:'作業中',evaluating:'確認中',completed:'完了'})[code]);
+  expect(await page.locator('[data-answer-job="state-probe"]').evaluate(e=>e.outerHTML)).not.toMatch(/内部作業指示|追加指示|title=/);
+  await page.screenshot({path:info.outputPath('short-'+code+'-'+width+'.png')});
+ }
  const failed=f.service.flow.run(b.runId);
  if(failed.runModel.state.kind==='queued'){await f.service.tick();}
 
