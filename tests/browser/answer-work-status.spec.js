@@ -1,3 +1,4 @@
+import {acceptDelivery} from '../purpose-fixture.js';
 import {fixture} from '../inbox-fixture.js';
 import {randomUUID} from 'node:crypto';
 import {test,expect,notifySnapshot} from './helpers/change-events.js';
@@ -20,11 +21,13 @@ for(const width of [1440,390])test('answer-local states: advice, active, complet
  await f.complete(leader);
  const c=f.service.conversations.record(work.conversationId);
  const done=f.service.flow.run(c.deliveries.find(e=>e.humanRequestId===a.humanRequestId).runId);
- await f.submit(done);await f.complete(done);
+ await f.submit(done);await acceptDelivery(f,done);await f.complete(done);
  const qb=f.service.data.requests.find(q=>q.id===b.humanRequestId);
  await f.submit(f.service.flow.run(b.runId));
  f.service.conversations.deliver(c,qb,'test-question','question',{text:'公開日を指定してください。'});
- const question=f.service.flow.run(c.deliveries.at(-1).runId);await f.service.tick();await f.submit(question);await f.complete(question);
+ const question=f.service.flow.run(c.deliveries.at(-1).runId);await f.service.tick();await f.submit(question);
+ await f.service.conversations.decide({conversationId:c.id,actorRunId:question.id,operationId:randomUUID(),humanRequestId:b.humanRequestId,deliveryId:c.deliveries.at(-1).id,expectedPurposeVersion:0,decision:'question',reason:'公開日は人間の希望が必要',question:'公開日を指定してください。'});
+ await f.complete(question);
  await page.setViewportSize({width,height:1000});
  await page.route('**/api/**',route=>route.fulfill({json:new URL(route.request().url()).pathname==='/api/direct'?workspaceSnapshot(f.service.snapshot(),{},[work.agentId]):{providers:{}}}));
  await page.goto('/agents');await page.locator('[data-zoom="'+work.agentId+'"]').click();
@@ -32,7 +35,7 @@ for(const width of [1440,390])test('answer-local states: advice, active, complet
  const element=id=>page.locator('[data-entry='+JSON.stringify(JSON.stringify(['run','',rows[id].id]))+']');
  await expect(element('advice').locator('.answer-jobs')).toHaveCount(0);
  await expect(element('work').locator('.answer-job')).toHaveCount(2);
- await expect(element('work').locator('.answer-jobs')).toContainText('作業中');
+ await expect(element('work').locator('.answer-jobs')).toContainText('回答が必要');
  await expect(element('done').locator('.answer-job')).toHaveCount(1);
  await expect(element('done').locator('.answer-jobs')).toContainText('完了');
  await expect(element('done').locator('.answer-jobs')).not.toContainText('資料B');

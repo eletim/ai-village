@@ -55,7 +55,10 @@ test('conversation HTTP: authority, durable job, in-flight return, restart and h
   await complete(conversation,'依頼を受け付けました');
   await until(async()=>(await lines(capture)).some(e=>e.text.includes(delivery.id)));
   await stop();await start();assert.equal((await lines(capture)).filter(e=>e.text.includes(delivery.id)).length,1);
-  const returned=await submit(delivery);await complete(returned,'人間への成果説明');
+  const returned=await submit(delivery);
+  const adoption=await post('/conversations/decide',{conversationId:conversation.conversationId,actorRunId:returned.id,operationId:'http-secretary-accept',humanRequestId:job.body.humanRequestId,deliveryId:data.deliveries[0].id,expectedPurposeVersion:0,decision:'accept',reason:'元目的に合致する成果を確認'});assert.equal(adoption.status,200);
+  assert.deepEqual((await post('/conversations/decide',{conversationId:conversation.conversationId,actorRunId:returned.id,operationId:'http-secretary-accept',humanRequestId:job.body.humanRequestId,deliveryId:data.deliveries[0].id,expectedPurposeVersion:0,decision:'accept',reason:'元目的に合致する成果を確認'})).body,adoption.body);
+  await complete(returned,'人間への成果説明');
   const final=(await post('/conversations/get',{conversationId:conversation.conversationId})).body;
   assert.equal(final.deliveries.length,1);assert.equal(final.jobs[0].status,'completed');assert.equal(final.runs.find(r=>r.id===delivery.id).humanAnswer,'人間への成果説明');
   await until(async()=>(await lines(notices)).length===2);assert.equal((await lines(notices)).length,2);

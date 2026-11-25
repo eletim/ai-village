@@ -119,7 +119,7 @@ export class DirectAgents {
   reviewStates(view=humanProjection(this.data)){
     const keys=new Map(this.data.agents.map(a=>[a.id,[]]));
     for(const entry of completedEntries(view))keys.get(entry.agentId)?.push(entry.key);
-    const finalRequests=(this.data.requests||[]).filter(q=>requestStatus(q)==='completed');
+    const finalRequests=(this.data.requests||[]).filter(q=>!q.conversationId&&requestStatus(q)==='completed');
     for(const q of finalRequests)keys.get(q.finalAgentId)?.push('request:'+q.id+':'+q.finalRunId);
     const legacy=new Set(this.data.reviewedCompletions||[]);
     return Object.fromEntries([...keys].map(([id,entries])=>{

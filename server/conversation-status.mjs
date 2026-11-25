@@ -1,3 +1,4 @@
+import {purposeId,purposeView,purposeLeaf} from './conversation-purpose.mjs';
 import {runState,accepted} from './run-lifecycle.mjs';
 import {agentControls} from './agent-lifecycle.mjs';
 const state=r=>r?.runModel?runState(r):r?.state;
@@ -25,7 +26,7 @@ export function conversationTurn(r){
  if(s==='failed'||s==='interrupted')return status(s,s==='failed'?'秘書の応答に失敗':'秘書の応答が中断',r.error||'','結果と稼働状態を確認してください。仕事の完了を意味しません。');
  return status('unconfirmed','秘書の受付・結果が未確認',r.error||r.runModel?.state.reason||'','過去の送信は再送せず確認してください。新しい指示は別の会話入力として送れます。');
 }
-export function conversationJob(data,q){
+function executionJob(data,q){
  const w=q.requestGraph?.nodes.find(n=>n.id===(q.rootWorkId||q.requestGraph.rootId))||q.requestGraph?.nodes.find(n=>!n.parentId);
  if(!w)return {id:q.id,...status('unknown','仕事の状態を確認できません')};
  const r=data.runs.find(r=>r.id===w.currentRunId),leader=data.agents.find(a=>a.id===w.assignee),gate=runtimeGate(leader);
@@ -51,10 +52,27 @@ export function conversationJob(data,q){
  else work=status('pending','作業中');
  return {id:q.id,workId:w.id,leaderAgentId:w.assignee,leaderName:leader?.name||'担当不明',instruction:(q.instruction||'').slice(0,160),runId:r?.id,deliveryRunId:delivery?.id,humanApproval:'not-inferred',...work};
 }
+export function conversationJob(data,q){
+ const purpose=purposeView(data,q),leaf=purposeLeaf(data,q),execution=executionJob(data,leaf);
+ const base={...execution,id:q.id,instruction:(q.instruction||'').slice(0,160),purpose,execution};
+ const d=purpose.decision;
+ if(['attention','blocked','delivery-failed','human-closed','withdrawn'].includes(execution.code))return base;
+ if(d?.humanRequestId===leaf.id){
+  if(d.state==='committed'&&d.kind==='accept')return {...base,...status('completed','完了')};
+  if(d.state==='committed'&&d.kind==='question')return {...base,...status('human-question','回答が必要',d.question),questionText:d.question};
+  if(['stale','failed'].includes(d.state))return {...base,...status('attention','停止中',d.state==='stale'?'追加の指示を受け取り、確認が必要です。':'秘書の確認が完了しませんでした。','秘書へ続きの確認を依頼できます。')};
+ }
+ if(['completed','returning'].includes(execution.code)){
+  const delivery=data.runs.find(r=>r.id===execution.deliveryRunId);
+  if(delivery&&['failed','interrupted','terminated'].includes(state(delivery)))return {...base,...status('attention','停止中','秘書の確認が完了しませんでした。','秘書へ続きの確認を依頼できます。')};
+  return {...base,...status('evaluating',state(delivery)==='running'?'秘書が確認中':'秘書の確認待ち')};
+ }
+ return base;
+}
 export function conversationSummary(data,a){
  const cs=(data.conversations||[]).filter(c=>c.agentId===a.id),ids=new Set(cs.map(c=>c.id));
  const p=data.projects.find(p=>p.id===a.projectId),leader=data.agents.find(l=>l.id===p?.leaderAgentId);
- return {leader:{agentId:leader?.id,name:leader?.name||'未設定',...runtimeGate(leader)},jobs:data.requests.filter(q=>ids.has(q.conversationId)).map(q=>conversationJob(data,q))};
+ return {leader:{agentId:leader?.id,name:leader?.name||'未設定',...runtimeGate(leader)},jobs:data.requests.filter(q=>ids.has(q.conversationId)&&!q.continuesRequestId).map(q=>conversationJob(data,q))};
 }
 
 // Link by durable provenance only, never by latest job or textual similarity.
@@ -67,11 +85,12 @@ export function answerJobs(data,r){
  for(const o of c.operations||[]){
   try{const p=JSON.parse(o.payload);if(p.input?.actorRunId===r.id&&o.receipt?.humanRequestId)ids.add(o.receipt.humanRequestId);}catch{}
  }
- return (data.requests||[]).filter(q=>q.conversationId===c.id&&ids.has(q.id)).map(q=>{
+ const roots=new Set((data.requests||[]).filter(q=>q.conversationId===c.id&&ids.has(q.id)).map(purposeId));
+ return (data.requests||[]).filter(q=>q.conversationId===c.id&&roots.has(q.id)).map(q=>{
   const j=conversationJob(data,q);
   const question=c.deliveries.find(e=>e.runId===r.id&&e.humanRequestId===q.id&&e.kind==='question');
   // A leader question is a concrete piece of material, not proof that the human
   // must approve every result. Keep its text available at the associated reply.
-  return {...j,...(question?{questionText:question.material?.text||''}:{})};
+  return {...j,...(question&&!j.questionText?{leaderQuestionText:question.material?.text||''}:{})};
  });
 }

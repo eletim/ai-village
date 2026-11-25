@@ -1,4 +1,5 @@
-import {conversationControl,conversationSummary,conversationTurn,answerJobs} from './conversation-status.mjs';
+import {conversationDisplayMode} from './conversation-purpose.mjs';
+import {conversationControl,conversationSummary,conversationTurn,answerJobs,conversationJob} from './conversation-status.mjs';
 import {accepted,runState} from './run-lifecycle.mjs';
 import {projectState} from './state-projection.mjs';
 import {recoveryRequests} from '../src/run-recovery.js';
@@ -29,7 +30,7 @@ export function humanProjection(data){
 
  }
  for(const r of view.runs){
-  if(r.conversationId){r.conversationLifecycle=conversationTurn(r);r.answerJobs=answerJobs(data,r);r.conversationAnswer=accepted(r)&&runState(r)==='completed';r.displayMode=r.conversationAnswer?(r.conversationDisplay?.mode||'reply'):'reply';r.conversationStatus=r.conversationSource?.kind==='human'?'秘書との会話':'リーダーの資料への返答';if(r.conversationSource?.kind!=='human')r.suppressUser=true;r.reportStatus=r.conversationLifecycle.label;}
+  if(r.conversationId){r.conversationLifecycle=conversationTurn(r);r.answerJobs=answerJobs(data,r);r.conversationAnswer=accepted(r)&&runState(r)==='completed';r.displayMode=r.conversationAnswer?conversationDisplayMode(data,r):'reply';r.conversationStatus=r.conversationSource?.kind==='human'?'秘書との会話':'リーダーの資料への返答';if(r.conversationSource?.kind!=='human')r.suppressUser=true;r.reportStatus=r.conversationLifecycle.label;}
   if(r.origin==='inbox')r.suppressUser=true;
   const q=protectedRequests.get(r.humanRequestId);if(!q)continue;
   if(q.status!=='completed'&&r.phase!=='report'){r.hiddenCompletion=true;continue;}
@@ -59,6 +60,7 @@ export function humanProjection(data){
   if(r.error)r.error='受付・停止理由をrequests getで確認してください';
   if(r.recovery)r.recovery={status:r.recovery.status,reason:r.phase==='report'?'報告のみ再試行できます。元作業は再実行しません。':'停止理由を確認して復旧してください'};
  }
+ for(const q of view.requests)if(q.conversationId){const s=conversationJob(data,q);q.purposeStatus={code:s.code,label:s.label,reason:s.reason};}
  view.recoveryRequests=recoveryRequests(data);
  return view;
 }

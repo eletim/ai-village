@@ -1,3 +1,4 @@
+import {acceptDelivery} from '../purpose-fixture.js';
 import {initializeRun} from '../../server/run-lifecycle.mjs';
 import {test,expect,notifySnapshot} from './helpers/change-events.js';
 import {fixtureModels} from '../model-fixtures.mjs';
@@ -55,8 +56,8 @@ for(const width of [1440,390])test('actual graph and delivery projections distin
   await summary.locator('summary').click();await expect(summary).toContainText('作業中');
   const button=page.locator('[data-send="'+r.agentId+'"] [type=submit]');await expect(button).toBeEnabled();
   await f.service.flow.finish({humanRequestId:leader.humanRequestId,workId:leader.workId,runId:leader.id,operationId:randomUUID(),inputs:f.service.flow.inputs(leader.humanRequestId,leader.workId).map(i=>i.id),results:[]});
-  await f.complete(leader);await notifySnapshot(page);await expect(summary).toContainText('作業完了・回答準備中');
-  const delivery=f.service.flow.run(f.service.conversations.record(r.conversationId).deliveries[0].runId);await f.submit(delivery);await f.complete(delivery);await notifySnapshot(page);
+  await f.complete(leader);await notifySnapshot(page);await expect(summary).toContainText('秘書の確認待ち');
+  const delivery=f.service.flow.run(f.service.conversations.record(r.conversationId).deliveries[0].runId);await f.submit(delivery);await acceptDelivery(f,delivery);await f.complete(delivery);await notifySnapshot(page);
   await expect(summary).toContainText('完了');await expect(summary).toHaveAttribute('open','');
   await page.screenshot({path:info.outputPath('completed-review-'+width+'.png')});
   const bad=await f.service.send(r.agentId,{mode:'conversation',requestId:randomUUID(),instruction:'受付不明の新しい入力'});

@@ -1,4 +1,4 @@
-import {agentActions,actionUsage,conversationDisplayUsage} from './agent-rules.mjs';
+import {agentActions,actionUsage,conversationDisplayUsage,conversationDecisionUsage} from './agent-rules.mjs';
 import { appendFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -17,7 +17,7 @@ export class VillageOperations {
       ...(direct?[
         {name:'conversations get',usage:'conversations get CONVERSATION_ID [ACTOR_RUN_ID] (Agent: always pass current run; ordered turn view)',run:args=>{if(![1,2].includes(args.length))throw Error('CONVERSATION_ID [ACTOR_RUN_ID]');return direct.conversations.read(args[0],args[1]);}},
         {name:'conversations display',usage:conversationDisplayUsage,mutation:true,run:args=>{if(args.length!==1)throw Error('JSONを1つ指定してください');return direct.conversations.display(JSON.parse(args[0]));}},
-        ...['job','amend','withdraw'].map(action=>({name:'conversations '+action,usage:'conversations '+action+' JSON {conversationId,actorRunId,operationId,instruction,authorization:{runId,quote},humanRequestId?}',mutation:true,run:args=>{if(args.length!==1)throw Error('JSONを1つ指定してください');return direct.conversations[action](JSON.parse(args[0]));}})),
+        ...['job','amend','withdraw','decide'].map(action=>({name:'conversations '+action,usage:action==='decide'?conversationDecisionUsage:'conversations '+action+' JSON {conversationId,actorRunId,operationId,instruction,authorization:{runId,quote},humanRequestId?,continuesRequestId?,deliveryId?,expectedPurposeVersion?,reason?,reopenRunId?}',mutation:true,run:args=>{if(args.length!==1)throw Error('JSONを1つ指定してください');return direct.conversations[action](JSON.parse(args[0]));}})),
         {name:'projects leader',usage:'projects leader PROJECT_ID REVISION AGENT_ID|- (new jobs only)',mutation:true,run:args=>{if(args.length!==3)throw Error('PROJECT_ID REVISION AGENT_ID|-');return direct.putProject({revision:Number(args[1]),leaderAgentId:args[2]==='-'?null:args[2]},args[0]);}},
         {name:'workshops pattern',usage:'workshops pattern WORKSHOP_ID JSON_ARRAY_8_OR_NULL (none|line|diamond; top row left to right, then bottom)',mutation:true,run:args=>{if(args.length!==2)throw Error('工房IDと8セルのJSON配列を指定してください');return direct.putWorkshop({iconPattern:JSON.parse(args[1])},args[0]);}},
         {name:'agents create',usage:'agents create JSON({requestId,workshopId,cwd,name,provider,location,projectId?,launchProfile?:{version:1,provider:claude,model:full-ID,effort:low|medium|high|xhigh|max}})',mutation:true,run:args=>{if(args.length!==1)throw Error('JSONを1つ指定してください');return direct.create(JSON.parse(args[0]));}},

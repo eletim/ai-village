@@ -1,3 +1,4 @@
+import {acceptDelivery} from './purpose-fixture.js';
 import {test} from 'node:test';
 import {requestProgress} from '../src/request-progress.js';
 import assert from 'node:assert/strict';
@@ -33,7 +34,7 @@ test('job idempotency, agent provenance, child review and exactly once return du
  await f.complete(resumed);
  const c=f.service.conversations.record(r.conversationId);assert.equal(c.deliveries.length,1);assert.equal(w.state.kind,'completed');validateGraph(f.service.data,q);
  const delivery=f.service.flow.run(c.deliveries[0].runId);assert.equal(runState(delivery),'queued');assert.equal(runState(r),'running');assert.equal(f.notifications.length,0);
- await f.complete(r);assert.equal(f.notifications.length,0);assert.equal(c.deliveries[0].material.output,'Output '+resumed.id);await f.submit(delivery);await f.complete(delivery);await f.restart();await f.service.tick();
+ await f.complete(r);assert.equal(f.notifications.length,0);assert.equal(c.deliveries[0].material.output,'Output '+resumed.id);await f.submit(delivery);await acceptDelivery(f,delivery);await f.complete(delivery);await f.restart();await f.service.tick();
  assert.equal(f.notifications.length,1);assert.equal(f.notifications[0].content,'秘書からの返答\nFinal '+delivery.id);assert.equal(f.service.conversations.get(c.id).runs.find(r=>r.id===delivery.id).humanAnswer,'Final '+delivery.id);
  assert.equal(f.service.conversations.record(c.id).deliveries.length,1);assert.equal(f.sent.filter(s=>s.text.includes(delivery.id)).length,1);
 });
