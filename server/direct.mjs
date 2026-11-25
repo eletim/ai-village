@@ -355,10 +355,21 @@ export class DirectAgents {
   }
   async verifyInstructions(a){
     if(a.inputEnvelope?.mode!=='startup-v2')return;
+    // The CLI reads the prompt file only when it (re)starts. Once the file was verified for the
+    // session that is still running, a later rewrite of the file (e.g. PurpleMux regenerating it)
+    // says nothing about that session. A session change is downgraded in observe()
+    // (native-session-changed); a CLI seen stopped clears contractVerifiedSessionId, so a restart or
+    // resume of the same session is checked against the file again. Kept outside inputEnvelope,
+    // which is part of runtime-migration proofs.
+    const current=a.runtime?.agentSessionId||a.observedSessionId;
+    if(current&&a.inputEnvelope.sessionId===current&&a.contractVerifiedSessionId===current)return;
     let reason='startup-instructions-missing-or-changed';
     try{
       const result=JSON.parse(await this.execute(a,['python3','-c',verifyInstructionsScript,a.workspaceId,a.provider,a.inputEnvelope.hash||'']));
-      if(result.verified===true)return;
+      if(result.verified===true){
+        if(current&&a.inputEnvelope.sessionId===current&&a.contractVerifiedSessionId!==current)await this.persist(async()=>{a.contractVerifiedSessionId=current;await this.save();});
+        return;
+      }
     }catch{reason='startup-instructions-check-failed';}
     await this.persist(async()=>{a.inputEnvelope={...a.inputEnvelope,mode:'migration-required',reason,downgradedAt:now()};await this.save();});
   }
@@ -587,6 +598,7 @@ export class DirectAgents {
         if(a.inputEnvelope.sessionId&&a.inputEnvelope.sessionId!==s.agentSessionId)a.inputEnvelope={...a.inputEnvelope,mode:'migration-required',reason:'native-session-changed'};
         else a.inputEnvelope.sessionId=s.agentSessionId;
       }
+      if(a.contractVerifiedSessionId&&observation.process==='absent')delete a.contractVerifiedSessionId;
       if(snapshot.sessionId)a.observedSessionId=snapshot.sessionId;
       for(const r of this.data.runs.filter(r=>r.agentId===a.id&&active(r)&&!quarantinedRun(this.data,r))){
         const observation=correlate(r,snapshot);
