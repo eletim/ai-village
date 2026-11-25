@@ -196,6 +196,25 @@ test('Claude queued_command continues parent chain and indexed restart matches m
  const input=snapshot.inputs[1];assert.equal(correlate(r,{...snapshot,inputs:[...snapshot.inputs,{...input,id:'foreign',text:'outside',offset:input.offset+1}]}).state,'unknown');
 });
 
+test('Claude background-task notices are not human input; a real queued human message still is',async t=>{
+ const f=await setup(t),file=join(f.dir,'.claude/projects/test',sid+'.jsonl');await mkdir(join(file,'..'),{recursive:true});
+ const env={...f.env,HOME:f.dir},execute=async(a,args)=>execFileSync(args[0],args.slice(1),{env}).toString(),agent={...f.a,provider:'claude'};
+ await writeFile(file,lines([{type:'user',uuid:'u',message:{content:'work ai-village-run-owned'}},{type:'assistant',uuid:'tool',parentUuid:'u',message:{stop_reason:'tool_use',content:[]}}]));
+ const baseline=await f.reader.read(agent,f.status,execute),owned=baseline.inputs[0];
+ const r={id:'owned',inputMarker:'ai-village-run-owned',inputId:owned.id,turnId:'u',sessionId:sid,priorInputs:[],baselineRuntime:{...baseline,cursor:0},dispatchAttemptedAt:'now'};
+ // Both observed shapes: commandMode only (most), and commandMode with origin.
+ const notice=(uuid,parent,origin)=>({type:'attachment',uuid,parentUuid:parent,attachment:{type:'queued_command',prompt:'<task-notification>\n<task-id>b1</task-id>\n<status>completed</status>\n</task-notification>',commandMode:'task-notification',...(origin?{origin:{kind:'task-notification',producer:'session-task'}}:{})}});
+ await appendFile(file,lines([notice('n1','tool',false),{type:'user',uuid:'r1',parentUuid:'n1',message:{content:[{type:'tool_result',content:'ok'}]}},notice('n2','r1',true),{type:'assistant',uuid:'more',parentUuid:'n2',message:{stop_reason:'tool_use',content:[]}}]));
+ f.reader=new RuntimeReader(f.dir);const running=await f.reader.read(agent,f.status,execute);
+ assert.equal(running.turns.length,1);assert.deepEqual(running.inputs.map(i=>i.id),['u']);assert.equal(correlate(r,running).state,'running');
+ await appendFile(file,lines([{type:'assistant',uuid:'end',parentUuid:'more',message:{stop_reason:'end_turn',content:'DONE'}}]));
+ const done=await f.reader.read(agent,f.status,execute);assert.equal(correlate(r,done).state,'completed');assert.equal(correlate(r,done).output,'DONE');
+ // A human message queued into the same turn is still foreign input to the owning run.
+ await appendFile(file,lines([{type:'attachment',uuid:'human',parentUuid:'end',attachment:{type:'queued_command',prompt:'人間の追加指示',commandMode:'prompt',origin:{kind:'human'}}}]));
+ const steered=await f.reader.read(agent,f.status,execute);
+ assert.deepEqual(steered.inputs.map(i=>[i.id,i.source]),[['u','claude-user'],['human','claude-queued']]);assert.equal(correlate(r,steered).state,'unknown');assert.equal(correlate(r,steered).reason,'additional-input-in-owned-turn');
+});
+
 test('middle equal-length rewrite invalidates host and restarted replica; append preserves identity',async t=>{
  const f=await setup(t),padding={type:'padding',value:'x'.repeat(20000)};
  const content=lines([padding,start,input,done,padding]);await writeFile(f.file,content);

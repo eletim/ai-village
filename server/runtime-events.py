@@ -56,8 +56,13 @@ def parse_event(db,provider,x,offset):
    db.input({'explicitTurn':True,'source':'claude-user','id':uid,'turnId':uid,'hash':digest(body),'offset':offset,'text':body})
   elif uid and db.parent(parent):
    tid=db.parent(parent);db.parent(uid,tid)
-   if x.get('type')=='attachment' and (x.get('attachment') or {}).get('type')=='queued_command':
-    body=x['attachment'].get('prompt')
+   queued=(x.get('attachment') or {}) if x.get('type')=='attachment' else {}
+   # A background task's completion notice is delivered as a queued_command too, but it is the
+   # harness reporting its own work, not a human/steering input; counting it made the owning run
+   # look interrupted by foreign input. It still continues the turn (parent chain above).
+   notice=queued.get('commandMode')=='task-notification' or (queued.get('origin') or {}).get('kind')=='task-notification'
+   if queued.get('type')=='queued_command' and not notice:
+    body=queued.get('prompt')
     if isinstance(body,str):db.input({'explicitTurn':True,'source':'claude-queued','id':uid,'turnId':tid,'hash':digest(body),'offset':offset,'text':body})
    if x.get('type')=='assistant':
     if not x.get('isApiErrorMessage') and m.get('model')!='<synthetic>':db.put('model','model',{'model':m.get('model'),**({'effort':x['effort']} if x.get('effort') in ('low','medium','high','xhigh','max') else {}),'serviceTier':(m.get('usage') or {}).get('speed'),'recordedAt':at})
