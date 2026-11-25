@@ -235,3 +235,19 @@ test('100 MiB continuously appended history accepts every poll and detects a per
  assert(s.available);assert(!s.inputs.some(i=>i.text.includes('ai-village-run-hello')));assert(s.inputs.some(i=>i.text.includes('ai-village-run-other')),JSON.stringify(s.inputs.map(i=>i.text)));
  t.diagnostic(JSON.stringify({sourceMiB:101,normalPolls:12,acceptanceDelayPolls:0,auditPositions:positions.slice(0,12),auditRoundCalls:4,auditRoundMs:Math.round(timings.slice(3,7).reduce((a,b)=>a+b)),normalPollTotalMs:Math.round(timings.slice(0,12).reduce((a,b)=>a+b)),normalPollMaxMs:Math.round(Math.max(...timings.slice(0,12))),rewriteDetectedAfterPolls:detected}));
 });
+test('lazy first Codex session with typed environment metadata correlates canonical transport but not old whitespace digest',async t=>{
+ const f=await setup(t),body='\n\n初回の相談\n<ai-village-request>{"runId":"first"}</ai-village-request>',wire=body.trim();
+ const cold=await f.reader.read(f.a,{agentSessionId:null},f.execute);assert.equal(cold.cursor,0);assert.equal(cold.sessionId,'');
+ await writeFile(f.file,lines([start,
+  {type:'response_item',payload:{role:'user',content:[{type:'input_text',text:'<environment_context>test</environment_context>'}],internal_chat_message_metadata_passthrough:{turn_id:'t',content_item_kinds:['environments.environment_context']}}},
+  {type:'response_item',payload:{role:'user',id:'first-input',content:[{type:'input_text',text:wire}],internal_chat_message_metadata_passthrough:{turn_id:'t',content_item_kinds:['user.text']}}},
+  answer('正常な回答'),done]));
+ const snapshot=await f.reader.read(f.a,f.status,f.execute);
+ assert.equal(snapshot.inputs.length,1);
+ const r={id:'first',baselineRuntime:{sessionId:'',cursor:0},dispatchAttemptedAt:new Date().toISOString(),inputCorrelation:{version:1,provider:'codex',digest:inputHash(wire)}};
+ assert.equal(correlate(r,snapshot).state,'completed');
+ assert.equal(correlate({...r,inputCorrelation:{...r.inputCorrelation,digest:inputHash(body)}},snapshot).state,'unknown');
+ // Competing user input remains a hard rejection, even with the exact matching run envelope.
+ await appendFile(f.file,lines([{type:'response_item',payload:{role:'user',id:'competing',turn_id:'t',content:[{type:'input_text',text:'別の入力'}]}}]));
+ const next=await f.reader.read(f.a,f.status,f.execute);assert.equal(correlate(r,next).state,'unknown');
+});

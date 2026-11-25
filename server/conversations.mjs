@@ -1,3 +1,4 @@
+import {conversationJob,conversationTurn,conversationControl} from './conversation-status.mjs';
 import {responseText} from '../src/response-text.js';
 import {transitionDelivery} from './state/auxiliary.ts';
 import {randomUUID} from 'node:crypto';
@@ -28,6 +29,13 @@ export class Conversations {
   if(this.d.data.runs.some(r=>(r.conversationId||r.runModel.phase==='conversation')&&!ids.has(r.conversationId)))throw Error('Conversation run owner missing');
  }
  pendingForAgent(id){const ids=new Set((this.d.data.conversations||[]).filter(c=>c.agentId===id).map(c=>c.id));return this.d.flow.requests.some(q=>ids.has(q.conversationId)&&['active','submitted'].includes(rootNode(q).state.kind))||this.d.data.runs.some(r=>ids.has(r.conversationId)&&['queued','sent','running'].includes(r.runModel.state.kind));}
+ async read(id,actorRunId){
+  const c=this.record(id),r=actorRunId&&this.d.data.runs.find(r=>r.id===actorRunId&&r.conversationId===id&&r.agentId===c.agentId);
+  // An Agent can call get before the event monitor has observed its first input.
+  // Refresh only a dispatched, still-unbound run; never reopen terminal unknowns.
+  if(r&&r.runModel.state.kind==='sent'&&!accepted(r))await this.d.locked(c.agentId,()=>this.d.observe(this.d.agent(c.agentId)));
+  return this.get(id,actorRunId);
+ }
  get(id,actorRunId){
   const c=this.record(id),all=this.d.data.runs.filter(r=>r.conversationId===id);
   const actor=actorRunId?all.find(r=>r.id===actorRunId&&accepted(r)):null;
@@ -36,11 +44,12 @@ export class Conversations {
   const deliveries=c.deliveries.filter(e=>runs.some(r=>r.id===e.runId));
   const jobs=this.d.flow.requests.filter(q=>q.conversationId===id&&(!actor||runs.some(r=>r.id===q.requestedBy?.actorRunId))).map(q=>{
    const full=this.d.flow.get(q.id);
-   if(!actor)return full;
+   const lifecycle=conversationJob(this.d.data,q);
+   if(!actor)return {...full,lifecycle};
    // Status is available immediately; materials for a later turn are not injected here.
-   return {id:q.id,status:full.status,instruction:q.instruction,leaderAgentId:rootNode(q).assignee,returnPending:c.deliveries.some(e=>e.humanRequestId===q.id&&!deliveries.includes(e)),availableDeliveries:deliveries.filter(e=>e.humanRequestId===q.id).map(e=>e.id),materials:'後続の正式配送ターンで確認してください'};
+   return {id:q.id,lifecycle,status:full.status,instruction:q.instruction,leaderAgentId:rootNode(q).assignee,returnPending:c.deliveries.some(e=>e.humanRequestId===q.id&&!deliveries.includes(e)),availableDeliveries:deliveries.filter(e=>e.humanRequestId===q.id).map(e=>e.id),materials:'後続の正式配送ターンで確認してください'};
   });
-  return structuredClone({id:c.id,agentId:c.agentId,projectId:c.projectId,createdAt:c.createdAt,sequence:actor?.conversationSequence??c.sequence,operations:actor?c.operations.filter(o=>runs.some(r=>r.id===JSON.parse(o.payload).input.actorRunId)):c.operations,deliveries,runs:runs.map(r=>({...r,state:runState(r),displayMode:r.conversationDisplay?.mode||'reply',displayVersion:r.conversationDisplay?.version||0,humanAnswer:accepted(r)&&runState(r)==='completed'&&r.conversationDisplay?.mode!=='progress'?responseText(r).answer:null,progressText:accepted(r)&&runState(r)==='completed'&&r.conversationDisplay?.mode==='progress'?responseText(r).answer:null})),jobs});
+  return structuredClone({id:c.id,agentId:c.agentId,projectId:c.projectId,createdAt:c.createdAt,sequence:actor?.conversationSequence??c.sequence,operations:actor?c.operations.filter(o=>runs.some(r=>r.id===JSON.parse(o.payload).input.actorRunId)):c.operations,deliveries,control:conversationControl(this.d.data.agents.find(a=>a.id===c.agentId)),runs:runs.map(r=>({...r,lifecycle:conversationTurn(r),state:runState(r),displayMode:r.conversationDisplay?.mode||'reply',displayVersion:r.conversationDisplay?.version||0,humanAnswer:accepted(r)&&runState(r)==='completed'&&r.conversationDisplay?.mode!=='progress'?responseText(r).answer:null,progressText:accepted(r)&&runState(r)==='completed'&&r.conversationDisplay?.mode==='progress'?responseText(r).answer:null})),jobs});
  }
  record(id){return this.d.data.conversations.find(c=>c.id===id)||fail('会話がありません',404);}
  enqueue(c,{requestId,instruction,source,attachments=[],travelContexts=[]}){
@@ -62,7 +71,8 @@ export class Conversations {
    const a=this.d.writableAgent(this.d.agent(agentId));
    if(a.location!=='mayor'||!a.projectId)fail('Project所属の秘書で会話を開始してください');
    this.d.writableProject(a.projectId);
-   if(a.inputEnvelope?.mode!=='startup-v2'||a.runtimeUpgrade?.state==='prepared')fail('会話にはstartup-v2の正式なセッションが必要です');
+   if(a.inputEnvelope?.mode!=='startup-v2'||a.runtimeUpgrade?.state==='prepared')fail('会話にはstartup-v2の正式なセッションが必要です。プロフィールの起動契約から移行を確認してください。');
+   const control=conversationControl(a);if(!control.canAccept)fail(control.label+'。'+control.next);
    let c=x.conversationId?this.record(x.conversationId):this.d.data.conversations.findLast(c=>c.agentId===a.id&&c.projectId===a.projectId);
    if(c&&(c.agentId!==a.id||c.projectId!==a.projectId))fail('会話の所属が一致しません',403);
    if(!c){c={id:randomUUID(),agentId:a.id,projectId:a.projectId,createdAt:now(),sequence:0,operations:[],deliveries:[]};this.d.data.conversations.push(c);}

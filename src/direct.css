@@ -171,3 +171,5 @@ footer{font-variant-numeric:tabular-nums}
 /* Leadership changes the drawing, never the outer role-icon dimensions. */
 .dot.has-leader{display:inline-flex;align-items:center;width:20px;height:20px;background:transparent;color:var(--state-color,#8b9bb5);border-radius:4px;flex-shrink:0}
 .dot.has-leader>svg{display:block;width:20px;height:20px;flex:none}
+
+.conversation-work{border:1px solid var(--border,#bbb);border-radius:8px;padding:8px;margin:8px 0;font-size:.9em;overflow-wrap:anywhere}.conversation-work p{margin:4px 0}.conversation-work ul{padding-left:20px}.conversation-work li{margin:10px 0}.conversation-next{font-size:.85em;opacity:.85}

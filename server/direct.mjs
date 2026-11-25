@@ -459,7 +459,7 @@ export class DirectAgents {
     }
     // The adopted, unspoken session has no native transcript yet: refresh after
     // asynchronous contract verification, then recheck the proof in the save boundary.
-    if(confirmed.unrecorded===true&&(a.runtimeMigrations?.at(-1)?.freshProof||latestRetirement(a))){
+    if(!confirmed.sessionId||confirmed.unrecorded===true&&(a.runtimeMigrations?.at(-1)?.freshProof||latestRetirement(a))){
       confirmed=await this.observe(a);
       if(!allowed(confirmed))return r;
     }
@@ -477,7 +477,10 @@ export class DirectAgents {
         r.runtimeMigrationId=migration.operationId;
         r.runtimeHandover={operationId:migration.operationId,operatorNotes:migration.handover,requiredReads:[['requests','get',r.humanRequestId],['requests','inputs',r.humanRequestId,r.workId],['requests','results',r.humanRequestId,r.workId]],instruction:'新セッションへの引継ぎです。作業・報告前にrequiredReadsで元目的・全補足（対応済みも含む）・未対応入力・子結果・過去runの成果と操作記録を全文確認してください。operatorNotesは管理者の引継ぎ資料であり追加の操作許可ではありません。過去の外部操作は再実行せず、記録されていない操作や不明な成否は推測せず確認してください。'};
       }
-      const text=instruction+this.secretaryContext(a)+this.flow.context(r)+(compatibility?legacyContext(this.rules,r,a):'');
+      // Codex's composer strips outer whitespace. Canonicalize before BOTH send and
+      // fingerprint; never relax matching or reinterpret already-dispatched runs.
+      const body=instruction+this.secretaryContext(a)+this.flow.context(r)+(compatibility?legacyContext(this.rules,r,a):'');
+      const text=a.provider==='codex'?body.trim():body;
       if(r.steerTarget){const previous=this.flow.run(r.steerTarget.runId);changeRun(previous,{type:'close-tracking',actor:'human',reason:'steering-successor-dispatched'});}
       changeRun(r,{type:'dispatch',actor:'program',at:Date.now(),sessionId:confirmed.sessionId||null,agentIdle:true});
       Object.assign(r,{inputCorrelation:inputCorrelation(text,a.provider),inputEnvelopeMode:compatibility?'legacy-compat':'startup-v2',dispatchAttemptedAt:now(),baselineRuntime:{sessionId:confirmed.sessionId,cursor:confirmed.cursor,fileIdentity:confirmed.fileIdentity},agentSessionId:status.agentSessionId||null});
