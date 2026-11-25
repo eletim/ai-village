@@ -23,6 +23,15 @@ export function compressArchives(dir,name){
  const task=compress(dir,name).catch(()=>{}).finally(()=>compressing.delete(key));
  compressing.set(key,task);return task;
 }
+// Startup: move aside a journal already over the limit and finish compressions a restart interrupted.
+export async function maintainAudit(dir,name,{maxBytes=AUDIT_MAX_BYTES}={}){
+ const file=resolve(dir,name);
+ const task=(chains.get(file)||Promise.resolve()).catch(()=>{}).then(async()=>{
+  try{if((await stat(file)).size>maxBytes)await rename(file,resolve(dir,name.replace(/\.jsonl$/,'')+'-'+stamp()+'.jsonl'));}catch(e){if(e.code!=='ENOENT')throw e;}
+  for(const f of await readdir(dir))if(f.startsWith(name.replace(/\.jsonl$/,'')+'-')&&f.endsWith('.jsonl.gz.tmp'))await unlink(resolve(dir,f));
+ });
+ chains.set(file,task);await task;return compressArchives(dir,name);
+}
 export function appendAudit(dir,name,entry,{maxBytes=AUDIT_MAX_BYTES}={}){
  const file=resolve(dir,name),line=JSON.stringify(entry)+'\n';
  const task=(chains.get(file)||Promise.resolve()).catch(()=>{}).then(async()=>{

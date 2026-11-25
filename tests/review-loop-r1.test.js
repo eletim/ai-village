@@ -8,7 +8,7 @@ import {createGunzip} from 'node:zlib';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fixture} from './inbox-fixture.js';
-import {appendAudit,compressArchives} from '../server/audit-log.mjs';
+import {appendAudit,compressArchives,maintainAudit} from '../server/audit-log.mjs';
 import {conversationTurnHTML,notificationNoteHTML} from '../src/conversation-status.js';
 
 test('deleting a Project leader is refused until the leader role is released',async t=>{
@@ -54,4 +54,27 @@ test('a secretary owning several conversations (after handover) continues the ne
  d.data.conversations.push({id:randomUUID(),agentId:f.agents[0].id,projectId:p.id,createdAt:'2026-01-01T00:00:00.000Z',sequence:0,operations:[],deliveries:[]});await d.save();
  const next=await d.send(f.agents[0].id,{mode:'conversation',requestId:randomUUID(),instruction:'次'});
  assert.equal(next.conversationId,first.conversationId);
+});
+
+test('startup maintenance moves aside an oversized journal and finishes an interrupted compression',async t=>{
+ const dir=await mkdtemp(join(tmpdir(),'audit-maintain-'));t.after(()=>rm(dir,{recursive:true,force:true}));
+ await writeFile(join(dir,'ssh-audit.jsonl'),Array.from({length:100},(_,i)=>JSON.stringify({i})+'\n').join(''));
+ await writeFile(join(dir,'ssh-audit-2026-01-01T00-00-00-000Z.jsonl'),JSON.stringify({left:'uncompressed'})+'\n');
+ await writeFile(join(dir,'ssh-audit-2026-01-01T00-00-00-000Z.jsonl.gz.tmp'),'partial');
+ await maintainAudit(dir,'ssh-audit.jsonl',{maxBytes:512});
+ const files=(await readdir(dir)).sort();
+ assert.equal(files.filter(f=>f.endsWith('.tmp')||/ssh-audit-.*\.jsonl$/.test(f)).length,0);assert.equal(files.filter(f=>f.endsWith('.jsonl.gz')).length,2);
+ assert(!files.includes('ssh-audit.jsonl'));
+ const gunzip=async f=>{const chunks=[];for await(const c of createReadStream(join(dir,f)).pipe(createGunzip()))chunks.push(c);return Buffer.concat(chunks).toString();};
+ const all=(await Promise.all(files.filter(f=>f.endsWith('.gz')).map(gunzip))).join('');
+ assert.equal(all.trim().split('\n').length,101);
+});
+
+test('handover is not refused by a deleted Project that still names the secretary as leader',async t=>{
+ const {secretaryHandoverPlan}=await import('../server/secretary-handover.mjs');
+ const f=await fixture(t),d=f.service,[old,target]=f.agents;
+ const p=await d.putProject({requestId:randomUUID(),name:'handover-deleted'});for(const a of f.agents)a.projectId=p.id;
+ d.data.projects.push({id:randomUUID(),name:'deleted',revision:1,leaderAgentId:old.id,deletedAt:'2026-01-01T00:00:00.000Z'});
+ assert.doesNotThrow(()=>secretaryHandoverPlan(d,old.id,target.id));
+ d.data.projects.at(-1).deletedAt=undefined;assert.throws(()=>secretaryHandoverPlan(d,old.id,target.id),/引継ぎ先を利用できません/);
 });

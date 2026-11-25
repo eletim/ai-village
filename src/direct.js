@@ -315,7 +315,7 @@ function activeView(){
  return !!cards.get(selectedAgent)&&!cards.get(selectedAgent).hidden;
 }
 function syncSelection(){
- const active=activeView();if(active)reportPresence();
+ const active=activeView();if(active)reportPresence();else reportLeave();
  for(const [id,card] of cards){const selected=id===selectedAgent;card.dataset.selected=String(selected);if(selected)card.setAttribute('aria-current','true');else card.removeAttribute('aria-current');card.dataset.active=String(selected&&active);}
  cancelAnimationFrame(viewFrame);
  // Acknowledge only a revision rendered in the selected, visible window.
@@ -323,13 +323,22 @@ function syncSelection(){
 }
 function selectAgent(id){selectedAgent=id;syncSelection();}
 // Tell the village that a human is looking at this Agent, so quick replies need no phone notification.
+// Leaving (hidden, blur, dialog, another Agent, page exit) is reported at once, so a human who
+// sends and walks away is notified; a lost leave report still expires on the server.
 let presenceAgent=null,presenceAt=0;
+const presenceRequest=(id,viewing)=>fetch('/api/direct/human/agents/'+id+'/presence',{method:'POST',keepalive:true,headers:{'Content-Type':'application/json','X-Village-Human-UI':'1'},body:JSON.stringify({viewing})});
 function reportPresence(){
  if(!state?.capabilities?.presence||!activeView())return;
- const id=selectedAgent;if(id===presenceAgent&&Date.now()-presenceAt<30000)return;
- presenceAgent=id;presenceAt=Date.now();api('/human/agents/'+id+'/presence',{}).catch(()=>{presenceAt=0;});
+ const id=selectedAgent;if(id===presenceAgent&&Date.now()-presenceAt<15000)return;
+ if(presenceAgent&&presenceAgent!==id)reportLeave();
+ presenceAgent=id;presenceAt=Date.now();presenceRequest(id,true).then(r=>{if(!r.ok)presenceAt=0;},()=>{presenceAt=0;});
 }
-setInterval(reportPresence,30000);
+function reportLeave(){
+ if(!presenceAgent)return;
+ const id=presenceAgent;presenceAgent=null;presenceAt=0;presenceRequest(id,false).catch(()=>{});
+}
+setInterval(reportPresence,15000);
+window.addEventListener('pagehide',reportLeave);
 async function acknowledgeSelection(){
  if(!activeView())return;
  const id=selectedAgent,review=state.reviews?.[id];

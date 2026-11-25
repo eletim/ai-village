@@ -44,7 +44,7 @@ import { captureProcessesScript, stopProcessesScript, verifyAbsentProcessesScrip
 import { createServer } from 'node:net';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, realpath } from 'node:fs/promises';
-import {appendAudit} from './audit-log.mjs';
+import {appendAudit,maintainAudit} from './audit-log.mjs';
 import { resolve } from 'node:path';
 
 const fail = (message, status=409) => { throw Object.assign(new Error(message), {status}); };
@@ -110,7 +110,7 @@ export class DirectAgents {
     this.data.conversations ||= [];
     this.flow.init();this.conversations.init();
     await this.save();
-    if(watch){this.flow.reporting.start();this.monitor=new EventMonitor(this,this.hostFactory?{hostFactory:this.hostFactory}:{});this.monitor.start();void this.progress().catch(()=>{});}
+    if(watch){for(const name of ['local-audit.jsonl','ssh-audit.jsonl'])void maintainAudit(this.dir,name).catch(()=>{});this.flow.reporting.start();this.monitor=new EventMonitor(this,this.hostFactory?{hostFactory:this.hostFactory}:{});this.monitor.start();void this.progress().catch(()=>{});}
   }
   close(){this.monitor?.close();this.flow.reporting.close();clearInterval(this.timer);this.owner?.close();this.store.close();}
   presentation(){
@@ -134,7 +134,7 @@ export class DirectAgents {
   }
   // Human UI viewing signal (visible, focused, Agent selected). Memory only: it never
   // changes records and is unknown after restart, which means "not watching".
-  markPresence(id){this.agent(id);(this.presence ||= new Map()).set(id,Date.now());return {ok:true};}
+  markPresence(id,{viewing=true}={}){this.agent(id);if(typeof viewing!=='boolean')fail('viewingはtrue/falseです',400);this.presence ||= new Map();if(viewing)this.presence.set(id,Date.now());else this.presence.delete(id);return {ok:true,viewing};}
   async viewAgent(id,{revision}){return this.locked(id,()=>this.persist(async()=>{
     this.agent(id);
     if(typeof revision!=='string'||! /^[a-f0-9]{64}$/.test(revision))fail('表示したAgentのrevisionが必要です',400);

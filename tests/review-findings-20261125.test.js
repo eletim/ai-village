@@ -67,6 +67,8 @@ test('P2: failure/state-change reports reach the human; result adoption still re
  const other=await d.conversations.job({conversationId:c.id,actorRunId:second.id,operationId:randomUUID(),instruction:'別件',authorization:{runId:second.id,quote:'別件も明示依頼として作ってください。'}});await f.complete(second);
  const w=d.flow.root(other.humanRequestId);await d.flow.cancel({humanRequestId:w.id,revision:w.revision,reason:'人間が取り下げ'});await d.tick();
  const closure=deliveryRun(d,c,other.humanRequestId,'important-change');assert.equal(closure.requiresPurposeDecision,undefined);
+ // Past the 3-minute own-closure window (#141/round 2), so the report is notified as a reply.
+ c.deliveries.find(e=>e.runId===closure.id).createdAt=new Date(Date.now()-4*60*1000).toISOString();
  await d.tick();await f.submit(closure);const n=f.notifications.length;await f.complete(closure);
  assert.equal(conversationDisplayMode(d.data,closure),'reply');assert.equal(f.notifications.length,n+1);assert.equal(c.purposeDecisions?.length||0,0);
 });

@@ -6,7 +6,7 @@ const fail=m=>{throw Object.assign(Error(m),{status:409});};
 export function secretaryHandoverPlan(d,id,targetId){
  const a=d.agent(id),b=d.writableAgent(d.agent(targetId));d.writableProject(a.projectId);
  if(id===targetId||!a.projectId||a.projectId!==b.projectId||a.location!=='mayor'||b.location!=='mayor')fail('同Projectの異なる秘書を指定してください');
- if(d.data.projects.some(p=>p.leaderAgentId===id)||b.inputEnvelope?.mode!=='startup-v2'||b.runtimeUpgrade?.state==='prepared'||['terminated','stopping'].includes(agentControls(b).state))fail('引継ぎ先を利用できません');
+ if(d.data.projects.some(p=>!p.deletedAt&&p.leaderAgentId===id)||b.inputEnvelope?.mode!=='startup-v2'||b.runtimeUpgrade?.state==='prepared'||['terminated','stopping'].includes(agentControls(b).state))fail('引継ぎ先を利用できません');
  const conversations=d.data.conversations.filter(c=>c.agentId===id);
  const runs=d.data.runs.filter(r=>r.agentId===id);
  const conversationIds=new Set(conversations.map(c=>c.id));

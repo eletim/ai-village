@@ -4,9 +4,9 @@ import {conversationDisplayMode,decisionState,deliveryOf,purposeDecisionRequired
 // A quick answer (within this window of the human's own utterance or action) is not notified
 // while the human is actually viewing that secretary in the village UI.
 export const HUMAN_PRESENT_WINDOW_MS=3*60*1000;
-// The UI reports viewing (visible, focused, secretary selected) at least every 30s; a report
-// older than this no longer counts as looking at the screen.
-export const HUMAN_PRESENCE_TTL_MS=75*1000;
+// The UI reports viewing (visible, focused, secretary selected) every 15s and reports leaving at
+// once; a report older than this (e.g. a lost leave on a locked phone) no longer counts.
+export const HUMAN_PRESENCE_TTL_MS=40*1000;
 // Operations that only hand work to the leader or correct it; they are not a human-facing outcome.
 export const WORK_DISPATCH_ACTIONS=['job','followup','amend','withdraw'];
 const operationsOf=(c,r)=>(c?.operations||[]).flatMap(o=>{try{const p=JSON.parse(o.payload);return p.input?.actorRunId===r.id?[p.action]:[];}catch{return [];}});
@@ -23,7 +23,9 @@ export function conversationNotification(data,r,{presentAt,now=Date.now()}={}){
  // answer to the human's own closure while they are still looking at the village.
  const delivery=deliveryOf(c,r);
  if(REPORT_DELIVERY_KINDS.includes(delivery?.kind)){
-  if(delivery.id?.startsWith('human-closure:')&&watching&&quickAfter(Date.parse(delivery.createdAt)))return {notify:false,reason:'human-closure-own-action'};
+  // The human just closed it in the village UI (human-only route); the answer within 3 minutes
+  // of that action is theirs to read there. Timed from the action, not from presence.
+  if(delivery.id?.startsWith('human-closure:')&&quickAfter(Date.parse(delivery.createdAt)))return {notify:false,reason:'human-closure-own-action'};
   return {notify:true,reason:'work-report'};
  }
  if(r.conversationSource?.kind==='human'&&quickAfter(Date.parse(r.createdAt))){
