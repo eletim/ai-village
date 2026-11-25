@@ -135,12 +135,13 @@ export type Event=
  | {type:'respond'|'finish';actor:'agent';requestId:string;runId:string;operationId:string;results:Response[];inputs?:string[];at:number}
  | {type:'replace';actor:'agent';requestId:string;childId:string;replacementId:string}
  | {type:'supplement';actor:Actor;requestId:string;input:InboxItem}
+ | {type:'handover';actor:'program';requestId:string;agentId:string;operationId:string}
  | {type:'assign';actor:'human';requestId:string;agentId:string}
  | {type:'review';actor:'program';requestId:string;reason:string}
  | {type:'withdraw'|'complete';actor:'human';requestId:string;reason:string}
  | {type:'observe';actor:'program'};
 export function transitionGraph(source:Graph,e:Event,runs:Evidence):Result<Graph>{
- const authorities:Record<Event['type'],Actor[]>={add:['agent','human'],'deliver-conversation':['program'],'withdraw-conversation':['agent'],'deliver-human':['program'],'plan-assign':['human','agent'],'discard-plan':['human','agent'],supplement:['human','agent','program'],attempt:['agent','human','program'],respond:['agent'],finish:['agent'],review:['program'],withdraw:['human'],complete:['human'],observe:['program'],assign:['human'],replace:['agent']};
+ const authorities:Record<Event['type'],Actor[]>={add:['agent','human'],'deliver-conversation':['program'],'withdraw-conversation':['agent'],'deliver-human':['program'],'plan-assign':['human','agent'],'discard-plan':['human','agent'],supplement:['human','agent','program'],attempt:['agent','human','program'],respond:['agent'],finish:['agent'],review:['program'],withdraw:['human'],complete:['human'],observe:['program'],assign:['human'],handover:['program'],replace:['agent']};
  if(!authorities[e.type]?.includes(e.actor))return reject('actor-forbidden');
  let g=structuredClone(source);
  if(e.type==='observe')return accept(reconcileGraph(g,runs));
@@ -198,7 +199,7 @@ export function transitionGraph(source:Graph,e:Event,runs:Evidence):Result<Graph
   if(e.type==='finish')n.declarations.push({id:e.operationId,runId:r.id,at:e.at,...(n.currentRunId!==r.id||r.supersededBy?{invalidated:'not-current-at-declaration'}:{})});
   g.operations.push({id:e.operationId,payload});return accept(reconcileGraph(g,runs));
  }
- if(n.state.kind!=='active'&&!(n.state.kind==='submitted'&&(e.type==='attempt'||e.type==='assign'||e.type==='withdraw'||e.type==='complete')))return reject('request-terminal');
+ if(n.state.kind!=='active'&&!(n.state.kind==='submitted'&&(e.type==='attempt'||e.type==='assign'||e.type==='handover'||e.type==='withdraw'||e.type==='complete')))return reject('request-terminal');
  switch(e.type){
   case 'replace':{
    const c=node(g,e.childId),replacement=node(g,e.replacementId),s=c&&latest(c),r=current(n,runs);
@@ -206,6 +207,7 @@ export function transitionGraph(source:Graph,e:Event,runs:Evidence):Result<Graph
    if(c.replacements.some(x=>x.actorRunId===r.id&&x.resultId===s.id))return reject('replacement-already-reserved');
    c.replacements.push({replacementId:replacement.id,actorRunId:r.id,resultId:s.id,version:s.version});return accept(g);
   }
+  case 'handover':{if(!e.agentId||!current(n,runs)||!isTerminal(current(n,runs)!)||n.parentId||n.planned)return reject('handover-requires-terminal-root');n.assignee=e.agentId;n.decisions.push({actor:'program',reason:'handover:'+e.operationId+':'+e.agentId});return accept(g);}
   case 'assign':{if(!e.agentId||!current(n,runs)||!isTerminal(current(n,runs)!))return reject('assignment-requires-terminal-attempt');n.assignee=e.agentId;n.decisions.push({actor:'human',reason:'assigned:'+e.agentId});return accept(g);}
   case 'attempt':{
    const r=runs.find(x=>x.run.id===e.runId&&x.ownerId===n.id&&x.agentId===n.assignee)?.run;

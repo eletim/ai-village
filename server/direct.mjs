@@ -1,3 +1,4 @@
+import {secretaryHandoverPlan,handoverSecretary} from './secretary-handover.mjs';
 import {retirementOption,retirementRecord,retirementIntact,retirementRunAllowed,latestRetirement} from './legacy-retirement.mjs';
 import {adoptionFreshProof,noCurrentRuntimeSends} from './adopted-fresh-runtime.mjs';
 import {launchProfile as parseLaunchProfile,launchReceiptMatches,launchProfileReady} from './launch-profile.mjs';
@@ -147,9 +148,11 @@ export class DirectAgents {
   projectDeletePlan(id){return deletionPlan(this,id);}
   deleteProject(id,input){return deleteProject(this,id,input);}
   writableProject(id){const p=this.project(id);if(p.deletion||p.deletedAt)fail('Projectは削除処理中または削除済みです');return p;}
+  secretaryHandoverPlan(id,targetId){return secretaryHandoverPlan(this,id,targetId);}
+  handoverSecretary(id,x){return handoverSecretary(this,id,x);}
   deleteAgent(id,input){return deleteAgent(this,id,input);}
   agentDeleting(a){return !!(a.deletion||a.deletedAt||this.data.projects.find(p=>p.id===a.projectId)?.deletion);}
-  writableAgent(a){if(a.runtimeRetiredTo)fail('旧ランタイム保管用Agentです。新規依頼は移行先を使用してください');if(this.agentDeleting(a))fail('所属Projectは削除処理中または削除済みです');return a;}
+  writableAgent(a){if(a.secretaryHandover)fail('引継ぎ済みの旧秘書です');if(a.runtimeRetiredTo)fail('旧ランタイム保管用Agentです。新規依頼は移行先を使用してください');if(this.agentDeleting(a))fail('所属Projectは削除処理中または削除済みです');return a;}
   validName(name){if(typeof name!=='string'||!name.trim()||name.length>120)fail('名前を1〜120文字で指定してください',400);return name.trim();}
   async putProject(input,id){return this.locked('projects',()=>this.persist(async()=>{
     if('pinned' in input)fail('先頭固定は廃止されました。表示順を指定してください',400);

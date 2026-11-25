@@ -1,4 +1,4 @@
-import {conversationAlertHTML,answerJobsHTML,conversationTurnHTML} from './conversation-status.js';
+import {conversationAlertHTML,answerJobsHTML,conversationTurnHTML,latestAnswerStatuses} from './conversation-status.js';
 import {isProjectLeader,leaderMarker} from './leader-marker.js';
 import {subscribeChanges} from './change-stream.js';
 import {bindRequestComposition} from './request-composition.js';
@@ -152,7 +152,7 @@ function runHTML(a){
  // Just-focused but not yet synced: say so, rather than showing bodiless controls as if they were the full thread.
  if(state.conversations&&!page&&focusIds.has(a.id))return '<p>会話を読み込み中…</p>';
  const entries=page?.entries||agentEntries(state,a),divider=dateDividers(),localHTML=localMessageHTML(a.id);
- return (historyErrors.has(a.id)?`<p role="alert" class="history-error">${esc(historyErrors.get(a.id))}</p>`:'')+(page?.hasMore?`<button type="button" data-load-history="${esc(a.id)}" ${historyLoading.has(a.id)?'disabled':''}>${historyLoading.has(a.id)?'読込中…':'古い会話を読み込む'}</button>`:'')+entries.map(r=>entryHTML(a,r,divider)).join('')+(localHTML?divider(outbox.get(a.id)?.createdAt)+localHTML:'')+divider.trailingToday();
+ return (historyErrors.has(a.id)?`<p role="alert" class="history-error">${esc(historyErrors.get(a.id))}</p>`:'')+(page?.hasMore?`<button type="button" data-load-history="${esc(a.id)}" ${historyLoading.has(a.id)?'disabled':''}>${historyLoading.has(a.id)?'読込中…':'古い会話を読み込む'}</button>`:'')+latestAnswerStatuses(entries).map(r=>entryHTML(a,r,divider)).join('')+(localHTML?divider(outbox.get(a.id)?.createdAt)+localHTML:'')+divider.trailingToday();
 }
 function localMessageHTML(id){
  const m=outbox.get(id);if(!m||matchingRun(state,id,m.requestId))return '';

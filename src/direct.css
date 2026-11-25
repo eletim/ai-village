@@ -174,7 +174,8 @@ footer{font-variant-numeric:tabular-nums}
 
 .conversation-work{border:1px solid var(--border,#bbb);border-radius:8px;padding:8px;margin:8px 0;font-size:.9em;overflow-wrap:anywhere}.conversation-work p{margin:4px 0}.conversation-work ul{padding-left:20px}.conversation-work li{margin:10px 0}.conversation-next{font-size:.85em;opacity:.85}
 
-.answer-jobs{margin:8px 0 14px;padding:10px 12px;border-left:3px solid var(--accent,#7b82d9);background:var(--panel,#f3f4f8);border-radius:6px}
+.answer-jobs{margin:4px 0 10px;font-size:.85em;color:var(--muted)}
+.answer-jobs .answer-job>strong{font-weight:normal}
 .answer-job+.answer-job{margin-top:10px;padding-top:10px;border-top:1px solid #8884}
 .answer-job-title{display:block;white-space:pre-wrap;overflow-wrap:anywhere;font-size:.9em;margin-top:3px}
 .answer-job p{margin:5px 0;overflow-wrap:anywhere}

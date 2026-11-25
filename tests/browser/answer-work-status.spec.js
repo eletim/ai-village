@@ -34,11 +34,11 @@ for(const width of [1440,390])test('answer-local states: advice, active, complet
  const rows={advice,work,done,question};
  const element=id=>page.locator('[data-entry='+JSON.stringify(JSON.stringify(['run','',rows[id].id]))+']');
  await expect(element('advice').locator('.answer-jobs')).toHaveCount(0);
- await expect(element('work').locator('.answer-job')).toHaveCount(2);
- await expect(element('work').locator('.answer-jobs')).toContainText('回答が必要');
- await expect(element('done').locator('.answer-job')).toHaveCount(1);
- await expect(element('done').locator('.answer-jobs')).toContainText('完了');
- await expect(element('done').locator('.answer-jobs')).not.toContainText('内部作業指示B');
+ await expect(element('work').locator('.answer-job')).toHaveCount(0);
+ await expect(element('question').locator('.answer-jobs')).toContainText('回答が必要');
+ await expect(element('done').locator('.answer-job')).toHaveCount(0);
+ await expect(element('done').locator('.answer-jobs')).toHaveCount(0);
+ 
  await expect(page.locator('.runs .answer-job-title')).toHaveCount(0);
  expect(await page.locator('.runs .answer-jobs').evaluateAll(es=>es.map(e=>e.outerHTML).join(''))).not.toMatch(/内部作業指示|追加指示を保存|順番に配送/);
  await expect(element('question')).toContainText('公開日を指定してください。');
@@ -63,16 +63,15 @@ for(const width of [1440,390])test('answer-local states: advice, active, complet
    const host=document.querySelector('.runs .answer-jobs');
    host.outerHTML=answerJobsHTML({answerJobs:[{id:'state-probe',code,label:'確認中',instruction:'内部作業指示 追加指示を保存できます。'}]});
   },code);
-  await expect(page.locator('[data-answer-job="state-probe"]')).toHaveText(({working:'作業中',evaluating:'確認中',completed:'完了'})[code]);
-  expect(await page.locator('[data-answer-job="state-probe"]').evaluate(e=>e.outerHTML)).not.toMatch(/内部作業指示|追加指示|title=/);
+  if(code==='completed')await expect(page.locator('[data-answer-job="state-probe"]')).toHaveCount(0);else {await expect(page.locator('[data-answer-job="state-probe"]')).toHaveText(({working:'作業中',evaluating:'確認中'})[code]);expect(await page.locator('[data-answer-job="state-probe"]').evaluate(e=>e.outerHTML)).not.toMatch(/内部作業指示|追加指示|title=/);}
   await page.screenshot({path:info.outputPath('short-'+code+'-'+width+'.png')});
  }
  const failed=f.service.flow.run(b.runId);
  if(failed.runModel.state.kind==='queued'){await f.service.tick();}
 
  changeRun(failed,{type:'lost',actor:'program',at:Date.now(),reason:'受付不明'});failed.error='受付不明';await f.service.save();
- await notifySnapshot(page);await expect(element('work').locator('.answer-jobs')).toContainText('停止中');
- await expect(element('work').locator('.answer-jobs')).toContainText('受付不明');
+ await notifySnapshot(page);await expect(element('question').locator('.answer-jobs')).toContainText('停止中');
+ await expect(element('question').locator('.answer-jobs')).toContainText('受付不明');
  await expect(page.locator('[data-send="'+work.agentId+'"] [type=submit]')).toBeEnabled();
  await page.screenshot({path:info.outputPath('answer-failure-'+width+'.png')});
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);

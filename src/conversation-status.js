@@ -7,7 +7,8 @@ function jobHTML(j,details=false){
  (stopped?'<p>'+esc(j.reason||j.label)+'</p><p>'+esc(j.next)+'</p>':'')+'</div>';
 }
 export function answerJobsHTML(r){
- return (r.answerJobs||[]).length?'<section class="answer-jobs" aria-label="この回答に関係する依頼">'+r.answerJobs.map(j=>jobHTML(j)).join('')+'</section>':'';
+ const jobs=(r.answerJobs||[]).filter(j=>!['completed','human-closed','withdrawn'].includes(j.code));
+ return jobs.length?'<section class="answer-jobs" aria-label="この回答に関係する依頼">'+jobs.map(j=>jobHTML(j)).join('')+'</section>':'';
 }
 export function conversationWorkHTML(a){
  const summary=a.conversationWork;if(!summary)return '';
@@ -33,4 +34,11 @@ export function conversationTurnHTML(r){
  const failed=!!error||['failed','interrupted','unconfirmed'].includes(c.code);
  const label=({queued:'送信待ち','receipt-pending':'送信を確認中',responding:'応答中',cancelled:'送信取消済み',failed:'返答に失敗しました',interrupted:'返答が中断されました',unconfirmed:'送信結果を確認できません'})[c.code]||(error?'処理中にエラーが発生しました':c.label);
  return '<p class="run-status">'+esc(label)+'</p>'+(failed&&error?'<details class="conversation-error"><summary>エラー詳細</summary><p>'+esc(error)+'</p></details>':'');
+}
+
+// Keep current status beside only the latest related answer; never infer a link from text.
+export function latestAnswerStatuses(entries){
+ const last=new Map();
+ for(const r of entries)for(const j of r.answerJobs||[])last.set(j.purposeId||j.id,r.id);
+ return entries.map(r=>({...r,answerJobs:(r.answerJobs||[]).filter(j=>last.get(j.purposeId||j.id)===r.id)}));
 }

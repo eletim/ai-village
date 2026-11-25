@@ -57,7 +57,7 @@ for(const width of [1440,390])test('actual graph and delivery projections distin
   await f.service.flow.finish({humanRequestId:leader.humanRequestId,workId:leader.workId,runId:leader.id,operationId:randomUUID(),inputs:f.service.flow.inputs(leader.humanRequestId,leader.workId).map(i=>i.id),results:[]});
   await f.complete(leader);await notifySnapshot(page);await expect(summary).toContainText('秘書の確認待ち');
   const delivery=f.service.flow.run(f.service.conversations.record(r.conversationId).deliveries[0].runId);await f.submit(delivery);await acceptDelivery(f,delivery);await f.complete(delivery);await notifySnapshot(page);
-  await expect(summary).toContainText('完了');await expect(page.locator('.agent-recovery-host .conversation-work')).toHaveCount(0);
+  await expect(page.locator('.runs .answer-jobs')).toHaveCount(0);await expect(page.locator('.agent-recovery-host .conversation-work')).toHaveCount(0);
   await page.screenshot({path:info.outputPath('completed-review-'+width+'.png')});
   const bad=await f.service.send(r.agentId,{mode:'conversation',requestId:randomUUID(),instruction:'受付不明の新しい入力'});
   const {changeRun}=await import('../../server/run-lifecycle.mjs');changeRun(bad,{type:'lost',actor:'program',at:Date.now(),reason:'timeout'});bad.error='competing-or-unmatched-input';await f.service.save();await notifySnapshot(page);
