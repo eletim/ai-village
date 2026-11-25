@@ -22,7 +22,7 @@ const GUIDANCE=[
  [/今回の正式配送資料がありません/,'accept/ask は、リーダーの結果が届いた回で使います。この回には届いた結果がありません。village status で状況を確認してください。'],
  [/現在の正常な提出結果だけを採用/,'この結果は最新ではないか、正常に提出されていません。village status で最新の状態を確認してください。'],
  [/後着の人間入力があります/,'この後に人間の新しい発言が届いています。その回で改めて判断してください。'],
- [/前の判断の正常終了を待って/,'前の判断がまだ確定していません。その回の終了を待ってください。'],
+ [/前の(?:秘書)?判断の正常終了を待って/,'前の判断がまだ確定していません。その回の終了を待ってください。'],
  [/受付照合済みの実行中秘書会話run/,'--run には、今答えている回の <village run="…"/> の値を渡してください。終わった回や別の秘書の回は使えません。'],
  [/具体的な人間の回答を待っています/,'人間への質問の答えを待っています。人間が答えた回で followup してください。'],
  [/達成報告後の追加指示/,'達成を報告した目的です。続きは、人間の新しい発言が届いた回で followup してください。'],
@@ -40,17 +40,18 @@ export class SecretaryCommands {
  constructor(d){this.d=d;}
  operationId(run,action,parts){return 'village-'+createHash('sha256').update(JSON.stringify([run,action,...parts])).digest('hex').slice(0,40);}
  // The run, its conversation and the purposes visible to it.
- context(run){
+ async context(run){
   if(typeof run!=='string'||!RUN.test(run))fail('--run に発言末尾の <village run="…"/> の値を指定してください。');
   const r=this.d.flow.run(run);
   if(!r?.conversationId)fail('この run は秘書の会話の回ではありません。--run には <village run="…"/> の値を渡してください。',404);
   const c=this.d.conversations.record(r.conversationId);
+  if(r.runModel.state.kind==='sent'&&!r.acceptedAt)await this.d.conversations.read(c.id,run);
   const purposes=this.d.data.requests.filter(q=>q.conversationId===c.id&&purposeId(q)===q.id&&this.d.data.runs.some(x=>x.id===q.requestedBy?.actorRunId&&x.conversationSequence<=r.conversationSequence));
   return {r,c,purposes};
  }
  // The human utterance of this run, or the original permission of the delivered purpose.
  authorization({r,c}){
-  if(r.conversationSource?.kind==='human')return {runId:r.id,quote:r.instruction};
+  if(r.conversationSource?.kind==='human')return {runId:r.id,quote:r.instruction.slice(0,500)};
   const e=deliveryOf(c,r);
   if(!e)fail('この回は人間の発言でもリーダーの結果でもないため、許可を引き継げません。人間の発言が届いた回で操作してください。',403);
   const original=this.d.flow.root(purposeId(this.d.flow.root(e.humanRequestId)));
@@ -69,28 +70,30 @@ export class SecretaryCommands {
   return found[0].id;
  }
  async order(run,instruction){
-  const x=this.context(run);
+  const x=await this.context(run);
   return this.d.conversations.job({conversationId:x.c.id,actorRunId:run,operationId:this.operationId(run,'order',[instruction]),instruction,authorization:this.authorization(x)}).catch(e=>guide(e,'order'));
  }
  async followup(run,purpose,instruction){
-  const x=this.context(run),id=this.purpose(x,purpose,{optional:true});
+  const x=await this.context(run),id=this.purpose(x,purpose,{optional:true});
   return this.d.conversations.followup({conversationId:x.c.id,actorRunId:run,operationId:this.operationId(run,'followup',[id,instruction]),purposeId:id,instruction}).catch(e=>guide(e,'followup'));
  }
  async accept(run,reason){
-  const x=this.context(run);
+  const x=await this.context(run);
+  const delivery=deliveryOf(x.c,x.r);
+  if(delivery&&delivery.kind!=='result')fail('成果ではない資料はacceptできません。相談への回答はfollowup、人間への質問はaskを使ってください。');
   return this.d.conversations.decide({conversationId:x.c.id,actorRunId:run,operationId:this.operationId(run,'accept',[reason]),decision:'accept',reason}).catch(e=>guide(e,'accept'));
  }
  async ask(run,question){
-  const x=this.context(run);
+  const x=await this.context(run);
   return this.d.conversations.decide({conversationId:x.c.id,actorRunId:run,operationId:this.operationId(run,'ask',[question]),decision:'question',reason:question,question}).catch(e=>guide(e,'ask'));
  }
  async withdraw(run,purpose,reason){
-  const x=this.context(run),id=this.purpose(x,purpose),q=purposeLeaf(this.d.data,this.d.flow.root(id));
+  const x=await this.context(run),id=this.purpose(x,purpose),q=purposeLeaf(this.d.data,this.d.flow.root(id));
   return this.d.conversations.withdraw({conversationId:x.c.id,actorRunId:run,operationId:this.operationId(run,'withdraw',[id,reason]),humanRequestId:q.id,instruction:reason,authorization:this.authorization(x)}).catch(e=>guide(e,'withdraw'));
  }
  // Read only: the purposes of this conversation and what was delivered in this run.
  async status(run){
-  const x=this.context(run),view=await this.d.conversations.read(x.c.id,run).catch(e=>guide(e,'status'));
-  return {run,purposes:view.purposes.map(p=>({id:p.id,state:p.state?.label||null,reason:p.state?.reason||undefined,question:p.state?.question||undefined,decision:p.decision?{kind:p.decision.kind,state:p.decision.state}:null,objective:p.objective?String(p.objective).slice(0,200):undefined})),delivered:view.currentDeliveries.map(e=>({kind:e.kind,purpose:purposeId(this.d.flow.root(e.humanRequestId))}))};
+  const x=await this.context(run),view=await this.d.conversations.read(x.c.id,run).catch(e=>guide(e,'status'));
+  return {run,purposes:view.purposes.map(p=>({id:p.id,state:p.state?.label||null,reason:p.state?.reason||undefined,question:p.state?.question||undefined,decision:p.decision?{kind:p.decision.kind,state:p.decision.state}:null,objective:String(this.d.flow.root(p.id).instruction).slice(0,200)})),delivered:view.currentDeliveries.map(e=>({kind:e.kind,purpose:purposeId(this.d.flow.root(e.humanRequestId))}))};
  }
 }
