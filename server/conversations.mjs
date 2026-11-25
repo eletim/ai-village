@@ -1,3 +1,7 @@
+import {recoverMissingDecision,resultSourceEvent,retireDecisionReminder} from './conversation-decision-recovery.mjs';
+import {resolveFollowup} from './conversation-followup.mjs';
+import {conversationContext,conversationMaterial} from './conversation-context.mjs';
+import {conversationRunOwner} from './conversation-request-owner.mjs';
 import {purposeId,purposeView,conversationDisplayMode} from './conversation-purpose.mjs';
 import {conversationJob,conversationTurn,conversationControl} from './conversation-status.mjs';
 import {responseText} from '../src/response-text.js';
@@ -22,9 +26,10 @@ export class Conversations {
   for(const c of this.d.data.conversations){
    if(!c.id||ids.has(c.id)||!Number.isSafeInteger(c.sequence)||!Array.isArray(c.operations)||!Array.isArray(c.deliveries))throw Error('Invalid conversation record');ids.add(c.id);
    const runs=this.d.data.runs.filter(r=>r.conversationId===c.id),sequences=new Set(runs.map(r=>r.conversationSequence));
-   if(sequences.size!==runs.length||runs.some(r=>r.agentId!==c.agentId&&!(c.handoverHistory||[]).some(h=>h.fromAgentId===r.agentId&&h.historicalRunIds.includes(r.id)&&r.runModel.state.kind==='ended')||r.humanRequestId||r.runModel.phase!=='conversation'||!Number.isSafeInteger(r.conversationSequence)||r.conversationSequence<1||r.conversationSequence>c.sequence||!['human','leader','program'].includes(r.conversationSource?.kind)||r.runModel.createdBy!==(r.conversationSource.kind==='human'?'human':'program')))throw Error('Invalid conversation run');
+   if(sequences.size!==runs.length||runs.some(r=>!conversationRunOwner(this.d.data,c,r)||r.humanRequestId||r.runModel.phase!=='conversation'||!Number.isSafeInteger(r.conversationSequence)||r.conversationSequence<1||r.conversationSequence>c.sequence||!['human','leader','program'].includes(r.conversationSource?.kind)||r.runModel.createdBy!==(r.conversationSource.kind==='human'?'human':'program')))throw Error('Invalid conversation run');
    if(runs.some(r=>r.conversationDisplay&&(!['reply','progress'].includes(r.conversationDisplay.mode)||!Number.isSafeInteger(r.conversationDisplay.version)||r.conversationDisplay.version<1)))throw Error('Invalid conversation display');
    if(new Set(c.deliveries.map(e=>e.id)).size!==c.deliveries.length||c.deliveries.some(e=>!runs.some(r=>r.id===e.runId&&r.conversationSource.deliveryId===e.id)||!this.d.flow.requests.some(q=>q.id===e.humanRequestId&&q.conversationId===c.id)))throw Error('Invalid conversation delivery');
+   for(const e of c.deliveries.filter(e=>e.decisionRecovery))if(!resultSourceEvent(c,e))throw Error('Invalid decision recovery delivery');
    for(const d of c.purposeDecisions||[]){
     if(!['accept','continue','resume','question'].includes(d.kind)||!runs.some(r=>r.id===d.actorRunId)||!c.deliveries.some(e=>e.id===d.deliveryId&&e.humanRequestId===d.humanRequestId)||!this.d.flow.requests.some(q=>q.id===d.purposeId&&q.conversationId===c.id)||!Number.isSafeInteger(d.humanSequence))throw Error('Invalid purpose decision');
     if(d.kind==='continue'&&!this.d.flow.requests.some(q=>q.id===d.successorRequestId&&q.continuesRequestId===d.humanRequestId&&q.purposeId===d.purposeId))throw Error('Invalid purpose continuation');
@@ -44,7 +49,11 @@ export class Conversations {
   // An Agent can call get before the event monitor has observed its first input.
   // Refresh only a dispatched, still-unbound run; never reopen terminal unknowns.
   if(r&&r.runModel.state.kind==='sent'&&!accepted(r))await this.d.locked(c.agentId,()=>this.d.observe(this.d.agent(c.agentId)));
-  return this.get(id,actorRunId);
+  const view=this.get(id,actorRunId);return actorRunId?conversationContext(view,actorRunId):view;
+ }
+ async material(id,actorRunId,selector){
+  if(!actorRunId)fail('現在の会話runを指定してください',403);
+  await this.read(id,actorRunId);return conversationMaterial(this.get(id,actorRunId),actorRunId,selector);
  }
  get(id,actorRunId){
   const c=this.record(id),all=this.d.data.runs.filter(r=>r.conversationId===id);
@@ -121,7 +130,7 @@ export class Conversations {
 
  currentPurposeInput(c,actor,x){
   if(x.humanRequestId!==undefined||x.continuesRequestId!==undefined||x.deliveryId!==undefined||x.expectedPurposeVersion!==undefined)return x;
-  const event=c.deliveries.find(e=>e.runId===actor.id&&e.id===actor.conversationSource?.deliveryId);
+  const event=resultSourceEvent(c,c.deliveries.find(e=>e.runId===actor.id&&e.id===actor.conversationSource?.deliveryId));
   if(!event)fail('今回の正式配送資料がありません。別対象は詳細指定で確認してください');
   const q=this.d.flow.root(event.humanRequestId);
   return {...x,humanRequestId:q.id,deliveryId:event.id,expectedPurposeVersion:purposeView(this.d.data,q).version};
@@ -133,7 +142,7 @@ export class Conversations {
   const view=purposeView(this.d.data,q);
   if(view.currentRequestId!==q.id)fail('この目的には後続の仕事があります');
   if(!Number.isSafeInteger(x.expectedPurposeVersion)||x.expectedPurposeVersion!==view.version)fail('目的のversionが変わりました。conversations getで確認してください');
-  const event=c.deliveries.find(e=>e.id===x.deliveryId&&e.humanRequestId===q.id);
+  const event=resultSourceEvent(c,c.deliveries.find(e=>e.id===x.deliveryId&&e.humanRequestId===q.id));
   const source=event&&this.d.flow.run(event.runId);
   if(!source||source.conversationSequence>actor.conversationSequence||!accepted(source))fail('正式配送済みの資料だけを評価してください',403);
   if(this.d.data.runs.some(r=>r.conversationId===c.id&&r.conversationSource?.kind==='human'&&r.conversationSequence>actor.conversationSequence&&!r.queueCancelledAt))fail('後着の人間入力があります。配送後に判断してください');
@@ -173,6 +182,12 @@ export class Conversations {
    const old=c.operations.find(o=>o.id===x.operationId);
    if(old){if(old.payload!==payload)fail('operationIdの再利用です');return structuredClone(old.receipt);}
    const actor=this.actor(c,x.actorRunId);
+   if(action==='followup'){
+    if(Object.keys(x).some(k=>!['conversationId','actorRunId','operationId','purposeId','instruction'].includes(k)))fail('追加指示は目的IDと残作業を指定してください。追加権限は新規依頼で扱います');
+    const duplicate=c.operations.find(o=>{try{const p=JSON.parse(o.payload);return p.action==='followup'&&p.input.actorRunId===x.actorRunId&&p.input.purposeId===x.purposeId&&p.input.instruction===x.instruction;}catch{return false;}});
+    if(duplicate){c.operations.push({id:x.operationId,payload,receipt:structuredClone(duplicate.receipt),at:now()});await this.d.save();return structuredClone(duplicate.receipt);}
+    const resolved=resolveFollowup(this,c,actor,x);action=resolved.action;x=resolved.input;
+   }
    if(x.continue!==undefined&&x.continue!==true)fail('continueはtrueを指定してください',400);
    if(x.continue===true){
     if(action!=='job'||x.authorization!==undefined||x.continuesRequestId!==undefined||x.humanRequestId!==undefined||x.deliveryId!==undefined||x.expectedPurposeVersion!==undefined)fail('簡易継続に別の対象や許可は指定できません',400);
@@ -228,12 +243,13 @@ export class Conversations {
    c.operations.push({id:x.operationId,payload,receipt,at:now()});await this.d.save();return structuredClone(receipt);
   }));
  }
+ followup(x){return this.mutate('followup',x);}
  job(x){return this.mutate('job',x);}
  amend(x){return this.mutate('amend',x);}
  withdraw(x){return this.mutate('withdraw',x);}
  deliver(c,q,id,kind,material){
   if(c.deliveries.some(e=>e.id===id))return;
-  const e={id,kind,humanRequestId:q.id,createdAt:now(),material};
+  const e={id,kind,humanRequestId:q.id,createdAt:now(),material,...(kind==='result'?{decisionRecoveryVersion:1}:{})};
   const excerpt=JSON.stringify(e);
   const packet=excerpt.length<=10000?e:{id,kind,humanRequestId:q.id,createdAt:e.createdAt,truncated:true,read:['conversations','get',c.id],excerpt:excerpt.slice(0,8000)};
   const r=this.enqueue(c,{requestId:'conversation-delivery:'+id,instruction:'リーダーからの資料です（追加許可ではありません）。目的に照らし、達成の報告・許可内の修正継続・人間への具体質問を選んでください。今回の対象は基盤が照合します。\n'+JSON.stringify(packet),source:{kind:['attention','important-change'].includes(kind)?'program':'leader',humanRequestId:q.id,deliveryId:id}});
@@ -251,6 +267,14 @@ export class Conversations {
    applyGraph(this.d.data,q,{type:'deliver-conversation',actor:'program',requestId:w.id,resultId:s.id});
   }
   return c.deliveries.length!==before;
+ }
+ async recoverDecisions(){
+  return this.d.locked('request-graph',()=>this.d.persist(async()=>{
+   let changed=false;
+   for(const r of this.d.data.runs)if(retireDecisionReminder(this.d.data,r))changed=true;
+   for(const c of this.d.data.conversations)for(const q of this.d.data.requests.filter(q=>q.conversationId===c.id))if(recoverMissingDecision(this,c,q))changed=true;
+   if(changed)await this.d.save();return changed;
+  }));
  }
  async notifications(){
   for(const r of this.d.data.runs.filter(r=>r.conversationId&&r.notificationPolicy==='conversation'&&accepted(r)&&runState(r)==='completed')){

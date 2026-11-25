@@ -124,6 +124,7 @@ test('post-achievement correction requires a later delivered human input and kee
 });
 test('a real question or achieved report is not hidden by continuation of another purpose in the same reply',async t=>{
  const {f,human,auth,first,completeJob,args}=await purposeFixture(t),one=await completeJob(first);
+ delete one.event.decisionRecoveryVersion; // compatibility result intentionally evaluated on another purpose's reply
  const second=await f.service.conversations.job({conversationId:human.conversationId,actorRunId:one.delivery.id,operationId:randomUUID(),instruction:'別の目的',authorization:auth});
  await f.complete(one.delivery);const two=await completeJob(second);
  await f.service.conversations.decide({...args(one),actorRunId:two.delivery.id,decision:'question',question:'AとBのどちらにしますか'});
