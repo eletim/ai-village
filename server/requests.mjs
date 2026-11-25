@@ -176,7 +176,10 @@ export class RequestFlow {
  }));}
  schedulable(r){
   if(!r.humanRequestId)return true;const a=this.d.agent(r.agentId);if(a.location==='mayor'||!this.root(r.humanRequestId).inputProtocol)return true;
-  const owners=this.requests.filter(q=>requestStatus(q)==='active').flatMap(q=>q.requestGraph.nodes.filter(n=>n.assignee===a.id&&!n.planned&&n.state.kind==='active').map(n=>({n,at:this.run(n.runIds[0])?.createdAt||q.createdAt})));
+  // Conversation roots coordinate multiple jobs. Their unfinished graph is not
+  // an execution lock; native receipt/idle checks still serialize every turn.
+  // Ordinary workshop assignments retain exclusive ownership.
+  const owners=this.requests.filter(q=>requestStatus(q)==='active').flatMap(q=>q.requestGraph.nodes.filter(n=>n.assignee===a.id&&!n.planned&&n.state.kind==='active'&&!(q.conversationId&&!n.parentId&&n.recipient?.kind==='conversation'&&n.recipient.conversationId===q.conversationId)).map(n=>({n,at:this.run(n.runIds[0])?.createdAt||q.createdAt})));
   owners.sort((a,b)=>a.at.localeCompare(b.at));return !owners.length||owners[0].n.id===r.workId;
  }
  async dispatchQueued(r){

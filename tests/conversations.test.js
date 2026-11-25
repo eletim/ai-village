@@ -205,3 +205,38 @@ test('failed finish cannot resolve consultation and ordinary human leaf reports 
  await f.service.flow.report({humanRequestId:direct.humanRequestId,workId:direct.workId,actorRunId:direct.id,operationId:randomUUID(),kind:'question',text:'従来仕様'});
  await claim(f,direct);await f.complete(direct);assert.equal(f.service.flow.get(direct.humanRequestId).status,'completed');
 });
+
+test('waiting leader job releases execution for another job, survives restart and resumes original',async t=>{
+ const {f,r,args}=await setup(t);
+ const a=await f.service.conversations.job(args);await f.service.tick();
+ const ar=f.service.flow.run(a.runId);await f.submit(ar);
+ await f.service.flow.report({humanRequestId:a.humanRequestId,workId:a.workId,actorRunId:ar.id,operationId:randomUUID(),kind:'question',text:'Need a decision'});
+ await claim(f,ar);await f.complete(ar);
+ const b=await f.service.conversations.job({...args,operationId:randomUUID(),instruction:'Independent B'});
+ await f.service.tick();const br=f.service.flow.run(b.runId);
+ assert(f.sent.some(x=>x.text.includes(br.id)),'unfinished A must not block B');
+ await f.submit(br);
+ await f.service.conversations.amend({...args,operationId:randomUUID(),humanRequestId:a.humanRequestId,instruction:'Resume A'});
+ await f.service.tick();
+ const aw=f.service.flow.work(f.service.flow.root(a.humanRequestId),a.workId);
+ assert.equal(f.sent.filter(x=>x.agentId===ar.agentId).length,2,'no simultaneous native dispatch');
+ await claim(f,br,true);await f.complete(br);
+ const resume=f.service.flow.run(aw.currentRunId);assert.notEqual(resume.id,ar.id);
+ assert(f.sent.some(x=>x.text.includes(resume.id)));
+ await f.submit(resume);await claim(f,resume,true);await f.complete(resume);
+ await f.restart();await f.service.tick();
+ for(const job of [a,b])assert.equal(f.service.flow.work(f.service.flow.root(job.humanRequestId),job.workId).state.kind,'completed');
+ assert.equal(f.sent.filter(x=>x.text.includes(br.id)).length,1);
+ assert.equal(f.sent.filter(x=>x.text.includes(resume.id)).length,1);
+});
+
+test('leader can start next job while prior job awaits secretary answer',async t=>{
+ const {f,r,args}=await setup(t),a=await f.service.conversations.job(args);
+ await f.service.tick();const ar=f.service.flow.run(a.runId);await f.submit(ar);
+ await f.service.flow.report({humanRequestId:a.humanRequestId,workId:a.workId,actorRunId:ar.id,operationId:randomUUID(),kind:'question',text:'Need a decision'});
+ await claim(f,ar);await f.complete(ar);
+ const b=await f.service.conversations.job({...args,operationId:randomUUID()});
+ await f.restart();await f.service.tick();
+ assert(f.sent.some(x=>x.text.includes(b.runId)));
+ assert.equal(f.service.flow.work(f.service.flow.root(a.humanRequestId),a.workId).state.kind,'active');
+});
