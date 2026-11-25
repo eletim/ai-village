@@ -1,7 +1,7 @@
 # Rebuildable host-local index. Never writes the provider JSONL or request state.
 import os,json,time,hashlib,re,sqlite3,uuid,fcntl
 from pathlib import Path
-PARSER_VERSION=9
+PARSER_VERSION=10
 HASH_CHUNK=1024*1024
 VERIFY_BYTES=32*1024*1024
 BATCH_BYTES=32*1024*1024
