@@ -40,8 +40,11 @@ document.addEventListener('click',e=>{const r=e.target.closest('[data-resident]'
 $('#map-return').onclick=()=>{ $('.map-heading').scrollIntoView({block:'start',behavior:'auto'});$('#map-home').focus({preventScroll:true});};
 $('#map-home').onclick=()=>choose({place:null,resident:null});
 window.addEventListener('hashchange',()=>{readHash();render();});
+// The map reads its lean view (server/map-view.mjs). An older server, or one started with
+// VILLAGE_LEGACY_FETCH=1, answers the same URL with the complete snapshot; villageModel reads both.
+async function mapSnapshot(){const response=await fetch('/api/direct?view=map',{signal:AbortSignal.timeout(10000)});if(!response.ok)throw Error('offline');return response.json();}
 async function poll(){
- try{const response=await fetch('/api/direct',{signal:AbortSignal.timeout(10000)});if(!response.ok)throw Error('offline');const data=await response.json();if(!Array.isArray(data.agents)||!Array.isArray(data.workshops))throw Error('invalid snapshot');snapshot=data;hasSnapshot=true;online=true;connectionStatus($('#map-connection'),new Date().toLocaleTimeString(),{normal:true,label:'接続中 · 登録情報から表示'});}
+ try{const data=await mapSnapshot();if(!Array.isArray(data.agents)||!Array.isArray(data.workshops))throw Error('invalid snapshot');snapshot=data;hasSnapshot=true;online=true;connectionStatus($('#map-connection'),new Date().toLocaleTimeString(),{normal:true,label:'接続中 · 登録情報から表示'});}
  catch{online=false;connectionStatus($('#map-connection'),'接続未確認 · 再接続を待っています');}
  render();return online;
 }

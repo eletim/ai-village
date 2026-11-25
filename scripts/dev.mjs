@@ -3,6 +3,9 @@ import {humanUI} from '../server/human-ui.mjs';
 import {receiveUpload} from '../server/upload-limits.mjs';
 import {apiValue} from '../server/state-projection.mjs';
 import {workspaceSnapshot,historyPage} from '../server/conversation-pages.mjs';
+import {mapSnapshot} from '../server/map-view.mjs';
+// Rollback switch for the lean views (docs/lean-fetch.md): VILLAGE_LEGACY_FETCH=1 restores the full payloads.
+const leanFetch=process.env.VILLAGE_LEGACY_FETCH!=='1';
 import {WorkspaceSync} from '../server/workspace-sync.mjs';
 import {syncResponse} from '../server/sync-response.mjs';
 const workspaceSync=new WorkspaceSync();
@@ -65,10 +68,11 @@ const handleRequest = async (req, res) => {
           if(params.get('view')==='workspace'){
             let ranges;try{ranges=JSON.parse(params.get('ranges')||'{}');}catch{return json(res,400,{error:'Invalid history ranges'});}
             let focus=null;if(params.has('focus')){try{focus=JSON.parse(params.get('focus'));}catch{return json(res,400,{error:'Invalid focus agents'});}}
-            const snapshot=workspaceSnapshot(direct.presentation(),ranges,focus);
+            const snapshot=workspaceSnapshot(direct.presentation(),ranges,focus,{lean:leanFetch});
             if(params.get('sync')==='1')return await syncResponse(req,res,workspaceSync.reply({client:params.get('client'),since:params.get('since'),scope:(params.get('ranges')||'{}')+'|'+(params.get('focus')||'')},snapshot));
             return json(res,200,snapshot);
           }
+          if(params.get('view')==='map'&&leanFetch)return json(res,200,mapSnapshot(direct.presentation()));
           return json(res,200,direct.snapshot());
         }
         const history=pathname.match(/^\/api\/direct\/agents\/([^/]+)\/history$/);

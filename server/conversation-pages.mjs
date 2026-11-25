@@ -19,7 +19,14 @@ export function historyPage(view,agentId,before){
 // focus: null/undefined keeps every agent's conversation body in the snapshot (legacy/API callers).
 // An explicit array narrows bodies to just those agent IDs; every other agent still contributes its
 // latest entry's control (no instruction/output) so list-wide status and unread tracking stay correct.
-export function workspaceSnapshot(view,ranges={},focus=null){
+// lean (default for the UI route): leave out Agent audit material the Workspace never renders —
+// secretaryHandover, and all but the latest runtime migration's legacyRetirement (runtime-migration.js
+// reads only runtimeMigrations.at(-1).legacyRetirement). The full records stay in GET /api/direct.
+const leanAgent=({secretaryHandover,runtimeMigrations,...rest})=>{
+ const latest=runtimeMigrations?.at(-1);
+ return runtimeMigrations?{...rest,runtimeMigrations:latest?[latest.legacyRetirement?{at:latest.at,legacyRetirement:latest.legacyRetirement}:{at:latest.at}]:[]}:rest;
+};
+export function workspaceSnapshot(view,ranges={},focus=null,{lean=false}={}){
  if(!ranges||typeof ranges!=='object'||Array.isArray(ranges)||Object.keys(ranges).length>1000)throw Object.assign(Error('Invalid history ranges'),{status:400});
  let focusIds=null;
  if(focus!=null){
@@ -42,7 +49,7 @@ export function workspaceSnapshot(view,ranges={},focus=null){
   conversations[a.id]={entries:entries.map(r=>present(r,view)),hasMore:all.some(r=>window.length&&entryKey(r)<entryKey(window[0])),cursor:window.length?cursor(a.id,entryKey(window[0])):null};
  }
  const runs=view.runs.filter(r=>included.has(r.id));
- const agents=view.agents.map(a=>{const {nativeTurns,runtime,creationInput,ownedProcesses,processVerification,initialTabId,sessionName,...rest}=a;return {...rest,nativeTurns:(nativeTurns||[]).slice(-1).map(t=>({id:t.id,sessionId:t.sessionId,state:t.state}))};});
+ const agents=view.agents.map(a=>{const {nativeTurns,runtime,creationInput,ownedProcesses,processVerification,initialTabId,sessionName,...rest}=a;const agent={...rest,nativeTurns:(nativeTurns||[]).slice(-1).map(t=>({id:t.id,sessionId:t.sessionId,state:t.state}))};return lean?leanAgent(agent):agent;});
  const ids=new Set(runs.map(r=>r.humanRequestId));
  const requests=(view.requests||[]).filter(q=>ids.has(q.id)||q.status==='active'&&q.requestGraph?.nodes.some(n=>!focusIds||focusIds.has(n.assignee))).map(q=>({id:q.id,conversationId:q.conversationId,purposeStatus:q.purposeStatus,returnDelivery:q.returnDelivery,instruction:q.inputProtocol===1?(q.instruction||'').slice(0,100):'',status:q.status,finalRunId:q.finalRunId,revision:q.revision,needsReview:q.needsReview,waiting:q.waiting,requestGraph:q.requestGraph?{rootId:q.requestGraph.rootId,nodes:q.requestGraph.nodes.map(n=>({id:n.id,assignee:n.assignee,metadata:{instruction:(n.metadata?.instruction||'').slice(0,100),...(n.metadata?.reporting?{reporting:{completionAt:n.metadata.reporting.completionAt,reportAt:n.metadata.reporting.reportAt,reportReceivedAt:n.metadata.reporting.reportReceivedAt,expired:n.metadata.reporting.expired,latestReport:n.metadata.reporting.reports?.at(-1)}}:{})},inbox:(!focusIds||focusIds.has(n.assignee))?(n.inbox||[]).filter(i=>i.kind==='supplement').map(i=>({id:i.id,operationId:i.operationId})):[],currentRunId:n.currentRunId,parentId:n.parentId,state:n.state}))}:undefined}));
  // runs are referenced by controls, but their bodies are carried only once in conversations.
