@@ -69,7 +69,7 @@ export function conversationJob(data,q){
   const delivery=data.runs.find(r=>r.id===execution.deliveryRunId);
   if(delivery&&['failed','interrupted','terminated'].includes(state(delivery)))return {...base,...status('attention','停止中','秘書の確認が完了しませんでした。','成果の確認が必要です。')};
   // Contract 3: no re-delivery; the result simply waits for the secretary (secretary-minimal-prompt.md 4.3).
-  if(delivery?.requiresPurposeDecision&&state(delivery)==='completed'&&accepted(delivery)&&d?.state!=='pending'&&data.conversations?.find(c=>c.id===leaf.conversationId)?.deliveries.find(e=>e.runId===delivery.id)?.secretaryContract===3)return {...base,...status('evaluating','秘書の確認待ち','','成果は保存されています。')};
+  if(delivery?.requiresPurposeDecision&&state(delivery)==='completed'&&accepted(delivery)&&d?.state!=='pending'&&data.conversations?.find(c=>c.id===leaf.conversationId)?.deliveries.find(e=>e.runId===delivery.id)?.secretaryContract===3)return {...base,...status('evaluating','秘書の確認待ち（判断記録なし）','','成果は保存されています。')};
   if(delivery?.requiresPurposeDecision&&state(delivery)==='completed'&&accepted(delivery)&&d?.state!=='pending')return {...base,...status('attention','停止中','成果の確認が終わらないまま返答が終了しました。','成果は保存されています。')};
   // Legacy deliveries predate purpose-decision records. Nothing is scheduled for them;
   // show the missing record as such, never as an ongoing check or an inferred adoption.
