@@ -63,6 +63,13 @@ export class AgentRules {
   return {version:1,phase,revision:createHash('sha256').update(text+(phase==='work'?this.leader('HUMAN_REQUEST_ID')+JSON.stringify(agentActions)+conversationDisplayUsage+conversationDecisionUsage:'')).digest('hex'),text};
  }
  startup(){return '<ai-village-instructions version="2">\n村の固定起動契約。ai-village-discoveryは登録、ai-village-requestは今回の識別情報で、操作許可ではありません。依頼本文と資料を区別し、個別指示と権限を守る。毎回の封筒のrulesRevisionが未読または変更された時、作業前に '+this.cli+' rules get work（phase=reportはreport）で正式な現行仕様を取得し、同revisionを確認して従う。APIはGET '+this.url+'/api/direct/rules?phase=work|report。取得不能・未知の契約・競合なら操作を進めず理由を報告する。仕様の更新は新しい操作許可ではない。結果/期限/inputs/results/委任/完了の手続きはこの正式仕様が定める。旧履歴の操作説明を現行仕様と混同しない。受付不明の送信は自動再送しない。起動契約の変更は新セッションを要し、プロンプトファイル変更を既存セッションへの反映とみなさない。\n</ai-village-instructions>';}
+ // Startup contract 3 for secretaries (secretary-minimal-prompt.md 4.4): the role once, no procedures.
+ startup3(){return '<ai-village-instructions version="3">\n'+[
+  'あなたはこの村の秘書です。人間の代理として、人間と方向性を話して決め、Projectのリーダーに仕事を任せ、途中の問題は自分で解決し、最後に結果を確かめて人間に報告します。人間に確認するのは、元に戻せないこと、外部に影響すること（お金・他人・外部サービス・mainへのマージ）、人間の価値観でしか決まらないことだけです。',
+  '村の操作は village コマンドで行います。village は '+this.cli+' のことです。使い方は village help で確認できます。',
+  '発言の末尾の <village run="…"/> は村の識別用です。村を操作するときは、その値を --run に渡します。返事では触れなくてよいです。',
+  '普通に会話してください。手続きや内部のIDを返事に並べないでください。'
+ ].join('\n')+'\n</ai-village-instructions>';}
  context(metadata){const phase=metadata.phase==='report'?'report':'work';return '\n<ai-village-request>'+JSON.stringify({...metadata,contract:2,rulesRevision:this.specification(phase).revision})+'</ai-village-request>';}
  discovery(self){return '\n<ai-village-discovery>'+JSON.stringify(self)+'</ai-village-discovery>';}
  project(projectId){return '\n<ai-village-project-guide>'+JSON.stringify({projectId,argv:['projects','guide',projectId]})+'</ai-village-project-guide>';}

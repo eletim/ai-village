@@ -27,7 +27,7 @@ import {migrateAgentStore} from './agent-migration.mjs';
 import {changeRun,observeRun,tracking,modelOf,runState} from './run-lifecycle.mjs';
 import {migrateRequestStore} from './request-migration.mjs';
 import {migrateRunStore} from './run-migration.mjs';
-import {inputCorrelation,installInstructionsScript,verifyInstructionsScript} from './input-envelope.mjs';
+import {inputCorrelation,installInstructionsScript,verifyInstructionsScript,startupContract,installContract} from './input-envelope.mjs';
 import {sessionModel} from './session-model.mjs';
 import {ProjectGuides} from './project-guides.mjs';
 import {humanProjection} from './report-view.mjs';
@@ -100,7 +100,7 @@ export class DirectAgents {
       a.connection.connectionType ||= 'ssh';
       a.inputEnvelope ||= {mode:'legacy'};
       enrollLegacy(a);
-      if(a.inputEnvelope.mode==='startup-v2'&&a.inputEnvelope.hash!==createHash('sha256').update(this.startupInstructions()).digest('hex'))a.inputEnvelope={...a.inputEnvelope,mode:'migration-required',reason:a.inputEnvelope.reason||'startup-contract-upgrade-required'};
+      if(a.inputEnvelope.mode==='startup-v2'&&a.inputEnvelope.hash!==createHash('sha256').update(this.startupInstructions(a)).digest('hex'))a.inputEnvelope={...a.inputEnvelope,mode:'migration-required',reason:a.inputEnvelope.reason||'startup-contract-upgrade-required'};
       a.modelInfo={available:false};
       bindAgent(a);delete a.steerTarget;
       // A removed tab identity cannot be reused; otherwise live observations expire on restart.
@@ -244,7 +244,7 @@ export class DirectAgents {
   secretaryContext(agent){const identity=agentIdentity(agent);return this.rules.discovery({agentId:agent.id,role:identity.role,location:identity.location,projectId:agent.projectId||null});}
   instructionStatus(id){
     const a=this.agent(id),runs=this.data.runs.filter(r=>r.agentId===id),tracking=runs.filter(r=>['sent','running'].includes(modelOf(r).state.kind));
-    return {agentId:id,envelope:structuredClone(a.inputEnvelope||{mode:'migration-required'}),requiredContract:2,
+    return {agentId:id,envelope:structuredClone(a.inputEnvelope||{mode:'migration-required'}),requiredContract:a.inputEnvelope?.contract===3?3:2,newSessionContract:installContract(a),
       requiresFreshSession:a.inputEnvelope?.mode!=='startup-v2',tracking:tracking.map(r=>({runId:r.id,state:modelOf(r).state.kind,requestId:r.humanRequestId})),
       legacyRetirement:a.runtimeMigrations?.at(-1)?.legacyRetirement||null,
       retirementHolds:runs.filter(r=>r.queuedReason==='legacy-retirement-held').map(r=>({runId:r.id,workId:r.workId,humanRequestId:r.humanRequestId,reason:r.error})),
@@ -300,7 +300,7 @@ export class DirectAgents {
       if(!launchProfileReady(b))fail('新ランタイムのlaunchProfile/startup観測を確認できません');
       if(a.launchProfile&&JSON.stringify(a.launchProfile)!==JSON.stringify(b.launchProfile))fail('移行前のlaunchProfileを保持してください');
       await this.verifyInstructions(b);
-      if(b.inputEnvelope?.mode!=='startup-v2'||b.inputEnvelope.hash!==createHash('sha256').update(this.startupInstructions()).digest('hex'))fail('新ランタイムの固定起動契約を確認できません');
+      if(b.inputEnvelope?.mode!=='startup-v2'||b.inputEnvelope.hash!==createHash('sha256').update(this.startupInstructions(b)).digest('hex'))fail('新ランタイムの固定起動契約を確認できません');
       let stoppedVerification=null;
       const verifyStopped=async()=>{
         const checkTab=async()=>{
@@ -316,7 +316,7 @@ export class DirectAgents {
       if(stopped)await verifyStopped();
       const freshProof=adoptionFreshProof(a,b,this.data.runs,oldSnapshot);
       const oldObservation=structuredClone(a.agentModel.observation),freshObservation=structuredClone(b.agentModel.observation);
-      const keys=['launchProfile','launchEvidence','workspaceId','initialTabId','tabId','sessionName','terminalUrl','runtime','observedSessionId','inputEnvelope','modelInfo','setupRequired','ownedProcesses','processVerification','terminatedAt','lastCheckedAt'];
+      const keys=['secretaryGuideSeen','launchProfile','launchEvidence','workspaceId','initialTabId','tabId','sessionName','terminalUrl','runtime','observedSessionId','inputEnvelope','modelInfo','setupRequired','ownedProcesses','processVerification','terminatedAt','lastCheckedAt'];
       const fields=o=>Object.fromEntries(keys.filter(k=>o[k]!==undefined).map(k=>[k,structuredClone(o[k])]));
       const old=fields(a),replacement=fields(b);
       return this.persist(async()=>{
@@ -343,14 +343,15 @@ export class DirectAgents {
       });
     })));
   }
-  startupInstructions(){return this.rules.startup();}
+  // The fixed contract text an Agent was (or is to be) started with: version 3 or 2.
+  startupInstructions(a){return a?.inputEnvelope?.contract===3?this.rules.startup3():this.rules.startup();}
   async installInstructions(a){
     if(a.tabId)throw Error('既存セッションへ起動契約を再インストールできません。新しいAgentを作成してください。');
     let envelope={mode:'migration-required',reason:'startup-receipt-invalid'};
     try{
-      const body=this.startupInstructions();
+      const contract=installContract(a),body=contract===3?this.rules.startup3():this.rules.startup();
       const receipt=JSON.parse(await this.execute(a,['python3','-c',installInstructionsScript,a.workspaceId,a.provider,body]));
-      if(receipt.installed===true&&receipt.hash===createHash('sha256').update(body).digest('hex'))envelope={mode:'startup-v2',hash:receipt.hash,installedAt:now()};
+      if(receipt.installed===true&&receipt.hash===createHash('sha256').update(body).digest('hex'))envelope={mode:'startup-v2',hash:receipt.hash,installedAt:now(),...(contract===3?{contract:3}:{})};
     }catch{envelope={mode:'migration-required',reason:'startup-instructions-unavailable'};}
     await this.persist(async()=>{a.inputEnvelope=envelope;await this.save();});
   }
@@ -501,12 +502,16 @@ export class DirectAgents {
     }
     const status=a.runtime;
     if(runState(r)!=='queued'||r.phase==='report'&&!this.flow.reportCurrent(r))return r;
+    // Contract 3 secretary turn (4.1, 4.4): only the tag; the Project policy is mentioned once when
+    // the secretary has not seen its current version.
+    const plain=startupContract(a)===3&&!!r.conversationId;
+    const guide=plain&&a.projectId?await this.projectGuides.get(a.projectId,'secretary').catch(()=>null):null;
     const deliveredInstruction=await this.persist(async()=>{
       if(retireDecisionReminder(this.data,r)){await this.save();return null;}
       if(this.agentDeleting(a)||runState(r)!=='queued'||r.phase==='report'&&!this.flow.reportCurrent(r))return null;
       if(!retirementIntact(this.data,a)||!retirementRunAllowed(this.data,a,r))return null;
       const compatibility=legacyAllowed(a);if(a.inputEnvelope?.mode!=='startup-v2'&&!compatibility)return null;
-      if(confirmed.unrecorded===true&&!noCurrentRuntimeSends(a,this.data.runs,a.runtime,confirmed,createHash('sha256').update(this.startupInstructions()).digest('hex')))return null;
+      if(confirmed.unrecorded===true&&!noCurrentRuntimeSends(a,this.data.runs,a.runtime,confirmed,createHash('sha256').update(this.startupInstructions(a)).digest('hex')))return null;
       const instruction=r.phase==='report'?this.flow.reportPrompt(this.flow.root(r.humanRequestId)):r.instruction;
       r.instruction=instruction;r.attachmentFiles=files;r.attachmentError=null;delete r.queuedReason;delete r.error;
       const migration=a.runtimeMigrations?.at(-1);
@@ -516,7 +521,9 @@ export class DirectAgents {
       }
       // Codex's composer strips outer whitespace. Canonicalize before BOTH send and
       // fingerprint; never relax matching or reinterpret already-dispatched runs.
-      const body=instruction+this.secretaryContext(a)+this.flow.context(r)+(compatibility?legacyContext(this.rules,r,a):'');
+      const policy=guide?.available&&a.secretaryGuideSeen!==a.projectId+':'+guide.hash?'Projectの方針が更新されました（projects guide '+a.projectId+' secretary で読めます）。\n\n':'';
+      if(policy)a.secretaryGuideSeen=a.projectId+':'+guide.hash;
+      const body=policy+instruction+(plain?'':this.secretaryContext(a))+this.flow.context(r)+(compatibility?legacyContext(this.rules,r,a):'');
       const text=a.provider==='codex'?body.trim():body;
       if(r.steerTarget){const previous=this.flow.run(r.steerTarget.runId);changeRun(previous,{type:'close-tracking',actor:'human',reason:'steering-successor-dispatched'});}
       changeRun(r,{type:'dispatch',actor:'program',at:Date.now(),sessionId:confirmed.sessionId||null,agentIdle:true});
@@ -579,7 +586,7 @@ export class DirectAgents {
       return await this.persist(async()=>{
       const before=this.observationKey(a,roots.runs);
       if(!a.agentModel)bindAgent(a);
-      const freshClaude=a.provider==='claude'&&snapshot.unrecorded===true&&s.alive&&ready(s)&&s.lastEvent?.name==='session-start'&&!s.lastUserMessage&&noCurrentRuntimeSends(a,this.data.runs,s,snapshot,createHash('sha256').update(this.startupInstructions()).digest('hex'));
+      const freshClaude=a.provider==='claude'&&snapshot.unrecorded===true&&s.alive&&ready(s)&&s.lastEvent?.name==='session-start'&&!s.lastUserMessage&&noCurrentRuntimeSends(a,this.data.runs,s,snapshot,createHash('sha256').update(this.startupInstructions(a)).digest('hex'));
       a.error=null;a.lastCheckedAt=now();a.runtime=s;
       a.modelInfo=sessionModel(snapshot,s);
       a.setupRequired=setupRequired;

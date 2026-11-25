@@ -329,5 +329,6 @@ export class Conversations {
    });
   }
  }
- context(r){return this.d.rules.dynamic(r)+this.d.rules.context({mode:'conversation',conversationId:r.conversationId,runId:r.id,phase:'work',historyRead:['conversations','get',r.conversationId,r.id],source:r.conversationSource,sequence:r.conversationSequence});}
+ // Contract 3 (4.1): the turn carries only <village run="RUN_ID"/> after its own attachments.
+ context(r){if(startupContract(this.d.data.agents.find(a=>a.id===r.agentId))===3)return this.d.rules.dynamic(r)+'\n<village run="'+r.id+'"/>';return this.d.rules.dynamic(r)+this.d.rules.context({mode:'conversation',conversationId:r.conversationId,runId:r.id,phase:'work',historyRead:['conversations','get',r.conversationId,r.id],source:r.conversationSource,sequence:r.conversationSequence});}
 }
