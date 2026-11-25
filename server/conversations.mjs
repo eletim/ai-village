@@ -30,12 +30,12 @@ function purposeLabel(data,c,q){
 }
 function plainDelivery(data,c,q,kind,material,id){
  const label=purposeLabel(data,c,q);
- const body=text=>{text=String(text||'');return text.length<=DELIVERY_BODY_LIMIT?text:text.slice(0,DELIVERY_BODY_LIMIT)+'\n\n（長いため途中までです。全文：conversations read '+c.id+' RUN_ID JSON {"kind":"delivery","id":"'+id+'"}。RUN_ID は末尾のタグの値）';};
+ const body=text=>{text=String(text||'');return text.length<=DELIVERY_BODY_LIMIT?text:text.slice(0,DELIVERY_BODY_LIMIT)+'\n\n（長いため途中までです。全文：conversations read '+c.id+' RUN_ID \'{"kind":"delivery","id":"'+id+'"}\'。RUN_ID は末尾のタグの値）';};
  if(kind==='result')return 'リーダーから報告が届きました（'+label+'）。\n\n'+body(material.output);
  if(kind==='question')return 'リーダーから質問が届きました（'+label+'）。\n\n'+body(material.text);
  if(kind==='extension')return 'リーダーから期限の延長の提案が届きました（'+label+'）。\n\n'+body(material.text);
- if(kind==='attention'){const how=STOP_REASONS[material.reason]||STOP_REASONS[material.outcome]||'';return 'リーダーの作業が'+how+'止まりました（'+label+'）。'+(how?'':'理由：'+material.reason);}
- return '人間がこの仕事を'+(material.state?.kind==='withdrawn'?'取り下げ':'終了')+'ました（'+label+'）。';
+ if(kind==='attention'){const how=STOP_REASONS[material.reason]||STOP_REASONS[material.outcome]||'';return 'リーダーの作業が'+how+'止まりました（'+label+'）。'+(material.reason?'理由：'+String(material.reason).slice(0,200):'');}
+ return '人間がこの仕事を'+(material.state?.kind==='withdrawn'?'取り下げ':'終了し')+'ました（'+label+'）。';
 }
 export class Conversations {
  constructor(d){this.d=d;}
@@ -168,7 +168,7 @@ export class Conversations {
   if(!source||source.conversationSequence>actor.conversationSequence||!accepted(source))fail('正式配送済みの資料だけを評価してください',403);
   if(this.d.data.runs.some(r=>r.conversationId===c.id&&r.conversationSource?.kind==='human'&&r.conversationSequence>actor.conversationSequence&&!r.queueCancelledAt))fail('後着の人間入力があります。配送後に判断してください');
   const w=rootNode(q);
-  if(continuation||x.decision==='accept'){
+  if(continuation||x.decision==='accept'||x.resultOnly===true){
    const latestResult=latest(w);
    if(event.kind!=='result'||w.state.kind!=='completed'||w.state.by==='human'||!latestResult||latestResult.id!==event.material.resultId||latestResult.version!==event.material.version)fail('現在の正常な提出結果だけを採用・継続できます');
   }

@@ -27,7 +27,7 @@ test('accept and ask are bound to the result delivered in this run; elsewhere th
  assert.equal(accepted.ok,true,accepted.error);assert.equal(accepted.result.kind,'accept');assert.equal(view().decision.kind,'accept');
  await f.complete(one.delivery);const human=await turn(f,'どうなった？');
  const wrong=await village('accept','--run',human.id,'達成');
- assert.equal(wrong.ok,false);assert.match(wrong.error,/案内: accept\/ask は、リーダーの結果が届いた回で使います/);
+ assert.equal(wrong.ok,false);assert.match(wrong.error,/判断済み、または判断の確定待ち/);
 });
 
 test('ask records a concrete question for the human on the delivered result',async t=>{
