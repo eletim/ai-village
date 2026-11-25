@@ -117,3 +117,26 @@ test('a first command observes an already delivered input without requiring stat
  const ordered=await village('order','--run',r.id,'受付確認直後の作業');
  assert.equal(ordered.ok,true,ordered.error);assert.equal(r.runModel.state.kind,'running');
 });
+
+test('unobserved sent run is denied without dispatching new work',async t=>{
+ const {f}=await purposeFixture(t),v=cli(f);const r=await f.service.send(f.agents[0].id,{mode:'conversation',requestId:randomUUID(),instruction:'進めて'}),n=f.service.data.requests.length,s=f.sent.length;
+ const out=await v('order','--run',r.id,'作業');assert.equal(out.ok,false);assert.match(out.error,/受付をまだ確認できません.*送信は繰り返さず/);assert.equal(f.service.data.requests.length,n);assert.equal(f.sent.length,s);t.diagnostic(out.error);
+});
+test('500 leading spaces retain an exact nonempty authorization quote',async t=>{
+ const {f}=await purposeFixture(t),v=cli(f);const r=await turn(f,' '.repeat(500)+'進めてください');
+ const out=await v('order','--run',r.id,'作業');assert.equal(out.ok,true,out.error);assert.equal(f.service.flow.root(out.result.humanRequestId).requestedBy.authorization.quote,'進めてください');
+});
+for(const action of ['ask','followup'])test('real consultation allows '+action,async t=>{
+ const {f,human,first}=await purposeFixture(t),v=cli(f);await f.service.tick();const leader=f.service.flow.run(first.runId);await f.submit(leader);
+ await f.service.flow.report({humanRequestId:first.humanRequestId,workId:first.workId,actorRunId:leader.id,operationId:randomUUID(),kind:'question',text:'公開日を決めてください'});
+ await f.service.flow.respond({humanRequestId:first.humanRequestId,workId:first.workId,runId:leader.id,operationId:randomUUID(),inputs:f.service.flow.inputs(first.humanRequestId,first.workId).map(i=>i.id),results:[]});await f.complete(leader);
+ const c=f.service.conversations.record(human.conversationId),e=c.deliveries.find(e=>e.kind==='question'),r=f.service.flow.run(e.runId);await f.submit(r);
+ const bad=await v('accept','--run',r.id,'採用');assert.equal(bad.ok,false);assert.match(bad.error,/相談への回答はfollowup/);
+ const out=await v(action,'--run',r.id,action==='ask'?'いつ公開しますか？':'12月1日に公開してください');assert.equal(out.ok,true,out.error);
+});
+test('failed leader guidance cannot be followed via followup',async t=>{
+ const {f,human,first}=await purposeFixture(t),v=cli(f);await f.service.tick();const leader=f.service.flow.run(first.runId);await f.submit(leader);await f.complete(leader,'failed');
+ const c=f.service.conversations.record(human.conversationId),e=c.deliveries.at(-1),r=f.service.flow.run(e.runId);await f.submit(r);
+ const bad=await v('accept','--run',r.id,'採用');assert.equal(bad.ok,false);assert.match(bad.error,/相談への回答はfollowup/);
+ const out=await v('followup','--run',r.id,'修正してください');assert.equal(out.ok,false);assert.match(out.error,/失敗・受付不明/);t.diagnostic(JSON.stringify({kind:e.kind,accept:bad.error,followup:out.error}));
+});

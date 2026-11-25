@@ -10,7 +10,7 @@ const fail=(message,status=400)=>{throw Object.assign(Error(message),{status});}
 const RUN=/^[0-9a-f-]{36}$/;
 export const SECRETARY_COMMANDS_HELP=[
  'village order --run RUN "指示文"：リーダーに新しい仕事を依頼する。',
- 'village followup --run RUN [PURPOSE] "指示文"：同じ目的の仕事に追加指示・差し戻しをする（会話の目的が1つなら PURPOSE は省略可）。',
+ 'village followup --run RUN [PURPOSE] "指示文"：同じ目的の仕事に追加指示・差し戻しをする（配送回は届いた目的、人間の会話回で目的が1つなら PURPOSE は省略可）。',
  'village accept --run RUN "理由"：届いたリーダーの結果を確かめ、目的の達成を記録する。',
  'village ask --run RUN "質問"：届いた結果について、人間にしか決められないことを人間へ質問する。',
  'village withdraw --run RUN PURPOSE "理由"：目的の仕事を取り下げる（実行済みの外部操作は取り消されない）。',
@@ -45,13 +45,13 @@ export class SecretaryCommands {
   const r=this.d.flow.run(run);
   if(!r?.conversationId)fail('この run は秘書の会話の回ではありません。--run には <village run="…"/> の値を渡してください。',404);
   const c=this.d.conversations.record(r.conversationId);
-  if(r.runModel.state.kind==='sent'&&!r.acceptedAt)await this.d.conversations.read(c.id,run);
+  if(r.runModel.state.kind==='sent'&&!r.acceptedAt)await this.d.conversations.read(c.id,run).catch(e=>{if(/この会話で受付照合済みのrun/.test(e.message))fail('受付をまだ確認できません。送信は繰り返さず、village status --run '+run+' で受付状態を確認してください。',409);throw e;});
   const purposes=this.d.data.requests.filter(q=>q.conversationId===c.id&&purposeId(q)===q.id&&this.d.data.runs.some(x=>x.id===q.requestedBy?.actorRunId&&x.conversationSequence<=r.conversationSequence));
   return {r,c,purposes};
  }
  // The human utterance of this run, or the original permission of the delivered purpose.
  authorization({r,c}){
-  if(r.conversationSource?.kind==='human')return {runId:r.id,quote:r.instruction.slice(0,500)};
+  if(r.conversationSource?.kind==='human')return {runId:r.id,quote:r.instruction.trimStart().slice(0,500)};
   const e=deliveryOf(c,r);
   if(!e)fail('この回は人間の発言でもリーダーの結果でもないため、許可を引き継げません。人間の発言が届いた回で操作してください。',403);
   const original=this.d.flow.root(purposeId(this.d.flow.root(e.humanRequestId)));
