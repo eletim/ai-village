@@ -11,7 +11,7 @@ for(const width of [1440,390])test('answer-local states: advice, active, complet
  for(const a of f.agents)a.projectId=p.id;
  await f.service.putProject({revision:p.revision,leaderAgentId:f.agents[2].id},p.id);
  async function reply(text){const r=await f.service.send(f.agents[0].id,{mode:'conversation',requestId:randomUUID(),instruction:text});await f.submit(r);return r;}
- const advice=await reply('相談への回答です。');await f.complete(advice);
+ const advice=await reply('『追加指示を保存できます。秘書の応答中は順番に配送します。』という表示について相談です。');await f.complete(advice);
  const work=await reply('資料を作っています。');
  async function job(name){return f.service.conversations.job({conversationId:work.conversationId,actorRunId:work.id,operationId:randomUUID(),instruction:name,authorization:{runId:work.id,quote:work.instruction}});}
  const a=await job('資料A'),b=await job('資料B');await f.complete(work);
@@ -43,6 +43,17 @@ for(const width of [1440,390])test('answer-local states: advice, active, complet
  await expect(page.locator('body')).not.toContainText('成果確認待ち');
  await expect(page.locator('body')).not.toContainText('会話と仕事の状況は別です');
  await expect(page.locator('body')).not.toContainText('仕事の完了・成果確認は');
+
+ await expect(page.locator('.agent-recovery-host .conversation-work')).toHaveCount(0);
+ await expect(page.locator('.conversation-next')).toHaveCount(0);
+ const titles=await page.locator('[title]').evaluateAll(es=>es.map(e=>e.title).join('\n'));
+ expect(titles).not.toMatch(/追加指示を保存|順番に配送|native受付|通知は依頼全体/);
+ await expect(element('advice').locator('.run-status')).toHaveCount(0);
+ await expect(element('advice')).toContainText('追加指示を保存できます。');
+ await expect(page.locator('.panel-info')).not.toContainText(['仕事のリーダー:']);
+ await page.locator('[data-profile-agent="'+work.agentId+'"]').click();
+ await expect(page.locator('#agent-profile-dialog .conversation-work')).toContainText('依頼一覧');
+ await page.locator('#agent-profile-dialog [data-close]').click();
  await page.screenshot({path:info.outputPath('answer-states-'+width+'.png')});
  const failed=f.service.flow.run(b.runId);
  if(failed.runModel.state.kind==='queued'){await f.service.tick();}

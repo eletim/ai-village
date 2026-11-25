@@ -3,5 +3,5 @@ export function responseText(entry){
  const output=entry.output||'',final=entry.finalOutput||'';
  const hasFinal=!!final.trim();
  const suffix=hasFinal&&output.trimEnd().endsWith(final.trimEnd());
- return {answer:hasFinal?final:output,record:hasFinal?(suffix?output.trimEnd().slice(0,-final.trimEnd().length).trimEnd():output):'',recordLabel:suffix?'途中経過':'出力原本（回答と重複する場合があります）'};
+ return {answer:hasFinal?final:output,record:hasFinal?(suffix?output.trimEnd().slice(0,-final.trimEnd().length).trimEnd():output):'',recordLabel:suffix?'途中経過':'詳細'};
 }

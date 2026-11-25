@@ -15,8 +15,22 @@ export function conversationWorkHTML(a){
  const blocked=leader.code!=='ready';
  const ownBlocked=a.conversationControl&&!a.conversationControl.canAccept;
  if(!blocked&&!jobs.length&&!ownBlocked)return '';
- return '<section class="conversation-work" aria-label="依頼一覧">'+
+ return '<section class="conversation-work" aria-label="依頼一覧"><p>仕事の担当: '+esc(leader.name)+'</p>'+
  (ownBlocked?'<p role="status">'+esc(a.conversationControl.next)+'</p>':'')+
  (blocked?'<p role="status">仕事のリーダー（'+esc(leader.name)+'）: '+esc(leader.label)+'。'+esc(leader.next)+'</p>':'')+
  (jobs.length?'<details data-disclosure="conversation-work:'+esc(a.id)+'"><summary>依頼一覧 '+jobs.length+'件</summary>'+jobs.map(jobHTML).join('')+'</details>':'')+'</section>';
+}
+
+// Main chat only needs a genuine inability to converse. Management stays in profile.
+export function conversationAlertHTML(a){
+ const c=a.conversationControl;
+ return c&&(!c.canAccept||c.code==='unknown')?'<p class="conversation-alert" role="status">'+esc(c.label)+'</p>':'';
+}
+export function conversationTurnHTML(r){
+ const c=r.conversationLifecycle;
+ const error=r.attachmentError||r.error||r.errorCode||c?.reason;
+ if(!c||c.code==='answered'&&!error)return '';
+ const failed=!!error||['failed','interrupted','unconfirmed'].includes(c.code);
+ const label=({queued:'送信待ち','receipt-pending':'送信を確認中',responding:'応答中',cancelled:'送信取消済み',failed:'返答に失敗しました',interrupted:'返答が中断されました',unconfirmed:'送信結果を確認できません'})[c.code]||(error?'処理中にエラーが発生しました':c.label);
+ return '<p class="run-status">'+esc(label)+'</p>'+(failed&&error?'<details class="conversation-error"><summary>エラー詳細</summary><p>'+esc(error)+'</p></details>':'');
 }
