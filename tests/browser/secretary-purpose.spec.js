@@ -9,7 +9,7 @@ for(const width of [1440,390])test('secretary decision, autonomous correction an
   await page.route('**/api/**',route=>route.fulfill({json:new URL(route.request().url()).pathname==='/api/direct'?workspaceSnapshot(f.service.snapshot(),{},[human.agentId]):{providers:{}}}));
   const one=await completeJob(first);
   await page.goto('/agents');await page.locator('[data-zoom="'+human.agentId+'"]').click();
-  const root=page.locator('[data-entry='+JSON.stringify(JSON.stringify(['run','',human.id]))+'] .answer-jobs');
+  const root=page.locator('.runs .answer-jobs');
   await expect(root).toContainText('秘書が確認中');await expect(root).not.toContainText('完了');
   const next=await f.service.conversations.job({...args(one),continuesRequestId:first.humanRequestId,authorization:auth,instruction:'目的の未達部分を修正する'});
   await f.complete(one.delivery);await f.service.tick();await notifySnapshot(page);
@@ -21,10 +21,10 @@ for(const width of [1440,390])test('secretary decision, autonomous correction an
   const two=await completeJob(next);
   await f.service.conversations.decide({...args(two,1),decision:'accept'});
   await notifySnapshot(page);await expect(root).not.toContainText('完了');
-  await f.complete(two.delivery);await notifySnapshot(page);await expect(root).toContainText('完了');
+  await f.complete(two.delivery);two.delivery.finalOutput='資料Aの修正と公開を完了しました。追加の対応はありません。';await f.service.save();await notifySnapshot(page);await expect(root).toHaveCount(0);
   const answer=page.locator('[data-entry='+JSON.stringify(JSON.stringify(['run','',two.delivery.id]))+']');
-  await expect(answer.locator('.answer-jobs')).toContainText('完了');
-  await expect(answer).toContainText('Final '+two.delivery.id);
+  await expect(answer.locator('.answer-jobs')).toHaveCount(0);
+  await expect(answer).toContainText('資料Aの修正と公開を完了しました。');
   await expect(page.locator('[data-send="'+human.agentId+'"] [type=submit]')).toBeEnabled();
   await page.screenshot({path:info.outputPath('purpose-complete-'+width+'.png')});
   expect(view().decision.state).toBe('committed');
