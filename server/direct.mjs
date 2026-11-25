@@ -110,7 +110,7 @@ export class DirectAgents {
     this.data.conversations ||= [];
     this.flow.init();this.conversations.init();
     await this.save();
-    if(watch){for(const name of ['local-audit.jsonl','ssh-audit.jsonl'])void maintainAudit(this.dir,name).catch(()=>{});this.flow.reporting.start();void this.repairContracts().catch(()=>{});this.monitor=new EventMonitor(this,this.hostFactory?{hostFactory:this.hostFactory}:{});this.monitor.start();void this.progress().catch(()=>{});}
+    if(watch){for(const name of ['local-audit.jsonl','ssh-audit.jsonl'])void maintainAudit(this.dir,name).catch(()=>{});this.flow.reporting.start();this.monitor=new EventMonitor(this,this.hostFactory?{hostFactory:this.hostFactory}:{});this.monitor.start();void this.progress().catch(()=>{});}
   }
   close(){this.monitor?.close();this.flow.reporting.close();clearInterval(this.timer);this.owner?.close();this.store.close();}
   presentation(){
@@ -353,51 +353,15 @@ export class DirectAgents {
     }catch{envelope={mode:'migration-required',reason:'startup-instructions-unavailable'};}
     await this.persist(async()=>{a.inputEnvelope=envelope;await this.save();});
   }
-  // The file, or for Codex the running process of this Agent's own tab (input-envelope.mjs), must
-  // carry the installed contract. A file that lost it while the process proves it is repaired with
-  // the proven bytes, so a regenerated prompt file is no longer a false downgrade.
-  async contractEvidence(a){
-    return JSON.parse(await this.execute(a,['python3','-c',verifyInstructionsScript,a.workspaceId,a.provider,a.inputEnvelope.hash||'',a.sessionName||'','restore']));
-  }
   async verifyInstructions(a){
     if(a.inputEnvelope?.mode!=='startup-v2')return;
     let reason='startup-instructions-missing-or-changed';
     try{
-      const result=await this.contractEvidence(a);
-      if(result.verified===true){
-        if(result.fileRestored)await this.persist(async()=>{a.inputEnvelope={...a.inputEnvelope,promptFileRestoredAt:now(),promptFileRestoredFrom:result.evidence};await this.save();});
-        return;
-      }
+      const result=JSON.parse(await this.execute(a,['python3','-c',verifyInstructionsScript,a.workspaceId,a.provider,a.inputEnvelope.hash||'']));
+      if(result.verified===true)return;
     }catch{reason='startup-instructions-check-failed';}
     await this.persist(async()=>{a.inputEnvelope={...a.inputEnvelope,mode:'migration-required',reason,downgradedAt:now()};await this.save();});
   }
-  // Startup: repair prompt files that lost a process-proven contract (no downgrade from here; a
-  // missing contract is still handled at send time), then re-check false downgrades.
-  async repairContracts(){
-    for(const a of this.data.agents.filter(a=>!a.deletedAt&&a.tabId&&a.provider==='codex'&&a.inputEnvelope?.mode==='startup-v2')){
-      try{const result=await this.locked(a.id,()=>this.contractEvidence(a));if(result.fileRestored)await this.persist(async()=>{a.inputEnvelope={...a.inputEnvelope,promptFileRestoredAt:now(),promptFileRestoredFrom:result.evidence};await this.save();});}catch{}
-    }
-    for(const a of this.data.agents.filter(a=>a.inputEnvelope?.reason==='startup-instructions-missing-or-changed'))await this.recoverInstructions(a.id).catch(()=>{});
-  }
-  // Re-check an Agent downgraded only because its prompt file lost the contract. It returns to
-  // startup-v2 solely on direct evidence from its own running process (Codex); the downgrade is kept
-  // as history. Claude, a changed session, or any other reason stays on the formal migration path.
-  async recoverInstructions(id){return this.locked(id,async()=>{
-    const a=this.agent(id),e=a.inputEnvelope;
-    if(e?.mode!=='migration-required'||e.reason!=='startup-instructions-missing-or-changed'||!/^[a-f0-9]{64}$/.test(e.hash||''))return {agentId:id,recovered:false,reason:'not-a-missing-file-downgrade'};
-    if(a.provider!=='codex')return {agentId:id,recovered:false,reason:'no-process-evidence-for-provider'};
-    if(a.deletedAt||a.deletion||a.runtimeRetiredTo||a.runtimeUpgrade?.state==='prepared'||!a.tabId||!a.sessionName)return {agentId:id,recovered:false,reason:'runtime-not-eligible'};
-    if(e.sessionId&&a.observedSessionId&&e.sessionId!==a.observedSessionId)return {agentId:id,recovered:false,reason:'session-changed'};
-    const before=JSON.stringify(e);let result;
-    try{result=await this.contractEvidence(a);}catch{return {agentId:id,recovered:false,reason:'evidence-unavailable'};}
-    if(result.verified!==true||result.evidence?.kind!=='running-codex-arguments')return {agentId:id,recovered:false,reason:'no-matching-process-evidence'};
-    return this.persist(async()=>{
-      if(JSON.stringify(a.inputEnvelope)!==before)return {agentId:id,recovered:false,reason:'envelope-changed'};
-      const {reason,downgradedAt,...rest}=a.inputEnvelope;
-      a.inputEnvelope={...rest,mode:'startup-v2',restoredAt:now(),restoredFrom:{evidence:result.evidence,downgrade:{reason,downgradedAt}},...(result.fileRestored?{promptFileRestoredAt:now()}:{})};
-      await this.save();return {agentId:id,recovered:true,evidence:result.evidence,fileRestored:!!result.fileRestored};
-    });
-  });}
   // Only synchronous model edits and save() belong inside this boundary.
   // Read remote evidence first; dispatch external effects only after it commits.
   async persist(change,roots=this.data){return this.persistence.run(async()=>{
