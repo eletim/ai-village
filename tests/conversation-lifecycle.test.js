@@ -68,7 +68,7 @@ test('leader busy or migration blocked never locks secretary mailbox; projection
  const c=f.service.conversations.record(r.conversationId),delivery=f.service.flow.run(c.deliveries[0].runId);
  a=workspaceSnapshot(f.service.snapshot(),{},[r.agentId]).agents.find(a=>a.id===r.agentId);
  assert.equal(a.conversationWork.jobs[0].code,'returning');await f.submit(delivery);await f.complete(delivery);
- a=f.service.snapshot().agents.find(a=>a.id===r.agentId);assert.equal(a.conversationWork.jobs[0].code,'awaiting-review');assert.equal(a.conversationWork.jobs[0].humanApproval,'not-inferred');
+ a=f.service.snapshot().agents.find(a=>a.id===r.agentId);assert.equal(a.conversationWork.jobs[0].code,'completed');assert.equal(a.conversationWork.jobs[0].humanApproval,'not-inferred');
  assert.equal(f.sent.filter(s=>s.text.includes(delivery.id)).length,1);
  const third=await send(f);await f.submit(third);const secondJob=await job(f,third);
  f.service.agent(leader.agentId).inputEnvelope.mode='migration-required';await f.service.save();await f.service.tick();
