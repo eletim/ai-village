@@ -31,7 +31,14 @@ async function leaderResult(f,receipt){
  await d.tick();await f.submit(delivery);return delivery;
 }
 
-test('presence window is an explicit 3 minute constant; viewing reports expire after 75s',()=>{assert.equal(HUMAN_PRESENT_WINDOW_MS,180000);assert.equal(HUMAN_PRESENCE_TTL_MS,75000);});
+test('presence window is an explicit 3 minute constant; viewing reports expire after 40s',()=>{assert.equal(HUMAN_PRESENT_WINDOW_MS,180000);assert.equal(HUMAN_PRESENCE_TTL_MS,40000);});
+
+test('B: a human who sends and leaves (leave reported) is notified even right after viewing',async t=>{
+ const {f,d,human,sentFor}=await setup(t);
+ const r=await human('送ってすぐ画面を閉じる');d.markPresence(r.agentId);assert.deepEqual(d.markPresence(r.agentId,{viewing:false}),{ok:true,viewing:false});await f.complete(r);
+ assert.equal(sentFor(r).length,1);assert.equal(r.notificationSuppressed,undefined);
+ assert.throws(()=>d.markPresence(r.agentId,{viewing:'no'}),/viewing/);
+});
 
 test('B: a quick answer is notified when the human is not viewing (never reported, stale, or another Agent)',async t=>{
  const {f,d,human,sentFor}=await setup(t);
@@ -46,17 +53,18 @@ test('B: a quick answer is notified when the human is not viewing (never reporte
  assert.equal(f.notifications.filter(n=>n.id==='conversation-answer:'+after.id).length,1);
 });
 
-test('own closure: the answer to the human closing work is not notified while they are viewing',async t=>{
+test('own closure: the answer within 3 minutes of the human closing work is not notified (no presence needed)',async t=>{
  const {f,d,human,job,suppressed,sentFor}=await setup(t);
  const r=await human(QUOTE,{minutes:10});const receipt=await job(r);await f.complete(r);
- const q=d.flow.root(receipt.humanRequestId);d.markPresence(r.agentId);await d.flow.cancel({humanRequestId:q.id,revision:q.revision,reason:'人間が取り下げ'});await d.tick();
+ const q=d.flow.root(receipt.humanRequestId);await d.flow.cancel({humanRequestId:q.id,revision:q.revision,reason:'人間が取り下げ'});await d.tick();
  const c=d.conversations.record(r.conversationId),closure=d.flow.run(c.deliveries.find(e=>e.kind==='important-change').runId);
- await d.tick();await f.submit(closure);d.markPresence(r.agentId);await f.complete(closure);
+ await d.tick();await f.submit(closure);await f.complete(closure);
  assert.equal(sentFor(closure).length,0);assert.equal(closure.notificationSuppressed.reason,'human-closure-own-action');assert.equal(suppressed.at(-1).reason,'human-closure-own-action');
- // Not viewing: the same kind of report is notified.
+ // An answer finishing more than 3 minutes after the closure is notified.
  const r2=await human('別件も明示依頼として作ってください。',{minutes:10});const k2=await d.conversations.job({conversationId:r2.conversationId,actorRunId:r2.id,operationId:randomUUID(),instruction:'別件',authorization:{runId:r2.id,quote:'別件も明示依頼として作ってください。'}});await f.complete(r2);
- d.presence.clear();const q2=d.flow.root(k2.humanRequestId);await d.flow.cancel({humanRequestId:q2.id,revision:q2.revision,reason:'人間が取り下げ'});await d.tick();
- const closure2=d.flow.run(c.deliveries.findLast(e=>e.kind==='important-change').runId);await d.tick();await f.submit(closure2);await f.complete(closure2);
+ const q2=d.flow.root(k2.humanRequestId);await d.flow.cancel({humanRequestId:q2.id,revision:q2.revision,reason:'人間が取り下げ'});await d.tick();
+ const e2=c.deliveries.findLast(e=>e.kind==='important-change');e2.createdAt=new Date(Date.now()-4*60*1000).toISOString();
+ const closure2=d.flow.run(e2.runId);await d.tick();await f.submit(closure2);await f.complete(closure2);
  assert.equal(sentFor(closure2).length,1);
 });
 
