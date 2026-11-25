@@ -145,7 +145,7 @@ test('long child result is abbreviated only in prompt; inputs restores full text
  Object.assign(f.runtimes.get(cr.agentId).turns.find(t=>t.id===cr.turnId),{state:'completed',output,completionEvent:'long-result'});await s.tick();
  const w=s.flow.work(s.flow.root(r.humanRequestId),r.workId),stored=w.inbox.find(i=>i.result);assert.equal(stored.text.length,8000);
  assert.equal(s.flow.inputs(r.humanRequestId,r.workId).find(i=>i.id===stored.id).text,output);
- const prompt=s.flow.context(s.flow.run(w.currentRunId));assert(prompt.includes('"truncated":true'));assert(s.rules.specification().text.includes('requests inputs'));assert(!prompt.includes('FINAL_REQUIRED_WARNING'));
+ const prompt=s.flow.context(s.flow.run(w.currentRunId));assert(prompt.includes('"truncated":true'));assert(s.rules.action('leader').text.includes('requests inputs'));assert(!prompt.includes('FINAL_REQUIRED_WARNING'));
  const restored=await f.restart();assert.equal(restored.flow.inputs(r.humanRequestId,r.workId).find(i=>i.id===stored.id).text,output);
 });
 test('missing assignee blocks only its own request while another Agent dispatches work',async t=>{

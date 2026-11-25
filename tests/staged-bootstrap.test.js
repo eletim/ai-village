@@ -10,7 +10,7 @@ test('target preparation holds only its queued work while unrelated old Agents k
  const [a,b]=f.agents.map(a=>s.agent(a.id)),reviewAt=a.legacyContract.reviewAt;
  const x={operationId:randomUUID(),revision:0},receipt=await s.prepareRuntime(a.id,x);assert.deepEqual(await s.prepareRuntime(a.id,x),receipt);
  const held=await s.send(a.id,{instruction:'held target',requestId:randomUUID()});assert.equal(held.runModel.state.kind,'queued');assert.equal(f.sent.length,0);
- const other=await s.send(b.id,{instruction:'unrelated continues',requestId:randomUUID()});assert.equal(other.runModel.state.kind,'sent');assert.equal(other.inputEnvelopeMode,'legacy-compat');assert.equal(f.sent.length,1);assert(f.sent[0].text.includes('移行待ち互換入力'));assert(f.sent[0].text.includes('rules get work ACTION'));assert.equal(b.inputEnvelope.mode,'legacy');
+ const other=await s.send(b.id,{instruction:'unrelated continues',requestId:randomUUID()});assert.equal(other.runModel.state.kind,'sent');assert.equal(other.inputEnvelopeMode,'legacy-compat');assert.equal(f.sent.length,1);assert(f.sent[0].text.includes('移行待ち互換入力'));assert(f.sent[0].text.includes('rules get work leader'));assert.equal(b.inputEnvelope.mode,'legacy');
  await s.save();s=await f.restart();assert.equal(s.agent(a.id).legacyContract.reviewAt,reviewAt);assert.deepEqual(await s.prepareRuntime(a.id,x),receipt);assert.equal(s.flow.run(held.id).dispatchAttemptedAt,undefined);
 });
 test('preparing a running target does not cancel its native execution; review date never blocks unrelated dispatch',async t=>{

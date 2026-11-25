@@ -1,4 +1,4 @@
-import {agentActions,actionUsage,conversationDisplayUsage} from './agent-rules.mjs';
+import {agentActions,actionUsage,conversationDisplayUsage,conversationDecisionUsage} from './agent-rules.mjs';
 import { appendFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -17,7 +17,7 @@ export class VillageOperations {
       ...(direct?[
         {name:'conversations get',usage:'conversations get CONVERSATION_ID [ACTOR_RUN_ID] (Agent: always pass current run; ordered turn view)',run:args=>{if(![1,2].includes(args.length))throw Error('CONVERSATION_ID [ACTOR_RUN_ID]');return direct.conversations.read(args[0],args[1]);}},
         {name:'conversations display',usage:conversationDisplayUsage,mutation:true,run:args=>{if(args.length!==1)throw Error('JSONを1つ指定してください');return direct.conversations.display(JSON.parse(args[0]));}},
-        ...['job','amend','withdraw'].map(action=>({name:'conversations '+action,usage:'conversations '+action+' JSON {conversationId,actorRunId,operationId,instruction,authorization:{runId,quote},humanRequestId?}',mutation:true,run:args=>{if(args.length!==1)throw Error('JSONを1つ指定してください');return direct.conversations[action](JSON.parse(args[0]));}})),
+        ...['job','amend','withdraw','decide'].map(action=>({name:'conversations '+action,usage:action==='decide'?conversationDecisionUsage:'conversations '+action+' JSON {conversationId,actorRunId,operationId,instruction,authorization:{runId,quote},continue?:true,humanRequestId?,continuesRequestId?,deliveryId?,expectedPurposeVersion?,reason?,reopenRunId?}',mutation:true,run:args=>{if(args.length!==1)throw Error('JSONを1つ指定してください');return direct.conversations[action](JSON.parse(args[0]));}})),
         {name:'projects leader',usage:'projects leader PROJECT_ID REVISION AGENT_ID|- (new jobs only)',mutation:true,run:args=>{if(args.length!==3)throw Error('PROJECT_ID REVISION AGENT_ID|-');return direct.putProject({revision:Number(args[1]),leaderAgentId:args[2]==='-'?null:args[2]},args[0]);}},
         {name:'workshops pattern',usage:'workshops pattern WORKSHOP_ID JSON_ARRAY_8_OR_NULL (none|line|diamond; top row left to right, then bottom)',mutation:true,run:args=>{if(args.length!==2)throw Error('工房IDと8セルのJSON配列を指定してください');return direct.putWorkshop({iconPattern:JSON.parse(args[1])},args[0]);}},
         {name:'agents create',usage:'agents create JSON({requestId,workshopId,cwd,name,provider,location,projectId?,launchProfile?:{version:1,provider:claude,model:full-ID,effort:low|medium|high|xhigh|max}})',mutation:true,run:args=>{if(args.length!==1)throw Error('JSONを1つ指定してください');return direct.create(JSON.parse(args[0]));}},
@@ -26,7 +26,7 @@ export class VillageOperations {
         {name:'agents stop',usage:'agents stop AGENT_ID',mutation:true,run:args=>{if(args.length!==1)throw Error('Agent IDを指定してください');return direct.stop(args[0]);}},
         {name:'agents rename',usage:'agents rename AGENT_ID REVISION NAME',mutation:true,run:args=>{if(args.length!==3)throw Error('ID REVISION NAMEを指定してください');return direct.updateAgent(args[0],{revision:Number(args[1]),name:args[2]});}},
         {name:'agents project',usage:'agents project AGENT_ID REVISION PROJECT_ID|-',mutation:true,run:args=>{if(args.length!==3)throw Error('ID REVISION PROJECT_IDを指定してください');return direct.updateAgent(args[0],{revision:Number(args[1]),projectId:args[2]==='-'?null:args[2]});}},
-        {name:'projects guide',usage:'projects guide PROJECT_ID (latest secretary policy; available:false if absent; does not authorize actions)',run:args=>{if(args.length!==1)throw Error('PROJECT_IDを指定してください');return direct.projectGuides.get(args[0]);}},
+        {name:'projects guide',usage:'projects guide PROJECT_ID [secretary] (latest policy; secretary view preserves custom constraints)',run:args=>{if(![1,2].includes(args.length))throw Error('PROJECT_ID [secretary]を指定してください');return direct.projectGuides.get(args[0],args[1]);}},
         ...['projects','agents'].map(kind=>({name:kind+' order',usage:kind+' order ID REVISION INTEGER|null (ascending; unset last; agents: within project)',mutation:true,run:args=>{if(args.length!==3)throw Error('ID REVISION INTEGER|nullを指定してください');const displayOrder=JSON.parse(args[2]),patch={revision:Number(args[1]),displayOrder};return kind==='projects'?direct.putProject(patch,args[0]):direct.updateAgent(args[0],patch);}})),
         {name:'projects list',usage:'projects list',run:args=>{if(args.length)throw Error('引数は不要です');return direct.discovery().projects;}},
         {name:'projects create',usage:'projects create REQUEST_ID NAME',mutation:true,run:args=>{if(args.length!==2)throw Error('REQUEST_ID NAMEを指定してください');return direct.putProject({requestId:args[0],name:args[1]});}},

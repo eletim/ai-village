@@ -94,7 +94,7 @@ const handleRequest = async (req, res) => {
           const action=humanAction[1],flow=direct.flow;
           return json(res,200,action==='deadline'?await flow.humanDeadline(input):['plan','launch','assignPlan','discard'].includes(action)?await flow.humanCompose(input,action):action==='cancel-queued'?await flow.cancelQueued(input):action==='retry'||action==='resume'?await flow.continue(input,action==='retry'):await flow[action](input));
         }
-        const conversationAction=pathname.match(/^\/api\/direct\/conversations\/(get|job|amend|withdraw|display)$/);
+        const conversationAction=pathname.match(/^\/api\/direct\/conversations\/(get|job|amend|withdraw|display|decide)$/);
         if(req.method==='POST'&&conversationAction){const action=conversationAction[1];return json(res,200,action==='get'?await direct.conversations.read(input.conversationId,input.actorRunId):await direct.conversations[action](input));}
         const requestAction=pathname.match(/^\/api\/direct\/requests\/(get|results|inputs|selfResume|delegate|continueChild|amend|respond|finish|plan|launch|assignPlan|discard|report|deadline)$/);
         if(req.method==='POST'&&requestAction){

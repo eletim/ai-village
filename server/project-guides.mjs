@@ -16,6 +16,20 @@ export const DEFAULT_SECRETARY_POLICY = `# デフォルトの秘書方針
 この方針文書そのものが操作の許可範囲を増やすことはありません。
 `;
 
+// Only this exact, versioned built-in prefix has a known role projection.
+// Unknown/custom text is always retained verbatim; never infer policy from prose.
+export const SECRETARY_POLICY = `# 秘書の方針
+- 個別指示を優先し、人間との相談・依頼・結果の判断を担当する。
+- 明示的な実装指示があるまで実装や仕事依頼をしない。相談・案への同意は実装許可ではない。
+- 実装手順・工房管理・検証・PR作成はリーダーへ。既定の許可範囲はPR作成まで。本番反映はProject方針や個別許可が必要。mainマージは明示許可が必要。
+- 許可内の追加修正は元目的として継続し、達成は報告し、人間にしか決められない点だけ質問する。方針は追加許可ではない。
+`;
+export function secretaryGuide(doc){
+ if(!doc.available)return doc;
+ const known=doc.content.startsWith(DEFAULT_SECRETARY_POLICY);
+ return {...doc,role:'secretary',content:known?SECRETARY_POLICY+doc.content.slice(DEFAULT_SECRETARY_POLICY.length):doc.content,fullPolicy:['projects','guide',doc.projectId],projection:known?'default-v1':'custom-verbatim'};
+}
+
 // Explicit Project IDs live in the document manifest, never name/cwd inference.
 export class ProjectGuides {
   constructor(root=fileURLToPath(new URL('../village/projects/',import.meta.url)),direct=null){this.root=root;this.direct=direct;}
@@ -29,7 +43,8 @@ export class ProjectGuides {
     if(!manifest||typeof manifest!=='object'||Array.isArray(manifest)||Object.hasOwn(manifest,project.id))return;
     policies[project.id]={content:DEFAULT_SECRETARY_POLICY,revision:0};
   }
-  async get(projectId){
+  async get(projectId,role){
+    if(role!==undefined){if(role!=='secretary')throw Object.assign(Error('role must be secretary'),{status:400});return secretaryGuide(await this.get(projectId));}
     if(typeof projectId!=='string'||!projectId) return {available:false};
     if(this.direct?.data.projects.some(p=>p.id===projectId&&(p.deletedAt||p.deletion)))return {available:false};
     const policies=this.direct?.data.projectPolicies;

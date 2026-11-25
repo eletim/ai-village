@@ -10,7 +10,7 @@ test('answer association follows actor, delivery and amendment, not newest work 
   assert.deepEqual(answerJobs(data,{id:run,conversationId:'c'}).map(j=>j.id),ids);
  }
  assert.deepEqual(answerJobs(data,{id:'old',conversationId:'other'}),[]);
- assert.equal(answerJobs(data,{id:'question',conversationId:'c'})[0].questionText,'公開日はいつですか？');
+ assert.equal(answerJobs(data,{id:'question',conversationId:'c'})[0].leaderQuestionText,'公開日はいつですか？');
 });
 test('plain advice has no work prompt; completion has no fabricated approval; failure remains visible',()=>{
  assert.equal(answerJobsHTML({answerJobs:[]}), '');
