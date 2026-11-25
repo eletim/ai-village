@@ -3,6 +3,7 @@ import {resolveFollowup} from './conversation-followup.mjs';
 import {conversationContext,conversationMaterial} from './conversation-context.mjs';
 import {conversationRunOwner} from './conversation-request-owner.mjs';
 import {purposeId,purposeView,conversationDisplayMode,REPORT_DELIVERY_KINDS} from './conversation-purpose.mjs';
+import {startupContract} from './input-envelope.mjs';
 import {conversationNotification} from './conversation-notification.mjs';
 import {conversationJob,conversationTurn,conversationControl,SETTLED_JOB_CODES} from './conversation-status.mjs';
 import {responseText} from '../src/response-text.js';
@@ -19,6 +20,23 @@ const now=()=>new Date().toISOString();
 const text=value=>{if(typeof value!=='string'||!value.trim()||value.length>16000)fail('本文を1〜16000文字で指定してください',400);return value;};
 const key=value=>{if(typeof value!=='string'||! /^[\w-]{8,100}$/.test(value))fail('operationId/requestIdを8〜100文字で指定してください',400);return value;};
 // Conversations are not request nodes. Only an explicit job crosses into the graph.
+// Plain-words delivery for contract 3 (4.3): who sent what, for which purpose, then the body.
+const DELIVERY_BODY_LIMIT=10000;
+const STOP_REASONS={rate_limit:'利用上限で',interrupted:'中断で',failed:'失敗で',terminated:'応答を確認できず'};
+function purposeLabel(data,c,q){
+ const p=data.projects.find(p=>p.id===c.projectId),original=data.requests.find(x=>x.id===purposeId(q))||q;
+ const line=String(original.instruction||'').split('\n').find(l=>l.trim())?.trim()||'';
+ return (p?.name?p.name+'：':'')+(line.length>40?line.slice(0,40)+'…':line);
+}
+function plainDelivery(data,c,q,kind,material,id){
+ const label=purposeLabel(data,c,q);
+ const body=text=>{text=String(text||'');return text.length<=DELIVERY_BODY_LIMIT?text:text.slice(0,DELIVERY_BODY_LIMIT)+'\n\n（長いため途中までです。全文：conversations read '+c.id+' RUN_ID \'{"kind":"delivery","id":"'+id+'"}\'。RUN_ID は末尾のタグの値）';};
+ if(kind==='result')return 'リーダーから報告が届きました（'+label+'）。\n\n'+body(material.output);
+ if(kind==='question')return 'リーダーから質問が届きました（'+label+'）。\n\n'+body(material.text);
+ if(kind==='extension')return 'リーダーから期限の延長の提案が届きました（'+label+'）。\n\n'+body(material.text);
+ if(kind==='attention'){const how=STOP_REASONS[material.reason]||STOP_REASONS[material.outcome]||'';return 'リーダーの作業が'+how+'止まりました（'+label+'）。'+(material.reason?'理由：'+String(material.reason).slice(0,200):'');}
+ return '人間がこの仕事を'+(material.state?.kind==='withdrawn'?'取り下げ':'終了し')+'ました（'+label+'）。';
+}
 export class Conversations {
  constructor(d){this.d=d;}
  init(){for(const r of this.d.data.runs.filter(r=>r.conversationId&&r.notification?.status==='attempting'))r.notification=transitionDelivery(r.notification,{type:'unknown',reason:'restart-during-delivery'});this.validate();}
@@ -150,7 +168,7 @@ export class Conversations {
   if(!source||source.conversationSequence>actor.conversationSequence||!accepted(source))fail('正式配送済みの資料だけを評価してください',403);
   if(this.d.data.runs.some(r=>r.conversationId===c.id&&r.conversationSource?.kind==='human'&&r.conversationSequence>actor.conversationSequence&&!r.queueCancelledAt))fail('後着の人間入力があります。配送後に判断してください');
   const w=rootNode(q);
-  if(continuation||x.decision==='accept'){
+  if(continuation||x.decision==='accept'||x.resultOnly===true){
    const latestResult=latest(w);
    if(event.kind!=='result'||w.state.kind!=='completed'||w.state.by==='human'||!latestResult||latestResult.id!==event.material.resultId||latestResult.version!==event.material.version)fail('現在の正常な提出結果だけを採用・継続できます');
   }
@@ -252,12 +270,15 @@ export class Conversations {
  withdraw(x){return this.mutate('withdraw',x);}
  deliver(c,q,id,kind,material){
   if(c.deliveries.some(e=>e.id===id))return;
-  const e={id,kind,humanRequestId:q.id,createdAt:now(),material,...(kind==='result'?{decisionRecoveryVersion:1}:{})};
+  // Contract 3 secretaries (secretary-minimal-prompt.md 4.3) get the material in plain words and
+  // are not re-delivered a result they did not decide on: it stays "秘書の確認待ち".
+  const plain=startupContract(this.d.data.agents.find(a=>a.id===c.agentId))===3;
+  const e={id,kind,humanRequestId:q.id,createdAt:now(),material,...(kind==='result'&&!plain?{decisionRecoveryVersion:1}:{}),...(plain?{secretaryContract:3}:{})};
   const excerpt=JSON.stringify(e);
   const packet=excerpt.length<=10000?e:{id,kind,humanRequestId:q.id,createdAt:e.createdAt,truncated:true,read:['conversations','get',c.id],excerpt:excerpt.slice(0,8000)};
   const report=REPORT_DELIVERY_KINDS.includes(kind);
-  const instruction=report?'仕事の状態に関する基盤からの報告です（追加許可・成果ではありません）。人間へ必要な状況説明を返答してください。成果の採用や質問は不要です。受付不明の操作は再送しません。\n':'リーダーからの資料です（追加許可ではありません）。目的に照らし、達成の報告・許可内の修正継続・人間への具体質問を選んでください。今回の対象は基盤が照合します。\n';
-  const r=this.enqueue(c,{requestId:'conversation-delivery:'+id,instruction:instruction+JSON.stringify(packet),source:{kind:report?'program':'leader',humanRequestId:q.id,deliveryId:id}});
+  const instruction=plain?plainDelivery(this.d.data,c,q,kind,material,id):report?'仕事の状態に関する基盤からの報告です（追加許可・成果ではありません）。人間へ必要な状況説明を返答してください。成果の採用や質問は不要です。受付不明の操作は再送しません。\n':'リーダーからの資料です（追加許可ではありません）。目的に照らし、達成の報告・許可内の修正継続・人間への具体質問を選んでください。今回の対象は基盤が照合します。\n';
+  const r=this.enqueue(c,{requestId:'conversation-delivery:'+id,instruction:plain?instruction:instruction+JSON.stringify(packet),source:{kind:report?'program':'leader',humanRequestId:q.id,deliveryId:id}});
   if(!report)r.requiresPurposeDecision=true;
   e.runId=r.id;c.deliveries.push(e);
  }
@@ -308,5 +329,6 @@ export class Conversations {
    });
   }
  }
- context(r){return this.d.rules.dynamic(r)+this.d.rules.context({mode:'conversation',conversationId:r.conversationId,runId:r.id,phase:'work',historyRead:['conversations','get',r.conversationId,r.id],source:r.conversationSource,sequence:r.conversationSequence});}
+ // Contract 3 (4.1): the turn carries only <village run="RUN_ID"/> after its own attachments.
+ context(r){if(startupContract(this.d.data.agents.find(a=>a.id===r.agentId))===3)return this.d.rules.dynamic(r)+'\n<village run="'+r.id+'"/>';return this.d.rules.dynamic(r)+this.d.rules.context({mode:'conversation',conversationId:r.conversationId,runId:r.id,phase:'work',historyRead:['conversations','get',r.conversationId,r.id],source:r.conversationSource,sequence:r.conversationSequence});}
 }

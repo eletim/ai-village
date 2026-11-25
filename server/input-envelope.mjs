@@ -52,6 +52,13 @@ if not re.fullmatch(r'ws-[A-Za-z0-9_-]+',ws) or provider not in ('claude','codex
 root=Path.home()/'.purplemux'/'workspaces'/ws
 p=root/(provider+'-prompt.md')
 if root.is_symlink() or p.is_symlink() or not p.is_file():raise ValueError('workspace prompt unavailable')
-blocks=re.findall(rb'<ai-village-instructions version="[12]">.*?</ai-village-instructions>',p.read_bytes(),re.S)
+blocks=re.findall(rb'<ai-village-instructions version="[123]">.*?</ai-village-instructions>',p.read_bytes(),re.S)
 print(json.dumps({'verified':any(hashlib.sha256(b).hexdigest()==expected for b in blocks)}))
 `;
+
+// The startup contract an Agent runs on: 3 for secretaries created with the minimal contract
+// (secretary-minimal-prompt.md 4.4), otherwise 2. Version 2 sessions keep the full envelope.
+// New secretaries are created on contract 3; leaders and workshops stay on contract 2 (4.5).
+export const installContract=a=>a?.location==='mayor'?3:2;
+export const startupContract=a=>a?.inputEnvelope?.mode==='startup-v2'&&a.inputEnvelope.contract===3?3:2;
+

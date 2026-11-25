@@ -1,0 +1,50 @@
+[
+  {
+    "conversationId": "590f6c39-858d-4d06-9528-6387301297f9",
+    "operations": [
+      {
+        "id": "village-5a5b207af9369a9d769921392f0f766741c60ff1",
+        "payload": "{\"action\":\"job\",\"input\":{\"conversationId\":\"590f6c39-858d-4d06-9528-6387301297f9\",\"actorRunId\":\"88c067f4-411d-4f66-9ebc-882110a6daf0\",\"operationId\":\"village-5a5b207af9369a9d769921392f0f766741c60ff1\",\"instruction\":\"机の片付けを5分で始められる、日本語の短い3項目のチェックリストを作成してください。気が重い人も取りかかりやすい具体的な内容にしてください。隔離用作業フォルダ /tmp/secretary-minimal-live-2kcR0o/work に desk-checklist.txt として保存してください。外部送信、本番の変更、mainマージはしないでください。保存した絶対パスと内容を報告してください。\",\"authorization\":{\"runId\":\"88c067f4-411d-4f66-9ebc-882110a6daf0\",\"quote\":\"じゃあ進めてほしい。机の片付けを5分で始められる、短い3項目のチェックリストをリーダーに作ってもらって。この隔離用作業フォルダに desk-checklist.txt として保存して、内容を確かめたらここで教えてね。外部送信や本番の変更はしないで。\"}}}",
+        "receipt": {
+          "humanRequestId": "f5343672-8cd9-44a0-861c-919403e26493",
+          "workId": "10d509df-1bc9-4485-977b-1926d46aaebb",
+          "runId": "ef00cfaa-cad1-47bb-b1ad-00be2893dd2f",
+          "leaderAgentId": "96b6c2ca-2a3d-41be-8847-bff2455ae874",
+          "conversationId": "590f6c39-858d-4d06-9528-6387301297f9",
+          "purposeId": "f5343672-8cd9-44a0-861c-919403e26493"
+        },
+        "at": "2026-11-25T14:17:04.366Z"
+      },
+      {
+        "id": "village-b7511e85a4b0cc858b71337175c59f8d673b7266",
+        "payload": "{\"action\":\"decide\",\"input\":{\"conversationId\":\"590f6c39-858d-4d06-9528-6387301297f9\",\"actorRunId\":\"0c90237a-c17d-4608-bef1-36cf7ce08120\",\"operationId\":\"village-b7511e85a4b0cc858b71337175c59f8d673b7266\",\"humanRequestId\":\"f5343672-8cd9-44a0-861c-919403e26493\",\"deliveryId\":\"result:f5343672-8cd9-44a0-861c-919403e26493:ef00cfaa-cad1-47bb-b1ad-00be2893dd2f\",\"expectedPurposeVersion\":0,\"decision\":\"accept\",\"reason\":\"指定ファイルを直接読んで確認済みです。正式報告の内容と一致し、短い日本語の3項目、合計5分で取りかかれる内容、指定フォルダへの保存という要件を満たしています。リーダーから外部送信・本番変更・mainマージなしの報告も確認しました。\"}}",
+        "receipt": {
+          "id": "village-b7511e85a4b0cc858b71337175c59f8d673b7266",
+          "purposeId": "f5343672-8cd9-44a0-861c-919403e26493",
+          "humanRequestId": "f5343672-8cd9-44a0-861c-919403e26493",
+          "deliveryId": "result:f5343672-8cd9-44a0-861c-919403e26493:ef00cfaa-cad1-47bb-b1ad-00be2893dd2f",
+          "actorRunId": "0c90237a-c17d-4608-bef1-36cf7ce08120",
+          "kind": "accept",
+          "reason": "指定ファイルを直接読んで確認済みです。正式報告の内容と一致し、短い日本語の3項目、合計5分で取りかかれる内容、指定フォルダへの保存という要件を満たしています。リーダーから外部送信・本番変更・mainマージなしの報告も確認しました。",
+          "humanSequence": 2,
+          "at": "2026-11-25T14:18:49.164Z",
+          "version": 1
+        },
+        "at": "2026-11-25T14:18:49.164Z"
+      }
+    ],
+    "purposeDecisions": [
+      {
+        "id": "village-b7511e85a4b0cc858b71337175c59f8d673b7266",
+        "purposeId": "f5343672-8cd9-44a0-861c-919403e26493",
+        "humanRequestId": "f5343672-8cd9-44a0-861c-919403e26493",
+        "deliveryId": "result:f5343672-8cd9-44a0-861c-919403e26493:ef00cfaa-cad1-47bb-b1ad-00be2893dd2f",
+        "actorRunId": "0c90237a-c17d-4608-bef1-36cf7ce08120",
+        "kind": "accept",
+        "reason": "指定ファイルを直接読んで確認済みです。正式報告の内容と一致し、短い日本語の3項目、合計5分で取りかかれる内容、指定フォルダへの保存という要件を満たしています。リーダーから外部送信・本番変更・mainマージなしの報告も確認しました。",
+        "humanSequence": 2,
+        "at": "2026-11-25T14:18:49.164Z"
+      }
+    ]
+  }
+]

@@ -1,0 +1,38 @@
+[
+  {
+    "source": "isolated fixture, not live provider",
+    "contract": 2,
+    "first": true,
+    "input": "比較のための会話\n<ai-village-discovery>{\"agentId\":\"22d00216-ac32-445d-b43b-720f08bb2738\",\"role\":\"secretary\",\"location\":\"mayor\",\"projectId\":\"067e23d3-33f8-4db8-bba1-0fb1bc11f4be\"}</ai-village-discovery>\n<ai-village-request>{\"mode\":\"conversation\",\"conversationId\":\"d26619fb-57fe-4c90-bc06-fb47534d7be7\",\"runId\":\"533d471f-663e-4af3-afbb-c0e295865af9\",\"phase\":\"work\",\"historyRead\":[\"conversations\",\"get\",\"d26619fb-57fe-4c90-bc06-fb47534d7be7\",\"533d471f-663e-4af3-afbb-c0e295865af9\"],\"source\":{\"kind\":\"human\"},\"sequence\":2,\"contract\":2,\"rulesRevision\":\"80b5749f675d46a636140fbe58dc5a046b44513209de0de5ba335323df0ae23b\"}</ai-village-request>",
+    "instructionCharacters": 8,
+    "addedCharacters": 619,
+    "tagCharacters": null
+  },
+  {
+    "source": "isolated fixture, not live provider",
+    "contract": 2,
+    "first": false,
+    "input": "比較のための会話\n<ai-village-discovery>{\"agentId\":\"22d00216-ac32-445d-b43b-720f08bb2738\",\"role\":\"secretary\",\"location\":\"mayor\",\"projectId\":\"067e23d3-33f8-4db8-bba1-0fb1bc11f4be\"}</ai-village-discovery>\n<ai-village-request>{\"mode\":\"conversation\",\"conversationId\":\"d26619fb-57fe-4c90-bc06-fb47534d7be7\",\"runId\":\"65a95414-efed-4873-99a3-8adafb2527da\",\"phase\":\"work\",\"historyRead\":[\"conversations\",\"get\",\"d26619fb-57fe-4c90-bc06-fb47534d7be7\",\"65a95414-efed-4873-99a3-8adafb2527da\"],\"source\":{\"kind\":\"human\"},\"sequence\":3,\"contract\":2,\"rulesRevision\":\"80b5749f675d46a636140fbe58dc5a046b44513209de0de5ba335323df0ae23b\"}</ai-village-request>",
+    "instructionCharacters": 8,
+    "addedCharacters": 619,
+    "tagCharacters": null
+  },
+  {
+    "source": "isolated fixture, not live provider",
+    "contract": 3,
+    "first": true,
+    "input": "Projectの方針が更新されました（projects guide 4d912eda-e631-4a63-a2da-ea727b059043 secretary で読めます）。\n\n比較のための会話\n<village run=\"1e87e168-1057-4f89-801f-69438fccca2c\"/>",
+    "instructionCharacters": 8,
+    "addedCharacters": 144,
+    "tagCharacters": 53
+  },
+  {
+    "source": "isolated fixture, not live provider",
+    "contract": 3,
+    "first": false,
+    "input": "比較のための会話\n<village run=\"f302c3c6-e132-436c-ac52-30262ee52345\"/>",
+    "instructionCharacters": 8,
+    "addedCharacters": 54,
+    "tagCharacters": 53
+  }
+]

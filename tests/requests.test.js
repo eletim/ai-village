@@ -482,12 +482,14 @@ for(const state of ['intact','missing','error'])test('pre-dispatch prompt check:
 
 });
 
-test('queued compact report stops before sending when prompt disappears',async t=>{
+// The running session read its contract at start: a later prompt-file rewrite does not stop its
+// queued report (a CLI seen stopped is re-checked: tests/running-session-contract.test.js).
+test('queued compact report is still sent when only the prompt file changed in the same running session',async t=>{
  const f=await fixture(t,{reportMode:true}),s=f.service,a=f.agents[0];a.inputEnvelope={mode:'startup-v2',hash:inputHash(s.startupInstructions())};
  const r=await s.send(a.id,{instruction:'work',requestId:randomUUID()});await f.submit(r);await f.finish(r);
  f.promptState('missing');await f.complete(r);await s.tick();
  const report=s.flow.run(s.flow.root(r.humanRequestId).requestGraph.nodes[0].reportRunId);
- assert.equal(report.phase,'report');assert.equal(report.inputEnvelopeMode,undefined);assert.equal(report.queuedReason,'startup-contract-migration-required');assert.equal(f.sent.length,1);
+ assert.equal(report.phase,'report');assert.equal(report.queuedReason,undefined);assert.equal(f.sent.length,2);assert.equal(a.inputEnvelope.mode,'startup-v2');
 });
 
 test('origin=result delivery containing pasted_content survives Claude wrapping and escaping',async t=>{
