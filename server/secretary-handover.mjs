@@ -1,6 +1,6 @@
 import {createHash} from 'node:crypto';
 import {agentControls} from './agent-lifecycle.mjs';
-import {applyGraph} from './unified-requests.mjs';
+import {applyGraph,validateGraph} from './unified-requests.mjs';
 const fail=m=>{throw Object.assign(Error(m),{status:409});};
 export function secretaryHandoverPlan(d,id,targetId){
  const a=d.agent(id),b=d.writableAgent(d.agent(targetId));d.writableProject(a.projectId);
@@ -40,5 +40,7 @@ export async function handoverSecretary(d,id,x){return d.locked('projects',()=>d
  for(const r of queued){r.handoverOrigin={agentId:id,operationId:x.operationId};r.agentId=x.targetAgentId;r.queuedReason='secretary-handover';r.error=null;}
  for(const item of plan.works){const source=d.flow.root(item.humanRequestId);applyGraph(d.data,source,{type:'handover',actor:'program',requestId:item.workId,agentId:x.targetAgentId,operationId:x.operationId});source.finalAgentId=x.targetAgentId;source.revision++;}
  a.secretaryHandover=receipt;a.metadataRevision=(a.metadataRevision||0)+1;
- d.conversations.validate();await d.save();return structuredClone(receipt);
+ d.conversations.validate();
+ for(const q of d.data.requests.filter(q=>plan.conversations.some(c=>c.id===q.conversationId)))validateGraph(d.data,q);
+ await d.save();return structuredClone(receipt);
 })));}

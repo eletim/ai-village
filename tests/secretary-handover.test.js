@@ -41,10 +41,43 @@ test('handover rejects stale plans, wrong authority, uncertain dispatch, schedul
 });
 
 test('future result delivery follows inherited conversation without repeating the old job',async t=>{
- const {f,d,old,target,c,args,job}=await setup(t,{pendingJob:true});
+ let {f,d,old,target,c,args,job}=await setup(t,{pendingJob:true});
  await d.handoverSecretary(old.id,args());
+ await d.deleteAgent(old.id,{operationId:'delete-pending-job-source',revision:old.metadataRevision});
+ d=await f.restart();c=d.conversations.record(c.id);assert.equal(d.flow.root(job.humanRequestId).integrity,undefined);
  const run=d.flow.run(job.runId);await f.submit(run);await d.flow.finish({humanRequestId:run.humanRequestId,workId:run.workId,runId:run.id,operationId:randomUUID(),inputs:d.flow.inputs(run.humanRequestId,run.workId).map(i=>i.id),results:[]});await f.complete(run);
  const event=c.deliveries.find(e=>e.humanRequestId===job.humanRequestId);assert.ok(event);
  assert.equal(d.flow.run(event.runId).agentId,target.id);assert.equal(d.data.runs.filter(r=>r.humanRequestId===job.humanRequestId).length,1);
  d.conversations.validate();
+});
+
+for(const withdrawn of [false,true])test(`conversation requester survives handover, deletion and fresh process; withdrawn=${withdrawn}`,async t=>{
+ const {execFileSync}=await import('node:child_process');
+ const {inspectRequests,quarantineRequests}=await import('../server/request-integrity.mjs');
+ const {f,d,old,target,c,args,job}=await setup(t,{pendingJob:true});
+ const run=d.flow.run(job.runId);await f.submit(run);
+ if(withdrawn)await d.flow.cancel({humanRequestId:job.humanRequestId,revision:d.flow.root(job.humanRequestId).revision});
+ else{await d.flow.finish({humanRequestId:run.humanRequestId,workId:run.workId,runId:run.id,operationId:randomUUID(),inputs:d.flow.inputs(run.humanRequestId,run.workId).map(i=>i.id),results:[]});await f.complete(run);}
+ const before=structuredClone(d.flow.root(job.humanRequestId)),runs=structuredClone(d.data.runs.filter(r=>r.humanRequestId===job.humanRequestId)),count=d.data.runs.length,sends=f.sent.length;
+ await d.handoverSecretary(old.id,args());await d.deleteAgent(old.id,{operationId:'delete-after-transfer',revision:old.metadataRevision});
+ assert.equal(c.agentId,target.id);assert.deepEqual(d.flow.root(job.humanRequestId),before);
+ // Existing startup validation is the recovery path for the old false quarantine.
+ d.flow.root(job.humanRequestId).integrity={version:1,reasons:['Invalid conversation recipient']};await d.save();d.close();
+ const code=`import {DirectAgents} from './server/direct.mjs';const deny=async()=>{throw Error('external operation forbidden')};const d=new DirectAgents({dir:process.argv[1],localRun:deny,remote:deny,notifier:{status:()=>({}),enqueue:deny}});await d.init({watch:false});const q=d.data.requests.find(q=>q.id===process.argv[2]);console.log(JSON.stringify({q,runs:d.data.runs.filter(r=>r.humanRequestId===q.id),count:d.data.runs.length}));d.close();`;
+ const restarted=JSON.parse(execFileSync(process.execPath,['--input-type=module','-e',code,f.options.dir,job.humanRequestId],{encoding:'utf8'}));
+ assert.deepEqual(restarted.q,before);assert.deepEqual(restarted.runs,JSON.parse(JSON.stringify(runs)));assert.equal(restarted.count,count);assert.equal(f.sent.length,sends);
+ await f.restart();const data=f.service.data;
+ for(const mutate of [
+  x=>{x.conversations.find(v=>v.id===c.id).handoverHistory=[];},
+  x=>{x.conversations.find(v=>v.id===c.id).agentId='unrelated';},
+  x=>{x.agents.find(v=>v.id===old.id).secretaryHandover.plan.conversations=[];},
+  x=>{x.agents.find(v=>v.id===target.id).projectId='wrong-project';},
+  x=>{x.requests.find(v=>v.id===job.humanRequestId).requestedBy.actorRunId='forged';},
+  x=>{x.conversations.find(v=>v.id===c.id).handoverHistory[0].historicalRunIds=[];},
+  x=>{x.conversations.find(v=>v.id===c.id).operations=[];},
+ ]){
+  const bad=structuredClone(data);mutate(bad);quarantineRequests(bad);assert.ok(bad.requests.find(q=>q.id===job.humanRequestId).integrity?.reasons.includes('Invalid conversation recipient'));
+ }
+ const valid=inspectRequests(data).find(q=>q.id===job.humanRequestId);assert.deepEqual(valid.reasons,[]);
+ f.service.close();
 });
