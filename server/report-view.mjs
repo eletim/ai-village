@@ -1,3 +1,4 @@
+import {conversationControl,conversationSummary,conversationTurn} from './conversation-status.mjs';
 import {accepted,runState} from './run-lifecycle.mjs';
 import {projectState} from './state-projection.mjs';
 import {recoveryRequests} from '../src/run-recovery.js';
@@ -10,6 +11,7 @@ export function humanProjection(data){
  const view=structuredClone(data),protectedRequests=new Map((data.requests||[]).filter(q=>q.reportMode===true&&!q.integrity).map(q=>[q.id,q]));
  const protectedRuns=data.runs.filter(r=>protectedRequests.has(r.humanRequestId));
  for(const a of view.agents){
+  if(a.location==='mayor'&&a.projectId){a.conversationControl=conversationControl(a);a.conversationWork=conversationSummary(data,a);}
   const owned=protectedRuns.filter(r=>r.agentId===a.id);
   const hidden=owned.filter(r=>r.phase==='report'||protectedRequests.get(r.humanRequestId).status==='completed');
   a.nativeTurns=(a.nativeTurns||[]).filter(t=>!hidden.some(r=>{
@@ -27,7 +29,7 @@ export function humanProjection(data){
 
  }
  for(const r of view.runs){
-  if(r.conversationId){r.conversationAnswer=accepted(r)&&runState(r)==='completed';r.displayMode=r.conversationAnswer?(r.conversationDisplay?.mode||'reply'):'reply';r.conversationStatus=r.conversationSource?.kind==='human'?'秘書との会話':'リーダーの資料への返答';if(r.conversationSource?.kind!=='human')r.suppressUser=true;r.reportStatus=r.conversationStatus;}
+  if(r.conversationId){r.conversationLifecycle=conversationTurn(r);r.conversationAnswer=accepted(r)&&runState(r)==='completed';r.displayMode=r.conversationAnswer?(r.conversationDisplay?.mode||'reply'):'reply';r.conversationStatus=r.conversationSource?.kind==='human'?'秘書との会話':'リーダーの資料への返答';if(r.conversationSource?.kind!=='human')r.suppressUser=true;r.reportStatus=r.conversationLifecycle.label;}
   if(r.origin==='inbox')r.suppressUser=true;
   const q=protectedRequests.get(r.humanRequestId);if(!q)continue;
   if(q.status!=='completed'&&r.phase!=='report'){r.hiddenCompletion=true;continue;}

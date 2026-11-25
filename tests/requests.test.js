@@ -444,13 +444,13 @@ test('event-to-response upgrade preserves Direct steering boundary and supersede
  await f.finish(f.service.flow.run(third.id));await f.complete(f.service.flow.run(third.id));assert.equal(f.notifications.length,1);
 });
 
-test('startup envelope retains literal human input and dynamic identity; report specifications remain discoverable',async t=>{
+test('startup envelope retains saved literal input and fingerprints canonical Codex transport; report specifications remain discoverable',async t=>{
  const f=await fixture(t,{reportMode:true}),s=f.service,a=f.agents[0];
  a.inputEnvelope={mode:'startup-v2',hash:inputHash(s.startupInstructions())};
  const human='  本文 <pasted_content>\nそのまま  ';
  const r=await s.send(a.id,{instruction:human,requestId:randomUUID()});
  const delivered=f.sent.at(-1).text;
- assert(delivered.startsWith(human+'\n'));assert(delivered.includes(r.id));assert.equal(r.inputMarker,undefined);
+ assert.equal(r.instruction,human);assert(delivered.startsWith(human.trimStart()+'\n'));assert.equal(r.inputCorrelation.digest,inputHash(delivered));assert(delivered.includes(r.id));assert.equal(r.inputMarker,undefined);
  assert(delivered.includes('ai-village-discovery'));assert(delivered.includes(a.id));
  assert(!delivered.includes('requests finish'));assert(!delivered.includes('図は必要時のみ'));
  assert(s.rules.specification().text.includes('requests finish'));assert(s.startupInstructions().includes('phase=report'));

@@ -289,6 +289,13 @@ export class RequestFlow {
  async cancelQueued(x){return this.d.locked('request-graph',async()=>{
   const r=this.run(x.runId);if(!r||r.agentId!==x.agentId||r.humanRequestId!==x.humanRequestId)fail('対象Agent・依頼・runが一致しません',404);
   return this.d.locked(r.agentId,()=>this.d.persist(async()=>{
+  if(r.conversationId){
+   if(r.conversationSource?.kind!=='human'||r.humanRequestId)fail('人間の未送信会話だけ取り消せます');
+   if(r.queueCancelledAt)return structuredClone(r);
+   if(!canCancelQueued(r))fail('未送信の入力だけ取り消せます。送信状態を再確認してください');
+   changeRun(r,{type:'cancel',actor:'human'});r.queueCancelledAt=now();r.error=null;
+   await this.d.save();return structuredClone(r);
+  }
   const q=this.root(r.humanRequestId),w=this.work(q,r.workId);
   if(r.queueCancelledAt)return structuredClone(r);
   if(!canCancelQueued(r)||w.currentRunId!==r.id||requestStatus(q)!=='active')fail('未送信の入力だけ取り消せます。送信状態を再確認してください');
