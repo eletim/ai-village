@@ -18,7 +18,7 @@ export async function reconcileObservation(flow,x){
    if(d.data.runs.some(other=>other.id!==r.id&&other.agentId===r.agentId&&['queued','sent','running'].includes(other.runModel?.state.kind)))fail('別の配送・実行があります');
    const s=w.submissions.find(s=>s.runId===r.id);if(!s||s.outcome!=='unconfirmed'||s.observationRetraction)fail('未採用の不明観測が必要です');
   }
-  boundary();const a=d.agent(r.agentId),fixedHash=createHash('sha256').update(d.startupInstructions()).digest('hex');
+  boundary();const a=d.agent(r.agentId),fixedHash=createHash('sha256').update(d.startupInstructions(a)).digest('hex');
   return d.locked(a.id,async()=>{
    const envelope=JSON.stringify(a.inputEnvelope),identity=JSON.stringify([a.workspaceId,a.tabId,a.sessionName,a.provider,a.connection]);
    if(a.provider!=='codex'||a.deletedAt||a.deletion||a.runtimeRetiredTo||a.runtimeUpgrade?.state==='prepared'||a.agentModel?.intent==='stop'||a.inputEnvelope?.hash!==fixedHash||a.inputEnvelope?.sessionId!==r.sessionId||!['startup-v2','migration-required'].includes(a.inputEnvelope?.mode)||a.inputEnvelope.mode==='migration-required'&&a.inputEnvelope.reason!=='native-session-changed')fail('同一正式契約のsession誤観測だけを復旧できます');
