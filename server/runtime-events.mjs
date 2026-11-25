@@ -54,7 +54,8 @@ export function correlate(run,snapshot){
   if(snapshot.sessionId!==run.steerTarget.sessionId)return {state:'unknown',reason:'steering-target-changed'};
   if(turnIds[0]!==run.steerTarget.turnId){
    const index=snapshot.turns.findIndex(t=>t.id===run.steerTarget.turnId),prior=snapshot.turns[index];
-   const nextClaude=run.steeringProvider==='claude'&&candidates[0].source==='claude-user'&&index>=0&&snapshot.turns[index+1]?.id===turnIds[0]&&prior.state==='completed'&&Number.isFinite(prior.completionOffset)&&candidates[0].offset>prior.completionOffset;
+   // Turns a background-task notice started (runtime-events.py) are not a competing next turn.
+   const nextClaude=run.steeringProvider==='claude'&&candidates[0].source==='claude-user'&&index>=0&&snapshot.turns.slice(index+1).find(t=>t.trigger!=='task-notification')?.id===turnIds[0]&&prior.state==='completed'&&Number.isFinite(prior.completionOffset)&&candidates[0].offset>prior.completionOffset;
    if(!nextClaude)return {state:'unknown',reason:'steering-target-changed'};
   }
  }
