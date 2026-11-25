@@ -5,6 +5,7 @@ import {adoptionFreshProof,noCurrentRuntimeSends} from './adopted-fresh-runtime.
 import {launchProfile as parseLaunchProfile,launchReceiptMatches,launchProfileReady} from './launch-profile.mjs';
 import {stoppedRuntimeEvidence} from '../src/stopped-runtime.js';
 import {sameRuntimeAttributes,currentRuntimeWorkplaceAllowed} from '../src/runtime-connection-identity.js';
+import {SecretaryCommands} from './secretary-commands.mjs';
 import {Conversations} from './conversations.mjs';
 import {enrollLegacy,legacyAllowed,legacyContext,legacyReviewDue} from './legacy-contract.mjs';
 import {migrateCommonRequests} from './common-request-migration.mjs';
@@ -65,7 +66,7 @@ export class DirectAgents {
     Object.assign(this,{dir,remote,notifier,attachments,transferAttachment,localRun,localBin,pollMs,hostFactory,villageUrl});
     this.data={version:1,workshops:[],projects:[],agents:[],runs:[]};
     this.projectGuides=new ProjectGuides(undefined,this);
-    this.flow=new RequestFlow(this);this.conversations=new Conversations(this);this.events=new EventEmitter();
+    this.flow=new RequestFlow(this);this.conversations=new Conversations(this);this.secretaryCommands=new SecretaryCommands(this);this.events=new EventEmitter();
     this.persistence=new PersistenceBoundary();
     this.queue=Promise.resolve(); this.locks=new Map(); this.monitors=new Map();
     this.units=new RequestUnits(this);
