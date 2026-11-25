@@ -2,7 +2,7 @@ import {ChangeStream} from '../server/change-stream.mjs';
 import {humanUI} from '../server/human-ui.mjs';
 import {receiveUpload} from '../server/upload-limits.mjs';
 import {apiValue} from '../server/state-projection.mjs';
-import {workspaceSnapshot,historyPage} from '../server/conversation-pages.mjs';
+import {workspaceSnapshot,historyPage,entryBody} from '../server/conversation-pages.mjs';
 import {mapSnapshot} from '../server/map-view.mjs';
 // Rollback switch for the lean views (docs/lean-fetch.md): VILLAGE_LEGACY_FETCH=1 restores the full payloads.
 const leanFetch=process.env.VILLAGE_LEGACY_FETCH!=='1';
@@ -77,9 +77,11 @@ const handleRequest = async (req, res) => {
         }
         const history=pathname.match(/^\/api\/direct\/agents\/([^/]+)\/history$/);
         if(req.method==='GET'&&history){
-          const params=new URL(req.url,'http://localhost').searchParams,page=historyPage(direct.presentation(),history[1],params.get('before'));
+          const params=new URL(req.url,'http://localhost').searchParams,page=historyPage(direct.presentation(),history[1],params.get('before'),{lean:leanFetch});
           return json(res,200,params.get('boundaryOnly')==='1'?{cursor:page.cursor,hasMore:page.hasMore}:page);
         }
+        const entryBodyRoute=pathname.match(/^\/api\/direct\/agents\/([^/]+)\/entry-body$/);
+        if(req.method==='GET'&&entryBodyRoute){const params=new URL(req.url,'http://localhost').searchParams;return json(res,200,entryBody(direct.presentation(),entryBodyRoute[1],params.get('entry'),params.get('side')));}
         const deletion=pathname.match(/^\/api\/direct\/projects\/([0-9a-f-]{36})\/(delete-plan|delete)$/);
         if(deletion&&req.method==='GET'&&deletion[2]==='delete-plan')return json(res,200,direct.projectDeletePlan(deletion[1]));
         if(!['POST','PUT'].includes(req.method))return json(res,405,{error:'Method not allowed'});

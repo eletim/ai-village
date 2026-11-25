@@ -1,19 +1,52 @@
 import {requestProgress} from '../src/request-progress.js';
 import {agentEntries} from '../src/completions.js';
+import {isHumanInput,isVisibleAnswer,entryIdentity} from '../src/run-groups.js';
+import {createHash} from 'node:crypto';
 const terminal=new Set(['completed','failed','interrupted','superseded','terminated']);
 export const entryKey=r=>JSON.stringify([r.createdAt||'',r.external?'native':'run',r.external?(r.sessionId||r.agentSessionId||''):'',r.id]);
 const fields='answerJobs conversationLifecycle queuedReason displayMode notificationSuppressed conversationAnswer conversationId conversationSequence conversationSource conversationStatus id inputReceipt inputSource inputStatus targetLabel requestId agentId humanRequestId workId origin phase state needsReview runModel createdAt completedAt turnId sessionId agentSessionId instruction travelContexts attachments output finalOutput error errorCode attachmentError recovery notification queueCancelledAt dispatchAttemptedAt inputId suppressUser hideEntry reportStatus hiddenCompletion collapsedHistory external'.split(' ');
 const present=(r,view)=>({...Object.fromEntries(fields.filter(k=>r[k]!==undefined).map(k=>[k,r[k]])),...(r.workId?{requestProgress:requestProgress(view.requests?.find(q=>q.id===r.humanRequestId),r.workId,view.agents)}:{})});
+// Lean transport (docs/lean-fetch.md, stage 2): the body of a side the chat shows folded
+// (Agent-to-Agent input, non-public output) is fetched when the fold is opened, through
+// entryBody(). The predicates mirror src/direct.js entryHTML(); outputs are deferred only once
+// settled, so running progress keeps streaming through sync. `v` identifies the body version.
+const version=parts=>createHash('sha256').update(JSON.stringify(parts)).digest('hex').slice(0,16);
+const bodyOf={input:e=>({instruction:e.instruction||''}),output:e=>({output:e.output||'',finalOutput:e.finalOutput||''})};
+function foldedSides(e,view){
+ if(e.inputReceipt)return ['program','agent'].includes(e.inputSource?.actor)&&e.instruction?['input']:[];
+ const sides=[];
+ if(!(isHumanInput(e)&&!e.suppressUser)&&e.instruction)sides.push('input');
+ const q=view.requests?.find(q=>q.id===e.humanRequestId),published=q?.status==='completed'&&q.finalRunId===e.id;
+ if((e.output||e.finalOutput)&&terminal.has(e.state)&&!(published||isVisibleAnswer(e)))sides.push('output');
+ return sides;
+}
+function deferBodies(e,view){
+ const sides=foldedSides(e,view);if(!sides.length)return e;
+ const lean={...e,bodyDeferred:{}};
+ for(const side of sides){
+  const body=bodyOf[side](e);for(const k of Object.keys(body))delete lean[k];
+  lean.bodyDeferred[side]={v:version(Object.values(body)),...(side==='output'?{final:!!e.finalOutput}:{})};
+ }
+ return lean;
+}
+// The body of one folded side, for the fold the human just opened.
+export function entryBody(view,agentId,identity,side){
+ const a=view.agents.find(a=>a.id===agentId);if(!a)throw Object.assign(Error('Agent not found'),{status:404});
+ if(!Object.hasOwn(bodyOf,side)||typeof identity!=='string'||identity.length>1000)throw Object.assign(Error('Invalid entry body request'),{status:400});
+ const r=ordered(view,a).find(r=>entryIdentity(r)===identity);if(!r)throw Object.assign(Error('Entry not found'),{status:404});
+ const e=present(r,view),body=bodyOf[side](e);
+ return {side,v:version(Object.values(body)),...body};
+}
 const ordered=(view,a)=>agentEntries(view,a).sort((a,b)=>entryKey(a)<entryKey(b)?-1:entryKey(a)>entryKey(b)?1:0);
 const cursor=(agentId,key)=>Buffer.from(JSON.stringify([agentId,key])).toString('base64url');
 function decode(value,agentId){
  try{if(typeof value!=='string'||value.length>4096)throw Error();const x=JSON.parse(Buffer.from(value,'base64url'));if(!Array.isArray(x)||x.length!==2||x[0]!==agentId||typeof x[1]!=='string'||!Array.isArray(JSON.parse(x[1])))throw Error();return x[1];}
  catch{throw Object.assign(Error('Invalid history cursor'),{status:400});}
 }
-export function historyPage(view,agentId,before){
+export function historyPage(view,agentId,before,{lean=false}={}){
  const a=view.agents.find(a=>a.id===agentId);if(!a)throw Object.assign(Error('Agent not found'),{status:404});
  const all=ordered(view,a),bound=before?decode(before,agentId):null,older=bound?all.filter(r=>entryKey(r)<bound):all,entries=older.slice(-100);
- return {entries:entries.map(r=>present(r,view)),hasMore:older.length>entries.length,cursor:entries.length?cursor(agentId,entryKey(entries[0])):null};
+ return {entries:entries.map(r=>{const e=present(r,view);return lean?deferBodies(e,view):e;}),hasMore:older.length>entries.length,cursor:entries.length?cursor(agentId,entryKey(entries[0])):null};
 }
 // Call only on humanProjection, never on the raw request graph.
 // focus: null/undefined keeps every agent's conversation body in the snapshot (legacy/API callers).
@@ -46,7 +79,7 @@ export function workspaceSnapshot(view,ranges={},focus=null,{lean=false}={}){
   // Keep unsent/uncertain/running controls reachable even when older than the window.
   const entries=all.filter(r=>visible.has(r)||!r.inputReceipt&&!r.external&&!terminal.has(r.state));
   entries.forEach(r=>{if(!r.external)included.add(r.id);});
-  conversations[a.id]={entries:entries.map(r=>present(r,view)),hasMore:all.some(r=>window.length&&entryKey(r)<entryKey(window[0])),cursor:window.length?cursor(a.id,entryKey(window[0])):null};
+  conversations[a.id]={entries:entries.map(r=>{const e=present(r,view);return lean?deferBodies(e,view):e;}),hasMore:all.some(r=>window.length&&entryKey(r)<entryKey(window[0])),cursor:window.length?cursor(a.id,entryKey(window[0])):null};
  }
  const runs=view.runs.filter(r=>included.has(r.id));
  const agents=view.agents.map(a=>{const {nativeTurns,runtime,creationInput,ownedProcesses,processVerification,initialTabId,sessionName,...rest}=a;const agent={...rest,nativeTurns:(nativeTurns||[]).slice(-1).map(t=>({id:t.id,sessionId:t.sessionId,state:t.state}))};return lean?leanAgent(agent):agent;});

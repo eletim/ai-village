@@ -181,3 +181,7 @@ footer{font-variant-numeric:tabular-nums}
 .answer-job p{margin:5px 0;overflow-wrap:anywhere}
 
 .answer-job-title{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+
+/* Folded body fetched on open (docs/lean-fetch.md). */
+.deferred-body{color:var(--muted,#888);font-size:.9em;margin:.4em 0}
+.deferred-body[data-failed]{color:var(--danger,#c55)}
