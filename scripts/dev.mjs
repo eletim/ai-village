@@ -96,7 +96,7 @@ const handleRequest = async (req, res) => {
         }
         const conversationAction=pathname.match(/^\/api\/direct\/conversations\/(get|read|job|followup|amend|withdraw|display|decide)$/);
         if(req.method==='POST'&&conversationAction){const action=conversationAction[1];return json(res,200,action==='get'?await direct.conversations.read(input.conversationId,input.actorRunId):action==='read'?await direct.conversations.material(input.conversationId,input.actorRunId,input.selector):await direct.conversations[action](input));}
-        const requestAction=pathname.match(/^\/api\/direct\/requests\/(get|results|inputs|selfResume|delegate|continueChild|amend|respond|finish|plan|launch|assignPlan|discard|report|deadline)$/);
+        const requestAction=pathname.match(/^\/api\/direct\/requests\/(get|results|inputs|reconcileObservation|selfResume|delegate|continueChild|amend|respond|finish|plan|launch|assignPlan|discard|report|deadline)$/);
         if(req.method==='POST'&&requestAction){
           const action=requestAction[1],flow=direct.flow;
           const result=action==='cancel-queued'?await flow.cancelQueued(input):action==='get'?flow.get(input.humanRequestId):action==='inputs'?flow.inputs(input.humanRequestId,input.workId):action==='results'?flow.results(input.humanRequestId,input.workId):action==='retry'||action==='resume'?await flow.continue(input,action==='retry'):await flow[action](input);

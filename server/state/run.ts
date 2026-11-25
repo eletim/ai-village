@@ -5,13 +5,14 @@ export type RunState = { kind:'queued' } | { kind:'sent'; sessionId:string|null;
  | { kind:'running'; sessionId:string; turnId:string; inputId:string }
  | { kind:'ended'; outcome:Outcome; reason:string; errorCode?:string }
  | { kind:'cancelled' };
-export type Fact = Readonly<{ type:string; at:number; sessionId?:string; turnId?:string; inputId?:string; outcome?:Outcome; errorCode?:string }>;
+export type Fact = Readonly<{ type:string; at:number; operationId?:string; sessionId?:string; turnId?:string; inputId?:string; outcome?:Outcome; errorCode?:string }>;
 export type Run = Readonly<{
  id:string; requestId:string; parentRunId:string|null; retryOf:string|null; phase:'work'|'report'|'result'|'conversation'; resultOf:string|null; recipientRunId:string|null;
  createdBy?:Actor; supersededBy?:string; state:RunState; facts:readonly Fact[]; decisions:readonly {actor:Actor; reason:string}[];
  retryBudget:Readonly<{count:number; firstFailureAt:number|null}>;
 }>;
 export type RunEvent =
+ | Command<'reconcile-observation','program',{at:number;operationId:string;sessionId:string;turnId:string;inputId:string}>
  | Command<'dispatch','program',{at:number; sessionId:string|null; agentIdle:boolean}>
  | Command<'transport-ack','program',{at:number}>
  | Command<'input','program',{at:number; sessionId:string; turnId:string; inputId:string; text:string; matchedRunId?:string; competing:boolean}>
@@ -25,7 +26,7 @@ export type RunEvent =
  | Command<'cancel-inbox-reservation','program'>
  | Command<'cancel-report-reservation','program'>
  | Command<'cancel','human'> | Command<'close-tracking','human',{reason:string}>;
-export const runAuthorities = {dispatch:['program'],'transport-ack':['program'],input:['program'],terminal:['program'],lost:['program'],'dispatch-blocked':['program'],supersede:['human'],restore:['human'],cancel:['human'],'cancel-conversation-job':['agent'],'cancel-decision-reminder':['program'],'cancel-inbox-reservation':['program'],'cancel-report-reservation':['program'],'cancel-result-reservation':['program'],'close-tracking':['human']} as const;
+export const runAuthorities = {'reconcile-observation':['program'],dispatch:['program'],'transport-ack':['program'],input:['program'],terminal:['program'],lost:['program'],'dispatch-blocked':['program'],supersede:['human'],restore:['human'],cancel:['human'],'cancel-conversation-job':['agent'],'cancel-decision-reminder':['program'],'cancel-inbox-reservation':['program'],'cancel-report-reservation':['program'],'cancel-result-reservation':['program'],'close-tracking':['human']} as const;
 export type RunKind = {phase:'conversation'} | {phase:'work'} | {phase:'report'} | {phase:'result'; resultOf:string; recipientRunId:string};
 export const creationAuthorities = {conversation:['human','program'],work:['human','agent'],report:['program'],result:['program']} as const;
 export function newRun(id:string, requestId:string, actor:Actor, parentRunId:string|null=null, kind:RunKind={phase:'work'}, compatibility:{allowAgentRoot?:boolean}={}): Result<Run> {
@@ -42,6 +43,11 @@ export function resumeRun(previous:Run,id:string):Result<Run> {
 }
 export function transitionRun(r:Run,e:RunEvent):Result<Run> {
  if (!(runAuthorities[e.type] as readonly string[]).includes(e.actor)) return reject('actor-forbidden');
+ if(e.type==='reconcile-observation'){
+  const input=[...r.facts].reverse().find(f=>f.type==='input');
+  if(r.state.kind!=='ended'||r.state.outcome!=='unconfirmed'||r.state.reason!=='session-changed'||r.facts.at(-1)?.type!=='lost'||!input||input.sessionId!==e.sessionId||input.turnId!==e.turnId||input.inputId!==e.inputId||!e.operationId||r.phase!=='work')return reject('not-reconcilable-observation');
+  return accept({...r,state:{kind:'running',sessionId:e.sessionId,turnId:e.turnId,inputId:e.inputId},facts:[...r.facts,{type:e.type,at:e.at,operationId:e.operationId,sessionId:e.sessionId,turnId:e.turnId,inputId:e.inputId}]});
+ }
  if (isTerminal(r)) return reject('run-terminal');
  const record=(state:RunState):Result<Run>=>accept({...r,state,facts:[...r.facts,{type:e.type,at:'at' in e?e.at:0,...('sessionId' in e&&e.sessionId?{sessionId:e.sessionId}:{}),...('turnId' in e?{turnId:e.turnId}:{}),...('inputId' in e?{inputId:e.inputId}:{}),...('outcome' in e?{outcome:e.outcome}:{}),...('errorCode' in e?{errorCode:e.errorCode}:{})}]});
  switch(e.type) {

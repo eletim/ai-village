@@ -64,3 +64,21 @@ Separate-process tests reload saved records and disallow external calls. Real
 model scenario evaluation is distinct from native transport or production work.
 No production test job is required for deployment verification. Fixed startup
 contract text is unchanged; dynamic rules are refreshed at the next required read.
+
+## False session-change observation
+
+The implementation work exposed a separate execution-observer bug: a Codex child
+in the same cwd could be selected as its parent tab's session. PurpleMux filters
+positive child provenance at implicit discovery and before hook metadata changes.
+Existing unknowns are not silently rewritten by that fix.
+
+`requests reconcileObservation` is an explicit self-only root tracking correction,
+not a retry. It requires the same accepted input/session/turn/hash/native file,
+a live busy matching native turn, unchanged verified startup contract, no successor
+or competing delivery, and an unhandled root whose only review is this lost run.
+Only `session-changed` unknown observations qualify. Old lost facts, old submission
+and old envelope are preserved in correction evidence. The same run becomes
+tracked-running; no input is sent. A later true native terminal creates the next
+observation version independently of work acceptance. Withdrawal and missing
+finish remain withdrawal and unfinished work. Repeated unknown correction is
+rejected; absent proof requires investigation rather than forced recovery.

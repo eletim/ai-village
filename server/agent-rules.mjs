@@ -2,6 +2,7 @@ import {resolve} from 'node:path';
 import {createHash} from 'node:crypto';
 // The only source of Agent-facing policy and Agent decision-operation schemas.
 export const agentActions=Object.freeze({
+ reconcileObservation:{fields:'{humanRequestId,workId,actorRunId,operationId}',description:'自己runのsession誤観測を同一session/input/turnの現在実行・固定契約で照合し追跡へ復帰。旧lost記録を保持。再送・成功判定・別仕事開始はしない。不一致は拒否。'},
  selfResume:{fields:'{humanRequestId,workId,actorRunId,operationId,expectedVersion,at:日時|null,text?}',description:'現在担当する自分の作業を後で確認する単発予約。初回versionは0、以後getのselfResume.versionを指定。未来の時刻と確認内容で作成/置換、at:nullで取消。人間の期限は変えない。待機はinputs/resultsを明示してrespondし応答を終える。finishが正常終了で確定すると予約と未対応の予約入力は取消。失敗/中断/受付不明を予約で再送しない。'},
  report:{fields:'{humanRequestId,workId,actorRunId,operationId,kind:progress|question|extension,text,proposedCompletionAt?,proposedReportAt?}',description:'途中報告を保存して即時配送。延長は提案のみ。会話宛てrootのquestion/extensionは秘書回答待ちとなる。inputs/resultsをrespondして正常終了し、秘書amendによる再開を待つ。相談が解消して最終提出する場合はfinish。'},
  deadline:{fields:'{humanRequestId,workId,actorRunId,operationId,expectedVersion,completionAt,reportAt,reason}',description:'管理する直接の子依頼の期限を変更。日時はタイムゾーン付き、期限なしはnull。'},
