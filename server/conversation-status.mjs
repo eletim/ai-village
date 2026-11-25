@@ -65,6 +65,7 @@ export function conversationJob(data,q){
  if(['completed','returning'].includes(execution.code)){
   const delivery=data.runs.find(r=>r.id===execution.deliveryRunId);
   if(delivery&&['failed','interrupted','terminated'].includes(state(delivery)))return {...base,...status('attention','停止中','秘書の確認が完了しませんでした。','秘書へ続きの確認を依頼できます。')};
+  if(delivery?.requiresPurposeDecision&&state(delivery)==='completed'&&accepted(delivery)&&d?.state!=='pending')return {...base,...status('attention','停止中','成果の確認が終わらないまま返答が終了しました。','成果は保存されています。秘書へ続きの確認を依頼できます。')};
   return {...base,...status('evaluating',state(delivery)==='running'?'秘書が確認中':'秘書の確認待ち')};
  }
  return base;

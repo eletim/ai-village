@@ -382,7 +382,7 @@ test('both report settings survive restart; failed persistence does not falsely 
 
 test('compact work context retains completion and receipt rules with discoverable detailed operations',async t=>{
  const f=await fixture(t),r=await f.service.send(f.agents[0].id,{instruction:'context test',requestId:'compact-context-test'});
- const text=f.service.rules.specification().text;
+ const text=f.service.rules.action('leader').text;
  assert(text.length<4000);
  for(const token of ['requests finish','operationId','正常終了','委任','受付不明','/api/direct/requests/get','rules get work ACTION'])assert(text.includes(token),token);
  const envelope=f.service.flow.context(r);assert(envelope.includes(r.id));assert(envelope.includes(r.workId));assert(envelope.includes(r.humanRequestId));
@@ -453,7 +453,7 @@ test('startup envelope retains saved literal input and fingerprints canonical Co
  assert.equal(r.instruction,human);assert(delivered.startsWith(human.trimStart()+'\n'));assert.equal(r.inputCorrelation.digest,inputHash(delivered));assert(delivered.includes(r.id));assert.equal(r.inputMarker,undefined);
  assert(delivered.includes('ai-village-discovery'));assert(delivered.includes(a.id));
  assert(!delivered.includes('requests finish'));assert(!delivered.includes('図は必要時のみ'));
- assert(s.rules.specification().text.includes('requests finish'));assert(s.startupInstructions().includes('phase=report'));
+ assert(s.rules.action('leader').text.includes('requests finish'));assert(s.startupInstructions().includes('phase=report'));
  assert(s.rules.specification().text.includes('projects guide PROJECT_ID'));
  await f.submit(r);await f.finish(r);await f.complete(r);await s.tick();
  const q=s.flow.get(r.humanRequestId),report=s.flow.run(q.requestGraph.nodes[0].reportRunId);

@@ -31,3 +31,16 @@ for(const width of [1440,390])test('secretary decision, autonomous correction an
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  }finally{f.service.close();for(const fn of cleanup)await fn();}
 });
+for(const width of [1440,390])test('missing secretary judgment is visible by the answer and can be resumed '+width,async({page},info)=>{
+ const cleanup=[];const {f,human,first,completeJob}=await purposeFixture({after:fn=>cleanup.push(fn)});
+ try{
+  const one=await completeJob(first);await f.complete(one.delivery);
+  await page.setViewportSize({width,height:1000});
+  await page.route('**/api/**',route=>route.fulfill({json:new URL(route.request().url()).pathname==='/api/direct'?workspaceSnapshot(f.service.snapshot(),{},[human.agentId]):{providers:{}}}));
+  await page.goto('/agents');await page.locator('[data-zoom="'+human.agentId+'"]').click();
+  const answer=page.locator('[data-entry='+JSON.stringify(JSON.stringify(['run','',one.delivery.id]))+'] .answer-jobs');
+  await expect(answer).toContainText('停止中');await expect(answer).toContainText('成果は保存されています');await expect(answer).toContainText('続きの確認');
+  await expect(page.locator('[data-send="'+human.agentId+'"] [type=submit]')).toBeEnabled();
+  await page.screenshot({path:info.outputPath('judgment-recovery-'+width+'.png')});
+ }finally{f.service.close();for(const fn of cleanup)await fn();}
+});

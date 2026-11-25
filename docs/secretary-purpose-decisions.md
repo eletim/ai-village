@@ -39,3 +39,31 @@ APIが検証するのは発話・許可引用・資料・actorの由来と状態
 固定startup()は変更しない。正式動的rulesのrevision、配送資料、CLI/HTTP APIを更新する。既存セッションにプロンプトファイル変更が適用済みと称しない。新しい配送は既存契約に従って最新rulesを読み、新APIを利用できる。今回は追加の停止/旧データ削除/Agent移行を必要としない。
 
 検証は隔離サービス、実型graph/native受付fixture、HTTP、PC/スマホで行う。本番の既存仕事を試験として再実行しない。実モデルの自然言語判断品質を保証するテストとは区別する。
+
+## 軽い秘書への責務移管
+
+| 旧秘書が読んでいた/行っていたこと | 新しい担当 |
+| --- | --- |
+| 人間との相談、目的・合意・許可の理解 | 秘書 |
+| 依頼、成果を評価して達成報告・許可内の修正・本当に必要な質問を選択 | 秘書（現在の配送なら1操作） |
+| 工房分割、担当・期限管理、入力対応、子成果レビュー、完了申告 | リーダー、担当工房 |
+| 実装、検証、PR、許可された反映と稼働確認 | リーダー、担当工房 |
+| 配送対象と元許可の紐付け、目的継続、重複排除、後着入力、正常終端、保存競合 | 基盤 |
+
+固定startupは変更しない。既存の `rules get work` は短い共通境界と会話仕様を返し、非conversation担当には同revisionの `rules get work leader` を要求する。revisionにはleader仕様も含める。旧セッションも次の封筒でrevision変更を検知して公式仕様を再取得する、元からの動的仕様契約に従う。固定プロンプトを編集して移行済みにする処理は行わない。新しいモデル、sessionの停止・再作成、旧状態削除は不要。
+
+Project方針は `projects guide ID secretary`。バージョンが明確な標準方針の完全一致prefixだけを会話・許可境界に置き換え、追加の独自制約は全文を維持する。未知の文書は全文のまま返し、省略を推測しない。リーダーは従来のguide全文で実装運用を確認する。保存済み方針もrevisionも書き換えない。
+
+Agent向け `conversations get ID ACTOR` は会話本文・正式配送成果・判断・job目的と元許可・操作受付を返す。native/session/baseline/raw output/操作payloadの重複は返さない。人間UI向けの取得・保存記録は変更しない。技術証拠全文が必要なら対象jobの `requests get` を使う。後続ターンの資料を先読みしない境界は維持する。
+
+現在の正式配送に対して、秘書は次だけで判断できる。
+
+- 達成: `conversations decide {conversationId,actorRunId,operationId,decision:"accept",reason}`
+- 修正継続: `conversations job {conversationId,actorRunId,operationId,continue:true,instruction}`
+- 人間の判断が必要: `conversations decide {conversationId,actorRunId,operationId,decision:"question",reason,question}`
+
+基盤がactorの配送IDから対象を厳密に決定し、同じトランザクションで既存のpurposeBoundaryを適用する。最新jobの推測、本文解析、権限の上書きはしない。簡易継続に別対象やauthorizationを混ぜると拒否する。人間発言ターンから過去の別資料を評価する場合は、従来の明示指定を使う。相談には採否/入力申告/完了申告を要求しない。
+
+受入は実AI試験ではなく、正式operation registry→Conversations→request graph→native受付/終了fixture→配送/通知/再起動まで通す統合試験。秘書の自律判断の内容そのものをモデルが常に正しく選ぶ保証ではないが、選択した自然な判断を最小操作で安全に実行・記録できることを検証する。後着入力・未知・別対象・保存失敗の境界を既存試験と合わせて保持する。
+
+判断漏れで正常応答だけが終わった場合も、成果を自動採用しない。新形式の成果配送には、回答のそばに「停止中」「成果は保存されています。秘書へ続きの確認を依頼できます」と表示する。後の正式会話から保存済み結果を明示して判断を再開でき、旧仕事の再実行は不要。初期表示の内部手続き説明ではなく、実際に止まっている場合だけ理由と次の動作を示す。
