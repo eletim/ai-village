@@ -34,12 +34,15 @@ for(const mode of ['PC','mobile','HTTPS'])test(`real human API and browser contr
   for(const action of ['retry','resume','cancel','complete','cancel-queued'])expect(JSON.stringify(help)).not.toContain('requests '+action);
   const responses=[];page.on('response',r=>{if(r.url().includes('/human/'))responses.push(r);});
   await expect(page.locator('#run-recovery-inbox')).toHaveCount(0);
+  await expect(page.locator('.agent-panel .agent-recovery')).toHaveCount(0);
+  await page.locator('[data-profile-agent]').click();await page.locator('.profile-management summary').click();
   await page.locator(`[data-recovery-complete="${requests[0].id}"]`).click();
   await expect.poll(()=>responses.length).toBe(1);expect(responses[0].status()).toBe(200);
   await page.locator(`[data-recovery-cancel="${requests[1].id}"]`).click();
   await expect.poll(()=>responses.length).toBe(2);expect(responses[1].status()).toBe(200);
   await page.locator(`[data-recovery-retry="${requests[2].id}"]`).click();
   await expect.poll(()=>responses.length).toBe(3);expect(responses[2].status()).toBe(200);
+  await page.locator('#agent-profile-dialog [data-close]').click();
   await page.locator(`[data-cancel-queued="${runs[3].id}"]`).click();
   await expect.poll(()=>responses.length).toBe(4);expect(responses[3].status()).toBe(200);
  }finally{if(child?.exitCode===null){const exited=once(child,'exit');child.kill();await exited;}try{await context?.close();}finally{if(proxy){proxy.closeAllConnections();await new Promise(r=>proxy.close(r));}await rm(dir,{recursive:true,force:true});}}

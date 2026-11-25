@@ -35,7 +35,7 @@ import {agentPlaceName} from './agent-identity.js';
 import {bindPromptInput,mobilePromptUI} from './prompt-input.js';
 const $=s=>document.querySelector(s);
 const migrationViewer=runtimeMigration({api,newId:newRequestId});
-const profileViewer=agentProfileViewer({onMigration:id=>migrationViewer.open(id)});
+const profileViewer=agentProfileViewer({onMigration:id=>migrationViewer.open(id),managementHTML:a=>agentRecoveryHTML(a.id)+requestSignalsHTML(a.id)});
 weeklyUsagePanel($('#weekly-usage'));
 $('#agents').addEventListener('click',e=>{const button=e.target.closest('[data-profile-agent]');if(button){const a=state.agents.find(a=>a.id===button.dataset.profileAgent);if(a)profileViewer.open(a,(state.projects||[]).find(p=>p.id===a.projectId)||null);}});
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -232,7 +232,7 @@ function renderBoard(){
    if(!deliveryUnconfirmed(known))clearSubmittedDraft(a.id,receipt,outbox.get(a.id));
    pending.delete(a.id);outbox.delete(a.id);storeDrafts();
   }
-  updateReportHTML(card.querySelector('.agent-recovery-host'),conversationAlertHTML(a)+agentRecoveryHTML(a.id)+(a.location==='mayor'?'':requestSignalsHTML(a.id)));
+  updateReportHTML(card.querySelector('.agent-recovery-host'),conversationAlertHTML(a));
   const area=card.querySelector('.runs'),html=runHTML(a),wasLoading=area.dataset.loading==='true';area.dataset.loading=String(!!state.conversations&&!state.conversations[a.id]);if(wasLoading){updateReportHTML(area,html);scrolls.get(a.id).loaded();}else scrolls.get(a.id).preserve(()=>updateReportHTML(area,html));
   const prompt=card.querySelector('textarea[name=instruction]'),promptLabel=(a.name||'Agent')+'に聞く';
   prompt.placeholder=promptLabel;prompt.title=promptLabel+(mobilePromptUI()?'（Enterで改行、送信ボタン / Ctrl+Enterで送信）':'（Enter / Ctrl+Enterで送信、Shift+Enterで改行、変換中のEnterは確定）');prompt.setAttribute('aria-label',prompt.title);
