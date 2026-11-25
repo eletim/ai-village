@@ -38,7 +38,7 @@ for(const width of [1440,390])test('answer-local states: advice, active, complet
  await expect(element('question').locator('.answer-jobs')).toContainText('回答が必要');
  await expect(element('done').locator('.answer-job')).toHaveCount(0);
  await expect(element('done').locator('.answer-jobs')).toHaveCount(0);
- 
+
  await expect(page.locator('.runs .answer-job-title')).toHaveCount(0);
  expect(await page.locator('.runs .answer-jobs').evaluateAll(es=>es.map(e=>e.outerHTML).join(''))).not.toMatch(/内部作業指示|追加指示を保存|順番に配送/);
  await expect(element('question')).toContainText('公開日を指定してください。');
