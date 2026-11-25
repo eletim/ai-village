@@ -51,7 +51,12 @@ def parse_event(db,provider,x,offset):
    return
   if x.get('type')=='user' and not x.get('isMeta') and not (isinstance(content,list) and any(b.get('type')=='tool_result' for b in content)):
    if not uid:return
-   db.current=uid;turn(uid);db.parent(uid,uid)
+   db.current=uid;t=turn(uid);db.parent(uid,uid)
+   # A background task finishing while Claude is idle starts a turn of its own with a plain user
+   # line marked origin.kind=task-notification. It is the harness, not a person: the turn is kept
+   # (its output is the Agent's), but it records no input, so it never competes with a run's input.
+   if (x.get('origin') or {}).get('kind')=='task-notification':
+    t['trigger']='task-notification';db.put('turn',uid,t);return
    body=text(content)
    db.input({'explicitTurn':True,'source':'claude-user','id':uid,'turnId':uid,'hash':digest(body),'offset':offset,'text':body})
   elif uid and db.parent(parent):

@@ -2,7 +2,7 @@ import {agentEntries} from '../src/completions.js';
 // Village map transport (GET /api/direct?view=map). The map only needs registrations, Projects,
 // review flags and, per Agent, the few latest entries that decide its colour. Everything else in
 // the full snapshot (bodies, request graphs, history) is left out. villageModel() computes the
-// same places/residents/status from this as from the full snapshot; tests/map-view.test.js checks it.
+// same places/residents/status from this as from the full snapshot; tests/lean-fetch.test.js checks it.
 const agentFields='id name role location workshopId projectId state connectionState lifecycle observedSessionId createdAt displayOrder provider'.split(' ');
 const runFields='id agentId turnId sessionId agentSessionId state createdAt hideEntry'.split(' ');
 const pick=(x,keys)=>Object.fromEntries(keys.filter(k=>x[k]!==undefined).map(k=>[k,x[k]]));

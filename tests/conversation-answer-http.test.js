@@ -16,8 +16,8 @@ test('actual HTTP snapshot and history retain normal conversation answers and in
  t.after(async()=>{if(child.exitCode===null){const done=once(child,'exit');child.kill();await done;}});await serverReady(child);
  const env=(await import('node:fs/promises')).readFile;assert((await env(`/proc/${child.pid}/environ`,'utf8')).includes('VILLAGE_STATE_DIR='+dir));t.diagnostic(`isolated port=${port} notifications=false state=${dir}`);
  const get=async path=>{const r=await fetch(`http://127.0.0.1:${port}/api/direct`+path);assert.equal(r.status,200);return r.json();};
- const snap=await get('?view=workspace'),p=snap.conversations.s;assert.equal(p.entries.length,100);
- const old=await get('/agents/s/history?before='+encodeURIComponent(p.cursor));assert.equal(old.entries.length,5);
+ const snap=await get('?view=workspace&bodies=lazy'),p=snap.conversations.s;assert.equal(p.entries.length,100);
+ const old=await get('/agents/s/history?bodies=lazy&before='+encodeURIComponent(p.cursor));assert.equal(old.entries.length,5);
  // Folded (progress) answers carry their body behind entry-body (docs/lean-fetch.md, stage 2).
  const output=async r=>r.bodyDeferred?.output?(await get('/agents/s/entry-body?side=output&entry='+encodeURIComponent(JSON.stringify(['run','',r.id])))).output:r.output;
  assert.deepEqual([...p.entries,...old.entries].filter(r=>r.bodyDeferred?.output).map(r=>r.id).sort(),['r1','r103']);
@@ -25,5 +25,5 @@ test('actual HTTP snapshot and history retain normal conversation answers and in
  for(const id of ['r1','r103']){const r=[...p.entries,...old.entries].find(r=>r.id===id);assert.equal(r.displayMode,'progress');}
  const request=await fetch(`http://127.0.0.1:${port}/api/direct/conversations/get`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({conversationId:'c'})});const detail=await request.json();assert.equal(detail.runs.find(r=>r.id==='r103').humanAnswer,null);assert.equal(detail.runs.find(r=>r.id==='r103').progressText,'秘書の回答 103');
  const rejected=await fetch(`http://127.0.0.1:${port}/api/direct/conversations/display`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({conversationId:'c',actorRunId:'r103',operationId:'late-display-operation',expectedVersion:1,mode:'reply'})});assert.equal(rejected.status,403);
- assert.deepEqual((await get('?view=workspace')).conversations.s.entries,p.entries);
+ assert.deepEqual((await get('?view=workspace&bodies=lazy')).conversations.s.entries,p.entries);
 });
