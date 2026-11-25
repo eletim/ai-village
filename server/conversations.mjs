@@ -2,7 +2,8 @@ import {recoverMissingDecision,resultSourceEvent,retireDecisionReminder} from '.
 import {resolveFollowup} from './conversation-followup.mjs';
 import {conversationContext,conversationMaterial} from './conversation-context.mjs';
 import {conversationRunOwner} from './conversation-request-owner.mjs';
-import {purposeId,purposeView,conversationDisplayMode,purposeDecisionRequired,REPORT_DELIVERY_KINDS} from './conversation-purpose.mjs';
+import {purposeId,purposeView,conversationDisplayMode,REPORT_DELIVERY_KINDS} from './conversation-purpose.mjs';
+import {conversationNotification} from './conversation-notification.mjs';
 import {conversationJob,conversationTurn,conversationControl,SETTLED_JOB_CODES} from './conversation-status.mjs';
 import {responseText} from '../src/response-text.js';
 import {transitionDelivery} from './state/auxiliary.ts';
@@ -282,18 +283,23 @@ export class Conversations {
  async notifications(){
   for(const r of this.d.data.runs.filter(r=>r.conversationId&&r.notificationPolicy==='conversation'&&accepted(r)&&runState(r)==='completed')){
    await this.d.locked('notify-conversation:'+r.id,async()=>{
+    let suppressed=null;
     const claimed=await this.d.persist(async()=>{
      if(r.notificationSuppressed)return false;
-     if(conversationDisplayMode(this.d.data,r)==='progress'&&(!r.notification||r.notification.status==='pending')){
-      r.notificationSuppressed={reason:purposeDecisionRequired(this.d.data,r)?'purpose-decision-progress':'explicit-conversation-progress',at:now(),displayVersion:r.conversationDisplay?.version||0};
+     // Only a not-yet-attempted notification is decided here; sent/attempting/unknown are never revisited.
+     const policy=!r.notification||r.notification.status==='pending'?conversationNotification(this.d.data,r):null;
+     if(policy&&!policy.notify){
+      r.notificationSuppressed={reason:policy.reason,at:now(),displayVersion:r.conversationDisplay?.version||0};
       // A pending reservation has not attempted an external effect. Do not leave it pending forever.
       if(r.notification?.status==='pending')delete r.notification;
-      await this.d.save();return false;
+      await this.d.save();suppressed=r.notificationSuppressed;return false;
      }
      if(!r.notification)r.notification=transitionDelivery(null,{type:'prepare',id:'conversation-answer:'+r.id});
      if(r.notification.status!=='pending')return false;
      r.notification=transitionDelivery(r.notification,{type:'claim',at:now()});await this.d.save();return true;
     });
+    // Explainable afterwards: the journal records why nothing was sent (best effort, after the durable decision).
+    if(suppressed)try{await this.d.notifier.suppress?.({id:'conversation-answer:'+r.id,kind:'conversation',agentId:r.agentId,reason:suppressed.reason});}catch{}
     if(!claimed)return;
     try{const result=await this.d.notifier.enqueue({id:'conversation-answer:'+r.id,role:'assistant',kind:'conversation',agentId:r.agentId,content:'秘書からの返答\n'+(responseText(r).answer||'会話を村で確認してください。')});await this.d.persist(async()=>{r.notification=transitionDelivery(r.notification,{type:'result',result});await this.d.save();});}
     catch{await this.d.persist(async()=>{r.notification=transitionDelivery(r.notification,{type:'unknown',reason:'notification-outcome-unknown'});await this.d.save();});}
