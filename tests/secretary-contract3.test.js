@@ -50,8 +50,11 @@ test('a contract 3 turn carries only the tag; the Project policy is mentioned on
  for(const old of ['<ai-village-discovery','<ai-village-request','rulesRevision','historyRead'])assert(!first.text.includes(old),old);
  const second=await say('次の話');
  assert.equal(second.text,'次の話\n<village run="'+second.r.id+'"/>');
- const tag=second.text.slice('次の話'.length);t.diagnostic('per-turn addition: '+tag.length+' characters');assert(tag.length<=60);
+ const tag=second.text.slice('次の話'.length);t.diagnostic('per-turn addition: '+tag.length+' characters');assert.equal(tag.length,54);assert.equal(tag.trim().length,53);
  const guide=await d.projectGuides.get(secretary.projectId);
+ await d.putProjectGuide(secretary.projectId,{revision:guide.revision,content:guide.content});
+ assert(!(await say('同じ本文の再保存')).text.includes('Projectの方針'));
+ guide.revision=(await d.projectGuides.get(secretary.projectId)).revision;
  await d.putProjectGuide(secretary.projectId,{revision:guide.revision,content:guide.content+'\n- 追記：テストの方針'});
  const third=await say('方針を変えたよ');assert.match(third.text,/^Projectの方針が更新されました/);
  const fourth=await say('ありがとう');assert(!fourth.text.includes('Projectの方針'));
@@ -80,4 +83,31 @@ test('a contract 2 secretary that adopts a contract 3 session runs on contract 3
  await s.adoptRuntime(a.id,{operationId:randomUUID(),revision:a.metadataRevision||0,replacementRevision:b.metadataRevision||0,replacementAgentId:b.id,handover:'版3への移行'});
  assert.equal(startupContract(a),3);assert.equal(a.inputEnvelope.hash,inputHash(s.rules.startup3()));
  const restarted=await f.restart();assert.equal(startupContract(restarted.agent(a.id)),3);assert.equal(restarted.agent(a.id).inputEnvelope.mode,'startup-v2');
+});
+
+import {changeRun} from '../server/run-lifecycle.mjs';
+import {observeRequest} from '../server/request-lifecycle.mjs';
+test('contract 3 reconciliation keeps the installed version even when delivery is gated',async t=>{
+ const f=await fixture(t),d=f.service,a=f.agents[0];
+ a.inputEnvelope={...a.inputEnvelope,contract:3,hash:inputHash(d.rules.startup3())};
+ const r=await d.send(a.id,{requestId:randomUUID(),instruction:'isolated root work'});await f.submit(r);
+ changeRun(r,{type:'lost',actor:'program',at:Date.now(),reason:'session-changed'});r.error='runtime-file-replaced';observeRequest(d.data,d.flow.root(r.humanRequestId));
+ a.inputEnvelope={...a.inputEnvelope,mode:'migration-required',reason:'native-session-changed'};await d.save();
+ assert.equal(d.startupInstructions(a),d.rules.startup3());
+ const result=await d.flow.reconcileObservation({humanRequestId:r.humanRequestId,workId:r.workId,actorRunId:r.id,operationId:randomUUID()});
+ assert.equal(result.sent,false);assert.equal(result.state,'running');assert.equal(startupContract(a),3);
+ assert.equal(d.instructionStatus(a.id).requiredContract,3);
+ assert.equal(d.instructionStatus(f.agents[2].id).requiredContract,2);
+});
+
+test('a newly adopted contract 3 runtime gets the policy once; the old runtime retains its history',async t=>{
+ const {f,d,secretary:a,say}=await contract3(t);await say('最初の会話');const seen=a.secretaryGuideSeen,b=f.agents[1];
+ a.cwd='/fixture/work';d.data.workshops.push({id:a.workshopId,...a.connection,workplaces:[a.cwd]});
+ Object.assign(b,{workshopId:a.workshopId,location:a.location,projectId:a.projectId,cwd:a.cwd,connection:structuredClone(a.connection)});
+ b.inputEnvelope={mode:'startup-v2',hash:inputHash(d.rules.startup3()),contract:3};
+ await d.prepareRuntime(a.id,{operationId:randomUUID(),revision:a.metadataRevision||0});
+ await d.adoptRuntime(a.id,{operationId:randomUUID(),revision:a.metadataRevision,replacementRevision:b.metadataRevision||0,replacementAgentId:b.id,handover:'新セッションへ移行'});
+ assert.equal(b.secretaryGuideSeen,seen);assert.equal(a.secretaryGuideSeen,undefined);
+ assert.match((await say('移行後の会話')).text,/^Projectの方針が更新されました/);
+ assert.doesNotMatch((await say('次の会話')).text,/Projectの方針/);
 });

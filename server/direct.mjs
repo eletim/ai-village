@@ -244,7 +244,7 @@ export class DirectAgents {
   secretaryContext(agent){const identity=agentIdentity(agent);return this.rules.discovery({agentId:agent.id,role:identity.role,location:identity.location,projectId:agent.projectId||null});}
   instructionStatus(id){
     const a=this.agent(id),runs=this.data.runs.filter(r=>r.agentId===id),tracking=runs.filter(r=>['sent','running'].includes(modelOf(r).state.kind));
-    return {agentId:id,envelope:structuredClone(a.inputEnvelope||{mode:'migration-required'}),requiredContract:2,
+    return {agentId:id,envelope:structuredClone(a.inputEnvelope||{mode:'migration-required'}),requiredContract:a.inputEnvelope?.contract===3?3:2,newSessionContract:installContract(a),
       requiresFreshSession:a.inputEnvelope?.mode!=='startup-v2',tracking:tracking.map(r=>({runId:r.id,state:modelOf(r).state.kind,requestId:r.humanRequestId})),
       legacyRetirement:a.runtimeMigrations?.at(-1)?.legacyRetirement||null,
       retirementHolds:runs.filter(r=>r.queuedReason==='legacy-retirement-held').map(r=>({runId:r.id,workId:r.workId,humanRequestId:r.humanRequestId,reason:r.error})),
@@ -316,7 +316,7 @@ export class DirectAgents {
       if(stopped)await verifyStopped();
       const freshProof=adoptionFreshProof(a,b,this.data.runs,oldSnapshot);
       const oldObservation=structuredClone(a.agentModel.observation),freshObservation=structuredClone(b.agentModel.observation);
-      const keys=['launchProfile','launchEvidence','workspaceId','initialTabId','tabId','sessionName','terminalUrl','runtime','observedSessionId','inputEnvelope','modelInfo','setupRequired','ownedProcesses','processVerification','terminatedAt','lastCheckedAt'];
+      const keys=['secretaryGuideSeen','launchProfile','launchEvidence','workspaceId','initialTabId','tabId','sessionName','terminalUrl','runtime','observedSessionId','inputEnvelope','modelInfo','setupRequired','ownedProcesses','processVerification','terminatedAt','lastCheckedAt'];
       const fields=o=>Object.fromEntries(keys.filter(k=>o[k]!==undefined).map(k=>[k,structuredClone(o[k])]));
       const old=fields(a),replacement=fields(b);
       return this.persist(async()=>{
@@ -344,7 +344,7 @@ export class DirectAgents {
     })));
   }
   // The fixed contract text an Agent was (or is to be) started with: version 3 or 2.
-  startupInstructions(a){return startupContract(a)===3?this.rules.startup3():this.rules.startup();}
+  startupInstructions(a){return a?.inputEnvelope?.contract===3?this.rules.startup3():this.rules.startup();}
   async installInstructions(a){
     if(a.tabId)throw Error('既存セッションへ起動契約を再インストールできません。新しいAgentを作成してください。');
     let envelope={mode:'migration-required',reason:'startup-receipt-invalid'};
@@ -521,8 +521,8 @@ export class DirectAgents {
       }
       // Codex's composer strips outer whitespace. Canonicalize before BOTH send and
       // fingerprint; never relax matching or reinterpret already-dispatched runs.
-      const policy=guide?.available&&a.secretaryGuideSeen!==guide.revision?'Projectの方針が更新されました（projects guide '+a.projectId+' secretary で読めます）。\n\n':'';
-      if(policy)a.secretaryGuideSeen=guide.revision;
+      const policy=guide?.available&&a.secretaryGuideSeen!==a.projectId+':'+guide.hash?'Projectの方針が更新されました（projects guide '+a.projectId+' secretary で読めます）。\n\n':'';
+      if(policy)a.secretaryGuideSeen=a.projectId+':'+guide.hash;
       const body=policy+instruction+(plain?'':this.secretaryContext(a))+this.flow.context(r)+(compatibility?legacyContext(this.rules,r,a):'');
       const text=a.provider==='codex'?body.trim():body;
       if(r.steerTarget){const previous=this.flow.run(r.steerTarget.runId);changeRun(previous,{type:'close-tracking',actor:'human',reason:'steering-successor-dispatched'});}
