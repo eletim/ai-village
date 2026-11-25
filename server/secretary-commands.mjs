@@ -22,6 +22,7 @@ export const SECRETARY_COMMANDS_HELP=[
 // Short guidance for refusals the secretary can fix itself; the original reason is kept.
 const GUIDANCE=[
  [/今回の正式配送資料がありません/,'accept/ask は、リーダーの結果が届いた回で使います。この回には届いた結果がありません。village status で状況を確認してください。'],
+ [/正式配送済みの資料だけを評価/,'成果が正式に届く前には判断できません。返答を終え、報告が届いた回で判断してください。'],
  [/現在の正常な提出結果だけを採用/,'この結果は最新ではないか、正常に提出されていません。village status で最新の状態を確認してください。'],
  [/後着の人間入力があります/,'この後に人間の新しい発言が届いています。その回で改めて判断してください。'],
  [/前の(?:秘書)?判断の正常終了を待って/,'前の判断がまだ確定していません。その回の終了を待ってください。'],
@@ -100,7 +101,7 @@ export class SecretaryCommands {
   if(!event)fail('未判断の正式配送済み成果がありません。village status で確認してください。');
   if(action==='accept'&&event.kind!=='result')fail('成果ではない資料はacceptできません。相談への回答はfollowup、人間への質問はaskを使ってください。');
   const view=purposeView(this.d.data,q);
-  if(!current&&view.decision&&['pending','committed','continued'].includes(view.decision.state))fail('この目的は判断済み、または判断の確定待ちです。village status で確認してください。');
+  if(!current&&view.decision?.deliveryId===event.id&&['pending','committed','continued'].includes(view.decision.state))fail('この目的は判断済み、または判断の確定待ちです。village status で確認してください。');
   const input={conversationId:x.c.id,actorRunId:run,operationId,humanRequestId:event.humanRequestId,deliveryId:event.id,expectedPurposeVersion:view.version,decision:action==='accept'?'accept':'question',reason,...(action==='ask'?{question:reason}:{}),...(!current?{resultOnly:true}:{})};
   return this.d.conversations.decide(input).catch(e=>guide(e,action));
  }

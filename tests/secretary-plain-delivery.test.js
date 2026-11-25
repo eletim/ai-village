@@ -113,3 +113,24 @@ test('plain delivery keeps stop details, conjugates closure, and its full-text c
  const result=await cli(f)('conversations','read',match[1],long.id,match[2]);
  assert.equal(result.ok,true,result.error);assert(JSON.stringify(result.result).includes('長'.repeat(12000)));
 });
+
+for(const action of ['accept','ask'])test('new unjudged result after followup can be judged later with '+action,async t=>{
+ const {f,first,completeJob}=await setup(t,3),v=cli(f),one=await completeJob(first);
+ const follow=await v('followup','--run',one.delivery.id,'不足を修正してください');assert.equal(follow.ok,true,follow.error);await f.complete(one.delivery);
+ const two=await completeJob(follow.result);await f.complete(two.delivery);const r=await later(f);
+ const status=await v('status','--run',r.id);assert.equal(status.result.purposes[0].state,'秘書の確認待ち（判断記録なし）');
+ const out=await v(action,'--run',r.id,first.humanRequestId,'修正後の成果を確認');assert.equal(out.ok,true,out.error);assert.equal(out.result.deliveryId,two.event.id);
+ await f.complete(r);const next=await later(f);assert.equal((await v(action,'--run',next.id,first.humanRequestId,'再判断')).ok,false);
+});
+
+for(const action of ['accept','ask'])test('result after answering a consultation can be judged later with '+action,async t=>{
+ const {f,d,first,human,completeJob}=await setup(t,3),v=cli(f);await d.tick();const leader=d.flow.run(first.runId);await f.submit(leader);
+ await d.flow.report({humanRequestId:first.humanRequestId,workId:first.workId,actorRunId:leader.id,operationId:randomUUID(),kind:'question',text:'公開日を教えてください'});
+ await d.flow.respond({humanRequestId:first.humanRequestId,workId:first.workId,runId:leader.id,operationId:randomUUID(),inputs:d.flow.inputs(first.humanRequestId,first.workId).map(i=>i.id),results:[]});await f.complete(leader);
+ const c=d.conversations.record(human.conversationId),event=c.deliveries.find(e=>e.kind==='question'),delivery=d.flow.run(event.runId);await f.submit(delivery);
+ assert.equal((await v('ask','--run',delivery.id,'公開日はいつですか？')).ok,true);await f.complete(delivery);
+ const answer=await later(f,'公開日は12月1日で進めて');const resumed=await v('followup','--run',answer.id,'12月1日に公開してください');assert.equal(resumed.ok,true,resumed.error);await f.complete(answer);
+ await d.tick();const root=d.flow.root(first.humanRequestId),currentRunId=root.requestGraph.nodes.find(n=>!n.parentId).currentRunId;
+ const result=await completeJob({...first,runId:currentRunId});await f.complete(result.delivery);const current=await later(f);
+ const out=await v(action,'--run',current.id,first.humanRequestId,'成果を確認');assert.equal(out.ok,true,out.error);assert.equal(out.result.deliveryId,result.event.id);
+});
