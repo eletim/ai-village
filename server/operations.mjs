@@ -19,8 +19,8 @@ function secretaryCommand(direct,action,args){
  const count=(...allowed)=>{if(!allowed.includes(rest.length))throw Error(action+' の引数の数が違います。使い方: village help');};
  if(action==='order'){count(1);return c.order(run,text(rest[0]));}
  if(action==='followup'){count(1,2);return rest.length===2?c.followup(run,rest[0],text(rest[1])):c.followup(run,undefined,text(rest[0]));}
- if(action==='accept'){count(1);return c.accept(run,text(rest[0]));}
- if(action==='ask'){count(1);return c.ask(run,text(rest[0]));}
+ if(action==='accept'){count(1,2);return c.accept(run,text(rest.at(-1)),rest.length===2?rest[0]:undefined);}
+ if(action==='ask'){count(1,2);return c.ask(run,text(rest.at(-1)),rest.length===2?rest[0]:undefined);}
  if(action==='withdraw'){count(2);return c.withdraw(run,rest[0],text(rest[1]));}
  count(0);return c.status(run);
 }

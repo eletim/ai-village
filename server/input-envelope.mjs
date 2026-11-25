@@ -55,3 +55,8 @@ if root.is_symlink() or p.is_symlink() or not p.is_file():raise ValueError('work
 blocks=re.findall(rb'<ai-village-instructions version="[12]">.*?</ai-village-instructions>',p.read_bytes(),re.S)
 print(json.dumps({'verified':any(hashlib.sha256(b).hexdigest()==expected for b in blocks)}))
 `;
+
+// The startup contract an Agent runs on: 3 for secretaries created with the minimal contract
+// (secretary-minimal-prompt.md 4.4), otherwise 2. Version 2 sessions keep the full envelope.
+export const startupContract=a=>a?.inputEnvelope?.mode==='startup-v2'&&a.inputEnvelope.contract===3?3:2;
+
