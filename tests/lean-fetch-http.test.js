@@ -16,7 +16,7 @@ async function village(t,env={}){
  const runs=Array.from({length:120},(_,i)=>({id:randomUUID(),agentId,humanRequestId:qid,workId,requestId:randomUUID(),state:'completed',createdAt:new Date(1700000000000+i*1000).toISOString(),instruction:'question '+i,output:'reply '+i+' body'.repeat(200)}));
  const q={id:qid,status:'completed',revision:0,works:[{id:workId,agentId,currentRunId:runs.at(-1).id,runIds:runs.map(r=>r.id)}],inbox:[],ticket:{state:'consumed'}};
  const data=fixtureModels({version:1,workshops:[],projects:[],agents:[{id:agentId,name:'test',location:'mayor',state:'idle',connection:{connectionType:'local'},secretaryHandover:{operationId:'AUDIT-HANDOVER'},runtimeMigrations:[{at:'2026-01-01',oldRuntime:{note:'AUDIT-RUNTIME'}}]}],runs,requests:[q]});
- q.requestGraph.nodes[0].inbox=[{id:'notice',kind:'supplement',source:{actor:'human'},text:'notice body',createdAt:'2010-01-01T00:00:00.000Z',attempts:[]}];
+ q.requestGraph.nodes[0].inbox=[{id:'notice',kind:'supplement',source:{actor:'program'},text:'notice body',createdAt:'2030-01-01T00:00:00.000Z',attempts:[]}];
  await writeFile(join(dir,'direct.json'),JSON.stringify(data));
  const bin=join(dir,'pmux');await writeFile(bin,'#!/bin/sh\nexit 1\n',{mode:0o700});const socket=createServer();socket.listen(0,'127.0.0.1');await once(socket,'listening');const port=socket.address().port;await new Promise(r=>socket.close(r));
  const child=spawn(process.execPath,['scripts/dev.mjs','--port',String(port)],{env:{...process.env,HOME:dir,VILLAGE_STATE_DIR:dir,VILLAGE_PMUX_BIN:bin,VILLAGE_NOTIFICATIONS:'false',VILLAGE_AUTH_FILE:'',VILLAGE_PUBLIC_ORIGIN:'',VILLAGE_VPN_ADDRESS:'',CODEX_HOME:dir,...env},stdio:['ignore','pipe','pipe']});
@@ -33,6 +33,15 @@ test('map view: same village from far fewer bytes; legacy GET unchanged',async t
  assert(Buffer.byteLength(map)*50<Buffer.byteLength(full));t.diagnostic(`map=${Buffer.byteLength(map)} full=${Buffer.byteLength(full)} bytes`);
  const strip=m=>JSON.stringify(m.residents.map(({source,...r})=>r));assert.equal(strip(villageModel(JSON.parse(map))),strip(villageModel(JSON.parse(full))));
  const workspace=await get('?view=workspace&focus=%5B%5D');assert(!workspace.includes('AUDIT-HANDOVER'));assert(!workspace.includes('AUDIT-RUNTIME'));
+});
+
+test('folded bodies are deferred only for a page that asks (bodies=lazy); older pages keep them inline',async t=>{
+ const {get,agentId}=await village(t),focus='&focus='+encodeURIComponent(JSON.stringify([agentId]));
+ const legacy=JSON.parse(await get('?view=workspace'+focus)),lazy=JSON.parse(await get('?view=workspace&bodies=lazy'+focus));
+ assert(legacy.conversations[agentId].entries.every(e=>!e.bodyDeferred));
+ const notice=lazy.conversations[agentId].entries.find(e=>e.inputReceipt&&e.bodyDeferred);assert(notice);assert.equal(notice.instruction,undefined);
+ assert.equal(legacy.conversations[agentId].entries.find(e=>e.id===notice.id).instruction,'notice body');
+ const body=JSON.parse(await get('/agents/'+agentId+'/entry-body?side=input&entry='+encodeURIComponent(JSON.stringify(['run','',notice.id]))));assert.equal(body.instruction,'notice body');assert.equal(body.v,notice.bodyDeferred.input.v);
 });
 
 test('VILLAGE_LEGACY_FETCH=1 restores the previous complete payloads',async t=>{

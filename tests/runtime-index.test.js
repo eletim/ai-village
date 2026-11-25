@@ -215,6 +215,28 @@ test('Claude background-task notices are not human input; a real queued human me
  assert.deepEqual(steered.inputs.map(i=>[i.id,i.source]),[['u','claude-user'],['human','claude-queued']]);assert.equal(correlate(r,steered).state,'unknown');assert.equal(correlate(r,steered).reason,'additional-input-in-owned-turn');
 });
 
+test('a background-task notice that arrives while Claude is idle starts a turn but is never input',async t=>{
+ const f=await setup(t),file=join(f.dir,'.claude/projects/test',sid+'.jsonl');await mkdir(join(file,'..'),{recursive:true});
+ const env={...f.env,HOME:f.dir},execute=async(a,args)=>execFileSync(args[0],args.slice(1),{env}).toString(),agent={...f.a,provider:'claude'};
+ const notice=(uuid,parent)=>({type:'user',uuid,parentUuid:parent,origin:{kind:'task-notification'},message:{role:'user',content:'<task-notification>\n<task-id>b1</task-id>\n<status>completed</status>\n</task-notification>'}});
+ const reply=(uuid,parent,text)=>({type:'assistant',uuid,parentUuid:parent,message:{stop_reason:'end_turn',content:[{type:'text',text}]}});
+ await writeFile(file,lines([{type:'user',uuid:'u1',message:{content:'first ai-village-run-one'}},reply('a1','u1','ONE')]));
+ // Notice before the next run's input: the run was dispatched while the notice turn was pending.
+ const baseline=await f.reader.read(agent,f.status,execute);
+ const r={id:'two',inputMarker:'ai-village-run-two',baselineRuntime:baseline,dispatchAttemptedAt:'now'};
+ await appendFile(file,lines([notice('n1','a1'),reply('na1','n1','noted'),{type:'user',uuid:'u2',parentUuid:'na1',message:{content:'second ai-village-run-two'}},reply('a2','u2','TWO')]));
+ f.reader=new RuntimeReader(f.dir);let snapshot=await f.reader.read(agent,f.status,execute);
+ assert.deepEqual(snapshot.inputs.map(i=>[i.id,i.source]),[['u1','claude-user'],['u2','claude-user']]);
+ assert.deepEqual(snapshot.turns.map(t=>[t.id,t.trigger||null]),[['u1',null],['n1','task-notification'],['u2',null]]);
+ assert.equal(correlate(r,snapshot).state,'completed');assert.equal(correlate(r,snapshot).output,'TWO');
+ // Notice after the run finished: the run's result is unaffected.
+ await appendFile(file,lines([notice('n2','a2'),reply('na2','n2','noted again')]));snapshot=await f.reader.read(agent,f.status,execute);
+ assert.equal(snapshot.inputs.length,2);assert.equal(correlate(r,snapshot).state,'completed');assert.equal(correlate(r,snapshot).output,'TWO');
+ // A person's plain message (no task-notification origin) is still input, even with the same text.
+ await appendFile(file,lines([{...notice('h1','na2'),origin:{kind:'human'}}]));snapshot=await f.reader.read(agent,f.status,execute);
+ assert.deepEqual(snapshot.inputs.map(i=>i.id),['u1','u2','h1']);
+});
+
 test('middle equal-length rewrite invalidates host and restarted replica; append preserves identity',async t=>{
  const f=await setup(t),padding={type:'padding',value:'x'.repeat(20000)};
  const content=lines([padding,start,input,done,padding]);await writeFile(f.file,content);

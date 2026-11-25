@@ -26,7 +26,7 @@ test('workspace HTTP pages reduce bytes while legacy GET and formal requests ret
  const focused=JSON.parse(await get('?view=workspace&focus='+encodeURIComponent(JSON.stringify([agentId]))));assert.equal(focused.conversations[agentId].entries.length,100);
  const invalidFocus=await fetch(url+'?view=workspace&focus='+encodeURIComponent('{}'));assert.equal(invalidFocus.status,400);
  const cursor=s.conversations[agentId].cursor,older=JSON.parse(await get('/agents/'+agentId+'/history?before='+encodeURIComponent(cursor)));assert.equal(older.entries.length,100);assert.equal(older.entries.at(-1).id,runs[134].id);
- const oldest=JSON.parse(await get('/agents/'+agentId+'/history?before='+encodeURIComponent(older.cursor)));
+ const oldest=JSON.parse(await get('/agents/'+agentId+'/history?bodies=lazy&before='+encodeURIComponent(older.cursor)));
  const notices=oldest.entries.filter(e=>e.inputReceipt);assert.deepEqual(notices.map(e=>e.inputSource.actor),['program','program','program','agent','human']);
  // Program/Agent notices are folded, so their text loads on open; the human one stays inline.
  assert.equal(notices[0].instruction,undefined);assert.equal(JSON.parse(await get('/agents/'+agentId+'/entry-body?side=input&entry='+encodeURIComponent(JSON.stringify(['run','',notices[0].id])))).instruction,'notice body 0');assert.equal(notices[4].instruction,'notice body 4');

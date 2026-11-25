@@ -4,7 +4,7 @@ import {isHumanInput,isVisibleAnswer,entryIdentity} from '../src/run-groups.js';
 import {createHash} from 'node:crypto';
 const terminal=new Set(['completed','failed','interrupted','superseded','terminated']);
 export const entryKey=r=>JSON.stringify([r.createdAt||'',r.external?'native':'run',r.external?(r.sessionId||r.agentSessionId||''):'',r.id]);
-const fields='answerJobs conversationLifecycle queuedReason displayMode notificationSuppressed conversationAnswer conversationId conversationSequence conversationSource conversationStatus id inputReceipt inputSource inputStatus targetLabel requestId agentId humanRequestId workId origin phase state needsReview runModel createdAt completedAt turnId sessionId agentSessionId instruction travelContexts attachments output finalOutput error errorCode attachmentError recovery notification queueCancelledAt dispatchAttemptedAt inputId suppressUser hideEntry reportStatus hiddenCompletion collapsedHistory external'.split(' ');
+const fields='answerJobs conversationLifecycle queuedReason displayMode notificationSuppressed conversationAnswer conversationId conversationSequence conversationSource conversationStatus id inputReceipt inputSource inputStatus targetLabel requestId agentId humanRequestId workId origin phase state needsReview runModel createdAt completedAt turnId sessionId agentSessionId instruction travelContexts attachments output finalOutput error errorCode attachmentError recovery notification queueCancelledAt dispatchAttemptedAt inputId suppressUser hideEntry reportStatus hiddenCompletion collapsedHistory external trigger'.split(' ');
 const present=(r,view)=>({...Object.fromEntries(fields.filter(k=>r[k]!==undefined).map(k=>[k,r[k]])),...(r.workId?{requestProgress:requestProgress(view.requests?.find(q=>q.id===r.humanRequestId),r.workId,view.agents)}:{})});
 // Lean transport (docs/lean-fetch.md, stage 2): the body of a side the chat shows folded
 // (Agent-to-Agent input, non-public output) is fetched when the fold is opened, through
@@ -43,10 +43,10 @@ function decode(value,agentId){
  try{if(typeof value!=='string'||value.length>4096)throw Error();const x=JSON.parse(Buffer.from(value,'base64url'));if(!Array.isArray(x)||x.length!==2||x[0]!==agentId||typeof x[1]!=='string'||!Array.isArray(JSON.parse(x[1])))throw Error();return x[1];}
  catch{throw Object.assign(Error('Invalid history cursor'),{status:400});}
 }
-export function historyPage(view,agentId,before,{lean=false}={}){
+export function historyPage(view,agentId,before,{lazyBodies=false}={}){
  const a=view.agents.find(a=>a.id===agentId);if(!a)throw Object.assign(Error('Agent not found'),{status:404});
  const all=ordered(view,a),bound=before?decode(before,agentId):null,older=bound?all.filter(r=>entryKey(r)<bound):all,entries=older.slice(-100);
- return {entries:entries.map(r=>{const e=present(r,view);return lean?deferBodies(e,view):e;}),hasMore:older.length>entries.length,cursor:entries.length?cursor(agentId,entryKey(entries[0])):null};
+ return {entries:entries.map(r=>{const e=present(r,view);return lazyBodies?deferBodies(e,view):e;}),hasMore:older.length>entries.length,cursor:entries.length?cursor(agentId,entryKey(entries[0])):null};
 }
 // Call only on humanProjection, never on the raw request graph.
 // focus: null/undefined keeps every agent's conversation body in the snapshot (legacy/API callers).
@@ -59,7 +59,9 @@ const leanAgent=({secretaryHandover,runtimeMigrations,...rest})=>{
  const latest=runtimeMigrations?.at(-1);
  return runtimeMigrations?{...rest,runtimeMigrations:latest?[latest.legacyRetirement?{at:latest.at,legacyRetirement:latest.legacyRetirement}:{at:latest.at}]:[]}:rest;
 };
-export function workspaceSnapshot(view,ranges={},focus=null,{lean=false}={}){
+// lazyBodies: only for a client that asked (bodies=lazy); a page loaded before this build cannot
+// render deferred bodies and keeps receiving them inline.
+export function workspaceSnapshot(view,ranges={},focus=null,{lean=false,lazyBodies=false}={}){
  if(!ranges||typeof ranges!=='object'||Array.isArray(ranges)||Object.keys(ranges).length>1000)throw Object.assign(Error('Invalid history ranges'),{status:400});
  let focusIds=null;
  if(focus!=null){
@@ -79,7 +81,7 @@ export function workspaceSnapshot(view,ranges={},focus=null,{lean=false}={}){
   // Keep unsent/uncertain/running controls reachable even when older than the window.
   const entries=all.filter(r=>visible.has(r)||!r.inputReceipt&&!r.external&&!terminal.has(r.state));
   entries.forEach(r=>{if(!r.external)included.add(r.id);});
-  conversations[a.id]={entries:entries.map(r=>{const e=present(r,view);return lean?deferBodies(e,view):e;}),hasMore:all.some(r=>window.length&&entryKey(r)<entryKey(window[0])),cursor:window.length?cursor(a.id,entryKey(window[0])):null};
+  conversations[a.id]={entries:entries.map(r=>{const e=present(r,view);return lazyBodies?deferBodies(e,view):e;}),hasMore:all.some(r=>window.length&&entryKey(r)<entryKey(window[0])),cursor:window.length?cursor(a.id,entryKey(window[0])):null};
  }
  const runs=view.runs.filter(r=>included.has(r.id));
  const agents=view.agents.map(a=>{const {nativeTurns,runtime,creationInput,ownedProcesses,processVerification,initialTabId,sessionName,...rest}=a;const agent={...rest,nativeTurns:(nativeTurns||[]).slice(-1).map(t=>({id:t.id,sessionId:t.sessionId,state:t.state}))};return lean?leanAgent(agent):agent;});

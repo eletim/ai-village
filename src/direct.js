@@ -169,7 +169,9 @@ function entryHTML(a,source,divider){
  const published=request?.status==='completed'&&request.finalRunId===r.id;
  const finalLabel=published?'最終報告':parent?'成果提出（'+(state.agents.find(x=>x.id===parent.assignee)?.name||'依頼元Agent')+'宛）':'回答';
  const human=isHumanInput(r),inputBody=(stubs.input||(r.instruction?'<pre>'+linkedText(r.instruction)+'</pre>':''))+travelSummary(r.travelContexts)+attachmentHTML(r.attachments);
- const input=human&&!r.suppressUser?bubble('user',r.instruction,r.createdAt,travelSummary(r.travelContexts)+attachmentHTML(r.attachments)):
+ // A turn the Agent's own background task started (runtime-events.py) is not a human message.
+ const input=r.trigger==='task-notification'?'<div class="message internal"><span class="chat-placeholder">…（裏実行タスクの完了通知）</span>'+timeHTML(r.createdAt)+'</div>':
+  human&&!r.suppressUser?bubble('user',r.instruction,r.createdAt,travelSummary(r.travelContexts)+attachmentHTML(r.attachments)):
   '<div class="message internal">'+chatBodyHTML(r,'input',inputBody,true,exchangeLabel(r,state))+timeHTML(r.createdAt)+'</div>';
  // Legacy completed replies have no finalOutput/origin metadata; retain their human-facing answer.
  const showAnswer=published||isVisibleAnswer(r);
@@ -545,7 +547,7 @@ function armSyncIndicator(){
 }
 function disarmSyncIndicator(){clearTimeout(syncIndicatorTimer);syncIndicatorTimer=null;syncIndicatorDue=false;}
 async function fetchWorkspace(signal){
- const path='?view=workspace&sync=1&client='+syncClient+'&ranges='+encodeURIComponent(JSON.stringify(historyRanges))+'&focus='+encodeURIComponent(JSON.stringify([...focusIds]));
+ const path='?view=workspace&sync=1&bodies=lazy&client='+syncClient+'&ranges='+encodeURIComponent(JSON.stringify(historyRanges))+'&focus='+encodeURIComponent(JSON.stringify([...focusIds]));
  const base=syncBase;
  const result=await api(path+(base?'&since='+encodeURIComponent(base.cursor):''),null,'GET',signal);
  signal.throwIfAborted();
