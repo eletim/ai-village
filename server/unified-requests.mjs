@@ -1,3 +1,4 @@
+import {conversationRequestOwner} from './conversation-request-owner.mjs';
 import {node,graphSteps,transitionGraph,latest,handled} from './state/requests.ts';
 export const evidence=(data,q)=>data.runs.filter(r=>r.humanRequestId===q.id).map(r=>({run:r.runModel,ownerId:r.workId,agentId:r.agentId}));
 export const rootNode=q=>node(q.requestGraph,q.rootWorkId);
@@ -21,7 +22,7 @@ export function validateGraph(data,q){
  const ids=new Set();for(const n of g.nodes){
   if(q.commonRequests&&(!n.recipient||!['human','agent'].includes(n.createdBy)||typeof n.planned!=='boolean'))throw Error('Invalid common request contract');
   if(n.recipient&&(n.recipient.kind==='request'?n.recipient.requestId!==n.parentId:!['human','conversation'].includes(n.recipient.kind)||!!n.parentId))throw Error('Invalid result recipient');
-  if(n.recipient?.kind==='conversation'&&(n.recipient.conversationId!==q.conversationId||n.requester.kind!=='conversation'||n.requester.conversationId!==q.conversationId||n.createdBy!=='agent'||!data.conversations?.some(c=>c.id===q.conversationId&&c.agentId===n.requester.agentId)))throw Error('Invalid conversation recipient');
+  if(n.recipient?.kind==='conversation'&&(n.recipient.conversationId!==q.conversationId||n.requester.kind!=='conversation'||n.requester.conversationId!==q.conversationId||n.createdBy!=='agent'||!conversationRequestOwner(data,data.conversations?.find(c=>c.id===q.conversationId),q,n)))throw Error('Invalid conversation recipient');
   if(n.planned&&(n.runIds.length||n.currentRunId))throw Error('Planned request has execution');
   if(ids.has(n.id)||(!(n.planned&&n.assignee===null)&&typeof n.assignee!=='string')||!Array.isArray(n.runIds)||(!n.planned&&!n.runIds.includes(n.currentRunId))||new Set(n.runIds).size!==n.runIds.length||!n.metadata||typeof n.metadata!=='object'||Array.isArray(n.metadata)||['agentId','parentWorkId','runIds','currentRunId'].some(key=>Object.hasOwn(n.metadata,key))||!['active','submitted','completed','withdrawn'].includes(n.state?.kind)||!Array.isArray(n.submissions)||!Array.isArray(n.claims)||!Array.isArray(n.replacements)||!Array.isArray(n.invalidatedRuns)||!Array.isArray(n.handling)||!Array.isArray(n.declarations)||!Array.isArray(n.decisions))throw Error('Invalid request node: '+n.id);ids.add(n.id);
   if(!n.recipient&&n.requester?.kind!==(n.parentId?'agent':'human')||n.parentId&&n.requester.requestId!==n.parentId||n.state.kind==='active'&&!Array.isArray(n.state.review)||!n.runAgents)throw Error('Invalid request authority/state');
