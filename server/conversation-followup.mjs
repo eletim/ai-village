@@ -10,8 +10,9 @@ export function resolveFollowup(conversations,c,actor,x){
  const source=data.runs.find(r=>r.id===original.requestedBy?.actorRunId);
  if(!source||source.conversationId!==c.id||source.conversationSequence>actor.conversationSequence)fail('未配送の目的は指定できません');
  if(data.runs.some(r=>r.conversationId===c.id&&r.conversationSource?.kind==='human'&&!r.queueCancelledAt&&r.conversationSequence>actor.conversationSequence))fail('後着の人間入力があります。配送後に追加指示してください');
- const q=purposeLeaf(data,original),w=rootNode(q),view=purposeView(data,q),decision=view.decision,current=data.runs.find(r=>r.id===w.currentRunId);
+ const q=purposeLeaf(data,original);
  if(q.integrity||original.integrity)fail('目的の参照を検証できません');
+ const w=rootNode(q),view=purposeView(data,q),decision=view.decision,current=data.runs.find(r=>r.id===w.currentRunId);
  if(w.state.kind==='withdrawn'||w.state.kind==='completed'&&w.state.by==='human')fail('取り下げ・人間による終了済みの目的は自動再開できません');
  if(current&&['failed','interrupted','terminated'].includes(runState(current)))fail('旧実行が失敗・受付不明です。再送せず保存記録の照合が必要です');
  if(decision?.state==='pending')fail('前の秘書判断の正常終了を待ってください');

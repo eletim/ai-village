@@ -2,8 +2,8 @@ import {recoverMissingDecision,resultSourceEvent,retireDecisionReminder} from '.
 import {resolveFollowup} from './conversation-followup.mjs';
 import {conversationContext,conversationMaterial} from './conversation-context.mjs';
 import {conversationRunOwner} from './conversation-request-owner.mjs';
-import {purposeId,purposeView,conversationDisplayMode} from './conversation-purpose.mjs';
-import {conversationJob,conversationTurn,conversationControl} from './conversation-status.mjs';
+import {purposeId,purposeView,conversationDisplayMode,purposeDecisionRequired,REPORT_DELIVERY_KINDS} from './conversation-purpose.mjs';
+import {conversationJob,conversationTurn,conversationControl,SETTLED_JOB_CODES} from './conversation-status.mjs';
 import {responseText} from '../src/response-text.js';
 import {transitionDelivery} from './state/auxiliary.ts';
 import {randomUUID} from 'node:crypto';
@@ -43,7 +43,7 @@ export class Conversations {
   }
   if(this.d.data.runs.some(r=>(r.conversationId||r.runModel.phase==='conversation')&&!ids.has(r.conversationId)))throw Error('Conversation run owner missing');
  }
- pendingForAgent(id){const ids=new Set((this.d.data.conversations||[]).filter(c=>c.agentId===id).map(c=>c.id));return this.d.flow.requests.some(q=>ids.has(q.conversationId)&&(['active','submitted'].includes(rootNode(q).state.kind)||q.purposeId&&!['completed','human-closed','withdrawn'].includes(conversationJob(this.d.data,q).code)))||this.d.data.runs.some(r=>ids.has(r.conversationId)&&['queued','sent','running'].includes(r.runModel.state.kind));}
+ pendingForAgent(id){const ids=new Set((this.d.data.conversations||[]).filter(c=>c.agentId===id).map(c=>c.id));return this.d.flow.requests.some(q=>ids.has(q.conversationId)&&(q.integrity||['active','submitted'].includes(rootNode(q).state.kind)||q.purposeId&&!SETTLED_JOB_CODES.includes(conversationJob(this.d.data,q).code)))||this.d.data.runs.some(r=>ids.has(r.conversationId)&&['queued','sent','running'].includes(r.runModel.state.kind));}
  async read(id,actorRunId){
   const c=this.record(id),r=actorRunId&&this.d.data.runs.find(r=>r.id===actorRunId&&r.conversationId===id&&r.agentId===c.agentId);
   // An Agent can call get before the event monitor has observed its first input.
@@ -67,7 +67,7 @@ export class Conversations {
    const lifecycle=conversationJob(visibleData,q);
    if(!actor)return {...full,purpose:purposeView(this.d.data,q),lifecycle};
    // Status is available immediately; materials for a later turn are not injected here.
-   return {id:q.id,purpose:purposeView(visibleData,q),authorization:q.requestedBy?.authorization,lifecycle,status:full.status,instruction:q.instruction,leaderAgentId:rootNode(q).assignee,returnPending:c.deliveries.some(e=>e.humanRequestId===q.id&&!deliveries.includes(e)),availableDeliveries:deliveries.filter(e=>e.humanRequestId===q.id).map(e=>e.id),materials:'後続の正式配送ターンで確認してください'};
+   return {id:q.id,purpose:purposeView(visibleData,q),authorization:q.requestedBy?.authorization,lifecycle,status:full.status,instruction:q.instruction,leaderAgentId:q.integrity?null:rootNode(q).assignee,returnPending:c.deliveries.some(e=>e.humanRequestId===q.id&&!deliveries.includes(e)),availableDeliveries:deliveries.filter(e=>e.humanRequestId===q.id).map(e=>e.id),materials:'後続の正式配送ターンで確認してください'};
   });
   return structuredClone({id:c.id,agentId:c.agentId,projectId:c.projectId,createdAt:c.createdAt,sequence:actor?.conversationSequence??c.sequence,operations:actor?c.operations.filter(o=>runs.some(r=>r.id===JSON.parse(o.payload).input.actorRunId)).map(o=>({id:o.id,receipt:o.receipt})):c.operations,deliveries,purposeDecisions:(c.purposeDecisions||[]).filter(d=>!actor||runs.some(r=>r.id===d.actorRunId)),control:conversationControl(this.d.data.agents.find(a=>a.id===c.agentId)),runs:runs.map(r=>({...actor?{id:r.id,conversationSequence:r.conversationSequence,conversationSource:r.conversationSource,instruction:r.conversationSource.kind==='human'?r.instruction:undefined,attachments:r.attachments,travelContexts:r.travelContexts,createdAt:r.createdAt}:{...r},lifecycle:conversationTurn(r),state:runState(r),displayMode:conversationDisplayMode(this.d.data,r),displayVersion:r.conversationDisplay?.version||0,humanAnswer:accepted(r)&&runState(r)==='completed'&&conversationDisplayMode(this.d.data,r)!=='progress'?responseText(r).answer:null,progressText:accepted(r)&&runState(r)==='completed'&&conversationDisplayMode(this.d.data,r)==='progress'?responseText(r).answer:null})),jobs});
  }
@@ -252,8 +252,11 @@ export class Conversations {
   const e={id,kind,humanRequestId:q.id,createdAt:now(),material,...(kind==='result'?{decisionRecoveryVersion:1}:{})};
   const excerpt=JSON.stringify(e);
   const packet=excerpt.length<=10000?e:{id,kind,humanRequestId:q.id,createdAt:e.createdAt,truncated:true,read:['conversations','get',c.id],excerpt:excerpt.slice(0,8000)};
-  const r=this.enqueue(c,{requestId:'conversation-delivery:'+id,instruction:'リーダーからの資料です（追加許可ではありません）。目的に照らし、達成の報告・許可内の修正継続・人間への具体質問を選んでください。今回の対象は基盤が照合します。\n'+JSON.stringify(packet),source:{kind:['attention','important-change'].includes(kind)?'program':'leader',humanRequestId:q.id,deliveryId:id}});
-  r.requiresPurposeDecision=true;e.runId=r.id;c.deliveries.push(e);
+  const report=REPORT_DELIVERY_KINDS.includes(kind);
+  const instruction=report?'仕事の状態に関する基盤からの報告です（追加許可・成果ではありません）。人間へ必要な状況説明を返答してください。成果の採用や質問は不要です。受付不明の操作は再送しません。\n':'リーダーからの資料です（追加許可ではありません）。目的に照らし、達成の報告・許可内の修正継続・人間への具体質問を選んでください。今回の対象は基盤が照合します。\n';
+  const r=this.enqueue(c,{requestId:'conversation-delivery:'+id,instruction:instruction+JSON.stringify(packet),source:{kind:report?'program':'leader',humanRequestId:q.id,deliveryId:id}});
+  if(!report)r.requiresPurposeDecision=true;
+  e.runId=r.id;c.deliveries.push(e);
  }
  settle(q){
   const c=this.record(q.conversationId),w=rootNode(q),s=latest(w),before=c.deliveries.length;
@@ -282,7 +285,7 @@ export class Conversations {
     const claimed=await this.d.persist(async()=>{
      if(r.notificationSuppressed)return false;
      if(conversationDisplayMode(this.d.data,r)==='progress'&&(!r.notification||r.notification.status==='pending')){
-      r.notificationSuppressed={reason:r.requiresPurposeDecision?'purpose-decision-progress':'explicit-conversation-progress',at:now(),displayVersion:r.conversationDisplay?.version||0};
+      r.notificationSuppressed={reason:purposeDecisionRequired(this.d.data,r)?'purpose-decision-progress':'explicit-conversation-progress',at:now(),displayVersion:r.conversationDisplay?.version||0};
       // A pending reservation has not attempted an external effect. Do not leave it pending forever.
       if(r.notification?.status==='pending')delete r.notification;
       await this.d.save();return false;

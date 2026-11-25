@@ -63,3 +63,7 @@ export function quarantineRequests(data){
 }
 export const quarantinedRun=(data,r)=>!!(r.humanRequestId&&!(data.requests||[]).some(q=>q.id===r.humanRequestId))||(data.requests||[]).some(q=>q.integrity&&(q.id===r.humanRequestId||rows(q.requestGraph?.nodes||q.works).some(w=>w.runIds?.includes(r.id))||rows(q.requestModel?.runs).some(m=>m.id===r.id)));
 export const integrityView=q=>q.integrity?{status:'active',needsReview:true,quarantined:true}:{};
+// Reference boundary for records that may be quarantined: a quarantined record can lack a
+// usable graph. Use only for membership (which agents a stored record mentions), never to
+// interpret its state; healthy processing must skip q.integrity records explicitly.
+export const recordedNodes=q=>Array.isArray(q.requestGraph?.nodes)?q.requestGraph.nodes:[];

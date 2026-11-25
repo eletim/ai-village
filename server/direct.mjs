@@ -213,6 +213,8 @@ export class DirectAgents {
     const patch={metadataRevision:revision+1};
     if('name' in input)patch.name=this.validName(input.name);
     if('projectId' in input&&input.projectId!==a.projectId&&this.conversations.pendingForAgent(a.id))fail('未完了の会話配送・仕事がある秘書はProjectを変更できません');
+    // A Project's leader reference must stay inside that Project. Release it explicitly first.
+    if('projectId' in input&&input.projectId!==a.projectId){const led=this.data.projects.filter(p=>!p.deletedAt&&p.leaderAgentId===a.id);if(led.length)fail('Projectのリーダーに設定されています。先にリーダーを解除してから所属を変更してください: '+led.map(p=>p.name||p.id).join(', '));}
     if('projectId' in input){if(input.projectId!==null)this.writableProject(input.projectId);patch.projectId=input.projectId;if(input.projectId!==a.projectId)patch.displayOrder=null;}
     if('displayOrder' in input){if(input.displayOrder!==null&&!Number.isSafeInteger(input.displayOrder))fail('displayOrderは安全な整数またはnullです',400);if(!(patch.projectId===undefined?a.projectId:patch.projectId))fail('Project所属が必要です',400);patch.displayOrder=input.displayOrder;}
     a.creationInput ||= {workshopId:a.workshopId,cwd:a.cwd,name:a.name,provider:a.provider||'codex',location:a.location||'workshop',projectId:a.projectId||null};
