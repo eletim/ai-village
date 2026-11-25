@@ -6,7 +6,7 @@ test('conversation choice, leader setting and internal result differ from human 
   return route.fulfill({json:snapshot});
  });
  await page.goto('/agents');
- const secretary=page.locator('#agent-a');await expect(secretary.locator('[name=requestTarget]')).toHaveValue('');await expect(secretary).toContainText('仕事のリーダー: 実装リーダー');
+ const secretary=page.locator('#agent-a');await expect(secretary.locator('[name=requestTarget]')).toHaveValue('');await expect(secretary).not.toContainText('仕事のリーダー: 実装リーダー');
  await expect(secretary).toContainText('その進め方でよいと思います。');await expect(secretary).toContainText('成果が揃いました');
  await secretary.locator('textarea').fill('今日は相談だけです');await secretary.locator('form [type=submit]').click();await expect.poll(()=>calls.length).toBe(1);expect(calls[0].body.mode).toBe('conversation');
  await page.locator('[data-add="project:p1"]').click();await expect(page.locator('#project-leader-form')).toBeVisible();await expect(page.locator('#project-leader-form select')).toHaveValue('b');

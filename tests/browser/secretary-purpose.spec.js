@@ -16,7 +16,7 @@ for(const width of [1440,390])test('secretary decision, autonomous correction an
   await expect(root.locator('.answer-job')).toHaveCount(1);
   await expect(root).not.toContainText('完了');
   await expect(page.locator('#completion-count')).toBeEmpty();
-  await expect(page.locator('[data-disclosure="conversation-work:'+human.agentId+'"] summary')).toContainText('1件');
+  await expect(page.locator('.agent-recovery-host .conversation-work')).toHaveCount(0);
   await page.screenshot({path:info.outputPath('autonomous-continuation-'+width+'.png')});
   const two=await completeJob(next);
   await f.service.conversations.decide({...args(two,1),decision:'accept'});
@@ -39,7 +39,7 @@ for(const width of [1440,390])test('missing secretary judgment is visible by the
   await page.route('**/api/**',route=>route.fulfill({json:new URL(route.request().url()).pathname==='/api/direct'?workspaceSnapshot(f.service.snapshot(),{},[human.agentId]):{providers:{}}}));
   await page.goto('/agents');await page.locator('[data-zoom="'+human.agentId+'"]').click();
   const answer=page.locator('[data-entry='+JSON.stringify(JSON.stringify(['run','',one.delivery.id]))+'] .answer-jobs');
-  await expect(answer).toContainText('停止中');await expect(answer).toContainText('成果は保存されています');await expect(answer).toContainText('続きの確認');
+  await expect(answer).toContainText('停止中');await expect(answer).toContainText('成果は保存されています');await expect(answer).not.toContainText('続きの確認');
   await expect(page.locator('[data-send="'+human.agentId+'"] [type=submit]')).toBeEnabled();
   await page.screenshot({path:info.outputPath('judgment-recovery-'+width+'.png')});
  }finally{f.service.close();for(const fn of cleanup)await fn();}
