@@ -16,7 +16,7 @@ import {} from '../server/runtime-events.mjs';
 import {VillageOperations} from '../server/operations.mjs';
 export async function fixture(t,{reportMode=false,protocol=1,commonRequests=false}={}){
  const dir=await mkdtemp(join(tmpdir(),'request-flow-'));t.after(()=>rm(dir,{recursive:true,force:true}));
- const runtimes=new Map(),sent=[],notifications=[];let offline=false,lose=false,promptState='intact',promptChecks=0;
+ const runtimes=new Map(),sent=[],notifications=[];let offline=false,lose=false,promptState='intact',promptChecks=0,cliStopped=false;
  const execute=async(args,host,id)=>{
   if(offline)throw Error('offline');
   const agent=service?.data.agents.find(a=>args.includes(a.workspaceId)||args.includes('session-'+a.workspaceId?.replace(/^ws-/,'')))?.id||id;
@@ -24,7 +24,7 @@ export async function fixture(t,{reportMode=false,protocol=1,commonRequests=fals
   const native=runtimes.get(runtimeId);
   if(args[0]==='python3'&&args[2]===verifyInstructionsScript){promptChecks++;if(promptState==='error')throw Error('read failed');return JSON.stringify({verified:promptState==='intact'});}
   if(args[0]==='python3')return JSON.stringify(native);
-  if(args[2]==='status')return JSON.stringify({alive:true,cliState:testView(native.turns.at(-1))?.state==='running'?'busy':'idle',agentSessionId:'session-'+runtimeId});
+  if(args[2]==='status')return JSON.stringify({alive:!cliStopped,cliState:testView(native.turns.at(-1))?.state==='running'?'busy':'idle',agentSessionId:'session-'+runtimeId});
   if(args[2]==='send'){sent.push({agentId:agent,text:args.at(-1),transport:host?'ssh':'local'});if(lose)throw Error('response lost');return '{"status":"sent"}';}
   throw Error('unexpected '+args.slice(0,4));
  };
@@ -43,5 +43,5 @@ export async function fixture(t,{reportMode=false,protocol=1,commonRequests=fals
  const finish=async(r,op=randomUUID())=>service.flow.finish({results:JSON.parse(service.flow.root(r.humanRequestId).requestGraph.operations.find(o=>o.id===op)?.payload||'null')?.results||service.flow.results(r.humanRequestId,r.workId).filter(e=>!e.handled&&!e.superseded&&e.outcome==='completed'&&!e.claims.some(c=>c.actorRunId===r.id&&!c.invalidated)).map(e=>({requestId:e.requestId,resultId:e.id,version:e.version,decision:'accept'})),humanRequestId:r.humanRequestId,workId:r.workId,runId:r.id,revision:service.flow.root(r.humanRequestId).revision,operationId:op});
  const delegate=async(r,target,op=randomUUID())=>service.flow.delegate({humanRequestId:r.humanRequestId,parentWorkId:r.workId,actorRunId:r.id,agentId:target.id,instruction:'Child work '+op,operationId:op});
  const restart=async()=>{service.close();service=new DirectAgents(options);await service.init({watch:false});service.flow.protocol=protocol;service.flow.commonRequests=commonRequests;return service;};
- return {get service(){return service;},options,agents,runtimes,sent,notifications,promptState:v=>promptState=v,promptChecks:()=>promptChecks,submit,complete,finish,delegate,restart,offline:v=>offline=v,lose:v=>lose=v};
+ return {get service(){return service;},options,agents,runtimes,sent,notifications,promptState:v=>promptState=v,cliStopped:v=>cliStopped=v,promptChecks:()=>promptChecks,submit,complete,finish,delegate,restart,offline:v=>offline=v,lose:v=>lose=v};
 }
