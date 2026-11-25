@@ -134,7 +134,21 @@ export class DirectAgents {
   }
   // Human UI viewing signal (visible, focused, Agent selected). Memory only: it never
   // changes records and is unknown after restart, which means "not watching".
-  markPresence(id,{viewing=true}={}){this.agent(id);if(typeof viewing!=='boolean')fail('viewingはtrue/falseです',400);this.presence ||= new Map();if(viewing)this.presence.set(id,Date.now());else this.presence.delete(id);return {ok:true,viewing};}
+  // Each page (client) reports with an increasing seq; a late, older report is ignored, and one
+  // page leaving does not clear another page that is still viewing.
+  markPresence(id,{viewing=true,client='page',seq=0}={}){
+    this.agent(id);
+    if(typeof viewing!=='boolean')fail('viewingはtrue/falseです',400);
+    if(typeof client!=='string'||!/^[\w-]{1,64}$/.test(client)||!Number.isSafeInteger(seq)||seq<0)fail('clientとseqが不正です',400);
+    const pages=(this.presence ||= new Map()).get(id)||new Map(),last=pages.get(client);
+    if(last&&seq<last.seq)return {ok:true,viewing:!!last.at,stale:true};
+    pages.set(client,{seq,at:viewing?Date.now():null});
+    // Bound memory: forget pages that have not reported for 10 minutes.
+    for(const [key,value] of pages)if(key!==client&&Date.now()-(value.updatedAt||0)>600000)pages.delete(key);
+    pages.get(client).updatedAt=Date.now();this.presence.set(id,pages);return {ok:true,viewing};
+  }
+  // Latest viewing report among this Agent's pages (undefined when none is viewing).
+  presentAt(id){let at;for(const p of this.presence?.get(id)?.values()||[])if(p.at&&!(at>=p.at))at=p.at;return at;}
   async viewAgent(id,{revision}){return this.locked(id,()=>this.persist(async()=>{
     this.agent(id);
     if(typeof revision!=='string'||! /^[a-f0-9]{64}$/.test(revision))fail('表示したAgentのrevisionが必要です',400);

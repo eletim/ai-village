@@ -65,7 +65,8 @@ test('conversation HTTP: authority, durable job, in-flight return, restart and h
   assert.equal(final.deliveries.length,1);assert.equal(final.jobs[0].status,'completed');assert.equal(final.runs.find(r=>r.id===delivery.id).humanAnswer,'人間への成果説明');
   // The quick job-dispatch answer is journaled as suppressed; only the accepted outcome is sent.
   await until(async()=>(await lines(notices)).length===1);
-  const journal=await until(async()=>{const rows=await lines(join(dir,'notifications.jsonl'));return rows.some(e=>e.messageId==='conversation-answer:'+conversation.id)&&rows;});
+  // The journal's 'sent' line is appended after the notify command exits; wait for it.
+  const journal=await until(async()=>{const rows=await lines(join(dir,'notifications.jsonl'));return rows.some(e=>e.messageId==='conversation-answer:'+conversation.id)&&rows.some(e=>e.messageId==='conversation-answer:'+delivery.id&&e.status==='sent')&&rows;});
   assert.deepEqual(journal.filter(e=>e.messageId==='conversation-answer:'+conversation.id).map(e=>[e.status,e.reason]),[['suppressed','human-present-quick-reply']]);
   assert.deepEqual(journal.filter(e=>e.messageId==='conversation-answer:'+delivery.id).map(e=>e.status),['attempting','sent']);
   await new Promise(r=>setTimeout(r,300));assert.equal((await lines(notices)).length,1);

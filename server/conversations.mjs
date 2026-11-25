@@ -289,7 +289,7 @@ export class Conversations {
     const claimed=await this.d.persist(async()=>{
      if(r.notificationSuppressed)return false;
      // Only a not-yet-attempted notification is decided here; sent/attempting/unknown are never revisited.
-     const policy=!r.notification||r.notification.status==='pending'?conversationNotification(this.d.data,r,{presentAt:this.d.presence?.get(r.agentId)}):null;
+     const policy=!r.notification||r.notification.status==='pending'?conversationNotification(this.d.data,r,{presentAt:this.d.presentAt?.(r.agentId)}):null;
      if(policy&&!policy.notify){
       r.notificationSuppressed={reason:policy.reason,at:now(),displayVersion:r.conversationDisplay?.version||0};
       // A pending reservation has not attempted an external effect. Do not leave it pending forever.
