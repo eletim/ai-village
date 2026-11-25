@@ -43,7 +43,8 @@ import { run } from './execution.mjs';
 import { captureProcessesScript, stopProcessesScript, verifyAbsentProcessesScript } from './processes.mjs';
 import { createServer } from 'node:net';
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, readFile, realpath, appendFile } from 'node:fs/promises';
+import { mkdir, readFile, realpath } from 'node:fs/promises';
+import {appendAudit} from './audit-log.mjs';
 import { resolve } from 'node:path';
 
 const fail = (message, status=409) => { throw Object.assign(new Error(message), {status}); };
@@ -113,7 +114,7 @@ export class DirectAgents {
   }
   close(){this.monitor?.close();this.flow.reporting.close();clearInterval(this.timer);this.owner?.close();this.store.close();}
   presentation(){
-    if(!this.presentationCache){const view=humanProjection(this.data);this.presentationCache={...view,projects:view.projects.filter(p=>!p.deletedAt),capabilities:{secretaryConversations:true,requestSplitting:true,requestInbox:true,steering:true,travelContexts:true,attachments:!!this.attachments},reviews:this.reviewStates(view)};}
+    if(!this.presentationCache){const view=humanProjection(this.data);this.presentationCache={...view,projects:view.projects.filter(p=>!p.deletedAt),capabilities:{secretaryConversations:true,presence:true,requestSplitting:true,requestInbox:true,steering:true,travelContexts:true,attachments:!!this.attachments},reviews:this.reviewStates(view)};}
     const live=new Map(this.data.agents.map(a=>[a.id,a]));
     return {...this.presentationCache,agents:this.presentationCache.agents.map(a=>({...a,lastCheckedAt:live.get(a.id)?.lastCheckedAt,runtime:live.get(a.id)?.runtime})),notification:this.notifier.status()};
   }
@@ -131,6 +132,9 @@ export class DirectAgents {
       return [id,{revision,hasCompleted:entries.length>0,unreviewed:entries.length>0&&!reviewed,attention:attention.length>0,attentionRequestIds:attention}];
     }));
   }
+  // Human UI viewing signal (visible, focused, Agent selected). Memory only: it never
+  // changes records and is unknown after restart, which means "not watching".
+  markPresence(id){this.agent(id);(this.presence ||= new Map()).set(id,Date.now());return {ok:true};}
   async viewAgent(id,{revision}){return this.locked(id,()=>this.persist(async()=>{
     this.agent(id);
     if(typeof revision!=='string'||! /^[a-f0-9]{64}$/.test(revision))fail('表示したAgentのrevisionが必要です',400);
@@ -396,7 +400,7 @@ export class DirectAgents {
     if(type!=='local')fail('保存された接続方式が不正です');
     // Local commands use argv directly, never SSH or interpolated shell text.
     // Audit identities/operation only: instructions and credentials stay out.
-    await appendFile(resolve(this.dir,'local-audit.jsonl'),JSON.stringify({at:now(),agentId:a.id,command:args[0],operation:args[0]==='purplemux'?args.slice(1,3):[]})+'\n',{mode:0o600});
+    await appendAudit(this.dir,'local-audit.jsonl',{at:now(),agentId:a.id,command:args[0],operation:args[0]==='purplemux'?args.slice(1,3):[]});
     return this.localRun(args[0]==='purplemux'?this.localBin:args[0],args.slice(1));
   }
   async pmux(a,...args){return JSON.parse(await this.execute(a,['purplemux',...args]));}

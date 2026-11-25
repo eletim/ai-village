@@ -94,7 +94,9 @@ export class Conversations {
    this.d.writableProject(a.projectId);
    if(a.inputEnvelope?.mode!=='startup-v2'||a.runtimeUpgrade?.state==='prepared')fail('会話にはstartup-v2の正式なセッションが必要です。プロフィールの起動契約から移行を確認してください。');
    const control=conversationControl(a);if(!control.canAccept)fail(control.label+'。'+control.next);
-   let c=x.conversationId?this.record(x.conversationId):this.d.data.conversations.findLast(c=>c.agentId===a.id&&c.projectId===a.projectId);
+   // A secretary can own several conversations after a handover; continue the newest one
+   // explicitly by creation time, never by storage order.
+   let c=x.conversationId?this.record(x.conversationId):this.d.data.conversations.filter(c=>c.agentId===a.id&&c.projectId===a.projectId).reduce((latest,c)=>!latest||Date.parse(c.createdAt)>=Date.parse(latest.createdAt)?c:latest,null);
    if(c&&(c.agentId!==a.id||c.projectId!==a.projectId))fail('会話の所属が一致しません',403);
    if(!c){c={id:randomUUID(),agentId:a.id,projectId:a.projectId,createdAt:now(),sequence:0,operations:[],deliveries:[]};this.d.data.conversations.push(c);}
    const r=this.enqueue(c,{requestId:x.requestId,instruction:x.instruction,source:{kind:'human'},attachments,travelContexts});r.conversationPayload=payload;
@@ -287,7 +289,7 @@ export class Conversations {
     const claimed=await this.d.persist(async()=>{
      if(r.notificationSuppressed)return false;
      // Only a not-yet-attempted notification is decided here; sent/attempting/unknown are never revisited.
-     const policy=!r.notification||r.notification.status==='pending'?conversationNotification(this.d.data,r):null;
+     const policy=!r.notification||r.notification.status==='pending'?conversationNotification(this.d.data,r,{presentAt:this.d.presence?.get(r.agentId)}):null;
      if(policy&&!policy.notify){
       r.notificationSuppressed={reason:policy.reason,at:now(),displayVersion:r.conversationDisplay?.version||0};
       // A pending reservation has not attempted an external effect. Do not leave it pending forever.

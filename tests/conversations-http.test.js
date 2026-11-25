@@ -52,6 +52,8 @@ test('conversation HTTP: authority, durable job, in-flight return, restart and h
   const leader=await submit(q.runs[0]);await finish(leader,'conversation-leader-finish');await complete(leader,'リーダーの成果');
   const data=await until(async()=>{const c=(await post('/conversations/get',{conversationId:conversation.conversationId})).body;return c.deliveries?.length&&c;});
   const delivery=data.runs.find(r=>r.id===data.deliveries[0].runId);assert.equal(delivery.state,'queued');
+  assert.equal((await post('/human/agents/'+agents[0].id+'/presence',{})).status,200);
+  assert.equal((await post('/agents/'+agents[0].id+'/presence',{})).status,404);
   await complete(conversation,'依頼を受け付けました');
   await until(async()=>(await lines(capture)).some(e=>e.text.includes(delivery.id)));
   await stop();await start();assert.equal((await lines(capture)).filter(e=>e.text.includes(delivery.id)).length,1);

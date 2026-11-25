@@ -1,5 +1,5 @@
 import {spawn} from 'node:child_process';
-import {appendFile} from 'node:fs/promises';
+import {appendAudit} from './audit-log.mjs';
 import {resolve} from 'node:path';
 export const TERMINATION_WAIT_MS=250;
 export const stateDirectory=(dir)=>resolve(dir||process.env.VILLAGE_STATE_DIR||'.runtime');
@@ -37,6 +37,6 @@ export function run(command, args, { input, timeout = 60000, signal, maxOutput =
 
 export function remoteExecutor(dir){return async(args,host,agentId=null,options={})=>{
  if(!host)throw Error('保存された接続先がありません。');
- await appendFile(resolve(dir,'ssh-audit.jsonl'),JSON.stringify({at:new Date().toISOString(),host,command:args[0],operation:args[0]==='purplemux'?args.slice(1,3):[],agentId})+'\n',{mode:0o600});
+ await appendAudit(dir,'ssh-audit.jsonl',{at:new Date().toISOString(),host,command:args[0],operation:args[0]==='purplemux'?args.slice(1,3):[],agentId});
  return run('ssh',['-o','BatchMode=yes','-o','ConnectTimeout=10',host,'bash -lic '+quote(args.map(quote).join(' '))],options);
 };}
