@@ -18,7 +18,10 @@ test('actual HTTP snapshot and history retain normal conversation answers and in
  const get=async path=>{const r=await fetch(`http://127.0.0.1:${port}/api/direct`+path);assert.equal(r.status,200);return r.json();};
  const snap=await get('?view=workspace'),p=snap.conversations.s;assert.equal(p.entries.length,100);
  const old=await get('/agents/s/history?before='+encodeURIComponent(p.cursor));assert.equal(old.entries.length,5);
- for(const r of [...p.entries,...old.entries]){assert.equal(r.conversationAnswer,true);assert.equal(r.conversationId,'c');assert.equal(r.output,'秘書の回答 '+r.id.slice(1));if(r.conversationSource.kind==='leader')assert.equal(r.suppressUser,true);}
+ // Folded (progress) answers carry their body behind entry-body (docs/lean-fetch.md, stage 2).
+ const output=async r=>r.bodyDeferred?.output?(await get('/agents/s/entry-body?side=output&entry='+encodeURIComponent(JSON.stringify(['run','',r.id])))).output:r.output;
+ assert.deepEqual([...p.entries,...old.entries].filter(r=>r.bodyDeferred?.output).map(r=>r.id).sort(),['r1','r103']);
+ for(const r of [...p.entries,...old.entries]){assert.equal(r.conversationAnswer,true);assert.equal(r.conversationId,'c');assert.equal(await output(r),'秘書の回答 '+r.id.slice(1));if(r.conversationSource.kind==='leader')assert.equal(r.suppressUser,true);}
  for(const id of ['r1','r103']){const r=[...p.entries,...old.entries].find(r=>r.id===id);assert.equal(r.displayMode,'progress');}
  const request=await fetch(`http://127.0.0.1:${port}/api/direct/conversations/get`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({conversationId:'c'})});const detail=await request.json();assert.equal(detail.runs.find(r=>r.id==='r103').humanAnswer,null);assert.equal(detail.runs.find(r=>r.id==='r103').progressText,'秘書の回答 103');
  const rejected=await fetch(`http://127.0.0.1:${port}/api/direct/conversations/display`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({conversationId:'c',actorRunId:'r103',operationId:'late-display-operation',expectedVersion:1,mode:'reply'})});assert.equal(rejected.status,403);

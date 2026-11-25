@@ -26,7 +26,7 @@ import {autogrowInput} from './autogrow-input.js';
 import {linkedText} from './linked-text.js';
 import {attachmentComposer,attachmentHTML} from './attachments.js';
 import {chatScroll} from './chat-scroll.js';
-import {isHumanInput,isVisibleAnswer,exchangeLabel,chatBodyHTML} from './run-groups.js';
+import {isHumanInput,isVisibleAnswer,exchangeLabel,chatBodyHTML,entryIdentity} from './run-groups.js';
 import {travelComposer} from './travel-composer.js';
 import {travelSummary,sameTravelContexts} from './travel-context.js';
 import {PAGE_SIZE,isSuspended,placeOf,orderedAgents,orderedProjectAgents,orderedProjects,boardLayout} from './board-state.js';
@@ -125,12 +125,42 @@ function recoveryHTML(r){
  const reason=q.requestGraph?requestReviewReason(q,r):r.recovery?.status==='scheduled'?'自動再試行予定: '+new Date(r.recovery.nextAt).toLocaleTimeString():r.recovery?.reason||(r.needsReview?'要確認: 実行結果を確認できません。副作用を確認してから再試行してください。':null)||'停止理由を確認し、未完了の作業を再開できます。';
  return `<div class="recovery"><p>${esc(reason)}</p><button data-retry-run="${esc(r.id)}">再試行</button><button data-complete-request="${esc(q.id)}">完了扱い</button><button data-cancel-request="${esc(q.id)}">取り下げ</button></div>`;
 }
-function entryHTML(a,r,divider){
+// Folded Agent-to-Agent bodies arrive when their fold is opened (docs/lean-fetch.md, stage 2).
+// Cache entries are tied to the version the stub announced, so a changed body is fetched again.
+const deferredBodies=new Map(),bodyLoads=new Set();
+const bodyKey=(agentId,r,side)=>JSON.stringify([agentId,entryIdentity(r),side]);
+function deferredSide(a,r,side){
+ const d=r.bodyDeferred?.[side];if(!d)return null;
+ const cached=deferredBodies.get(bodyKey(a.id,r,side));
+ return cached?.for===d.v&&cached.data?{data:cached.data}:{stub:`<p class="deferred-body" role="status" data-deferred-body="${esc(bodyKey(a.id,r,side))}" data-version="${esc(d.v)}"${cached?.for===d.v&&cached.error?' data-failed="true">本文を読み込めませんでした。閉じて開き直すと再試行します。':'>読み込み中…'}</p>`};
+}
+function withDeferredBodies(a,r){
+ if(!r.bodyDeferred)return {r,stubs:{}};
+ const stubs={};let x=r;
+ for(const side of ['input','output']){const s=deferredSide(a,r,side);if(!s)continue;if(s.data)x={...x,...s.data};else stubs[side]=s.stub;}
+ return {r:x,stubs};
+}
+async function loadDeferredBody(node){
+ const key=node.dataset.deferredBody,v=node.dataset.version;if(bodyLoads.has(key))return;
+ const [agentId,identity,side]=JSON.parse(key);bodyLoads.add(key);
+ try{const {side:_,v:got,...data}=await api('/agents/'+encodeURIComponent(agentId)+'/entry-body?entry='+encodeURIComponent(identity)+'&side='+encodeURIComponent(side),null,'GET');deferredBodies.set(key,{for:v,got,data});}
+ catch{deferredBodies.set(key,{for:v,error:true});}
+ finally{bodyLoads.delete(key);while(deferredBodies.size>500)deferredBodies.delete(deferredBodies.keys().next().value);refreshMessageLog(agentId);if($('#history-dialog').open)renderHistory();}
+}
+function loadOpenBodies(host){for(const n of host.querySelectorAll('details[open] [data-deferred-body]:not([data-failed])'))void loadDeferredBody(n);}
+// Re-rendered folds open themselves (and fire toggle), so only a person's click retries a failure.
+document.addEventListener('toggle',e=>{const d=e.target;if(d instanceof HTMLDetailsElement&&d.open)loadOpenBodies(d.parentElement||d);},true);
+document.addEventListener('click',e=>{
+ const d=e.target.closest?.('summary')?.parentElement;if(!(d instanceof HTMLDetailsElement)||d.open)return;
+ for(const n of d.querySelectorAll('[data-deferred-body][data-failed]')){deferredBodies.delete(n.dataset.deferredBody);delete n.dataset.failed;n.textContent='読み込み中…';}
+},true);
+function entryHTML(a,source,divider){
+ const {r,stubs}=withDeferredBodies(a,source);
  if(r.inputReceipt){
   const actor=r.inputSource?.actor,internal=actor==='program'||actor==='agent';
   const label=actor==='program'?'依頼の通知':actor==='agent'?'Agentからの補足':actor==='human'?'補足':'補足（由来不明・旧形式）';
   const extra=travelSummary(r.travelContexts)+attachmentHTML(r.attachments)+`<small>${esc(label)} · ${esc(r.targetLabel)} · ${esc(r.inputStatus)}</small>`;
-  const content=internal?'<div class="message internal">'+chatBodyHTML(r,'input','<pre>'+linkedText(r.instruction||'')+'</pre>'+extra,true,label)+timeHTML(r.createdAt)+'</div>':bubble('user',r.instruction,r.createdAt,extra);
+  const content=internal?'<div class="message internal">'+chatBodyHTML(r,'input',(stubs.input||'<pre>'+linkedText(r.instruction||'')+'</pre>')+extra,true,label)+timeHTML(r.createdAt)+'</div>':bubble('user',r.instruction,r.createdAt,extra);
   return `${divider(r.createdAt)}<div class="run" data-entry="${esc(r.id)}">${content}</div>`;
  }
  const request=state.requests?.find(q=>q.id===r.humanRequestId),current=request?.requestGraph?.nodes.find(n=>n.id===r.workId)?.currentRunId===r.id;
@@ -138,12 +168,12 @@ function entryHTML(a,r,divider){
  const node=request?.requestGraph?.nodes.find(n=>n.id===r.workId),parent=request?.requestGraph?.nodes.find(n=>n.id===node?.parentId);
  const published=request?.status==='completed'&&request.finalRunId===r.id;
  const finalLabel=published?'最終報告':parent?'成果提出（'+(state.agents.find(x=>x.id===parent.assignee)?.name||'依頼元Agent')+'宛）':'回答';
- const human=isHumanInput(r),inputBody=(r.instruction?'<pre>'+linkedText(r.instruction)+'</pre>':'')+travelSummary(r.travelContexts)+attachmentHTML(r.attachments);
+ const human=isHumanInput(r),inputBody=(stubs.input||(r.instruction?'<pre>'+linkedText(r.instruction)+'</pre>':''))+travelSummary(r.travelContexts)+attachmentHTML(r.attachments);
  const input=human&&!r.suppressUser?bubble('user',r.instruction,r.createdAt,travelSummary(r.travelContexts)+attachmentHTML(r.attachments)):
   '<div class="message internal">'+chatBodyHTML(r,'input',inputBody,true,exchangeLabel(r,state))+timeHTML(r.createdAt)+'</div>';
  // Legacy completed replies have no finalOutput/origin metadata; retain their human-facing answer.
  const showAnswer=published||isVisibleAnswer(r);
- const response=r.output||r.finalOutput?'<div class="message assistant">'+chatBodyHTML(r,'output',responseHTML({...r,collapsedHistory:false},{finalLabel}),!showAnswer,r.displayMode==='progress'?'途中経過':r.finalOutput?finalLabel:'途中経過')+timeHTML(r.completedAt)+'</div>':'';
+ const response=r.output||r.finalOutput||stubs.output?'<div class="message assistant">'+chatBodyHTML(r,'output',stubs.output||responseHTML({...r,collapsedHistory:false},{finalLabel}),!showAnswer,r.displayMode==='progress'?'途中経過':r.finalOutput||(stubs.output&&r.bodyDeferred.output.final)?finalLabel:'途中経過')+timeHTML(r.completedAt)+'</div>':'';
  const normal=!r.error&&!r.errorCode&&!r.attachmentError&&!r.needsReview&&!requestRootState(state.requests?.find(q=>q.id===r.humanRequestId))?.review?.length;
  return `${divider(r.createdAt||r.completedAt)}<div class="run" data-entry="${esc(JSON.stringify([r.external?'native':'run',r.external?(r.sessionId||r.agentSessionId||''):'',r.id]))}">${input}${response}${answerJobsHTML(r)}${r.conversationId?conversationTurnHTML(r):`<p class="run-status">${compactStatusPair(r.queueCancelledAt?'送信取消済み':r.reportStatus||labels[r.state]||r.state,r.conversationId?'':request?.purposeStatus?request.purposeStatus.label:r.humanRequestId?({active:'依頼継続中',finalizing:'最終報告の完了待ち',completed:'依頼全体完了',cancelled:'依頼キャンセル'})[state.requests?.find(q=>q.id===r.humanRequestId)?.status]||'依頼照合中':'達成状況: 未判定',normal,r.external?'PurpleMuxからの入力 · ':r.origin==='result'?'子作業結果の配送 · ':r.origin==='steering'?'実行中への補足 · ':'')} ${esc(r.errorCode||'')} ${esc(r.attachmentError||r.error||'')} ${r.notification?' · 通知: '+esc(r.notification.status)+(r.notification.reason?' / '+esc(r.notification.reason):''):''}</p>`}${canCancelQueued(r)?`<button type="button" data-cancel-queued="${esc(r.id)}" data-queue-agent="${esc(a.id)}">送信待ちを取り消す</button>`:''}${waiting?`<p class="request-waiting">${esc(waiting)}</p>`:''}${r.queueCancelledAt?'':recoveryHTML(r)}</div>`;
 }
@@ -173,7 +203,7 @@ function renderHistory(){
  if($('#history-dialog').open&&a)focusIds.add(a.id);
  const html=$('#history-agent').value==='orphaned'?recoveryListHTML(orphaned):a?agentRecoveryHTML(a.id)+(runHTML(a)||'<p>会話履歴はありません。</p>'):'<p>終了したAgentはありません。</p>';
  const host=$('#history-content'),anchor=[...host.querySelectorAll('[data-entry]')].find(n=>n.getBoundingClientRect().bottom>host.getBoundingClientRect().top),offset=anchor?.getBoundingClientRect().top,key=anchor?.dataset.entry;
- updateReportHTML(host,html);const next=key&&[...host.querySelectorAll('[data-entry]')].find(n=>n.dataset.entry===key);if(next)host.scrollTop+=next.getBoundingClientRect().top-offset;
+ updateReportHTML(host,html);loadOpenBodies(host);const next=key&&[...host.querySelectorAll('[data-entry]')].find(n=>n.dataset.entry===key);if(next)host.scrollTop+=next.getBoundingClientRect().top-offset;
 }
 function renderBoard(){
  capturePositions();
@@ -233,7 +263,7 @@ function renderBoard(){
    pending.delete(a.id);outbox.delete(a.id);storeDrafts();
   }
   updateReportHTML(card.querySelector('.agent-recovery-host'),conversationAlertHTML(a));
-  const area=card.querySelector('.runs'),html=runHTML(a),wasLoading=area.dataset.loading==='true';area.dataset.loading=String(!!state.conversations&&!state.conversations[a.id]);if(wasLoading){updateReportHTML(area,html);scrolls.get(a.id).loaded();}else scrolls.get(a.id).preserve(()=>updateReportHTML(area,html));
+  const area=card.querySelector('.runs'),html=runHTML(a),wasLoading=area.dataset.loading==='true';area.dataset.loading=String(!!state.conversations&&!state.conversations[a.id]);if(wasLoading){updateReportHTML(area,html);scrolls.get(a.id).loaded();}else scrolls.get(a.id).preserve(()=>updateReportHTML(area,html));loadOpenBodies(area);
   const prompt=card.querySelector('textarea[name=instruction]'),promptLabel=(a.name||'Agent')+'に聞く';
   prompt.placeholder=promptLabel;prompt.title=promptLabel+(mobilePromptUI()?'（Enterで改行、送信ボタン / Ctrl+Enterで送信）':'（Enter / Ctrl+Enterで送信、Shift+Enterで改行、変換中のEnterは確定）');prompt.setAttribute('aria-label',prompt.title);
   const send=card.querySelector('[data-send] button:not([data-reconcile])');
@@ -612,7 +642,7 @@ window.addEventListener('online',()=>{if(!document.hidden)restartSync();});
 function refreshMessageLog(id){
  const card=cards.get(id);if(!card)return;
  // Delivery feedback belongs to the message, not a second spinner beside the composer.
- const area=card.querySelector('.runs');scrolls.get(id).preserve(()=>updateReportHTML(area,runHTML(state.agents.find(a=>a.id===id))));
+ const area=card.querySelector('.runs');scrolls.get(id).preserve(()=>updateReportHTML(area,runHTML(state.agents.find(a=>a.id===id))));loadOpenBodies(area);
 }
 document.addEventListener('click',async e=>{
  const button=e.target.closest('[data-load-history]');if(!button)return;
