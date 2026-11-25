@@ -8,7 +8,7 @@ export const HUMAN_PRESENT_WINDOW_MS=3*60*1000;
 // once; a report older than this (e.g. a lost leave on a locked phone) no longer counts.
 export const HUMAN_PRESENCE_TTL_MS=40*1000;
 // Operations that only hand work to the leader or correct it; they are not a human-facing outcome.
-export const WORK_DISPATCH_ACTIONS=['job','followup','amend','withdraw'];
+export const WORK_DISPATCH_ACTIONS=['job','followup','amend','withdraw','recover'];
 const operationsOf=(c,r)=>(c?.operations||[]).flatMap(o=>{try{const p=JSON.parse(o.payload);return p.input?.actorRunId===r.id?[p.action]:[];}catch{return [];}});
 const completedAt=r=>r.runModel?.facts?.findLast(f=>f.type==='terminal')?.at??Date.parse(r.completedAt||'');
 // presentAt: last time the human UI reported viewing r.agentId (in memory; unknown after restart).
@@ -16,7 +16,9 @@ export function conversationNotification(data,r,{presentAt,now=Date.now()}={}){
  const c=data.conversations?.find(c=>c.id===r.conversationId);
  const watching=Number.isFinite(presentAt)&&now-presentAt>=0&&now-presentAt<=HUMAN_PRESENCE_TTL_MS;
  const quickAfter=at=>{const elapsed=completedAt(r)-at;return Number.isFinite(elapsed)&&elapsed>=0&&elapsed<=HUMAN_PRESENT_WINDOW_MS;};
- if(conversationDisplayMode(data,r)==='progress')return {notify:false,reason:purposeDecisionRequired(data,r)?'purpose-decision-progress':r.conversationDisplay?.mode==='progress'?'explicit-conversation-progress':'purpose-continuation-progress'};
+ // A patrol (docs/secretary-supervisor.md) is quiet unless the secretary explicitly replies or commits
+ // a decision; both make its display a reply first.
+ if(conversationDisplayMode(data,r)==='progress')return {notify:false,reason:r.conversationSource?.patrol?'patrol-quiet':purposeDecisionRequired(data,r)?'purpose-decision-progress':r.conversationDisplay?.mode==='progress'?'explicit-conversation-progress':'purpose-continuation-progress'};
  // An explicit reply from the secretary keeps its documented meaning: normal display and notification.
  if(r.conversationDisplay?.mode==='reply')return {notify:true,reason:'explicit-conversation-reply'};
  // Failure explanations and state changes are important reports to the human, except the
@@ -26,6 +28,9 @@ export function conversationNotification(data,r,{presentAt,now=Date.now()}={}){
   // The human just closed it in the village UI (human-only route); the answer within 3 minutes
   // of that action is theirs to read there. Timed from the action, not from presence.
   if(delivery.id?.startsWith('human-closure:')&&quickAfter(Date.parse(delivery.createdAt)))return {notify:false,reason:'human-closure-own-action'};
+  // A failure the secretary dealt with itself (recover/followup/amend/...) is for the final report,
+  // not a ping: the supervisor resolves stoppages without the human.
+  if(delivery.kind==='attention'&&operationsOf(c,r).some(a=>WORK_DISPATCH_ACTIONS.includes(a)))return {notify:false,reason:'secretary-handled'};
   return {notify:true,reason:'work-report'};
  }
  if(r.conversationSource?.kind==='human'&&quickAfter(Date.parse(r.createdAt))){

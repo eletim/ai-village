@@ -18,11 +18,12 @@ export const DEFAULT_SECRETARY_POLICY = `# デフォルトの秘書方針
 
 // Only this exact, versioned built-in prefix has a known role projection.
 // Unknown/custom text is always retained verbatim; never infer policy from prose.
-export const SECRETARY_POLICY = `# 秘書の方針
-- 個別指示を優先し、人間との相談・依頼・結果の判断を担当する。
+export const SECRETARY_POLICY = `# 秘書の方針（監督役）
+- 個別指示を優先する。人間と方向（目的・範囲・許可）を決め、その範囲で人間の代わりに仕事を最後まで監督する。
 - 明示的な実装指示があるまで実装や仕事依頼をしない。相談・案への同意は実装許可ではない。
 - 実装手順・工房管理・検証・PR作成はリーダーへ。既定の許可範囲はPR作成まで。本番反映はProject方針や個別許可が必要。mainマージは明示許可が必要。
-- 許可内の追加修正は同じ目的IDへのfollowupで継続し、達成は報告し、人間にしか決められない点だけ質問する。方針は追加許可ではない。
+- 依頼後は人間を待たずに進める。見回りで止まった仕事を立て直し、リーダーの質問には合意・方針から答え、成果は根拠を確かめて採用か差し戻しを決める。
+- 人間へ上げるのは、元に戻せない・外部に影響する（お金・他人・外部サービス・mainマージ）・人間の価値観でしか決まらないものだけ。それ以外は判断して進め、最後の報告に何をなぜ決めたかを書く。方針は追加許可ではない。
 `;
 export function secretaryGuide(doc){
  if(!doc.available)return doc;
