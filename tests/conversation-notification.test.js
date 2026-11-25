@@ -44,7 +44,7 @@ test('B: a quick answer is notified when the human is not viewing (never reporte
  const {f,d,human,sentFor}=await setup(t);
  const away=await human('送ってすぐ離れる');await f.complete(away);
  assert.equal(sentFor(away).length,1);assert.equal(away.notificationSuppressed,undefined);
- const stale=await human('少し前まで見ていた');(d.presence ||= new Map()).set(stale.agentId,Date.now()-HUMAN_PRESENCE_TTL_MS-1000);await f.complete(stale);
+ const stale=await human('少し前まで見ていた');d.markPresence(stale.agentId);d.presence.get(stale.agentId).get('page').at=Date.now()-HUMAN_PRESENCE_TTL_MS-1000;await f.complete(stale);
  assert.equal(sentFor(stale).length,1);
  const other=await human('別のAgentを見ている');d.markPresence(f.agents[1].id);await f.complete(other);
  assert.equal(sentFor(other).length,1);
@@ -142,4 +142,16 @@ test('notifier journals suppression without sending, and the ID cannot be sent l
  const reloaded=new VillageNotifier({dir,environment:{VILLAGE_OFFICE_URL:'http://127.0.0.1:5173/agents'}});await reloaded.init();
  assert.equal((await reloaded.enqueue({id:'conversation-answer:x',role:'assistant',kind:'conversation',content:'x'})).status,'duplicate_or_internal');
  assert.equal((await readFile(join(dir,'notifications.jsonl'),'utf8')).trim().split('\n').length,1);
+});
+
+test('presence: a late older report is ignored, and one page leaving keeps another page viewing',async t=>{
+ const {f,d,human,sentFor}=await setup(t);
+ const r=await human('順序が入れ替わる');
+ d.markPresence(r.agentId,{client:'tab-a',seq:2,viewing:false});
+ assert.equal(d.markPresence(r.agentId,{client:'tab-a',seq:1,viewing:true}).stale,true);
+ assert.equal(d.presentAt(r.agentId),undefined);await f.complete(r);assert.equal(sentFor(r).length,1);
+ const r2=await human('二つの画面');
+ d.markPresence(r2.agentId,{client:'tab-a',seq:3,viewing:true});d.markPresence(r2.agentId,{client:'tab-b',seq:1,viewing:true});d.markPresence(r2.agentId,{client:'tab-b',seq:2,viewing:false});
+ assert(d.presentAt(r2.agentId));await f.complete(r2);assert.equal(sentFor(r2).length,0);assert.equal(r2.notificationSuppressed.reason,'human-present-quick-reply');
+ assert.throws(()=>d.markPresence(r2.agentId,{client:'bad client!',seq:1}),/client/);assert.throws(()=>d.markPresence(r2.agentId,{client:'x',seq:-1}),/seq/);
 });

@@ -325,8 +325,10 @@ function selectAgent(id){selectedAgent=id;syncSelection();}
 // Tell the village that a human is looking at this Agent, so quick replies need no phone notification.
 // Leaving (hidden, blur, dialog, another Agent, page exit) is reported at once, so a human who
 // sends and walks away is notified; a lost leave report still expires on the server.
-let presenceAgent=null,presenceAt=0;
-const presenceRequest=(id,viewing)=>fetch('/api/direct/human/agents/'+id+'/presence',{method:'POST',keepalive:true,headers:{'Content-Type':'application/json','X-Village-Human-UI':'1'},body:JSON.stringify({viewing})});
+// Reports carry this page's id and an increasing seq, so the server ignores one that arrives late.
+let presenceAgent=null,presenceAt=0,presenceSeq=0;
+const presenceClient=(crypto.randomUUID?.()||String(Math.random()).slice(2)+String(Date.now())).replace(/[^\w-]/g,'').slice(0,64);
+const presenceRequest=(id,viewing)=>fetch('/api/direct/human/agents/'+id+'/presence',{method:'POST',keepalive:true,headers:{'Content-Type':'application/json','X-Village-Human-UI':'1'},body:JSON.stringify({viewing,client:presenceClient,seq:++presenceSeq})});
 function reportPresence(){
  if(!state?.capabilities?.presence||!activeView())return;
  const id=selectedAgent;if(id===presenceAgent&&Date.now()-presenceAt<15000)return;
