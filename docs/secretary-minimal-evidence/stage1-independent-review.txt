@@ -1,0 +1,69 @@
+PR #154 段階1 最終独立再レビュー（Codex、実装者とは別担当）
+固定commit: 96d2a47015b4808e3f7c02d6c58538b8af9ab0e0
+差分: 1a44021..96d2a47
+専用clone: /tmp/village-review-154-r3-codex (detached HEAD、git diffなし、status clean)
+前回 /tmp/review154-r2-report.txt を全文確認。設計原本は以前全文読了済みで、今回9章を再確認。原本SHA-256は前回と同一（543750720e5bde0e655c1af0100dae205c0410cdfa4db7ab990d82178f7817e3）。8/9章優先。
+
+結論
+段階1の残件: 高0、中0、低0、情報2。中以上残数0。
+前回の低3件は解消確認。旧M1やそれ以前の修正の回帰も認めない。今回の結果は前回commitが成功だったという意味ではなく、96d2a47での判定。
+段階2の既報中1件（差し戻し後の新成果を旧continue判断で処理済みと誤認）は、この段階1判定とは別で未解消。全段階の中以上ゼロとは報告しない。
+
+低3件の再検証
+R-L1 未受付証拠時の案内不足: 解消。
+場所: server/secretary-commands.mjs:48。
+既存readが「この会話で受付照合済みのrun」を拒否した場合だけ、409で「受付をまだ確認できません。送信は繰り返さず、village status --run ...」と返す。それ以外の例外は保持。
+既存追加テストと独自probeで、証拠なしorder拒否、statusも未確認の案内、新規仕事0/送信増加0を確認。その後native入力証拠をfixtureへ追加し、案内どおりstatusを実行すると受付がrunningとなり、初回orderが成功。同内容再実行は同じreceipt。未受付を推定で成功にしたり旧送信を再送したりしない。
+
+R-L2 先頭500字空白の引用生成失敗: 解消。
+場所: server/secretary-commands.mjs:54。
+trimStart().slice(0,500)で先頭空白を除いた正確な部分文字列を引用。半角空白500個のケースは追加テストで成功。独自probeではtab/改行/全角空白600文字＋長い本文を入力し、元instructionが不変、quoteが正確に500文字、source.instruction.includes(quote)が成立することを確認。既存authorizeのrunId/人間発言/受付/部分一致照合は変更なし。
+
+R-L3 正式相談/障害と案内表のテスト不足: 解消。
+場所: tests/secretary-commands.test.js:120以降。
+正式report question→respond→正常終了→配送の後、acceptが拒否され、ask/followupは成功するテストを追加。failed leader→attention→accept/followup拒否も回帰へ取り込まれた。
+案内表のテストはcore2ファイルの実際のfail文字列を読み取り、14ケース（12パターンの文言分岐を含む）で元エラー保持・案内付与・期待する案内内容を検証。単にテスト内で架空の拒否文を作る方式ではない。
+制約: 案内表部分はadapterテストとしてjobをstubし、coreの拒否条件すべてを一件ずつ発生させるE2Eではない。ただし今回は要求された「実拒否リテラルとの照合」を満たし、主な状態遷移は正式配送fixtureで別途検証する構成になった。この制約だけで残る低指摘とはしない。
+
+旧指摘すべての確認
+- 旧M1 status目的内容: 解消状態維持。複数目的の本文表示と未来目的の非公開を独自probeでも確認。
+- 旧L1 sent初回操作: native証拠ありの観測と証拠なしの案内を両方確認。
+- 旧L2 相談accept/pending followup案内: 回帰通過。
+- 旧L3 500字引用: 短縮・正確性・先頭空白対応・同内容操作の同一receiptを確認。
+- 旧L4 テスト不足: 上記R-L3と追加回帰で解消。
+- 旧I2 配送回の目的省略: server/secretary-commands.mjs:12のhelpに「配送回は届いた目的」を明記。文面と実装の差異は解消。
+
+情報2件（修正必須の欠陥ではない）
+I1 [情報] --run必須はタグ1つ方式に整合。
+場所: server/secretary-commands.mjs:11-18、server/operations.mjsのsecretaryCommand。
+根拠: helpはRUNの出どころを明記し、引数/形式誤りを拒否する。段階1自体は版3起動やタグ生成を実装する段階ではない。
+対応: 統合時に段階3起動説明との一致を維持。今回は新しいtmux推定や短縮IDを追加しない。
+
+I2 [情報、旧I3] 結果配送回のorderは別目的を作り、元目的への判断にはならない。
+場所: server/secretary-commands.mjs:55-58、72-74、tests/secretary-commands.test.js:65-70。
+根拠: 元の許可で既存conversations.jobを呼ぶ。旧CLIでも可能で、今回の修正による権限拡張ではない。既存テスト通過。
+対応: 修正はfollowup、達成はacceptという使い分けを段階4実機検証で確認する。段階1で独断の禁止機構を追加しない。
+
+段階2/3への取り込みの読取確認
+- a3f40f1..667d06bは、今回の段階1修正2ファイル＋secretary-later-decisionブラウザテストの追加のみ。
+- 8ab79e6..940cd73は、今回の段階1修正2ファイルのみ。
+- 667d06bのsecretary-commands.mjs:103には、view.decision.stateがpending/committed/continuedなら一律拒否する既報条件が残る。今回差分にはこの修正がない。段階2/3最新commitを全面再実行して合格認定したわけではない。
+- 段階2中1件の根拠と修正案は /tmp/review155-r2-report.txt、8ab79e6での再現は /tmp/review156-r2-report.txt。今回の段階1低3件解消と混同しない。
+
+検証
+- npm ci（vendor生成含む）成功。
+- npm run check / npm run typecheck 成功。
+- 単体全体903件（通知OFF、test-concurrency=4）: 897 pass / 5 fail / 0 cancelled / 1 skipped、25.2秒。secretary-commandsの関連16テストを含む。
+- 5 failはnotifier.test.jsの通知期待と通知OFF設定の衝突。同ファイルの安全な一時偽通知fixtureだけOFF変数を外して実行し7/7 pass。外部通知なし。全体一括で全件greenとは報告しない。
+- 独自probe9/9 pass。未受付→status照合→order、Unicode先頭空白、正式相談/障害、目的表示境界、引用と二重操作を確認。
+- ブラウザ234/234 pass（33.0秒）。スマホ幅を含む。専用ポート15406、mkdtemp一時state、通知OFF。
+
+成果物
+/tmp/review154-r3-report.txt
+/tmp/review154-r3-probes.test.mjs
+/tmp/review154-r3-probes.log
+/tmp/review154-r3-unit.log
+/tmp/review154-r3-ui.log
+/tmp/review154-r3-notifier.log
+
+コード修正・PR操作・本番反映・旧Claude起動・旧操作再送は行っていない。追跡ファイル無変更。本番の書込みは今回委任の正式完了申告のみ。Claude実機検証や全段階承認は今回の完了に含めない。
