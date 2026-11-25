@@ -1,0 +1,22 @@
+[
+  {
+    "timestamp": "2026-11-25T14:26:02.570Z",
+    "command": [
+      "/bin/bash",
+      "-lc",
+      "VILLAGE_URL=\"http://127.0.0.1:15410\" node \"/home/eletim/ai-village-minimal-validation/scripts/village.mjs\" status"
+    ],
+    "exitCode": 1,
+    "output": "{\n  \"ok\": false,\n  \"operation\": \"status\",\n  \"error\": \"--run に発言の末尾の <village run=\\\"…\\\"/> の値を指定してください。使い方: village help\",\n  \"operationId\": \"e99c68fb-bed3-4224-8833-decbef7cae93\"\n}\n"
+  },
+  {
+    "timestamp": "2026-11-25T14:26:09.558Z",
+    "command": [
+      "/bin/bash",
+      "-lc",
+      "VILLAGE_URL=\"http://127.0.0.1:15410\" node \"/home/eletim/ai-village-minimal-validation/scripts/village.mjs\" status --run 551893f4-378a-43d6-9a40-e0243e38bb37"
+    ],
+    "exitCode": 0,
+    "output": "{\n  \"ok\": true,\n  \"operation\": \"status\",\n  \"result\": {\n    \"run\": \"551893f4-378a-43d6-9a40-e0243e38bb37\",\n    \"conversationId\": \"590f6c39-858d-4d06-9528-6387301297f9\",\n    \"purposes\": [\n      {\n        \"id\": \"f5343672-8cd9-44a0-861c-919403e26493\",\n        \"state\": \"完了\",\n        \"decision\": {\n          \"kind\": \"accept\",\n          \"state\": \"committed\"\n        },\n        \"objective\": \"机の片付けを5分で始められる、日本語の短い3項目のチェックリストを作成してください。気が重い人も取りかかりやすい具体的な内容にしてください。隔離用作業フォルダ /tmp/secretary-minimal-live-2kcR0o/work に desk-checklist.txt として保存してください。外部送信、本番の変更、mainマージはしないでください。保存した絶対パスと内容を報告してくださ\",\n        \"readPurpose\": [\n          \"conversations\",\n          \"read\",\n          \"590f6c39-858d-4d06-9528-6387301297f9\",\n          \"551893f4-378a-43d6-9a40-e0243e38bb37\",\n          \"{\\\"kind\\\":\\\"purpose\\\",\\\"id\\\":\\\"f5343672-8cd9-44a0-861c-919403e26493\\\"}\"\n        ],\n        \"deliveries\": [\n          {\n            \"id\": \"result:f5343672-8cd9-44a0-861c-919403e26493:ef00cfaa-cad1-47bb-b1ad-00be2893dd2f\",\n            \"kind\": \"result\",\n            \"read\": [\n              \"conversations\",\n              \"read\",\n              \"590f6c39-858d-4d06-9528-6387301297f9\",\n              \"551893f4-378a-43d6-9a40-e0243e38bb37\",\n              \"{\\\"kind\\\":\\\"delivery\\\",\\\"id\\\":\\\"result:f5343672-8cd9-44a0-861c-919403e26493:ef00cfaa-cad1-47bb-b1ad-00be2893dd2f\\\"}\"\n            ]\n          }\n        ]\n      }\n    ],\n    \"delivered\": []\n  },\n  \"operationId\": \"19c5fd4d-87d4-49c3-a19b-3cbe6b6e0585\"\n}\n"
+  }
+]

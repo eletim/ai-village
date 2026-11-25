@@ -41,7 +41,7 @@
 1. 相談のみ：机の片付けの相談に自然な返答。仕事は作られなかった。例「全部を片づける目標にしなくても大丈夫」。初回には方針確認にも言及している。
 2. 「進めて」：village orderでリーダーへ3項目チェックリスト作成を依頼。一時フォルダのdesk-checklist.txtのみ作成。
 3. 成果配送：保存ファイルを読み、報告との一致を確認し、配送回でvillage accept。正常終了で判断確定。例「依頼どおりの3項目になっていることを確認しました。これで完了です」。配送前の人間回で一度acceptを試みたが村は拒否し、その回を終えた後の正式配送で成功した。
-4. 意図的な誤操作：--runなしのstatusを試して、案内で修正する会話を送信済み。結果確認中。
+4. 意図的な誤操作：--runなしのstatusが終了コード1で拒否され、末尾タグの値を指定する案内が返った。同じ回で正しい--run付きstatusに直し終了コード0。既存目的の完了を確認した。新しい仕事・判断の追加なし（正式操作記録は前回採取時と同一）。[コマンドと返却値](secretary-minimal-evidence/codex-error-recovery.json)。
 
 [実機入力・返答記録](secretary-minimal-evidence/codex-live.json)、[正式操作と判断記録](secretary-minimal-evidence/codex-operations.json)。実機入力はCodexのnative JSONLから対象inputIdと一致する本文だけを採取した。
 

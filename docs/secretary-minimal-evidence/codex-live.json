@@ -50,9 +50,9 @@
     "tagWithSeparatorCharacters": 54,
     "policyPrefixCharacters": 0,
     "totalAddedCharacters": 54,
-    "state": "running",
-    "output": "",
-    "finalOutput": null,
+    "state": "completed",
+    "output": "指定どおり、一度だけ `--run` なしで実行し、返された案内に沿って状態を確認します。\n\n\n`--run` なしでは拒否され、案内どおりに付け直すと状態を確認できました。既存の仕事は「完了」です。新しい仕事や成果判断は追加していません。",
+    "finalOutput": "`--run` なしでは拒否され、案内どおりに付け直すと状態を確認できました。既存の仕事は「完了」です。新しい仕事や成果判断は追加していません。",
     "displayMode": "reply"
   }
 ]
