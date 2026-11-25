@@ -140,3 +140,18 @@ test('failed leader guidance cannot be followed via followup',async t=>{
  const bad=await v('accept','--run',r.id,'採用');assert.equal(bad.ok,false);assert.match(bad.error,/相談への回答はfollowup/);
  const out=await v('followup','--run',r.id,'修正してください');assert.equal(out.ok,false);assert.match(out.error,/失敗・受付不明/);t.diagnostic(JSON.stringify({kind:e.kind,accept:bad.error,followup:out.error}));
 });
+
+// Keep the adapter's guidance aligned with the actual refusal text in the core,
+// including the wording variants used by followup and decide.
+test('each documented refusal has guidance, preserving the original core reason',async t=>{
+ const {readFile}=await import('node:fs/promises');
+ const sources=await Promise.all(['conversations.mjs','conversation-followup.mjs'].map(name=>readFile(new URL('../server/'+name,import.meta.url),'utf8')));
+ const reasons=sources.flatMap(source=>[...source.matchAll(/fail\('([^']+)'/g)].map(m=>m[1]));
+ const cases=[['今回の正式配送資料','この回には届いた結果'],['現在の正常な提出結果','最新ではない'],['後着の人間入力','新しい発言'],['前の判断の正常終了','まだ確定'],['前の秘書判断の正常終了','まだ確定'],['受付照合済みの実行中','今答えている回'],['具体的な人間の回答','答えを待っています'],['達成報告後の追加指示','続きは'],['旧実行が失敗','自動では再送しません'],['取り下げ・人間による終了','新しい仕事なら'],['保存成果の正式配送','まだ届いていません'],['Projectのリーダーが未設定','設定を頼んで'],['設定されたリーダーを利用','仕事を受けられません'],['リーダーの起動契約','仕事を受けられません']];
+ const {f}=await purposeFixture(t),human=await turn(f,'進めてください'),village=cli(f);
+ for(const [prefix,hint] of cases){
+  const reason=reasons.find(s=>s.startsWith(prefix));assert(reason,prefix);
+  f.service.conversations.job=async()=>{throw Object.assign(Error(reason),{status:409});};
+  const out=await village('order','--run',human.id,'作業');assert.equal(out.ok,false);assert(out.error.includes(reason));assert(out.error.includes('案内: '),prefix);assert(out.error.includes(hint),prefix);
+ }
+});
