@@ -30,7 +30,7 @@ for(const width of [1440,390])test('answer-local states: advice, active, complet
  await f.complete(question);
  await page.setViewportSize({width,height:1000});
  await page.route('**/api/**',route=>route.fulfill({json:new URL(route.request().url()).pathname==='/api/direct'?workspaceSnapshot(f.service.snapshot(),{},[work.agentId]):{providers:{}}}));
- await page.goto('/agents');await page.locator('[data-zoom="'+work.agentId+'"]').click();
+ await page.goto('/agents');await expect(page.locator('footer')).not.toContainText(/達成確認|監視を継続|Notify:/);await page.locator('[data-zoom="'+work.agentId+'"]').click();
  const rows={advice,work,done,question};
  const element=id=>page.locator('[data-entry='+JSON.stringify(JSON.stringify(['run','',rows[id].id]))+']');
  await expect(element('advice').locator('.answer-jobs')).toHaveCount(0);
