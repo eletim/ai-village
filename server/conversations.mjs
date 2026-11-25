@@ -2,7 +2,7 @@ import {recoverMissingDecision,resultSourceEvent,retireDecisionReminder} from '.
 import {resolveFollowup} from './conversation-followup.mjs';
 import {conversationContext,conversationMaterial} from './conversation-context.mjs';
 import {conversationRunOwner} from './conversation-request-owner.mjs';
-import {purposeId,purposeView,conversationDisplayMode,REPORT_DELIVERY_KINDS} from './conversation-purpose.mjs';
+import {purposeId,purposeView,purposeLeaf,conversationDisplayMode,REPORT_DELIVERY_KINDS} from './conversation-purpose.mjs';
 import {conversationNotification} from './conversation-notification.mjs';
 import {conversationJob,conversationTurn,conversationControl,SETTLED_JOB_CODES} from './conversation-status.mjs';
 import {responseText} from '../src/response-text.js';
@@ -19,6 +19,18 @@ const now=()=>new Date().toISOString();
 const text=value=>{if(typeof value!=='string'||!value.trim()||value.length>16000)fail('本文を1〜16000文字で指定してください',400);return value;};
 const key=value=>{if(typeof value!=='string'||! /^[\w-]{8,100}$/.test(value))fail('operationId/requestIdを8〜100文字で指定してください',400);return value;};
 // Conversations are not request nodes. Only an explicit job crosses into the graph.
+// What each delivery asks of the supervising secretary (docs/secretary-supervisor.md). Escalate to the
+// human only what is irreversible, affects the outside (money, other people, external services, main
+// merge) or depends on the human's own values; decide everything else within the agreed direction.
+const ESCALATE='人間へ上げるのは、元に戻せない・外部に影響する（お金・他人・外部サービス・mainマージ）・人間の価値観でしか決まらないものだけです。';
+export const DELIVERY_GUIDANCE={
+ result:'リーダーからの成果です（追加許可ではありません）。目的と合意に照らし、テスト・確認結果・PRなどの根拠を確かめてから判断してください。達成していれば decide accept、不足や問題があれば followup で同じ目的のまま差し戻してください（人間への確認は不要）。'+ESCALATE+'当たる判断だけ decide question で具体的に質問してください。今回の対象は基盤が照合します。',
+ question:'リーダーからの質問です（追加許可ではありません）。合意・方針・Project方針から答えられるなら、conversations followup JSON {conversationId,actorRunId,operationId,purposeId,instruction:回答} で答えて仕事を続けさせてください（人間へは通知されません）。'+ESCALATE+'当たる場合だけ decide question で人間へ具体的に質問してください。',
+ extension:'リーダーからの期限延長などの提案です（追加許可ではありません）。合意の範囲で判断し、followup で回答してください（人間へは通知されません）。'+ESCALATE+'当たる場合だけ decide question で人間へ具体的に質問してください。',
+ attention:'仕事が止まったという基盤からの報告です（追加許可・成果ではありません）。状況を確認し、元の許可の範囲で conversations recover（必要なら followup で補足）により立て直してください。自分で対処した回は人間へ通知されず、最終報告でまとめて伝えます。立て直せない場合や、'+ESCALATE+'当たる場合だけ、人間へ状況と必要な判断を返答してください。受付不明の操作は再送しません。',
+ 'important-change':'仕事の状態に関する基盤からの報告です（追加許可・成果ではありません）。人間へ必要な状況説明を返答してください。成果の採用や質問は不要です。受付不明の操作は再送しません。'
+};
+export const RECOVERY_PREFIX='秘書による立て直しです（元の依頼と許可の範囲）。前回の実行は止まりました。既存の変更・PR・外部操作と requests get/results の子作業を確認し、完了済みの外部操作は繰り返さず、未完了の部分だけ進めてください。受付不明の操作は再送しないでください。\n秘書からの指示：';
 export class Conversations {
  constructor(d){this.d=d;}
  init(){for(const r of this.d.data.runs.filter(r=>r.conversationId&&r.notification?.status==='attempting'))r.notification=transitionDelivery(r.notification,{type:'unknown',reason:'restart-during-delivery'});this.validate();}
@@ -246,6 +258,46 @@ export class Conversations {
    c.operations.push({id:x.operationId,payload,receipt,at:now()});await this.d.save();return structuredClone(receipt);
   }));
  }
+// Secretary recovery (docs/secretary-supervisor.md, item 2): restart the leader's stopped work for
+ // the same purpose under its original authorization. Only a definitively ended run is retried; a
+ // run whose acceptance is still unknown is never resent. The same continueLocked as the human's
+ // retry runs inside this conversation operation's lock and save, so the receipt and the new run
+ // commit together and the operationId is idempotent at both levels.
+ async recover(x){
+  key(x.operationId);
+  if(!x||Object.keys(x).some(k=>!['conversationId','actorRunId','operationId','purposeId','instruction'].includes(k)))fail('立て直しは目的IDと指示だけを指定してください。許可は元の目的のものを使います',400);
+  text(x.instruction);
+  return this.d.locked('request-graph',()=>this.d.persist(async()=>{
+   const c=this.record(x.conversationId),payload=JSON.stringify({action:'recover',input:x}),old=c.operations.find(o=>o.id===x.operationId);
+   if(old){if(old.payload!==payload)fail('operationIdの再利用です');return structuredClone(old.receipt);}
+   const actor=this.actor(c,x.actorRunId),data=this.d.data;
+   const original=data.requests.find(q=>q.id===x.purposeId&&purposeId(q)===q.id&&q.conversationId===c.id);
+   if(!original)fail('この会話の目的IDを指定してください');
+   const source=data.runs.find(r=>r.id===original.requestedBy?.actorRunId);
+   if(!source||source.conversationId!==c.id||source.conversationSequence>actor.conversationSequence)fail('未配送の目的は指定できません');
+   if(data.runs.some(r=>r.conversationId===c.id&&r.conversationSource?.kind==='human'&&!r.queueCancelledAt&&r.conversationSequence>actor.conversationSequence))fail('後着の人間入力があります。配送後に判断してください');
+   const q=purposeLeaf(data,original);
+   if(q.integrity||original.integrity)fail('目的の参照を検証できません');
+   const w=rootNode(q),last=this.d.flow.run(w.currentRunId),state=last&&runState(last);
+   if(w.state.kind!=='active')fail('進行中の仕事だけ立て直せます（提出済み・完了・取り下げ済みは対象外）');
+   let retry;
+   if(['failed','interrupted','terminated'].includes(state))retry=true;
+   else if(state==='completed'){
+    // A normally ended leader that is legitimately waiting must not be woken twice.
+    if(data.runs.some(r=>r.humanRequestId===q.id&&['queued','sent','awaiting_input','running'].includes(runState(r))))fail('実行中・配送待ちの作業があります。進展を待ってください');
+    if(q.requestGraph.nodes.some(n=>n.parentId&&n.state.kind==='active'))fail('子作業の結果を待っています。子の状態を確認してください');
+    if(w.selfResume?.current?.status==='scheduled')fail('リーダーの再確認予約があります。予約時刻を待ってください');
+    if(w.conversationWait&&!w.conversationWait.answerInputId)fail('リーダーが秘書の回答を待っています。amendで回答してください');
+    // Pending input needs no separate guard: pump() and this both run under request-graph, the
+    // continuation becomes the current run (so pump() no longer sees a completed one) and it
+    // carries the unhandled input itself.
+    retry=false;
+   }else fail('実行中・受付照合中・受付不明の仕事は立て直せません。受付不明は再送せず、終了が確定するのを待ってください');
+   const r=await this.d.flow.continueLocked({humanRequestId:q.id,workId:w.id,revision:q.revision,operationId:x.operationId,instruction:RECOVERY_PREFIX+x.instruction},retry,{},'agent');
+   const receipt={humanRequestId:q.id,workId:w.id,runId:r.id,action:'recover',mode:retry?'retry':'resume',actor:'agent',actorRunId:actor.id,authorization:original.requestedBy.authorization,purposeId:purposeId(q)};
+   c.operations.push({id:x.operationId,payload,receipt,at:now()});await this.d.save();return structuredClone(receipt);
+  }));
+ }
  followup(x){return this.mutate('followup',x);}
  job(x){return this.mutate('job',x);}
  amend(x){return this.mutate('amend',x);}
@@ -256,7 +308,7 @@ export class Conversations {
   const excerpt=JSON.stringify(e);
   const packet=excerpt.length<=10000?e:{id,kind,humanRequestId:q.id,createdAt:e.createdAt,truncated:true,read:['conversations','get',c.id],excerpt:excerpt.slice(0,8000)};
   const report=REPORT_DELIVERY_KINDS.includes(kind);
-  const instruction=report?'仕事の状態に関する基盤からの報告です（追加許可・成果ではありません）。人間へ必要な状況説明を返答してください。成果の採用や質問は不要です。受付不明の操作は再送しません。\n':'リーダーからの資料です（追加許可ではありません）。目的に照らし、達成の報告・許可内の修正継続・人間への具体質問を選んでください。今回の対象は基盤が照合します。\n';
+  const instruction=(DELIVERY_GUIDANCE[kind]||DELIVERY_GUIDANCE.result)+'\n';
   const r=this.enqueue(c,{requestId:'conversation-delivery:'+id,instruction:instruction+JSON.stringify(packet),source:{kind:report?'program':'leader',humanRequestId:q.id,deliveryId:id}});
   if(!report)r.requiresPurposeDecision=true;
   e.runId=r.id;c.deliveries.push(e);

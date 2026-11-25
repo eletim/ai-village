@@ -112,12 +112,14 @@ test('results delivered by the leader: quick accept and question are notified; c
  await f.complete(delivery3);assert.equal(sentFor(delivery3).length,0);assert.equal(delivery3.notificationSuppressed.reason,'purpose-decision-progress');
 });
 
-test('failure reports stay notified even when the secretary dispatches recovery work',async t=>{
- const {f,d,human,job,sentFor}=await setup(t);
+// Supervisor model (docs/secretary-supervisor.md): a failure the secretary dealt with itself goes to
+// the final report, not a ping; one it did not deal with is still reported to the human.
+test('a failure report the secretary handled itself is journaled, not notified (unhandled: tests/secretary-supervisor.test.js)',async t=>{
+ const {f,d,human,job,suppressed,sentFor}=await setup(t);
  const r=await human();const receipt=await job(r);await f.complete(r);await d.tick();const leader=d.flow.run(receipt.runId);await f.submit(leader);await f.complete(leader,'failed');
  const c=d.conversations.record(r.conversationId),attention=d.flow.run(c.deliveries.find(e=>e.kind==='attention').runId);
  await d.tick();await f.submit(attention);await job(attention,r);await f.complete(attention);
- assert.equal(sentFor(attention).length,1);assert.equal(attention.notificationSuppressed,undefined);
+ assert.equal(sentFor(attention).length,0);assert.equal(attention.notificationSuppressed.reason,'secretary-handled');assert.equal(suppressed.at(-1).reason,'secretary-handled');
 });
 
 test('explicit display choices keep their meaning; attempted notifications are never revisited',async t=>{

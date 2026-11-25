@@ -33,5 +33,6 @@ export function conversationDisplayMode(data,r){
  if(ds.some(d=>['accept','question'].includes(d.kind)&&decisionState(data,c,d)==='committed'))return 'reply';
  if(ds.some(d=>['continue','resume'].includes(d.kind)))return 'progress';
  if(purposeDecisionRequired(data,r)||ds.length)return 'progress';
- return r.conversationDisplay?.mode||'reply';
+ // A patrol turn is folded unless the secretary explicitly replies to the human.
+ return r.conversationDisplay?.mode||(r.conversationSource?.patrol?'progress':'reply');
 }

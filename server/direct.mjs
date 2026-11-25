@@ -5,6 +5,7 @@ import {adoptionFreshProof,noCurrentRuntimeSends} from './adopted-fresh-runtime.
 import {launchProfile as parseLaunchProfile,launchReceiptMatches,launchProfileReady} from './launch-profile.mjs';
 import {stoppedRuntimeEvidence} from '../src/stopped-runtime.js';
 import {sameRuntimeAttributes,currentRuntimeWorkplaceAllowed} from '../src/runtime-connection-identity.js';
+import {ConversationPatrol} from './conversation-patrol.mjs';
 import {Conversations} from './conversations.mjs';
 import {enrollLegacy,legacyAllowed,legacyContext,legacyReviewDue} from './legacy-contract.mjs';
 import {migrateCommonRequests} from './common-request-migration.mjs';
@@ -65,7 +66,7 @@ export class DirectAgents {
     Object.assign(this,{dir,remote,notifier,attachments,transferAttachment,localRun,localBin,pollMs,hostFactory,villageUrl});
     this.data={version:1,workshops:[],projects:[],agents:[],runs:[]};
     this.projectGuides=new ProjectGuides(undefined,this);
-    this.flow=new RequestFlow(this);this.conversations=new Conversations(this);this.events=new EventEmitter();
+    this.flow=new RequestFlow(this);this.conversations=new Conversations(this);this.patrol=new ConversationPatrol(this);this.events=new EventEmitter();
     this.persistence=new PersistenceBoundary();
     this.queue=Promise.resolve(); this.locks=new Map(); this.monitors=new Map();
     this.units=new RequestUnits(this);
@@ -110,9 +111,9 @@ export class DirectAgents {
     this.data.conversations ||= [];
     this.flow.init();this.conversations.init();
     await this.save();
-    if(watch){for(const name of ['local-audit.jsonl','ssh-audit.jsonl'])void maintainAudit(this.dir,name).catch(()=>{});this.flow.reporting.start();this.monitor=new EventMonitor(this,this.hostFactory?{hostFactory:this.hostFactory}:{});this.monitor.start();void this.progress().catch(()=>{});}
+    if(watch){for(const name of ['local-audit.jsonl','ssh-audit.jsonl'])void maintainAudit(this.dir,name).catch(()=>{});this.flow.reporting.start();this.patrol.start();this.monitor=new EventMonitor(this,this.hostFactory?{hostFactory:this.hostFactory}:{});this.monitor.start();void this.progress().catch(()=>{});}
   }
-  close(){this.monitor?.close();this.flow.reporting.close();clearInterval(this.timer);this.owner?.close();this.store.close();}
+  close(){this.monitor?.close();this.flow.reporting.close();this.patrol?.close();clearInterval(this.timer);this.owner?.close();this.store.close();}
   presentation(){
     if(!this.presentationCache){const view=humanProjection(this.data);this.presentationCache={...view,projects:view.projects.filter(p=>!p.deletedAt),capabilities:{secretaryConversations:true,presence:true,requestSplitting:true,requestInbox:true,steering:true,travelContexts:true,attachments:!!this.attachments},reviews:this.reviewStates(view)};}
     const live=new Map(this.data.agents.map(a=>[a.id,a]));
