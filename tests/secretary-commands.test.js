@@ -82,3 +82,38 @@ test('the CLI explains a missing or foreign run, wrong arguments, and accepts lo
  const ordered=await village('order','--run',now.id,long);assert.equal(ordered.ok,true,ordered.error);
  const help=(await village('help')).result;assert.deepEqual(help.slice(0,6).map(c=>c.name),['order','followup','accept','ask','withdraw','status']);
 });
+
+test('status identifies every visible purpose and bounds long authorization quotes',async t=>{
+ const {f,first}=await purposeFixture(t),village=cli(f);
+ const human=await turn(f,'進めてください。'+'詳しい資料'.repeat(150));
+ const second=await village('order','--run',human.id,'別の目的の成果を作る');
+ assert.equal(second.ok,true,second.error);
+ assert.equal(f.service.flow.root(second.result.humanRequestId).requestedBy.authorization.quote.length,500);
+ const status=await village('status','--run',human.id);
+ assert.deepEqual(status.result.purposes.map(p=>p.objective),['目的の成果を作る','別の目的の成果を作る']);
+ assert.equal(status.result.purposes[0].id,first.humanRequestId);
+});
+
+test('accept rejects a consultation with actionable guidance; pending followup explains the wait',async t=>{
+ const {f,first,completeJob}=await purposeFixture(t),village=cli(f);
+ const one=await completeJob(first);
+ const kind=one.event.kind;one.event.kind='question';
+ const wrong=await village('accept','--run',one.delivery.id,'採用');
+ assert.equal(wrong.ok,false);assert.match(wrong.error,/相談への回答はfollowup.*質問はask/);
+ one.event.kind=kind;
+ assert.equal((await village('accept','--run',one.delivery.id,'達成')).ok,true);
+ const pending=await village('followup','--run',one.delivery.id,'修正');
+ assert.equal(pending.ok,false);assert.match(pending.error,/案内: 前の判断がまだ確定/);
+});
+
+test('a first command observes an already delivered input without requiring status first',async t=>{
+ const {f}=await purposeFixture(t),village=cli(f);
+ const r=await f.service.send(f.agents[0].id,{mode:'conversation',requestId:randomUUID(),instruction:'進めてください'});
+ assert.equal(r.runModel.state.kind,'sent');
+ const native=f.runtimes.get(r.agentId),text=f.sent.findLast(s=>s.agentId===r.agentId).text,tid=randomUUID();
+ const {inputHash}=await import('./model-fixtures.mjs');
+ native.cursor+=10;native.inputs.push({id:'input-'+tid,turnId:tid,hash:inputHash(text),offset:native.cursor,source:'response',text});
+ native.turns.push({id:tid,state:'running',output:''});
+ const ordered=await village('order','--run',r.id,'受付確認直後の作業');
+ assert.equal(ordered.ok,true,ordered.error);assert.equal(r.runModel.state.kind,'running');
+});
