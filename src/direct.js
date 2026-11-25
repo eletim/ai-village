@@ -259,7 +259,7 @@ function renderBoard(){
   send.classList.toggle('icon-send',sendLabel==='送信');send.setAttribute('aria-label',sendLabel);
   const claudeSteering=a.canSteer&&a.provider==='claude'?'作業中か終了直後のどちらに反映されるかは保証されません。':'';
   if(claudeSteering)send.setAttribute('aria-label',sendLabel+' · '+claudeSteering);
-  send.title=sendLabel+(send.disabled&&conversationControl&&!conversationControl.canAccept?' · '+conversationControl.label:'');
+  send.title=sendLabel+(claudeSteering?' · '+claudeSteering:'')+(send.disabled&&conversationControl&&!conversationControl.canAccept?' · '+conversationControl.label:'');
 
   card.hidden=!ids.has(a.id);card.style.order=list.findIndex(x=>x.id===a.id);
   if(!card.hidden){card.autogrow.update();scrolls.get(a.id).restore();}
@@ -315,13 +315,21 @@ function activeView(){
  return !!cards.get(selectedAgent)&&!cards.get(selectedAgent).hidden;
 }
 function syncSelection(){
- const active=activeView();
+ const active=activeView();if(active)reportPresence();
  for(const [id,card] of cards){const selected=id===selectedAgent;card.dataset.selected=String(selected);if(selected)card.setAttribute('aria-current','true');else card.removeAttribute('aria-current');card.dataset.active=String(selected&&active);}
  cancelAnimationFrame(viewFrame);
  // Acknowledge only a revision rendered in the selected, visible window.
  viewFrame=requestAnimationFrame(()=>{void acknowledgeSelection();});
 }
 function selectAgent(id){selectedAgent=id;syncSelection();}
+// Tell the village that a human is looking at this Agent, so quick replies need no phone notification.
+let presenceAgent=null,presenceAt=0;
+function reportPresence(){
+ if(!state?.capabilities?.presence||!activeView())return;
+ const id=selectedAgent;if(id===presenceAgent&&Date.now()-presenceAt<30000)return;
+ presenceAgent=id;presenceAt=Date.now();api('/human/agents/'+id+'/presence',{}).catch(()=>{presenceAt=0;});
+}
+setInterval(reportPresence,30000);
 async function acknowledgeSelection(){
  if(!activeView())return;
  const id=selectedAgent,review=state.reviews?.[id];

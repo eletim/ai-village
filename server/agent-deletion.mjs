@@ -12,6 +12,9 @@ export async function deleteAgent(d,id,input){return d.locked('projects',async()
   if(d.agentDeleting(a))fail('削除処理中または削除済みです');
   if((a.metadataRevision||0)!==input.revision)fail('Agentが更新されています');
   if(d.conversations.pendingForAgent(id))fail('会話へ戻る未完了の仕事・配送があるAgentは削除できません');
+  // Same boundary as a Project change: a Project must never keep a leader that no longer exists.
+  const led=d.data.projects.filter(p=>!p.deletedAt&&p.leaderAgentId===id);
+  if(led.length)fail('Projectのリーダーに設定されています。先にリーダーを解除してから削除してください: '+led.map(p=>p.name||p.id).join(', '));
   if(d.data.requests.some(q=>q.requestGraph?.nodes.some(n=>n.assignee===id&&n.state.kind==='active'))||d.data.runs.some(r=>r.agentId===id&&['queued','sent','running'].includes(modelOf(r).state.kind)))fail('未完了の依頼があるAgentは削除できません');
   if(!['idle','terminated'].includes(agentControls(a).state))fail('待機または終了を確認したAgentだけ削除できます');
   a.deletion={...input,status:'running',startedAt:new Date().toISOString()};

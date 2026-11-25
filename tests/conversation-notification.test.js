@@ -7,7 +7,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fixture} from './inbox-fixture.js';
 import {acceptDelivery} from './purpose-fixture.js';
-import {HUMAN_PRESENT_WINDOW_MS} from '../server/conversation-notification.mjs';
+import {HUMAN_PRESENT_WINDOW_MS,HUMAN_PRESENCE_TTL_MS} from '../server/conversation-notification.mjs';
 import {purposeView} from '../server/conversation-purpose.mjs';
 import {VillageNotifier} from '../server/notifier.mjs';
 
@@ -31,7 +31,34 @@ async function leaderResult(f,receipt){
  await d.tick();await f.submit(delivery);return delivery;
 }
 
-test('presence window is an explicit 3 minute constant',()=>{assert.equal(HUMAN_PRESENT_WINDOW_MS,180000);});
+test('presence window is an explicit 3 minute constant; viewing reports expire after 75s',()=>{assert.equal(HUMAN_PRESENT_WINDOW_MS,180000);assert.equal(HUMAN_PRESENCE_TTL_MS,75000);});
+
+test('B: a quick answer is notified when the human is not viewing (never reported, stale, or another Agent)',async t=>{
+ const {f,d,human,sentFor}=await setup(t);
+ const away=await human('送ってすぐ離れる');await f.complete(away);
+ assert.equal(sentFor(away).length,1);assert.equal(away.notificationSuppressed,undefined);
+ const stale=await human('少し前まで見ていた');(d.presence ||= new Map()).set(stale.agentId,Date.now()-HUMAN_PRESENCE_TTL_MS-1000);await f.complete(stale);
+ assert.equal(sentFor(stale).length,1);
+ const other=await human('別のAgentを見ている');d.markPresence(f.agents[1].id);await f.complete(other);
+ assert.equal(sentFor(other).length,1);
+ // Presence is memory only: after a restart nobody counts as viewing.
+ d.markPresence(f.agents[0].id);await f.restart();const after=await f.service.send(f.agents[0].id,{mode:'conversation',requestId:randomUUID(),instruction:'再起動後'});await f.submit(after);await f.complete(after);
+ assert.equal(f.notifications.filter(n=>n.id==='conversation-answer:'+after.id).length,1);
+});
+
+test('own closure: the answer to the human closing work is not notified while they are viewing',async t=>{
+ const {f,d,human,job,suppressed,sentFor}=await setup(t);
+ const r=await human(QUOTE,{minutes:10});const receipt=await job(r);await f.complete(r);
+ const q=d.flow.root(receipt.humanRequestId);d.markPresence(r.agentId);await d.flow.cancel({humanRequestId:q.id,revision:q.revision,reason:'人間が取り下げ'});await d.tick();
+ const c=d.conversations.record(r.conversationId),closure=d.flow.run(c.deliveries.find(e=>e.kind==='important-change').runId);
+ await d.tick();await f.submit(closure);d.markPresence(r.agentId);await f.complete(closure);
+ assert.equal(sentFor(closure).length,0);assert.equal(closure.notificationSuppressed.reason,'human-closure-own-action');assert.equal(suppressed.at(-1).reason,'human-closure-own-action');
+ // Not viewing: the same kind of report is notified.
+ const r2=await human('別件も明示依頼として作ってください。',{minutes:10});const k2=await d.conversations.job({conversationId:r2.conversationId,actorRunId:r2.id,operationId:randomUUID(),instruction:'別件',authorization:{runId:r2.id,quote:'別件も明示依頼として作ってください。'}});await f.complete(r2);
+ d.presence.clear();const q2=d.flow.root(k2.humanRequestId);await d.flow.cancel({humanRequestId:q2.id,revision:q2.revision,reason:'人間が取り下げ'});await d.tick();
+ const closure2=d.flow.run(c.deliveries.findLast(e=>e.kind==='important-change').runId);await d.tick();await f.submit(closure2);await f.complete(closure2);
+ assert.equal(sentFor(closure2).length,1);
+});
 
 test('A: an answer that only dispatched work is not notified, is journaled, and stays visible',async t=>{
  const {f,human,job,suppressed,sentFor,shown}=await setup(t);
@@ -52,9 +79,9 @@ test('A: a withdrawal-only answer is not notified; a normal consultation answer 
  assert.equal(sentFor(consult).length,1);assert.equal(consult.notificationSuppressed,undefined);assert.equal(consult.notification.status,'sent');
 });
 
-test('B: a quick answer while the human is present is not notified; a slow answer is',async t=>{
- const {f,human,suppressed,sentFor,shown}=await setup(t);
- const quick=await human('今の状況は？');await f.complete(quick);
+test('B: a quick answer while the human is viewing is not notified; a slow answer is',async t=>{
+ const {f,d,human,suppressed,sentFor,shown}=await setup(t);
+ const quick=await human('今の状況は？');d.markPresence(quick.agentId);await f.complete(quick);
  assert.equal(sentFor(quick).length,0);assert.equal(quick.notificationSuppressed.reason,'human-present-quick-reply');assert.equal(suppressed.at(-1).reason,'human-present-quick-reply');
  assert.equal(shown(quick).displayMode,'reply');assert.equal(shown(quick).humanAnswer,'Final '+quick.id);
  const slow=await human('じっくり調べてから教えて',{minutes:4});await f.complete(slow);

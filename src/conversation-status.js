@@ -27,10 +27,18 @@ export function conversationAlertHTML(a){
  const c=a.conversationControl;
  return c&&(!c.canAccept||c.code==='unknown')?'<p class="conversation-alert" role="status">'+esc(c.label)+'</p>':'';
 }
+// Quiet note on an answer whose phone notification did not go out. Never offers a resend.
+const failedNotification=new Set(['cli_failed','timed_out','cli_unavailable','cli_start_failed','office_url_missing_or_invalid','notification_journal_unavailable','notification_journal_failed']);
+export function notificationNoteHTML(r){
+ const s=r.notification?.status;
+ if(failedNotification.has(s))return '<p class="run-status notification-note">通知を送れませんでした（自動再送しません）</p>';
+ if(s==='delivery_unknown')return '<p class="run-status notification-note">通知の送信結果を確認できません（自動再送しません）</p>';
+ return '';
+}
 export function conversationTurnHTML(r){
  const c=r.conversationLifecycle;
  const error=r.attachmentError||r.error||r.errorCode||c?.reason;
- if(!c||c.code==='answered'&&!error)return '';
+ if(!c||c.code==='answered'&&!error)return notificationNoteHTML(r);
  const failed=!!error||['failed','interrupted','unconfirmed'].includes(c.code);
  const label=({queued:'送信待ち','receipt-pending':'送信を確認中',responding:'応答中',cancelled:'送信取消済み',failed:'返答に失敗しました',interrupted:'返答が中断されました',unconfirmed:'送信結果を確認できません'})[c.code]||(error?'処理中にエラーが発生しました':c.label);
  return '<p class="run-status">'+esc(label)+'</p>'+(failed&&error?'<details class="conversation-error"><summary>エラー詳細</summary><p>'+esc(error)+'</p></details>':'');
