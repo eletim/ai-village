@@ -60,7 +60,8 @@ test('project name click still selects; settings order preserves rename draft an
  await page.locator('[data-place="project:q"] [data-project-handle]').click();await expect(page.locator('[data-place="project:q"]')).toHaveAttribute('aria-current','page');
  await page.locator('[data-add="project:p"]').first().click();await page.locator('#project-rename-form input').fill('未保存の名前');
  const first=page.locator('[data-agent-handle][data-order-id="a0"]'),last=page.locator('[data-agent-handle][data-order-id="a10"]');
- const a=await first.boundingBox(),b=await last.boundingBox();await page.mouse.move(a.x+10,a.y+10);await page.mouse.down();await page.mouse.move(b.x+10,b.y+10,{steps:8});await page.keyboard.press('Escape');await page.mouse.up();await expect(page.locator('#project-actions-dialog')).toBeVisible();expect(writes).toHaveLength(0);
+ // Read geometry atomically: a valid background sync may replace an idle reorder button.
+ const rect=el=>{const {x,y}=el.getBoundingClientRect();return {x,y};};const a=await first.evaluate(rect),b=await last.evaluate(rect);await page.mouse.move(a.x+10,a.y+10);await page.mouse.down();await page.mouse.move(b.x+10,b.y+10,{steps:8});await page.keyboard.press('Escape');await page.mouse.up();await expect(page.locator('#project-actions-dialog')).toBeVisible();expect(writes).toHaveLength(0);
  await last.focus();await page.keyboard.press('Alt+ArrowLeft');await expect.poll(()=>writes.length).toBe(1);await expect(page.locator('#project-rename-form input')).toHaveValue('未保存の名前');
  await page.locator('#project-actions-dialog [data-close]').click();await page.locator('[data-add="project:q"]').click();await expect(page.locator('#project-agent-order [data-agent-handle]')).toHaveCount(1);
 });

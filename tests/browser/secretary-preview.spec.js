@@ -15,6 +15,7 @@ for(const width of [1440,390])test(`secretary preview starts mid-run, follows, l
  await page.locator('#agent-w h2').click();await expect(card.locator('.secretary-preview')).toHaveCount(0);await expect.poll(()=>scopes.at(-1)).toBe('');
  state.runs[0].livePreview.messages.push({id:'m3',offset:30,phase:'final',text:'回答です'});await notifySnapshot(page);
  await card.locator('h2').click();await expect(card.locator('[data-preview-message]')).toHaveCount(3);
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:`/tmp/secretary-preview-live-${width}.png`});
  state.runs[0].state='completed';state.runs[0].conversationAnswer=true;state.runs[0].finalOutput='回答です';state.runs[0].output='最初の途中発言\n\n続き\n\n回答です';await notifySnapshot(page);
  await expect(card.locator('.secretary-preview')).toHaveCount(0);await expect(card.locator('.message.assistant')).toHaveCount(1);await expect(card.locator('.response-final')).toContainText('回答です');expect(writes).toEqual([]);
  await page.screenshot({path:`/tmp/secretary-preview-${width}.png`});
