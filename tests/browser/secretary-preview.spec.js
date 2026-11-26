@@ -65,9 +65,9 @@ for(const width of [1440,390])test(`preview images enlarge, navigate, survive co
  await card.getByRole('button',{name:'画像1を拡大'}).click();const dialog=page.locator('.report-lightbox');
  await expect(dialog).toBeVisible();await expect(dialog.locator('img')).toHaveAttribute('src','/api/images/'+ids[0]);
  await expect(dialog.getByRole('button',{name:'前の画像'})).toBeDisabled();
- const before=await dialog.locator('img').boundingBox();await dialog.getByRole('button',{name:'拡大',exact:true}).click();
+ const before=await dialog.locator('img').boundingBox();await page.keyboard.press('+');await page.keyboard.press('+');await page.keyboard.press('+');await page.keyboard.press('+');
  const after=await dialog.locator('img').boundingBox();expect(after.width).toBeGreaterThan(before.width*1.9);
- expect(await dialog.locator('.report-image-viewport').evaluate(e=>e.scrollWidth>e.clientWidth)).toBe(true);
+ expect(Number(await dialog.locator('.report-image-viewport').getAttribute('data-scale'))).toBeGreaterThan(2);
  await dialog.getByRole('button',{name:'次の画像'}).click();await expect(dialog.locator('img')).toHaveAttribute('src','/api/images/'+ids[1]);await expect(dialog.getByRole('button',{name:'次の画像'})).toBeDisabled();
  await page.keyboard.press('ArrowLeft');await expect(dialog.locator('img')).toHaveAttribute('src','/api/images/'+ids[0]);
  state.runs[0].state='completed';state.runs[0].conversationAnswer=true;state.runs[0].finalOutput=text;await notifySnapshot(page);
@@ -76,6 +76,6 @@ for(const width of [1440,390])test(`preview images enlarge, navigate, survive co
  await card.locator('.response-final').getByRole('button',{name:'画像2を拡大'}).click();await expect(dialog.locator('img')).toHaveAttribute('src','/api/images/'+ids[1]);await page.keyboard.press('Escape');
  // Single-image reply has no available navigation and starts fitted after reopening.
  state.runs[0].finalOutput=`![画像1](village-image:${ids[0]})`;state.runs[0].output=state.runs[0].finalOutput;await notifySnapshot(page);
- await card.getByRole('button',{name:'画像1を拡大'}).click();await expect(dialog.getByRole('button',{name:'前の画像'})).toBeDisabled();await expect(dialog.getByRole('button',{name:'次の画像'})).toBeDisabled();await expect(dialog.getByRole('button',{name:'拡大',exact:true})).toHaveAttribute('aria-pressed','false');
+ await card.getByRole('button',{name:'画像1を拡大'}).click();await expect(dialog.getByRole('button',{name:'前の画像'})).toBeDisabled();await expect(dialog.getByRole('button',{name:'次の画像'})).toBeDisabled();await expect(dialog.locator('.report-image-viewport')).toHaveAttribute('data-scale','1');
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
