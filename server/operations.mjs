@@ -8,16 +8,21 @@ import { randomUUID } from 'node:crypto';
 // operation doesn't require adding a new LLM action or teaching a keyword router.
 // `--run RUN` (or --run=RUN) may appear anywhere; the rest are the positional arguments.
 function secretaryCommand(direct,action,args){
- let run;const rest=[];
+ let run,assignee;const rest=[];
  for(let i=0;i<args.length;i++){
   if(args[i]==='--run'){if(run!==undefined||i+1>=args.length)throw Error('--run RUN を1つ指定してください。');run=args[++i];}
   else if(args[i].startsWith('--run=')){if(run!==undefined)throw Error('--run RUN を1つ指定してください。');run=args[i].slice(6);}
+  else if(args[i]==='--assignee'||args[i].startsWith('--assignee=')){
+   if(action!=='order'||assignee!==undefined)throw Error('--assignee は新規orderで1つだけ指定してください。');
+   assignee=args[i]==='--assignee'?args[++i]:args[i].slice(11);
+   if(!assignee||assignee.startsWith('--'))throw Error('--assignee AGENT_ID を指定してください。');
+  }
   else rest.push(args[i]);
  }
  if(run===undefined)throw Error('--run に発言の末尾の <village run="…"/> の値を指定してください。使い方: village help');
  const c=direct.secretaryCommands,text=value=>{if(typeof value!=='string'||!value.trim())throw Error('本文を指定してください。使い方: village help');return value;};
  const count=(...allowed)=>{if(!allowed.includes(rest.length))throw Error(action+' の引数の数が違います。使い方: village help');};
- if(action==='order'){count(1);return c.order(run,text(rest[0]));}
+ if(action==='order'){count(1);return c.order(run,text(rest[0]),assignee);}
  if(action==='followup'){count(1,2);return rest.length===2?c.followup(run,rest[0],text(rest[1])):c.followup(run,undefined,text(rest[0]));}
  if(action==='accept'){count(1,2);return c.accept(run,text(rest.at(-1)),rest.length===2?rest[0]:undefined);}
  if(action==='ask'){count(1,2);return c.ask(run,text(rest.at(-1)),rest.length===2?rest[0]:undefined);}
@@ -41,7 +46,7 @@ export class VillageOperations {
         {name:'conversations display',usage:conversationDisplayUsage,mutation:true,run:args=>{if(args.length!==1)throw Error('JSONを1つ指定してください');return direct.conversations.display(JSON.parse(args[0]));}},
         {name:'conversations read',usage:'conversations read CONVERSATION_ID ACTOR_RUN_ID JSON {kind:turn|purpose|delivery,id}',run:args=>{if(args.length!==3)throw Error('CONVERSATION_ID ACTOR_RUN_ID JSON');return direct.conversations.material(args[0],args[1],JSON.parse(args[2]));}},
         {name:'conversations followup',usage:'conversations followup JSON {conversationId,actorRunId,operationId,purposeId,instruction} (same permission; atomically supplement/continue/reopen)',mutation:true,run:args=>{if(args.length!==1)throw Error('JSONを1つ指定してください');return direct.conversations.followup(JSON.parse(args[0]));}},
-        ...['job','amend','withdraw','decide'].map(action=>({name:'conversations '+action,usage:action==='decide'?conversationDecisionUsage:'conversations '+action+' JSON {conversationId,actorRunId,operationId,instruction,authorization:{runId,quote},continue?:true,humanRequestId?,continuesRequestId?,deliveryId?,expectedPurposeVersion?,reason?,reopenRunId?}',mutation:true,run:args=>{if(args.length!==1)throw Error('JSONを1つ指定してください');return direct.conversations[action](JSON.parse(args[0]));}})),
+        ...['job','amend','withdraw','decide'].map(action=>({name:'conversations '+action,usage:action==='decide'?conversationDecisionUsage:(action==='job'?'新規依頼の担当指定は assigneeAgentId（省略時Projectリーダー）。継続時は指定不可。 ':'')+'conversations '+action+' JSON {conversationId,actorRunId,operationId,instruction,authorization:{runId,quote},continue?:true,humanRequestId?,continuesRequestId?,deliveryId?,expectedPurposeVersion?,reason?,reopenRunId?}',mutation:true,run:args=>{if(args.length!==1)throw Error('JSONを1つ指定してください');return direct.conversations[action](JSON.parse(args[0]));}})),
         {name:'projects leader',usage:'projects leader PROJECT_ID REVISION AGENT_ID|- (new jobs only)',mutation:true,run:args=>{if(args.length!==3)throw Error('PROJECT_ID REVISION AGENT_ID|-');return direct.putProject({revision:Number(args[1]),leaderAgentId:args[2]==='-'?null:args[2]},args[0]);}},
         {name:'workshops pattern',usage:'workshops pattern WORKSHOP_ID JSON_ARRAY_8_OR_NULL (none|line|diamond; top row left to right, then bottom)',mutation:true,run:args=>{if(args.length!==2)throw Error('工房IDと8セルのJSON配列を指定してください');return direct.putWorkshop({iconPattern:JSON.parse(args[1])},args[0]);}},
         {name:'agents create',usage:'agents create JSON({requestId,workshopId,cwd,name,provider,location,projectId?,launchProfile?:{version:1,provider:claude,model:full-ID,effort:low|medium|high|xhigh|max}})',mutation:true,run:args=>{if(args.length!==1)throw Error('JSONを1つ指定してください');return direct.create(JSON.parse(args[0]));}},

@@ -48,14 +48,14 @@ function executionJob(data,q){
    else if(['failed','interrupted','terminated'].includes(ds))work=status('delivery-failed','仕事完了・秘書の返答は要確認',delivery.error||'','成果は保存されています。');
    else work=status('returning',ds==='running'?'仕事完了・秘書が確認中':'仕事完了・秘書へ返答待ち',delivery?.error||delivery?.queuedReason||'','');
   }
- }else if(w.conversationWait&&!w.conversationWait.answerInputId)work=status('question','リーダーからの相談・秘書回答待ち','','');
+ }else if(w.conversationWait&&!w.conversationWait.answerInputId)work=status('question','担当からの相談・秘書回答待ち','','');
  else if(['failed','interrupted','terminated'].includes(state(r)))work=status('attention','仕事は未完了・要確認',r.error||r.runModel?.state.reason||'','作業が止まっています。');
  else if(state(r)==='queued'&&gate.code!=='ready')work=status('blocked','仕事の配送を保留',gate.label+(gate.reason?'：'+gate.reason:''),gate.next);
  else if(state(r)==='queued')work=status('queued','仕事を保存済み・配送待ち',r.error||r.queuedReason||'','');
- else if(state(r)==='awaiting_input')work=status('receipt-pending','リーダーの受付照合中',r.error||'','');
+ else if(state(r)==='awaiting_input')work=status('receipt-pending','担当の受付照合中',r.error||'','');
  else if(state(r)==='running')work=status('working','作業中','','');
  else work=status('pending','作業中');
- return {id:q.id,workId:w.id,leaderAgentId:w.assignee,leaderName:leader?.name||'担当不明',instruction:(q.instruction||'').slice(0,160),runId:r?.id,deliveryRunId:delivery?.id,humanApproval:'not-inferred',...work};
+ return {id:q.id,workId:w.id,assigneeAgentId:w.assignee,assigneeName:leader?.name||'担当不明',leaderAgentId:w.assignee,leaderName:leader?.name||'担当不明',instruction:(q.instruction||'').slice(0,160),runId:r?.id,deliveryRunId:delivery?.id,humanApproval:'not-inferred',...work};
 }
 export function conversationJob(data,q){
  const purpose=purposeView(data,q),leaf=purposeLeaf(data,q),execution=executionJob(data,leaf);
