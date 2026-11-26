@@ -1,0 +1,10 @@
+Same text hash, DOM node and entry counts across all paired trials: True
+Each cell n=2; milliseconds mean [min,max]. Layout is full trace through 500ms after two-frame ready.
+1440 all unread | before paintedReadyMs 600.0 [594.0,606.1] | before layoutMs 335.6 [330.4,340.9] | after paintedReadyMs 601.1 [595.3,606.9] | after layoutMs 342.3 [338.8,345.9]
+1440 all read | before paintedReadyMs 587.4 [572.8,601.9] | before layoutMs 329.4 [324.3,334.6] | after paintedReadyMs 597.9 [591.5,604.4] | after layoutMs 330.2 [324.5,335.9]
+1440 single unread | before paintedReadyMs 393.9 [379.3,408.4] | before layoutMs 85.2 [84.9,85.5] | after paintedReadyMs 407.4 [403.3,411.5] | after layoutMs 89.5 [86.8,92.2]
+1440 single read | before paintedReadyMs 226.5 [224.2,228.8] | before layoutMs 83.3 [82.9,83.7] | after paintedReadyMs 230.4 [224.0,236.7] | after layoutMs 87.7 [87.2,88.2]
+390 all unread | before paintedReadyMs 606.6 [602.4,610.8] | before layoutMs 346.7 [346.5,346.9] | after paintedReadyMs 596.5 [595.4,597.6] | after layoutMs 347.4 [344.9,349.9]
+390 all read | before paintedReadyMs 598.5 [586.6,610.4] | before layoutMs 343.9 [339.5,348.2] | after paintedReadyMs 614.3 [608.8,619.8] | after layoutMs 353.6 [353.4,353.8]
+390 single unread | before paintedReadyMs 398.9 [388.1,409.7] | before layoutMs 90.3 [89.6,91.1] | after paintedReadyMs 433.9 [430.3,437.5] | after layoutMs 93.4 [92.2,94.6]
+390 single read | before paintedReadyMs 220.7 [218.5,222.9] | before layoutMs 91.2 [90.5,91.9] | after paintedReadyMs 232.8 [226.3,239.2] | after layoutMs 92.4 [92.1,92.7]
