@@ -323,7 +323,11 @@ export class Conversations {
   for(const r of this.d.data.runs.filter(r=>r.conversationId&&r.notificationPolicy==='conversation'&&accepted(r)&&runState(r)==='completed')){
    await this.d.locked('notify-conversation:'+r.id,async()=>{
     let suppressed=null;
-    const claimed=await this.d.persist(async()=>{
+    // Read the settled state under the writer barrier: an in-flight save may
+    // still roll back. Already handled history needs no rollback checkpoint.
+    const claimed=await this.d.persistence.run(()=>{
+     if(r.notificationSuppressed||r.notification&&r.notification.status!=='pending')return false;
+     return this.d.persist(async()=>{
      if(r.notificationSuppressed)return false;
      // Only a not-yet-attempted notification is decided here; sent/attempting/unknown are never revisited.
      const policy=!r.notification||r.notification.status==='pending'?conversationNotification(this.d.data,r,{presentAt:this.d.presentAt?.(r.agentId)}):null;
@@ -336,6 +340,7 @@ export class Conversations {
      if(!r.notification)r.notification=transitionDelivery(null,{type:'prepare',id:'conversation-answer:'+r.id});
      if(r.notification.status!=='pending')return false;
      r.notification=transitionDelivery(r.notification,{type:'claim',at:now()});await this.d.save();return true;
+     });
     });
     // Explainable afterwards: the journal records why nothing was sent (best effort, after the durable decision).
     if(suppressed)try{await this.d.notifier.suppress?.({id:'conversation-answer:'+r.id,kind:'conversation',agentId:r.agentId,reason:suppressed.reason});}catch{}
