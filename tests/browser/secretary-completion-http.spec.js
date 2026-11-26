@@ -8,14 +8,16 @@ test('real conversation API/native terminal → projection → secretary complet
  test.setTimeout(240000);
  const f=await completionHTTPFixture(Number(process.env.VILLAGE_COMPLETION_PORT||15585));
  const a=f.agents[0],leader=f.agents[1],samples=[];
+ const visibility=async value=>page.evaluate(value=>{Object.defineProperty(document,'visibilityState',{configurable:true,value});document.dispatchEvent(new Event('visibilitychange'));},value);
  const snapshot=async()=> (await fetch(f.base+'/api/direct?view=workspace')).json();
  const send=async text=>{const x=await f.post('/agents/'+a.id+'/runs',{mode:'conversation',requestId:randomUUID(),instruction:text});expect(x.status).toBe(200);return x.body;};
  const sample=async(label,complete)=>{
   const panel=page.locator('#agent-'+a.id),dot=page.locator('[data-place=all] [data-agent-dot="'+a.id+'"]');
   await expect(panel).toHaveAttribute('data-answer-complete',String(complete));await expect(dot).toHaveAttribute('data-answer-complete',String(complete));
   const value=await panel.evaluate(p=>{const h=p.querySelector('.panel-heading'),i=document.querySelector('[data-place=all] [data-agent-dot="'+p.id.slice(6)+'"]');return {panel:{...p.dataset},heading:getComputedStyle(h).backgroundColor,headingText:getComputedStyle(h).color,headerIcon:getComputedStyle(h.querySelector('.dot')).color,shadow:getComputedStyle(p).boxShadow,iconColor:i.classList.contains('status-icon')?getComputedStyle(i).color:getComputedStyle(i).backgroundColor,outline:getComputedStyle(i).outlineStyle};});
-  if(complete){expect(value.heading).toBe('rgb(36, 91, 58)');expect(value.headingText).toBe('rgb(216, 255, 228)');expect(value.shadow).toContain('rgb(34, 197, 94)');expect(value.iconColor).toBe('rgb(34, 197, 94)');expect(value.outline).toBe('solid');}else{expect(value.heading).not.toBe('rgb(36, 91, 58)');}
+  if(complete){expect(value.heading).toBe('rgb(36, 91, 58)');expect(value.headingText).toBe('rgb(216, 255, 228)');expect(value.shadow).toContain('rgb(34, 197, 94)');expect(value.iconColor).toBe('rgb(34, 197, 94)');expect(value.outline).toBe('solid');}else{expect(value.heading).not.toBe('rgb(36, 91, 58)');expect(value.shadow).not.toContain('rgb(34, 197, 94)');expect(value.outline).toBe('none');}
   const api=await snapshot(),agent=api.agents.find(x=>x.id===a.id),entry=api.conversations[a.id].entries.at(-1);
+  expect(agent.answerComplete).toBe(complete);
   samples.push({label,...value,api:{agentState:agent.state,answerComplete:agent.answerComplete,review:api.reviews[a.id],runId:entry.id,state:entry.state,conversationAnswer:entry.conversationAnswer,displayMode:entry.displayMode}});
  };
  try{
@@ -26,23 +28,37 @@ test('real conversation API/native terminal → projection → secretary complet
    await page.locator('#agent-'+a.id+' textarea').click();await sample('running '+width+theme,false);
    await f.native(a,[{type:'response_item',payload:{type:'message',role:'assistant',id:randomUUID(),phase:'commentary',recipient:null,content:[{type:'output_text',text:'途中の説明です'}]}}]);
    await expect(page.locator('#agent-'+a.id)).toContainText('途中の説明です');await sample('preview '+width+theme,false);
-   await f.complete(r,'普通の相談への回答です');await sample('normal '+width+theme,true);
+   // Real visibility gating prevents autoack while the unread answer is inspected.
+   await visibility('hidden');
+   await f.complete(r,'普通の相談への回答です');await sample('hidden unread '+width+theme,true);
+   const oldRevision=(await snapshot()).reviews[a.id].revision;
+   await page.waitForTimeout(250);expect((await snapshot()).reviews[a.id].unreviewed).toBe(true);
+   await visibility('visible');
    await expect.poll(async()=> (await snapshot()).reviews[a.id].unreviewed).toBe(false);
-   await sample('ack '+width+theme,true);
-   if(width===390&&theme==='light')await info.attach('mobile-light-completed',{body:await page.screenshot({path:info.outputPath('mobile-light-completed.png')}),contentType:'image/png'});
-   if(width===1440&&theme==='dark')await info.attach('desktop-dark-completed',{body:await page.screenshot({path:info.outputPath('desktop-dark-completed.png')}),contentType:'image/png'});
-   await page.evaluate(()=>{Object.defineProperty(document,'visibilityState',{configurable:true,value:'hidden'});document.dispatchEvent(new Event('visibilitychange'));});
-   await sample('hidden '+width+theme,true);
-   await page.evaluate(()=>{Object.defineProperty(document,'visibilityState',{configurable:true,value:'visible'});document.dispatchEvent(new Event('visibilitychange'));});
-   await page.locator('[data-place=all]').click();await page.reload();await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);
-   await sample('reload-unselected '+width+theme,true);
-   await page.locator('#agent-'+a.id+' textarea').click();await sample('revisit '+width+theme,true);
+   await sample('autoack '+width+theme,false);
+   await visibility('hidden');
+   const later=await f.submit(await send('次の未読回答 '+width+theme));
+   // Neither final text nor a different turn's terminal qualifies as normal completion.
+   await f.native(a,[{type:'response_item',payload:{type:'message',role:'assistant',id:randomUUID(),phase:'final',content:[{type:'output_text',text:'まだ終端前'}]}},{type:'event_msg',payload:{type:'task_complete',turn_id:randomUUID(),last_agent_message:'別turn'}}]);
+   await sample('unmatched terminal '+width+theme,false);
+   await f.native(f.agents[2],[{type:'event_msg',payload:{type:'task_started',turn_id:later.turnId}},{type:'event_msg',payload:{type:'task_complete',turn_id:later.turnId,last_agent_message:'別sessionの同turn'}}]);
+   await sample('other session terminal '+width+theme,false);
+   await f.complete(later,'次の未読正常回答');await sample('latest unread '+width+theme,true);
+   const stale=await f.post('/agents/'+a.id+'/view',{revision:oldRevision});expect(stale.status).toBe(409);
+   await sample('stale ack rejected '+width+theme,true);
+   await info.attach(width+'-'+theme+'-unread',{body:await page.screenshot({path:info.outputPath(width+'-'+theme+'-unread.png')}),contentType:'image/png'});
+   await visibility('visible');await expect.poll(async()=> (await snapshot()).reviews[a.id].unreviewed).toBe(false);
+   await sample('latest autoack '+width+theme,false);
+   await info.attach(width+'-'+theme+'-read',{body:await page.screenshot({path:info.outputPath(width+'-'+theme+'-read.png')}),contentType:'image/png'});
+   await page.reload();await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);
+   await sample('read reconnect '+width+theme,false);
   }
   const unseen=await f.submit(await send('未選択で完了する相談'));
   await page.reload();await f.complete(unseen,'未読の正常回答');await sample('unselected unread',true);
   expect((await snapshot()).reviews[a.id].unreviewed).toBe(true);
   await page.locator('#agent-'+a.id+' textarea').click();
-  await expect.poll(async()=> (await snapshot()).reviews[a.id].unreviewed).toBe(false);await sample('selected read',true);
+  await expect.poll(async()=> (await snapshot()).reviews[a.id].unreviewed).toBe(false);await sample('selected read',false);
+  await visibility('hidden');
   // A real leader job: its internal result is progress until a formal decision commits.
   const human=await f.submit(await send('成果を作成してください。'));
   const job=await f.post('/conversations/job',{conversationId:human.conversationId,actorRunId:human.id,operationId:randomUUID(),instruction:'隔離成果',authorization:{runId:human.id,quote:'成果を作成してください。'}});expect(job.status).toBe(200);
@@ -67,10 +83,11 @@ test('real conversation API/native terminal → projection → secretary complet
   const next=await send('次の相談');expect((await snapshot()).agents.find(x=>x.id===a.id).answerComplete).toBe(false);await sample('new send',false);
   const current=await f.submit(next);
   const queued=await send('実行中に次の相談');expect(queued.state).toBe('queued');await sample('queued',false);
+  const queuedAgain=await send('さらに次の相談');expect(queuedAgain.state).toBe('queued');await sample('multiple queued',false);
   await f.complete(current,'先の回答');await sample('older normal cannot override newer queue',false);
   const pending=await f.submit(queued);await f.native(a,[{type:'event_msg',payload:{type:'turn_aborted',turn_id:pending.turnId}}]);
   await f.until(async()=>(await f.run(pending.id)).state==='interrupted');await sample('interrupted',false);
-  const fail=await f.submit(await send('失敗fixture'));
+  const fail=await f.submit(queuedAgain);
   await f.native(a,[{type:'event_msg',payload:{type:'task_complete',turn_id:fail.turnId,error:{message:'fixture failure'}}}]);
   await f.until(async()=>(await f.run(fail.id)).state==='failed');await sample('failed',false);
   await writeFile(f.capture+'.lose','fixture');

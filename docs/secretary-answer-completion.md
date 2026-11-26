@@ -1,3 +1,5 @@
+> 仕様訂正: 既読後の保持は撤回されました。現行仕様と検証は [既読解除](secretary-completion-read-clear.md) を参照。以下はPR166時点の実装・検証履歴です。
+
 # 秘書の回答完了表示
 
 2026-11-26。分岐元 `f46ab2f0ac12738b377e061ee660498545266763`（remote integration/event-driven-requests と照合済み）。実装用cloneは `/home/eletim/ai-village-secretary-completion`、branchは `fix/secretary-answer-completion`。

@@ -1,0 +1,11 @@
+[WebServer] (node:2131266) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:2131266) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+
+Running 1 test using 1 worker
+
+(node:2131355) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 tests/browser/secretary-completion-http.spec.js:7:1 › real conversation API/native terminal → projection → secretary completion and read acknowledgement (12.0s)
+
+  1 passed (12.6s)

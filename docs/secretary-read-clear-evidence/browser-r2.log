@@ -1,0 +1,28 @@
+[WebServer] (node:2117160) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:2117160) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+
+Running 18 tests using 1 worker
+
+(node:2117334) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   1 tests/browser/board-review.spec.js:19:1 › four cards use 2x2, nine use 3x3, narrow screen uses readable rows and one consistent state palette (376ms)
+  ✓   2 tests/browser/board-review.spec.js:33:1 › virtual groups and all pages reach every Agent, preserve order across activity changes and restore zoom (5.1s)
+  ✓   3 tests/browser/board-review.spec.js:49:1 › selection acknowledges only the Agent, supports keyboard and never turns normal completions into attention (5.1s)
+  ✓   4 tests/browser/board-review.spec.js:62:1 › hidden, unfocused and modal-covered windows do not acknowledge arrivals; focus restoration acknowledges selected only (7.3s)
+  ✓   5 tests/browser/board-review.spec.js:73:1 › stale view rejects newer completion and does not clear it after changing selection (2.8s)
+  ✓   6 tests/browser/board-review.spec.js:79:1 › off-page and archived Agents are not reviewed merely by display (4.9s)
+  ✓   7 tests/browser/board-review.spec.js:86:1 › quiet selection preserves blue and muted green; unread turns alone have no wash or ring (396ms)
+  ✓   8 tests/browser/board-review.spec.js:100:1 › strong green attention and favicon require finalized human request, and Agent selection clears only its viewed revision (433ms)
+  ✓   9 tests/browser/notification-themes.spec.js:5:45 › dark: shared theme covers Direct, archive, settings and persists (513ms)
+  ✓  10 tests/browser/notification-themes.spec.js:5:45 › light: shared theme covers Direct, archive, settings and persists (454ms)
+  ✓  11 tests/browser/notification-themes.spec.js:5:45 › sepia: shared theme covers Direct, archive, settings and persists (446ms)
+  ✓  12 tests/browser/notification-themes.spec.js:10:1 › destination form saves only explicit fields, reports errors, preserves blank fields and resets explicitly (393ms)
+  ✓  13 tests/browser/notification-themes.spec.js:14:1 › real isolated HTTP accepts destination, rejects invalid URL/topic/token and blank saves preserve (35ms)
+  ✓  14 tests/browser/notification-themes.spec.js:20:1 › narrow sepia settings remain usable and input/dialog/text areas follow the theme (263ms)
+  ✓  15 tests/browser/scoped-sync-review.spec.js:5:1 › scoped HTTP conversations: summary, switch, paging, race, unread, drafts and reconnect (3.3s)
+  ✓  16 tests/browser/secretary-completion-http.spec.js:7:1 › real conversation API/native terminal → projection → secretary completion and read acknowledgement (12.2s)
+  ✓  17 tests/browser/sidebar-live-completion.spec.js:2:31 › sidebar completion refresh without click or reload 1440 (108ms)
+  ✓  18 tests/browser/sidebar-live-completion.spec.js:2:31 › sidebar completion refresh without click or reload 390 (100ms)
+
+  18 passed (45.1s)
