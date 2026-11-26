@@ -29,7 +29,7 @@ export function reserveInitialRelay(d,a,r,e,handover){
 async function oldProofIntact(service,a,r){
  const d=service.d,i=r.relayInitial;
  const c=d.conversations.record(r.conversationId),e=c.relayInbox.find(e=>e.id===r.conversationSource.relayId);
- const old=d.flow.run(r.relayRecoveryOf),oldAgent={...a,...i.oldRuntime};
+ const old=d.flow.run(r.relayRecoveryOf),oldAgent={...a,...(i.proofRuntime||i.oldRuntime)};
  const oldStatus=await d.pmux(oldAgent,'tab','status','-w',oldAgent.workspaceId,oldAgent.tabId),oldSnapshot=await d.runtime(oldAgent,oldStatus);
  const proof=recoveryEvidence(old,oldSnapshot,oldStatus,{nativeInputHash:e.recovery.proof.inputHash,nativeTurnId:e.recovery.proof.turnId});
  if(JSON.stringify(proof)!==JSON.stringify(e.recovery.proof))fail('保管runtimeの証拠が変化しました');
@@ -40,6 +40,7 @@ export async function launchInitialRelay(service,r){
  await d.persist(async()=>{
   service.dispatchBoundary(r);
   await oldProofIntact(service,a,r);
+  service.dispatchBoundary(r);
   if(initial.attemptedAt)fail('初回起動は試行済みです。照会だけ可能です');
   initial.attemptedAt=new Date().toISOString();await d.save();
  });
