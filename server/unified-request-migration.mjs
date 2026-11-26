@@ -2,7 +2,7 @@ import {migrateCommonRequests} from './common-request-migration.mjs';
 import {readFile,open} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {writeSnapshot} from './direct-store.mjs';
-import {node,reconcileGraph,graphSteps,refreshProgressReviews} from './state/requests.ts';
+import {node,reconcileGraph,graphSteps,refreshProgressReviews,transitionGraph} from './state/requests.ts';
 import {evidence,rootNode,validateGraph} from './unified-requests.mjs';
 function oldNode(q,w){return {id:w.id,parentId:w.parentWorkId||null,requester:w.parentWorkId?{kind:'agent',agentId:q.works.find(p=>p.id===w.parentWorkId).agentId,requestId:w.parentWorkId}:{kind:'human'},assignee:w.agentId,runAgents:Object.fromEntries(w.runIds.map(id=>[id,w.agentId])),runIds:[...w.runIds],currentRunId:w.currentRunId,reportRunId:null,reportMode:!w.parentWorkId&&q.reportMode===true,state:{kind:'active',review:[]},submissions:[],claims:[],replacements:[],invalidatedRuns:[],handling:[],declarations:[],decisions:[]};}
 function importGraph(data,q){
@@ -76,6 +76,14 @@ export function unifiedData(source){
    g.version=3;delete q.works;delete q.requestModel;
   }
   migrateCommonRequests({requests:[q],runs:data.runs});
+  const root=rootNode(q);
+  const unfinished=q.requestGraph.nodes.filter(n=>n.id!==root.id&&['active','submitted'].includes(n.state.kind));
+  const runs=evidence(data,q);
+  if(root.state.kind==='withdrawn'&&unfinished.length&&unfinished.every(n=>n.planned||runs.some(r=>r.run.id===n.currentRunId&&['ended','cancelled'].includes(r.run.state.kind))&&runs.filter(r=>r.ownerId===n.id).every(r=>['ended','cancelled'].includes(r.run.state.kind)))){
+   const repaired=transitionGraph(q.requestGraph,{type:'repair-withdrawn-descendants',actor:'program',requestId:root.id},runs);
+   if(!repaired.ok)throw Error('Cannot repair withdrawn descendants: '+q.id);
+   q.requestGraph=repaired.value;
+  }
   validateGraph(data,q);
   refreshProgressReviews(q.requestGraph,evidence(data,q));
  }

@@ -147,9 +147,10 @@ export type Event=
  | {type:'assign';actor:'human';requestId:string;agentId:string}
  | {type:'review';actor:'program';requestId:string;reason:string}
  | {type:'withdraw'|'complete';actor:'human';requestId:string;reason:string}
+ | {type:'repair-withdrawn-descendants';actor:'program';requestId:string}
  | {type:'observe';actor:'program'};
 export function transitionGraph(source:Graph,e:Event,runs:Evidence):Result<Graph>{
- const authorities:Record<Event['type'],Actor[]>={'reconcile-observation':['program'],add:['agent','human'],'deliver-conversation':['program'],'withdraw-conversation':['agent'],'deliver-human':['program'],'plan-assign':['human','agent'],'discard-plan':['human','agent'],supplement:['human','agent','program'],attempt:['agent','human','program'],respond:['agent'],finish:['agent'],review:['program'],withdraw:['human'],complete:['human'],observe:['program'],assign:['human'],handover:['program'],replace:['agent']};
+ const authorities:Record<Event['type'],Actor[]>={'reconcile-observation':['program'],add:['agent','human'],'deliver-conversation':['program'],'withdraw-conversation':['agent'],'deliver-human':['program'],'plan-assign':['human','agent'],'discard-plan':['human','agent'],supplement:['human','agent','program'],attempt:['agent','human','program'],respond:['agent'],finish:['agent'],review:['program'],withdraw:['human'],complete:['human'],observe:['program'],assign:['human'],handover:['program'],replace:['agent'],'repair-withdrawn-descendants':['program']};
  if(!authorities[e.type]?.includes(e.actor))return reject('actor-forbidden');
  let g=structuredClone(source);
  if(e.type==='observe')return accept(reconcileGraph(g,runs));
@@ -160,6 +161,21 @@ export function transitionGraph(source:Graph,e:Event,runs:Evidence):Result<Graph
   g.nodes.push(n);return accept(g);
  }
  const n=node(g,e.requestId);if(!n)return reject('request-missing');
+ if(e.type==='repair-withdrawn-descendants'){
+  if(n.parentId||n.state.kind!=='withdrawn')return reject('root-not-withdrawn');
+  if(g.nodes.some(c=>{
+   if(c.id===n.id||c.planned||!['active','submitted'].includes(c.state.kind))return false;
+   const activeRun=current(c,runs);
+   return !activeRun||!isTerminal(activeRun)||owned(c,runs).some(r=>!isTerminal(r));
+  }))return reject('descendant-still-tracked');
+  for(const c of g.nodes){
+   if(c.id===n.id||!['active','submitted'].includes(c.state.kind))continue;
+   c.state={kind:'withdrawn',reason:n.state.reason};
+   c.decisions.push({actor:'program',reason:'inherited-withdrawal:'+n.id});
+   closeSelfResume(c,'request-ended');
+  }
+  return accept(g);
+ }
  if(e.type==='withdraw-conversation'){
   if(n.parentId||n.recipient.kind!=='conversation'||n.recipient.conversationId!==e.conversationId||!['active','submitted'].includes(n.state.kind))return reject('conversation-authority-mismatch');
   for(const item of g.nodes)if(['active','submitted'].includes(item.state.kind)){item.state={kind:'withdrawn',reason:e.reason};item.decisions.push({actor:'agent',reason:e.reason});closeSelfResume(item,'request-ended');}

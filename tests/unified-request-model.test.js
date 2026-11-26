@@ -132,6 +132,27 @@ test('withdrawal remains terminal even if a pending declaring run later ends nor
  assert.equal(g.nodes[0].handling.length,0);assert.equal(g.nodes[0].state.kind,'withdrawn');assert.equal(g.nodes[1].state.kind,'withdrawn');
 });
 
+test('startup repair inherits a withdrawn root without accepting uncertain child runs',()=>{
+ const g=fixture();g.nodes[0].state={kind:'withdrawn',reason:'human-cancelled'};
+ g.nodes[0].decisions.push({actor:'human',reason:'human-cancelled'});
+ g.nodes.push(request('grandchild','child','gc'));
+ const runs=[run('p','parent','ended'),run('c','child','ended','unconfirmed'),run('gc','grandchild','ended','unconfirmed')]
+  .map(e=>({id:e.run.id,agentId:e.agentId,humanRequestId:'tree',workId:e.ownerId,runModel:e.run}));
+ const original={unifiedRequestVersion:3,runs,agents:[],requests:[{id:'tree',rootWorkId:'parent',requestGraph:g}]};
+ const repaired=unifiedData(original),nodes=repaired.requests[0].requestGraph.nodes;
+ assert.deepEqual(nodes.map(n=>n.state.kind),['withdrawn','withdrawn','withdrawn']);
+ assert(nodes.slice(1).every(n=>n.decisions.some(d=>d.actor==='program'&&d.reason==='inherited-withdrawal:parent')));
+ assert(repaired.runs.slice(1).every(r=>r.runModel.state.outcome==='unconfirmed'));
+ assert(nodes.every(n=>n.state.kind!=='completed'&&n.handling.length===0));
+ assert.equal(JSON.stringify(unifiedData(repaired)),JSON.stringify(repaired));
+ assert.equal(original.requests[0].requestGraph.nodes[1].state.kind,'active');
+ const executing=structuredClone(original);
+ executing.runs[1].runModel.state={kind:'running',sessionId:'s',turnId:'c',inputId:'i'};
+ const held=unifiedData(executing);
+ assert.equal(held.requests[0].requestGraph.nodes[1].state.kind,'active');
+ assert.equal(held.runs[1].runModel.state.kind,'running');
+});
+
 test('automatic receipt of failure records review, never implicit acceptance',()=>{
  const runs=[run('p','parent','ended'),run('c','child','ended','failed')];let g=reconcileGraph(fixture(),runs);
  const delivery=run('d','parent','queued');Object.assign(delivery.run,{phase:'result',createdBy:'program',retryOf:'p',resultOf:'c'});runs.push(delivery);
