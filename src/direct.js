@@ -691,7 +691,8 @@ function renderProjectOrder(){
  if(projectMemberOrder.busy())return;
  const members=scopeAgents('project:'+projectActionTarget.id),root=$('#project-agent-order');
  const html=members.map(a=>`<button type="button" data-agent-handle data-order-kind="agents" data-order-id="${esc(a.id)}" data-order-project="${esc(projectActionTarget.id)}" data-order-revision="${a.metadataRevision||0}" aria-label="${esc(a.name||'Agent')}を並べ替え" title="${esc(a.name||'Agent')}・ドラッグで並べ替え" aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight">${agentDot(a)}</button>`).join('')||'<p>Agentはまだいません。</p>';
- if(root.innerHTML!==html){const focused=document.activeElement?.dataset.orderId;root.innerHTML=html;[...root.querySelectorAll('button')].find(b=>b.dataset.orderId===focused)?.focus({preventScroll:true});}
+ // SVG serialization differs from its source; compare the last rendered source to preserve idle handles during preview sync.
+ if(root.renderedHTML!==html){const focused=document.activeElement?.dataset.orderId;root.innerHTML=html;root.renderedHTML=html;[...root.querySelectorAll('button')].find(b=>b.dataset.orderId===focused)?.focus({preventScroll:true});}
 }
 const projectMemberOrder=bindSidebarOrder($('#project-agent-order'),{save:input=>api('/reorder',input),changed:()=>{void refresh(true);},error:e=>{$('#project-actions-dialog .dialog-error').textContent='並び替えを保存できません: '+e.message;}});
 function openProjectActions(id){
