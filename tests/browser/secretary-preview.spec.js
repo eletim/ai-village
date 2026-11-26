@@ -53,3 +53,29 @@ test('late response after leaving cannot restore preview, two tabs keep independ
  const second=await setup(other,state);await other.locator('#agent-s h2').click();await expect(other.locator('.secretary-preview')).toBeVisible();await expect.poll(()=>second.scopes.at(-1)).toBe('s');
  await expect(page.locator('.secretary-preview')).toHaveCount(0);await other.close();
 });
+for(const width of [1440,390])test(`preview images enlarge, navigate, survive completion and reopen ${width}`,async({page})=>{
+ await page.setViewportSize({width,height:844});const state=fixture();
+ const ids=['11111111-1111-4111-8111-111111111111','22222222-2222-4222-8222-222222222222'];
+ const text=ids.map((id,i)=>`![画像${i+1}](village-image:${id})`).join('\n');
+ state.runs[0].livePreview.messages[0].text=text;state.runs[0].output=text;
+ await setup(page,state);
+ await page.route('**/api/images/*',async route=>route.fulfill({contentType:'image/png',body:await (await import('sharp')).default({create:{width:1600,height:1000,channels:3,background:route.request().url().includes(ids[0])?'#3183a8':'#ab5631'}}).png().toBuffer()}));
+ await page.locator('#agent-s h2').click();const card=page.locator('#agent-s');
+ await expect(card.locator('.secretary-preview [data-visual=image]')).toHaveCount(2);
+ await card.getByRole('button',{name:'画像1を拡大'}).click();const dialog=page.locator('.report-lightbox');
+ await expect(dialog).toBeVisible();await expect(dialog.locator('img')).toHaveAttribute('src','/api/images/'+ids[0]);
+ await expect(dialog.getByRole('button',{name:'前の画像'})).toBeDisabled();
+ const before=await dialog.locator('img').boundingBox();await dialog.getByRole('button',{name:'拡大',exact:true}).click();
+ const after=await dialog.locator('img').boundingBox();expect(after.width).toBeGreaterThan(before.width*1.9);
+ expect(await dialog.locator('.report-image-viewport').evaluate(e=>e.scrollWidth>e.clientWidth)).toBe(true);
+ await dialog.getByRole('button',{name:'次の画像'}).click();await expect(dialog.locator('img')).toHaveAttribute('src','/api/images/'+ids[1]);await expect(dialog.getByRole('button',{name:'次の画像'})).toBeDisabled();
+ await page.keyboard.press('ArrowLeft');await expect(dialog.locator('img')).toHaveAttribute('src','/api/images/'+ids[0]);
+ state.runs[0].state='completed';state.runs[0].conversationAnswer=true;state.runs[0].finalOutput=text;await notifySnapshot(page);
+ await expect(dialog.locator('img')).toHaveAttribute('src','/api/images/'+ids[0]);await page.screenshot({path:`/tmp/secretary-images-${width}.png`});
+ await dialog.getByRole('button',{name:'閉じる',exact:true}).click();await expect(card.locator('.secretary-preview')).toHaveCount(0);
+ await card.locator('.response-final').getByRole('button',{name:'画像2を拡大'}).click();await expect(dialog.locator('img')).toHaveAttribute('src','/api/images/'+ids[1]);await page.keyboard.press('Escape');
+ // Single-image reply has no available navigation and starts fitted after reopening.
+ state.runs[0].finalOutput=`![画像1](village-image:${ids[0]})`;state.runs[0].output=state.runs[0].finalOutput;await notifySnapshot(page);
+ await card.getByRole('button',{name:'画像1を拡大'}).click();await expect(dialog.getByRole('button',{name:'前の画像'})).toBeDisabled();await expect(dialog.getByRole('button',{name:'次の画像'})).toBeDisabled();await expect(dialog.getByRole('button',{name:'拡大',exact:true})).toHaveAttribute('aria-pressed','false');
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+});
