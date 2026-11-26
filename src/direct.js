@@ -584,8 +584,8 @@ function restartSync(){
 }
 async function refresh(force=false){
  const epoch=syncEpoch;
- if(refreshTask){const result=await refreshTask;if(epoch!==syncEpoch)return false;if(force)return refresh(true);return result;}
- if(!force&&Date.now()<retryAt)return false;
+ if(refreshTask){const result=await refreshTask;if(epoch!==syncEpoch)return false;if(force&&result)return refresh(true);return result;}
+ if(Date.now()<retryAt)return false;
  armSyncIndicator();
  const requestedFocus=focusKey(),controller=new AbortController();syncController=controller;
  const task=(async()=>{try{const next=await fetchWorkspace(controller.signal);if(epoch!==syncEpoch)return false;state=next;connected=true;retryAt=0;syncFailures=0;render();focusAgent();lastSyncSucceededAt=Date.now();disarmSyncIndicator();connectionStatus($('#connection'),new Date().toLocaleTimeString(),{normal:true});return true;}catch(e){if(epoch!==syncEpoch)return false;connected=false;const delay=Math.min(30000,5000*2**Math.min(syncFailures++,3));retryAt=Date.now()+delay;if(state)renderBoard();disarmSyncIndicator();connectionStatus($('#connection'),'接続不明: '+(e.message==='Failed to fetch'?'通信できませんでした。':e.message)+'（'+delay/1000+'秒後に再試行）');return false;}})();

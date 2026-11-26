@@ -48,3 +48,8 @@ test('observed preview persists and resumes without completing, marking read or 
  await f.restart();await f.service.tick();const restored=f.service.data.runs.find(r=>r.id===run.id);assert.equal(restored.livePreview.messages[0].text,'途中です');assert.equal(f.notifications.length,0);
  native.inputs.push({id:'foreign',turnId:run.turnId,offset:25,text:'late human input'});await f.service.tick();assert.equal(restored.livePreview,undefined);assert.equal(f.notifications.length,0);
 });
+
+test('message IDs deduplicate repeated native items but retain repeated legitimate prose',()=>{
+ const m=(id,offset,text)=>({id,offset,text,phase:'commentary'});
+ assert.deepEqual(previewMessages({messageOffsets:true,messages:[m('a',1,'same'),m('b',2,'same'),m('a',3,'updated')]},0).map(m=>[m.id,m.text]),[['b','same'],['a','updated']]);
+});
