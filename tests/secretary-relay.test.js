@@ -381,3 +381,93 @@ test('fresh recovery ready-for-review follows idle contract, rejects other state
  const result=await d.conversations.relayApply(apply);assert.equal(result.previousRunId,x.old.id);
  assert.deepEqual(await d.conversations.relayApply(apply),result);assert.equal(d.data.runs.filter(r=>r.secretaryRecovery).length,1);assert.deepEqual(x.r,before);
 });
+
+async function successorFixture(t){
+ const x=await initialFixture(t,{unknown:true}),{d}=x;
+ const first=await d.conversations.relayRecover(x.recover),failed=d.flow.run(first.runId);
+ const {changeRun}=await import('../server/run-lifecycle.mjs');changeRun(failed,{type:'lost',actor:'program',at:Date.now(),reason:'timeout'});await d.save();
+ const pmux=d.pmux.bind(d);let launch,transport,starts=0;
+ d.pmux=async(a,...args)=>{
+  if(args[1]==='initial-status'&&args[2]===failed.relayInitial.launch.operationId)return {state:'unknown',...failed.relayInitial.launch,bodyHash:failed.inputCorrelation.digest,receipt:null,processMatches:false};
+  if(args[1]==='initial-launch'){
+   starts++;launch=JSON.parse(args[2]);transport={state:'started',...launch,bodyHash:inputHash(launch.body),processMatches:true,receipt:{workspaceId:launch.workspaceId,tabId:launch.tabId,sessionName:'successor-pane',pid:456,startTicks:'73'}};
+   Object.assign(x.f.runtimes.get(a.id),{sessionId:'successor-session',fileIdentity:'successor-file',cursor:0,inputs:[],turns:[]});x.f.sent.push({agentId:a.id,text:launch.body});return transport;
+  }
+  if(args[1]==='initial-status'&&transport)return transport;
+  if(args[1]==='status'&&launch&&a.tabId===launch.tabId)return {alive:true,cliState:'busy',agentSessionId:'successor-session'};
+  return pmux(a,...args);
+ };
+ const input={conversationId:x.recover.conversationId,actorRunId:x.recover.actorRunId,operationId:id(),deliveryId:first.deliveryId,previousRunId:failed.id,previousOperationId:failed.relayInitial.launch.operationId,assessment:{summary:'Fixture ledger and repo inspected',potentialDuplicates:'Do not restart an existing web server or regenerate games',uncertainties:'Unknown may have external effects'},handover:'Retain both old runtimes without input; draft persistence not guaranteed'};
+ return {...x,failed,input,get entry(){return d.conversations.record(failed.conversationId).relayInbox.find(e=>e.id===input.deliveryId);},starts:()=>starts};
+}
+test('explicit unknown successor retains old facts, fences late actor, requires inspection and applies once',async t=>{
+ const x=await successorFixture(t),{d,f,failed,input}=x,old=structuredClone(failed.runModel),prior=structuredClone(x.entry.recovery);
+ const receipt=await d.conversations.relaySucceed(input),r=d.flow.run(receipt.runId);
+ assert.deepEqual(failed.runModel,old);assert.deepEqual(x.entry.recoveryHistory,[prior]);assert.equal(failed.relaySuperseded.successorRunId,r.id);assert.equal(x.starts(),1);
+ assert.throws(()=>d.conversations.actor(d.conversations.record(r.conversationId),failed.id),/失効/);
+ assert.throws(()=>d.conversations.relayService.dispatchBoundary(failed),/境界/);
+ assert.deepEqual(await d.conversations.relaySucceed(input),receipt);
+ await assert.rejects(d.conversations.relaySucceed({...input,operationId:id()}),/一度/);
+ await f.submit(r);const apply={conversationId:r.conversationId,actorRunId:r.id,operationId:id(),deliveryId:receipt.deliveryId};
+ await assert.rejects(d.conversations.relayApply(apply),/引数|判断/);
+ const result=await d.conversations.relayApply({...apply,reconciliation:{decision:'continue-unfinished-only',summary:'Inspected existing artifacts and running server; resume only missing UI work'}});
+ assert.equal(result.previousRunId,x.old.id);assert.equal(d.data.runs.filter(r=>r.secretaryRecovery).length,1);assert.equal(x.starts(),1);
+ const reboot=await f.restart();assert.deepEqual(await reboot.conversations.relaySucceed(input),receipt);
+ assert.throws(()=>reboot.conversations.actor(reboot.conversations.record(r.conversationId),failed.id),/失効/);
+});
+test('successor rejects permission, revision, changed old receipt and duplicate reservation; rollback launches nothing',async t=>{
+ const x=await successorFixture(t),{d,input}=x,q=d.flow.root(x.job.humanRequestId);
+ q.revision++;await assert.rejects(d.conversations.relaySucceed(input),/revision/);q.revision--;
+ x.oldStatus.permissionRequest={type:'approval'};await assert.rejects(d.conversations.relaySucceed(input));delete x.oldStatus.permissionRequest;
+ await assert.rejects(d.conversations.relaySucceed({...input,previousOperationId:id()}),/一致/);
+ const pmux=d.pmux.bind(d);d.pmux=async(a,...args)=>args[1]==='initial-status'?{state:'started',receipt:{}}:pmux(a,...args);
+ await assert.rejects(d.conversations.relaySucceed(input),/unknown/);d.pmux=pmux;
+ const [a,b]=await Promise.all([d.conversations.relaySucceed(input),d.conversations.relaySucceed(input)]);assert.deepEqual(a,b);assert.equal(x.starts(),1);
+ for(const uncertain of [false,true]){
+  const y=await successorFixture(t);y.d.store.write=()=>{throw Object.assign(Error('save failure'),{persistenceUncertain:uncertain});};
+  await assert.rejects(y.d.conversations.relaySucceed(y.input),/save failure/);assert.equal(y.starts(),0);
+ }
+});
+test('successor source later human and save-to-launch change refuse without reinterpretation',async t=>{
+ const x=await successorFixture(t),{d}=x;
+ await d.send(x.sender.agentId,{mode:'conversation',requestId:id(),instruction:'停止してください'});
+ await assert.rejects(d.conversations.relaySucceed(x.input),/人間|human|受付|許可/);assert.equal(x.starts(),0);
+ const y=await successorFixture(t),save=y.d.save.bind(y.d);let reserved=false;
+ y.d.save=async()=>{await save();if(!reserved&&y.entry.recovery.supersedes){reserved=true;y.d.flow.root(y.job.humanRequestId).revision++;}};
+ await assert.rejects(y.d.conversations.relaySucceed(y.input),/revision|一致/);assert.equal(y.starts(),0);
+});
+test('successor uncertain launch is query-only and post-reservation target human blocks apply',async t=>{
+ const x=await successorFixture(t),{d}=x,pmux=d.pmux.bind(d);let attempts=0;
+ d.pmux=async(a,...args)=>{if(args[1]==='initial-launch'){attempts++;throw Error('transport unknown');}return pmux(a,...args);};
+ const receipt=await d.conversations.relaySucceed(x.input);assert.equal(attempts,1);
+ assert.deepEqual(await d.conversations.relaySucceed(x.input),receipt);await d.tick();assert.equal(attempts,1);
+ await assert.rejects(d.conversations.relaySucceed({...x.input,operationId:id()}),/一度/);
+ const y=await successorFixture(t),rr=await y.d.conversations.relaySucceed(y.input),r=y.d.flow.run(rr.runId);await y.f.submit(r);
+ await y.d.send(r.agentId,{mode:'conversation',requestId:id(),instruction:'再開を停止'});
+ await assert.rejects(y.d.conversations.relayApply({conversationId:r.conversationId,actorRunId:r.id,operationId:id(),deliveryId:rr.deliveryId,reconciliation:{decision:'continue-unfinished-only',summary:'stale'}}));
+ assert.equal(y.d.data.runs.filter(r=>r.secretaryRecovery).length,0);
+});
+
+test('independent old receipt arriving after successor reservation must block launch',async t=>{
+ const x=await successorFixture(t),d=x.d,save=d.save.bind(d),pmux=d.pmux.bind(d);let late=false;
+ d.save=async(...args)=>{const out=await save(...args);if(x.entry.recovery?.supersedes)late=true;return out;};
+ d.pmux=async(a,...args)=>{if(late&&args[1]==='initial-status'&&args[2]===x.input.previousOperationId)return {state:'started',operationId:x.input.previousOperationId,runId:x.failed.id,bodyHash:x.failed.inputCorrelation.digest,receipt:{sessionName:'late-old'},processMatches:true};return pmux(a,...args);};
+ let error;try{await d.conversations.relaySucceed(x.input);}catch(e){error=e.message;}
+ console.log(JSON.stringify({lateReceipt:true,launches:x.starts(),error}));assert.equal(x.starts(),0);
+});
+test('independent late old receipt before apply must block resume',async t=>{
+ const x=await successorFixture(t),{d,f}=x,receipt=await d.conversations.relaySucceed(x.input),r=d.flow.run(receipt.runId);await f.submit(r);
+ const pmux=d.pmux.bind(d);d.pmux=async(a,...args)=>args[1]==='initial-status'&&args[2]===x.input.previousOperationId?{state:'started',operationId:x.input.previousOperationId,runId:x.failed.id,bodyHash:x.failed.inputCorrelation.digest,receipt:{sessionName:'late-old'},processMatches:true}:pmux(a,...args);
+ let error;try{await d.conversations.relayApply({conversationId:r.conversationId,actorRunId:r.id,operationId:id(),deliveryId:receipt.deliveryId,reconciliation:{decision:'continue-unfinished-only',summary:'Recorded inspection before late receipt'}});}catch(e){error=e.message;}
+ const resumed=d.data.runs.filter(r=>r.secretaryRecovery).length;console.log(JSON.stringify({lateReceiptAtApply:true,resumed,error}));assert.equal(resumed,0);
+});
+test('successor changed stages block acceptance and preserve reservation and old unknown',async t=>{
+ const x=await successorFixture(t),{d,f}=x,receipt=await d.conversations.relaySucceed(x.input),r=d.flow.run(receipt.runId),pmux=d.pmux.bind(d),before=structuredClone(x.failed.runModel);
+ d.pmux=async(a,...args)=>{const value=await pmux(a,...args);return args[1]==='initial-status'&&args[2]===x.input.previousOperationId?{...value,stages:{'spawn-intent':{stage:'spawn-intent'}}}:value;};
+ await assert.rejects(f.submit(r));assert.equal(r.runModel.facts.some(f=>f.type==='input'),false);assert.deepEqual(x.failed.runModel,before);assert.equal(x.entry.recovery.receipt.runId,r.id);assert.equal(d.data.runs.filter(r=>r.secretaryRecovery).length,0);
+});
+test('successor old-ledger await does not approve a changed purpose at apply',async t=>{
+ const x=await successorFixture(t),{d,f}=x,receipt=await d.conversations.relaySucceed(x.input),r=d.flow.run(receipt.runId);await f.submit(r);
+ const pmux=d.pmux.bind(d);d.pmux=async(a,...args)=>{const value=await pmux(a,...args);if(args[1]==='initial-status'&&args[2]===x.input.previousOperationId)d.flow.root(x.job.humanRequestId).revision++;return value;};
+ await assert.rejects(d.conversations.relayApply({conversationId:r.conversationId,actorRunId:r.id,operationId:id(),deliveryId:receipt.deliveryId,reconciliation:{decision:'continue-unfinished-only',summary:'stale review'}}));assert.equal(d.data.runs.filter(r=>r.secretaryRecovery).length,0);
+});
