@@ -59,7 +59,7 @@ test('simple judgment and continuation retain late-human-input fence and failure
   const {f,human,first,completeJob,view}=await purposeFixture(t),one=await completeJob(first);
   await f.service.send(human.agentId,{mode:'conversation',requestId:randomUUID(),instruction:'新しい制約'});
   const base={conversationId:human.conversationId,actorRunId:one.delivery.id,operationId:randomUUID()};
-  await assert.rejects(kind==='accept'?f.service.conversations.decide({...base,decision:'accept',reason:'完成'}):f.service.conversations.job({...base,continue:true,instruction:'修正'}),/後着/);
+  await assert.rejects(kind==='accept'?f.service.conversations.decide({...base,decision:'accept',reason:'完成'}):f.service.conversations.job({...base,continue:true,instruction:'修正'}),/受付照合/);
   assert.equal(view().decision,null);assert.equal(f.service.data.requests.length,1);
  }
 });
