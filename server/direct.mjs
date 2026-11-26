@@ -385,7 +385,8 @@ export class DirectAgents {
     try{return await change();}
     catch(error){
       if(error.persistenceUncertain)this.persistence.failure=error;
-      else scope.restore();
+      // Global checkpoints restore data, but write preparation may already have indexed new rows.
+      else {scope.restore();this.units.reset();}
       throw error;
     }
   });}

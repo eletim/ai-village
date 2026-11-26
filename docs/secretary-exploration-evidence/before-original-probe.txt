@@ -1,0 +1,78 @@
+TAP version 13
+# (node:1626941) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: A: consultation -> two purposes -> running amendment -> correction -> missed judgment -> accept -> withdraw
+ok 1 - A: consultation -> two purposes -> running amendment -> correction -> missed judgment -> accept -> withdraw
+  ---
+  duration_ms: 248.309286
+  type: 'test'
+  ...
+# Subtest: B: question -> answer -> result -> ask -> response -> continuation -> accepted; restart and replay
+ok 2 - B: question -> answer -> result -> ask -> response -> continuation -> accepted; restart and replay
+  ---
+  duration_ms: 179.017554
+  type: 'test'
+  ...
+# Subtest: C: accept -> late human -> stale -> retry accept fails run -> later recovery + transport lost observation
+ok 3 - C: accept -> late human -> stale -> retry accept fails run -> later recovery + transport lost observation
+  ---
+  duration_ms: 112.278805
+  type: 'test'
+  ...
+# Subtest: D: failures around delivery and disk save; same operation retry and later rejection
+ok 4 - D: failures around delivery and disk save; same operation retry and later rejection
+  ---
+  duration_ms: 160.197377
+  type: 'test'
+  ...
+# Subtest: E: order and withdraw during late instruction; capture all outcomes
+ok 5 - E: order and withdraw during late instruction; capture all outcomes
+  ---
+  duration_ms: 75.184831
+  type: 'test'
+  ...
+# Subtest: F: two intentions, failed decision for one, second successful decision and status
+ok 6 - F: two intentions, failed decision for one, second successful decision and status
+  ---
+  duration_ms: 164.380848
+  type: 'test'
+  ...
+# Subtest: M1 reproduction 1: rollback index mismatch loses finish and resurrects work after restart
+ok 7 - M1 reproduction 1: rollback index mismatch loses finish and resurrects work after restart
+  ---
+  duration_ms: 65.163685
+  type: 'test'
+  ...
+# Subtest: M1 reproduction 2: rollback index mismatch loses finish and resurrects work after restart
+ok 8 - M1 reproduction 2: rollback index mismatch loses finish and resurrects work after restart
+  ---
+  duration_ms: 66.124772
+  type: 'test'
+  ...
+# Subtest: M1 reproduction 3: rollback index mismatch loses finish and resurrects work after restart
+ok 9 - M1 reproduction 3: rollback index mismatch loses finish and resurrects work after restart
+  ---
+  duration_ms: 64.584572
+  type: 'test'
+  ...
+# Subtest: H1 causal control: no disk failure
+ok 10 - H1 causal control: no disk failure
+  ---
+  duration_ms: 86.603831
+  type: 'test'
+  ...
+# Subtest: H1 causal control: fixture index reset after rollback
+ok 11 - H1 causal control: fixture index reset after rollback
+  ---
+  duration_ms: 80.808947
+  type: 'test'
+  ...
+1..11
+# tests 11
+# suites 0
+# pass 11
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1400.668051

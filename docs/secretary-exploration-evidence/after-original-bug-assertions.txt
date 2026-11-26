@@ -1,0 +1,126 @@
+TAP version 13
+# (node:1640513) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: A: consultation -> two purposes -> running amendment -> correction -> missed judgment -> accept -> withdraw
+ok 1 - A: consultation -> two purposes -> running amendment -> correction -> missed judgment -> accept -> withdraw
+  ---
+  duration_ms: 241.265603
+  type: 'test'
+  ...
+# Subtest: B: question -> answer -> result -> ask -> response -> continuation -> accepted; restart and replay
+ok 2 - B: question -> answer -> result -> ask -> response -> continuation -> accepted; restart and replay
+  ---
+  duration_ms: 162.751493
+  type: 'test'
+  ...
+# Subtest: C: accept -> late human -> stale -> retry accept fails run -> later recovery + transport lost observation
+ok 3 - C: accept -> late human -> stale -> retry accept fails run -> later recovery + transport lost observation
+  ---
+  duration_ms: 108.405974
+  type: 'test'
+  ...
+# Subtest: D: failures around delivery and disk save; same operation retry and later rejection
+ok 4 - D: failures around delivery and disk save; same operation retry and later rejection
+  ---
+  duration_ms: 150.434518
+  type: 'test'
+  ...
+# Subtest: E: order and withdraw during late instruction; capture all outcomes
+ok 5 - E: order and withdraw during late instruction; capture all outcomes
+  ---
+  duration_ms: 76.229928
+  type: 'test'
+  ...
+# Subtest: F: two intentions, failed decision for one, second successful decision and status
+ok 6 - F: two intentions, failed decision for one, second successful decision and status
+  ---
+  duration_ms: 184.362602
+  type: 'test'
+  ...
+# Subtest: M1 reproduction 1: rollback index mismatch loses finish and resurrects work after restart
+not ok 7 - M1 reproduction 1: rollback index mismatch loses finish and resurrects work after restart
+  ---
+  duration_ms: 50.163758
+  type: 'test'
+  location: '/tmp/exploration-fixes-after.mjs:59:37'
+  failureType: 'testCodeFailure'
+  error: |-
+    The expression evaluated to a falsy value:
+
+      assert(!indexIds.includes(a.humanRequestId))
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: '=='
+  stack: |-
+    TestContext.<anonymous> (file:///tmp/exploration-fixes-after.mjs:62:183)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: M1 reproduction 2: rollback index mismatch loses finish and resurrects work after restart
+not ok 8 - M1 reproduction 2: rollback index mismatch loses finish and resurrects work after restart
+  ---
+  duration_ms: 50.468489
+  type: 'test'
+  location: '/tmp/exploration-fixes-after.mjs:59:37'
+  failureType: 'testCodeFailure'
+  error: |-
+    The expression evaluated to a falsy value:
+
+      assert(!indexIds.includes(a.humanRequestId))
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: '=='
+  stack: |-
+    TestContext.<anonymous> (file:///tmp/exploration-fixes-after.mjs:62:183)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: M1 reproduction 3: rollback index mismatch loses finish and resurrects work after restart
+not ok 9 - M1 reproduction 3: rollback index mismatch loses finish and resurrects work after restart
+  ---
+  duration_ms: 51.312336
+  type: 'test'
+  location: '/tmp/exploration-fixes-after.mjs:59:37'
+  failureType: 'testCodeFailure'
+  error: |-
+    The expression evaluated to a falsy value:
+
+      assert(!indexIds.includes(a.humanRequestId))
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: '=='
+  stack: |-
+    TestContext.<anonymous> (file:///tmp/exploration-fixes-after.mjs:62:183)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: H1 causal control: no disk failure
+ok 10 - H1 causal control: no disk failure
+  ---
+  duration_ms: 90.938827
+  type: 'test'
+  ...
+# Subtest: H1 causal control: fixture index reset after rollback
+ok 11 - H1 causal control: fixture index reset after rollback
+  ---
+  duration_ms: 98.050678
+  type: 'test'
+  ...
+1..11
+# tests 11
+# suites 0
+# pass 8
+# fail 3
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1359.540531

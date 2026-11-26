@@ -418,7 +418,13 @@ $('#history-content').addEventListener('focusin',()=>selectAgent($('#history-age
 window.addEventListener('focus',syncSelection);window.addEventListener('blur',syncSelection);
 document.addEventListener('visibilitychange',syncSelection);
 document.addEventListener('focusin',syncSelection);
-for(const dialog of document.querySelectorAll('dialog'))dialog.addEventListener('close',syncSelection);
+document.addEventListener('close',e=>{if(e.target.matches('dialog'))syncSelection();},true);
+document.addEventListener('report-viewer-close',e=>{
+ e.preventDefault();syncSelection();
+ const id=selectedAgent,target=e.detail.restoreFocus();
+ // Restore again only if the user has not moved focus while the new preview arrives.
+ void refresh(true).then(()=>{if(selectedAgent===id&&(document.activeElement===target||target&&!target.isConnected&&document.activeElement===document.body)&&!document.querySelector('dialog[open]'))e.detail.restoreFocus();});
+});
 
 function layoutBoard(){
  const board=$('#agents'),count=[...cards.values()].filter(c=>!c.hidden).length;if(!count)return;
