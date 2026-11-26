@@ -447,3 +447,27 @@ test('successor uncertain launch is query-only and post-reservation target human
  await assert.rejects(y.d.conversations.relayApply({conversationId:r.conversationId,actorRunId:r.id,operationId:id(),deliveryId:rr.deliveryId,reconciliation:{decision:'continue-unfinished-only',summary:'stale'}}));
  assert.equal(y.d.data.runs.filter(r=>r.secretaryRecovery).length,0);
 });
+
+test('independent old receipt arriving after successor reservation must block launch',async t=>{
+ const x=await successorFixture(t),d=x.d,save=d.save.bind(d),pmux=d.pmux.bind(d);let late=false;
+ d.save=async(...args)=>{const out=await save(...args);if(x.entry.recovery?.supersedes)late=true;return out;};
+ d.pmux=async(a,...args)=>{if(late&&args[1]==='initial-status'&&args[2]===x.input.previousOperationId)return {state:'started',operationId:x.input.previousOperationId,runId:x.failed.id,bodyHash:x.failed.inputCorrelation.digest,receipt:{sessionName:'late-old'},processMatches:true};return pmux(a,...args);};
+ let error;try{await d.conversations.relaySucceed(x.input);}catch(e){error=e.message;}
+ console.log(JSON.stringify({lateReceipt:true,launches:x.starts(),error}));assert.equal(x.starts(),0);
+});
+test('independent late old receipt before apply must block resume',async t=>{
+ const x=await successorFixture(t),{d,f}=x,receipt=await d.conversations.relaySucceed(x.input),r=d.flow.run(receipt.runId);await f.submit(r);
+ const pmux=d.pmux.bind(d);d.pmux=async(a,...args)=>args[1]==='initial-status'&&args[2]===x.input.previousOperationId?{state:'started',operationId:x.input.previousOperationId,runId:x.failed.id,bodyHash:x.failed.inputCorrelation.digest,receipt:{sessionName:'late-old'},processMatches:true}:pmux(a,...args);
+ let error;try{await d.conversations.relayApply({conversationId:r.conversationId,actorRunId:r.id,operationId:id(),deliveryId:receipt.deliveryId,reconciliation:{decision:'continue-unfinished-only',summary:'Recorded inspection before late receipt'}});}catch(e){error=e.message;}
+ const resumed=d.data.runs.filter(r=>r.secretaryRecovery).length;console.log(JSON.stringify({lateReceiptAtApply:true,resumed,error}));assert.equal(resumed,0);
+});
+test('successor changed stages block acceptance and preserve reservation and old unknown',async t=>{
+ const x=await successorFixture(t),{d,f}=x,receipt=await d.conversations.relaySucceed(x.input),r=d.flow.run(receipt.runId),pmux=d.pmux.bind(d),before=structuredClone(x.failed.runModel);
+ d.pmux=async(a,...args)=>{const value=await pmux(a,...args);return args[1]==='initial-status'&&args[2]===x.input.previousOperationId?{...value,stages:{'spawn-intent':{stage:'spawn-intent'}}}:value;};
+ await assert.rejects(f.submit(r));assert.equal(r.runModel.facts.some(f=>f.type==='input'),false);assert.deepEqual(x.failed.runModel,before);assert.equal(x.entry.recovery.receipt.runId,r.id);assert.equal(d.data.runs.filter(r=>r.secretaryRecovery).length,0);
+});
+test('successor old-ledger await does not approve a changed purpose at apply',async t=>{
+ const x=await successorFixture(t),{d,f}=x,receipt=await d.conversations.relaySucceed(x.input),r=d.flow.run(receipt.runId);await f.submit(r);
+ const pmux=d.pmux.bind(d);d.pmux=async(a,...args)=>{const value=await pmux(a,...args);if(args[1]==='initial-status'&&args[2]===x.input.previousOperationId)d.flow.root(x.job.humanRequestId).revision++;return value;};
+ await assert.rejects(d.conversations.relayApply({conversationId:r.conversationId,actorRunId:r.id,operationId:id(),deliveryId:receipt.deliveryId,reconciliation:{decision:'continue-unfinished-only',summary:'stale review'}}));assert.equal(d.data.runs.filter(r=>r.secretaryRecovery).length,0);
+});
