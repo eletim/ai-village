@@ -1,0 +1,37 @@
+[WebServer] (node:2404715) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:2404715) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+
+Running 27 tests using 1 worker
+
+(node:2404932) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   1 tests/browser/chat-navigation.spec.js:12:31 › chat shells stay visible and bodies fold independently at 1440px (517ms)
+  ✓   2 tests/browser/chat-navigation.spec.js:12:31 › chat shells stay visible and bodies fold independently at 390px (424ms)
+  ✓   3 tests/browser/files-scroll.spec.js:5:5 › direct attachment-only sends keep draft and request identity; history follows only near bottom (846ms)
+  ✓   4 tests/browser/files-scroll.spec.js:63:1 › unsupported server prevents upload without losing existing binary draft (136ms)
+  ✓   5 tests/browser/files-scroll.spec.js:77:1 › image load and streamed text follow newest content, but respect a reader scrolling upward (337ms)
+  ✓   6 tests/browser/files-scroll.spec.js:94:1 › direct Agent uses the common menu for image and file previews, deletion, image-only upload and history (263ms)
+  ✓   7 tests/browser/files-scroll.spec.js:123:1 › legacy scroll positions open at newest and latest is available without a new reply (244ms)
+  ✓   8 tests/browser/image-gestures.spec.js:16:31 › wheel anchor, bounds, keyboard, snapshot and focus 1440 (502ms)
+  ✓   9 tests/browser/image-gestures.spec.js:16:31 › wheel anchor, bounds, keyboard, snapshot and focus 390 (501ms)
+  ✓  10 tests/browser/image-gestures.spec.js:31:1 › Chromium touch pinch continuously zooms and pans; switching and reopening reset (958ms)
+  ✓  11 tests/browser/image-gestures.spec.js:43:1 › close sync removes a formerly connected opener: focus falls back to conversation (265ms)
+  ✓  12 tests/browser/prompt-input.spec.js:4:5 › direct: Enter and Ctrl+Enter send, Shift+Enter adds newline, IME Enter never sends (2.4s)
+  ✓  13 tests/browser/prompt-input.spec.js:53:1 › direct input respects disabled sending, empty text and pending request (138ms)
+  ✓  14 tests/browser/prompt-input.spec.js:82:1 › busy agent accepts consecutive additional instructions into queue (138ms)
+  ✓  15 tests/browser/prompt-input.spec.js:105:42 › IME shortcut waits for final input: send (207ms)
+  ✓  16 tests/browser/prompt-input.spec.js:105:42 › IME shortcut waits for final input: newline (111ms)
+  ✓  17 tests/browser/prompt-input.spec.js:119:1 › Chromium composition commits through blur before Ctrl+Enter sends (190ms)
+  ✓  18 tests/browser/prompt-input.spec.js:127:1 › mobile UI Enter inserts newline and resizing to desktop restores Enter send (107ms)
+  ✓  19 tests/browser/secretary-completion-http.spec.js:7:1 › real conversation API/native terminal → projection → secretary completion and read acknowledgement (12.1s)
+  ✓  20 tests/browser/secretary-preview.spec.js:9:31 › secretary preview starts mid-run, follows, leaves, revisits and finalizes once 1440 (353ms)
+  ✓  21 tests/browser/secretary-preview.spec.js:9:31 › secretary preview starts mid-run, follows, leaves, revisits and finalizes once 390 (318ms)
+  ✓  22 tests/browser/secretary-preview.spec.js:23:1 › hidden/blurred view and reconnect restore latest; failed preview never final; foreign identities rejected (237ms)
+  ✓  23 tests/browser/secretary-preview.spec.js:34:1 › separate run identities and workshop output do not become secretary previews (183ms)
+  ✓  24 tests/browser/secretary-preview.spec.js:40:1 › project secretary opens preview without an extra card click; blur and dialogs stop only preview (208ms)
+  ✓  25 tests/browser/secretary-preview.spec.js:47:1 › late response after leaving cannot restore preview, two tabs keep independent scopes (334ms)
+  ✓  26 tests/browser/secretary-preview.spec.js:56:31 › preview images enlarge, navigate, survive completion and reopen 1440 (412ms)
+  ✓  27 tests/browser/secretary-preview.spec.js:56:31 › preview images enlarge, navigate, survive completion and reopen 390 (397ms)
+
+  27 passed (23.9s)

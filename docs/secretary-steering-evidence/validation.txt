@@ -1,0 +1,28 @@
+2026-11-26 実装担当の検証記録（独立レビューではない）
+base 78e952421ece54329341473dd4ba3cb4443bb1fa integration/event-driven-requests
+clone /home/eletim/ai-village-secretary-steer
+branch feat/secretary-native-steering
+
+最終全単体（notifier以外、VILLAGE_NOTIFICATIONS=false）: 952成功、1skip、0失敗 / 953件。
+偽通知単独（env -u VILLAGE_NOTIFICATIONS、fixture CLIのみ）: 7/7成功。
+全ブラウザ: 257/257成功、1.8分。追加通知競合条件の実装前に実行。
+追加条件後: 正常終端/既読HTTP + 追記HTTP/native/DOM 2/2成功（4幅theme組合せ含む）。
+境界単体 requests/runtime-events/steering 123/123成功。その後の追加条件も最終全単体へ含む。
+build、typecheck、node --check、git diff --check 成功。buildと単体は逐次。
+
+全生ログ:
+/tmp/secretary-steer-evidence/full-unit-final-2.log
+/tmp/secretary-steer-evidence/notifier-final.log
+/tmp/secretary-steer-evidence/full-browser-1.log
+/tmp/secretary-steer-evidence/browser-supplement-final.log
+/tmp/secretary-steer-evidence/supplement-final.log
+/tmp/secretary-steer-evidence/final-boundary.log
+初期失敗ログも同ディレクトリに保持。初回関連8失敗、初回全単体11失敗（6旧前提+5通知OFF）、関連更新2fixture ID重複、新規browser初回timeoutを隠さず本文に説明。
+
+実機は1セッション・1turnに人間2入力。native同turn受付とGREEN成果確認。
+CLI v0.163.0 / gpt-6-astra / 既定設定。通知OFF。Claude実機未実施。
+予約→村受付約3.94秒、受付→訂正commentary約194秒、turn全体約213秒。
+60秒はsleepの指示・実行時間でありturn完了時間ではない。ツール/CLI/モデル待ちの全内訳は未確定。
+API15661/一時stateのAgentだけを作成、自然終了後その2tabのみ閉鎖。隔離server停止、ポート15661-15664の後片付け確認。
+本番Agent入力/停止/runtime交換、サービス再起動、統合/main merge、本番反映は未実施。
+独立レビュー・秘書の最終レビューと明示反映指示待ち。

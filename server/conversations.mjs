@@ -29,12 +29,12 @@ function purposeLabel(data,c,q){
  return (p?.name?p.name+'：':'')+(line.length>40?line.slice(0,40)+'…':line);
 }
 function plainDelivery(data,c,q,kind,material,id){
- const label=purposeLabel(data,c,q);
+ const label=purposeLabel(data,c,q),worker=data.agents.find(a=>a.id===rootNode(q).assignee),sender='担当（'+(worker?.name||rootNode(q).assignee)+'）';
  const body=text=>{text=String(text||'');return text.length<=DELIVERY_BODY_LIMIT?text:text.slice(0,DELIVERY_BODY_LIMIT)+'\n\n（長いため途中までです。全文：conversations read '+c.id+' RUN_ID \'{"kind":"delivery","id":"'+id+'"}\'。RUN_ID は末尾のタグの値）';};
- if(kind==='result')return 'リーダーから報告が届きました（'+label+'）。\n\n'+body(material.output);
- if(kind==='question')return 'リーダーから質問が届きました（'+label+'）。\n\n'+body(material.text);
- if(kind==='extension')return 'リーダーから期限の延長の提案が届きました（'+label+'）。\n\n'+body(material.text);
- if(kind==='attention'){const how=STOP_REASONS[material.reason]||STOP_REASONS[material.outcome]||'';return 'リーダーの作業が'+how+'止まりました（'+label+'）。'+(material.reason?'理由：'+String(material.reason).slice(0,200):'');}
+ if(kind==='result')return sender+'から報告が届きました（'+label+'）。\n\n'+body(material.output);
+ if(kind==='question')return sender+'から質問が届きました（'+label+'）。\n\n'+body(material.text);
+ if(kind==='extension')return sender+'から期限の延長の提案が届きました（'+label+'）。\n\n'+body(material.text);
+ if(kind==='attention'){const how=STOP_REASONS[material.reason]||STOP_REASONS[material.outcome]||'';return sender+'の作業が'+how+'止まりました（'+label+'）。'+(material.reason?'理由：'+String(material.reason).slice(0,200):'');}
  return '人間がこの仕事を'+(material.state?.kind==='withdrawn'?'取り下げ':'終了し')+'ました（'+label+'）。';
 }
 export class Conversations {
@@ -68,15 +68,15 @@ export class Conversations {
   // An Agent can call get before the event monitor has observed its first input.
   // Refresh only a dispatched, still-unbound run; never reopen terminal unknowns.
   if(r&&r.runModel.state.kind==='sent'&&!accepted(r))await this.d.locked(c.agentId,()=>this.d.observe(this.d.agent(c.agentId)));
-  const view=this.get(id,actorRunId);return actorRunId?conversationContext(view,actorRunId):view;
+  const current=this.currentActor(r);const view=this.get(id,current?.id||actorRunId);return actorRunId?conversationContext(view,current?.id||actorRunId):view;
  }
  async material(id,actorRunId,selector){
   if(!actorRunId)fail('現在の会話runを指定してください',403);
-  await this.read(id,actorRunId);return conversationMaterial(this.get(id,actorRunId),actorRunId,selector);
+  await this.read(id,actorRunId);const current=this.currentActor(this.d.flow.run(actorRunId));return conversationMaterial(this.get(id,current.id),current.id,selector);
  }
  get(id,actorRunId){
   const c=this.record(id),all=this.d.data.runs.filter(r=>r.conversationId===id);
-  const actor=actorRunId?all.find(r=>r.id===actorRunId&&accepted(r)):null;
+  const actor=actorRunId?this.currentActor(all.find(r=>r.id===actorRunId&&accepted(r))):null;
   if(actorRunId&&!actor)fail('この会話で受付照合済みのrunを指定してください',403);
   const runs=actor?all.filter(r=>r.conversationSequence<=actor.conversationSequence):all;
   const deliveries=c.deliveries.filter(e=>runs.some(r=>r.id===e.runId));
@@ -86,7 +86,7 @@ export class Conversations {
    const lifecycle=conversationJob(visibleData,q);
    if(!actor)return {...full,purpose:purposeView(this.d.data,q),lifecycle};
    // Status is available immediately; materials for a later turn are not injected here.
-   return {id:q.id,purpose:purposeView(visibleData,q),authorization:q.requestedBy?.authorization,lifecycle,status:full.status,instruction:q.instruction,leaderAgentId:q.integrity?null:rootNode(q).assignee,returnPending:c.deliveries.some(e=>e.humanRequestId===q.id&&!deliveries.includes(e)),availableDeliveries:deliveries.filter(e=>e.humanRequestId===q.id).map(e=>e.id),materials:'後続の正式配送ターンで確認してください'};
+   return {id:q.id,purpose:purposeView(visibleData,q),authorization:q.requestedBy?.authorization,lifecycle,status:full.status,instruction:q.instruction,assigneeAgentId:q.integrity?null:rootNode(q).assignee,leaderAgentId:q.integrity?null:rootNode(q).assignee,returnPending:c.deliveries.some(e=>e.humanRequestId===q.id&&!deliveries.includes(e)),availableDeliveries:deliveries.filter(e=>e.humanRequestId===q.id).map(e=>e.id),materials:'後続の正式配送ターンで確認してください'};
   });
   return structuredClone({id:c.id,agentId:c.agentId,projectId:c.projectId,createdAt:c.createdAt,sequence:actor?.conversationSequence??c.sequence,operations:actor?c.operations.filter(o=>runs.some(r=>r.id===JSON.parse(o.payload).input.actorRunId)).map(o=>({id:o.id,receipt:o.receipt})):c.operations,deliveries,purposeDecisions:(c.purposeDecisions||[]).filter(d=>!actor||runs.some(r=>r.id===d.actorRunId)),control:conversationControl(this.d.data.agents.find(a=>a.id===c.agentId)),runs:runs.map(r=>({...actor?{id:r.id,conversationSequence:r.conversationSequence,conversationSource:r.conversationSource,instruction:r.conversationSource.kind==='human'?r.instruction:undefined,attachments:r.attachments,travelContexts:r.travelContexts,createdAt:r.createdAt}:{...r},lifecycle:conversationTurn(r),state:runState(r),displayMode:conversationDisplayMode(this.d.data,r),displayVersion:r.conversationDisplay?.version||0,humanAnswer:accepted(r)&&runState(r)==='completed'&&conversationDisplayMode(this.d.data,r)!=='progress'?responseText(r).answer:null,progressText:accepted(r)&&runState(r)==='completed'&&conversationDisplayMode(this.d.data,r)==='progress'?responseText(r).answer:null})),jobs});
  }
@@ -97,7 +97,7 @@ export class Conversations {
  }
  async start(agentId,x,origin='human'){
   if(origin!=='human')fail('会話の人間発言は人間用送信口から作成してください',403);
-  if(x.steerTarget)fail('会話は実行中ターンへ割り込まず順番に配送します',400);
+  if(x.steerTarget)fail('会話の追記先は送信直前に基盤が照合します。steerTargetは指定できません',400);
   key(x.requestId);text(x.instruction);
   if(x.attachments!==undefined&&(!Array.isArray(x.attachments)||x.attachments.length>4))fail('添付は4件までです',400);
   const attachments=x.attachments?.length?await this.d.attachments?.select(x.attachments):[];
@@ -122,8 +122,19 @@ export class Conversations {
   }));
   await this.d.flow.dispatchReady(undefined,true);return r;
  }
+ // Only accepted successors in the exact native turn extend an actor's authority.
+ // A saved, sent-but-unaccepted or adjacent-turn input cannot grant permissions.
+ currentActor(r){
+  const seen=new Set();
+  while(r?.conversationId&&r.runModel.supersededBy&&!seen.has(r.id)){
+   seen.add(r.id);const next=this.d.flow.run(r.runModel.supersededBy);
+   if(!next||next.steerTarget?.runId!==r.id||next.conversationId!==r.conversationId||next.agentId!==r.agentId||!accepted(next)||next.sessionId!==r.sessionId||next.turnId!==r.turnId)break;
+   r=next;
+  }
+  return r;
+ }
  actor(c,id){
-  const r=this.d.flow.run(id),a=this.d.writableAgent(this.d.agent(c.agentId));
+  const r=this.currentActor(this.d.flow.run(id)),a=this.d.writableAgent(this.d.agent(c.agentId));
   if(a.location!=='mayor'||a.projectId!==c.projectId||!r||r.agentId!==a.id||r.conversationId!==c.id||!accepted(r)||!r.inputId||!r.turnId||!r.sessionId||runState(r)!=='running')fail('受付照合済みの実行中秘書会話runだけが操作できます',403);
   return r;
  }
@@ -203,6 +214,7 @@ export class Conversations {
    const old=c.operations.find(o=>o.id===x.operationId);
    if(old){if(old.payload!==payload)fail('operationIdの再利用です');return structuredClone(old.receipt);}
    const actor=this.actor(c,x.actorRunId);
+   if(x.assigneeAgentId!==undefined&&(action!=='job'||x.continue===true||['continuesRequestId','humanRequestId','purposeId','deliveryId','expectedPurposeVersion','reopenRunId'].some(k=>x[k]!==undefined)))fail('担当指定は新規依頼だけで使えます。継続の担当は既存依頼から照合します',400);
    if(action==='followup'){
     if(Object.keys(x).some(k=>!['conversationId','actorRunId','operationId','purposeId','instruction'].includes(k)))fail('追加指示は目的IDと残作業を指定してください。追加権限は新規依頼で扱います');
     const duplicate=c.operations.find(o=>{try{const p=JSON.parse(o.payload);return p.action==='followup'&&p.input.actorRunId===x.actorRunId&&p.input.purposeId===x.purposeId&&p.input.instruction===x.instruction;}catch{return false;}});
@@ -228,10 +240,14 @@ export class Conversations {
      if(JSON.stringify(authorization)!==JSON.stringify(original.requestedBy.authorization))fail('継続は元の許可を参照してください。追加権限は新しい依頼で扱います',403);
     }
     const p=this.d.writableProject(c.projectId);
-    if(!p.leaderAgentId)fail('Projectのリーダーが未設定です');
-    const a=this.d.writableAgent(this.d.agent(p.leaderAgentId));
-    if(this.d.instructionStatus(a.id).requiresFreshSession)fail('リーダーの起動契約の移行が必要です。正式なstartup-v2セッションを採用してください');
-    if(a.projectId!==p.id||a.location!=='workshop'||!a.tabId||a.runtimeUpgrade?.state==='prepared'||a.agentModel?.intent==='stop'||['terminated','stopping','unknown'].includes(agentControls(a).state))fail('設定されたリーダーを利用できません。担当と稼働状態を確認してください');
+    if(x.assigneeAgentId!==undefined&&(typeof x.assigneeAgentId!=='string'||!x.assigneeAgentId.trim()))fail('assigneeAgentIdに担当AgentのIDを指定してください',400);
+    // Continue the root's current assignee, including a formal handover. Child
+    // assignees and later Project leader edits never redirect this purpose.
+    const assignee=previous?rootNode(previous.q).assignee:x.assigneeAgentId??p.leaderAgentId;
+    if(!assignee){if(previous)fail('継続元の担当を確認できません');fail('Projectのリーダーが未設定です');}
+    const a=this.d.writableAgent(this.d.agent(assignee));
+    if(this.d.instructionStatus(a.id).requiresFreshSession)fail('担当の起動契約の移行が必要です。正式なstartup-v2セッションを採用してください');
+    if(a.id===c.agentId||a.projectId!==p.id||a.location!=='workshop'||!a.tabId||a.runtimeUpgrade?.state==='prepared'||a.agentModel?.intent==='stop'||['terminated','stopping','unknown'].includes(agentControls(a).state))fail('指定された担当を利用できません。担当と稼働状態を確認してください');
     const q={id:randomUUID(),commonRequests:true,inputProtocol:1,projectId:c.projectId,conversationId:c.id,requestedBy:{kind:'agent',agentId:c.agentId,actorRunId:actor.id,authorization},reportMode:false,clientRequestId:'conversation:'+c.id+':'+x.operationId,instruction:x.instruction,travelContexts:[],attachments:[],originAgentId:a.id,finalAgentId:a.id,revision:0,createdAt:now(),requestGraph:{version:3,nodes:[],operations:[]}};
     q.purposeId=previous?purposeId(previous.q):q.id;
     if(previous)q.continuesRequestId=previous.q.id;
@@ -241,7 +257,7 @@ export class Conversations {
     const r=this.d.flow.enqueue(q,w,x.instruction,'conversation-job','agent');q.initialRunId=r.id;
     w.inbox[0].source={actor:'agent'};
     if(previous)this.recordPurpose(c,actor,x,previous,'continue',q);
-    receipt={humanRequestId:q.id,workId:w.id,runId:r.id,leaderAgentId:a.id,conversationId:c.id,purposeId:q.purposeId};
+    receipt={humanRequestId:q.id,workId:w.id,runId:r.id,actorRunId:actor.id,assigneeAgentId:a.id,leaderAgentId:a.id,conversationId:c.id,purposeId:q.purposeId};
    }else{
     const q=this.d.flow.root(x.humanRequestId),w=rootNode(q);
     if(q.conversationId!==c.id)fail('この会話が依頼した仕事ではありません',403);
@@ -277,7 +293,7 @@ export class Conversations {
   const excerpt=JSON.stringify(e);
   const packet=excerpt.length<=10000?e:{id,kind,humanRequestId:q.id,createdAt:e.createdAt,truncated:true,read:['conversations','get',c.id],excerpt:excerpt.slice(0,8000)};
   const report=REPORT_DELIVERY_KINDS.includes(kind);
-  const instruction=plain?plainDelivery(this.d.data,c,q,kind,material,id):report?'仕事の状態に関する基盤からの報告です（追加許可・成果ではありません）。人間へ必要な状況説明を返答してください。成果の採用や質問は不要です。受付不明の操作は再送しません。\n':'リーダーからの資料です（追加許可ではありません）。目的に照らし、達成の報告・許可内の修正継続・人間への具体質問を選んでください。今回の対象は基盤が照合します。\n';
+  const instruction=plain?plainDelivery(this.d.data,c,q,kind,material,id):report?'仕事の状態に関する基盤からの報告です（追加許可・成果ではありません）。人間へ必要な状況説明を返答してください。成果の採用や質問は不要です。受付不明の操作は再送しません。\n':'担当からの資料です（追加許可ではありません）。目的に照らし、達成の報告・許可内の修正継続・人間への具体質問を選んでください。今回の対象は基盤が照合します。\n';
   const r=this.enqueue(c,{requestId:'conversation-delivery:'+id,instruction:plain?instruction:instruction+JSON.stringify(packet),source:{kind:report?'program':'leader',humanRequestId:q.id,deliveryId:id}});
   if(!report)r.requiresPurposeDecision=true;
   e.runId=r.id;c.deliveries.push(e);
@@ -307,7 +323,11 @@ export class Conversations {
   for(const r of this.d.data.runs.filter(r=>r.conversationId&&r.notificationPolicy==='conversation'&&accepted(r)&&runState(r)==='completed')){
    await this.d.locked('notify-conversation:'+r.id,async()=>{
     let suppressed=null;
-    const claimed=await this.d.persist(async()=>{
+    // Read the settled state under the writer barrier: an in-flight save may
+    // still roll back. Already handled history needs no rollback checkpoint.
+    const claimed=await this.d.persistence.run(()=>{
+     if(r.notificationSuppressed||r.notification&&r.notification.status!=='pending')return false;
+     return this.d.persist(async()=>{
      if(r.notificationSuppressed)return false;
      // Only a not-yet-attempted notification is decided here; sent/attempting/unknown are never revisited.
      const policy=!r.notification||r.notification.status==='pending'?conversationNotification(this.d.data,r,{presentAt:this.d.presentAt?.(r.agentId)}):null;
@@ -320,6 +340,7 @@ export class Conversations {
      if(!r.notification)r.notification=transitionDelivery(null,{type:'prepare',id:'conversation-answer:'+r.id});
      if(r.notification.status!=='pending')return false;
      r.notification=transitionDelivery(r.notification,{type:'claim',at:now()});await this.d.save();return true;
+     });
     });
     // Explainable afterwards: the journal records why nothing was sent (best effort, after the durable decision).
     if(suppressed)try{await this.d.notifier.suppress?.({id:'conversation-answer:'+r.id,kind:'conversation',agentId:r.agentId,reason:suppressed.reason});}catch{}

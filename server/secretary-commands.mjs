@@ -11,9 +11,9 @@ import {purposeId,purposeLeaf,purposeView,deliveryOf} from './conversation-purpo
 const fail=(message,status=400)=>{throw Object.assign(Error(message),{status});};
 const RUN=/^[0-9a-f-]{36}$/;
 export const SECRETARY_COMMANDS_HELP=[
- 'village order --run RUN "指示文"：リーダーに新しい仕事を依頼する。',
+ 'village order --run RUN [--assignee AGENT_ID] "指示文"：同じProjectの工房担当へ新しい仕事を依頼する。省略時はProjectリーダー。担当IDはagents listで確認する。',
  'village followup --run RUN [PURPOSE] "指示文"：同じ目的の仕事に追加指示・差し戻しをする（配送回は届いた目的、人間の会話回で目的が1つなら PURPOSE は省略可）。',
- 'village accept --run RUN [PURPOSE] "理由"：届いたリーダーの結果を確かめ、目的の達成を記録する。',
+ 'village accept --run RUN [PURPOSE] "理由"：届いた担当の結果を確かめ、目的の達成を記録する。',
  'village ask --run RUN [PURPOSE] "質問"：届いた結果について、人間にしか決められないことを人間へ質問する。',
  'village withdraw --run RUN PURPOSE "理由"：目的の仕事を取り下げる（実行済みの外部操作は取り消されない）。',
  'village status --run RUN：この会話の目的と仕事の状態を見る。',
@@ -21,7 +21,7 @@ export const SECRETARY_COMMANDS_HELP=[
 ].join('\n');
 // Short guidance for refusals the secretary can fix itself; the original reason is kept.
 const GUIDANCE=[
- [/今回の正式配送資料がありません/,'accept/ask は、リーダーの結果が届いた回で使います。この回には届いた結果がありません。village status で状況を確認してください。'],
+ [/今回の正式配送資料がありません/,'accept/ask は、担当の結果が届いた回で使います。この回には届いた結果がありません。village status で状況を確認してください。'],
  [/正式配送済みの資料だけを評価/,'成果が正式に届く前には判断できません。返答を終え、報告が届いた回で判断してください。'],
  [/現在の正常な提出結果だけを採用/,'この結果は最新ではないか、正常に提出されていません。village status で最新の状態を確認してください。'],
  [/後着の人間入力があります/,'この後に人間の新しい発言が届いています。その回で改めて判断してください。'],
@@ -31,9 +31,9 @@ const GUIDANCE=[
  [/達成報告後の追加指示/,'達成を報告した目的です。続きは、人間の新しい発言が届いた回で followup してください。'],
  [/旧実行が失敗・受付不明/,'前回の仕事が失敗または受付不明で止まっています。自動では再送しません。人間に状況を伝えてください。'],
  [/取り下げ・人間による終了済み/,'取り下げ済み、または人間が終了した目的です。新しい仕事なら order を使ってください。'],
- [/保存成果の正式配送を待って/,'リーダーの結果がまだ届いていません。届いた回で followup してください。'],
- [/Projectのリーダーが未設定/,'Projectにリーダーがいません。人間にリーダーの設定を頼んでください。'],
- [/リーダーを利用できません|リーダーの起動契約/,'リーダーが今は仕事を受けられません。人間に状況を伝えてください。']
+ [/保存成果の正式配送を待って/,'担当の結果がまだ届いていません。届いた回で followup してください。'],
+ [/Projectのリーダーが未設定/,'Projectにリーダーがいません。適格な工房担当を --assignee で指定するか、人間にリーダーの設定を頼んでください。'],
+ [/リーダーを利用できません|リーダーの起動契約|担当を利用できません|担当の起動契約/,'担当が今は仕事を受けられません。人間に状況を伝えてください。']
 ];
 const guide=(error,action)=>{
  const hint=GUIDANCE.find(([pattern])=>pattern.test(error.message))?.[1];
@@ -45,10 +45,11 @@ export class SecretaryCommands {
  // The run, its conversation and the purposes visible to it.
  async context(run){
   if(typeof run!=='string'||!RUN.test(run))fail('--run に発言末尾の <village run="…"/> の値を指定してください。');
-  const r=this.d.flow.run(run);
+  let r=this.d.flow.run(run);
   if(!r?.conversationId)fail('この run は秘書の会話の回ではありません。--run には <village run="…"/> の値を渡してください。',404);
   const c=this.d.conversations.record(r.conversationId);
   if(r.runModel.state.kind==='sent'&&!r.acceptedAt)await this.d.conversations.read(c.id,run).catch(e=>{if(/この会話で受付照合済みのrun/.test(e.message))fail('受付をまだ確認できません。送信は繰り返さず、village status --run '+run+' で受付状態を確認してください。',409);throw e;});
+  r=this.d.conversations.currentActor(r);
   const purposes=this.d.data.requests.filter(q=>q.conversationId===c.id&&purposeId(q)===q.id&&this.d.data.runs.some(x=>x.id===q.requestedBy?.actorRunId&&x.conversationSequence<=r.conversationSequence));
   return {r,c,purposes};
  }
@@ -56,7 +57,7 @@ export class SecretaryCommands {
  authorization({r,c}){
   if(r.conversationSource?.kind==='human')return {runId:r.id,quote:r.instruction.trimStart().slice(0,500)};
   const e=deliveryOf(c,r);
-  if(!e)fail('この回は人間の発言でもリーダーの結果でもないため、許可を引き継げません。人間の発言が届いた回で操作してください。',403);
+  if(!e)fail('この回は人間の発言でも担当の結果でもないため、許可を引き継げません。人間の発言が届いた回で操作してください。',403);
   const original=this.d.flow.root(purposeId(this.d.flow.root(e.humanRequestId)));
   return original.requestedBy.authorization;
  }
@@ -72,9 +73,10 @@ export class SecretaryCommands {
   if(found.length!==1)fail(found.length?'目的IDが複数に一致します。もっと長く指定してください。':'その目的IDはこの会話にありません。village status で確認してください。',found.length?400:404);
   return found[0].id;
  }
- async order(run,instruction){
+ async order(run,instruction,assigneeAgentId){
   const x=await this.context(run);
-  return this.d.conversations.job({conversationId:x.c.id,actorRunId:run,operationId:this.operationId(run,'order',[instruction]),instruction,authorization:this.authorization(x)}).catch(e=>guide(e,'order'));
+  const operationId=this.operationId(run,'order',assigneeAgentId===undefined?[instruction]:[instruction,{assigneeAgentId}]),old=x.c.operations.find(o=>o.id===operationId);
+  return this.d.conversations.job(old?JSON.parse(old.payload).input:{conversationId:x.c.id,actorRunId:run,operationId,instruction,...(assigneeAgentId===undefined?{}:{assigneeAgentId}),authorization:this.authorization(x)}).catch(e=>guide(e,'order'));
  }
  async followup(run,purpose,instruction){
   const x=await this.context(run),id=this.purpose(x,purpose,{optional:true});
@@ -92,7 +94,7 @@ export class SecretaryCommands {
  }
  async decide(run,value,reason,action){
   const x=await this.context(run),target=this.decisionTarget(x,value);
-  const operationId=this.operationId(run,action,target.current?[reason]:[target.id,reason]);
+  const operationId=this.operationId(run,action,deliveryOf(x.c,this.d.flow.run(run))?[reason]:[target.id,reason]);
   // Reuse the saved input verbatim: the first decision itself increments purpose.version.
   const old=x.c.operations.find(o=>o.id===operationId);
   if(old)return this.d.conversations.decide(JSON.parse(old.payload).input).catch(e=>guide(e,action));
@@ -110,11 +112,12 @@ export class SecretaryCommands {
  async ask(run,question,purpose){return this.decide(run,purpose,question,'ask');}
  async withdraw(run,purpose,reason){
   const x=await this.context(run),id=this.purpose(x,purpose),q=purposeLeaf(this.d.data,this.d.flow.root(id));
-  return this.d.conversations.withdraw({conversationId:x.c.id,actorRunId:run,operationId:this.operationId(run,'withdraw',[id,reason]),humanRequestId:q.id,instruction:reason,authorization:this.authorization(x)}).catch(e=>guide(e,'withdraw'));
+  const operationId=this.operationId(run,'withdraw',[id,reason]),old=x.c.operations.find(o=>o.id===operationId);
+  return this.d.conversations.withdraw(old?JSON.parse(old.payload).input:{conversationId:x.c.id,actorRunId:run,operationId,humanRequestId:q.id,instruction:reason,authorization:this.authorization(x)}).catch(e=>guide(e,'withdraw'));
  }
  // Read only: the purposes of this conversation and what was delivered in this run.
  async status(run){
   const x=await this.context(run),view=await this.d.conversations.read(x.c.id,run).catch(e=>guide(e,'status'));
-  return {run,conversationId:x.c.id,purposes:view.purposes.map(p=>({id:p.id,state:p.state?.label||null,reason:p.state?.reason||undefined,question:p.state?.question||undefined,decision:p.decision?{kind:p.decision.kind,state:p.decision.state}:null,objective:String(this.d.flow.root(p.id).instruction).slice(0,200),readPurpose:['conversations','read',x.c.id,run,JSON.stringify({kind:'purpose',id:p.id})],deliveries:x.c.deliveries.filter(e=>purposeId(this.d.flow.root(e.humanRequestId))===p.id&&(()=>{const source=this.d.flow.run(e.runId);return source&&accepted(source)&&source.conversationSequence<=x.r.conversationSequence;})()).map(e=>({id:e.id,kind:e.kind,read:['conversations','read',x.c.id,run,JSON.stringify({kind:'delivery',id:e.id})]}))})),delivered:view.currentDeliveries.map(e=>({kind:e.kind,purpose:purposeId(this.d.flow.root(e.humanRequestId))}))};
+  run=x.r.id;return {run,conversationId:x.c.id,purposes:view.purposes.map(p=>({id:p.id,assigneeAgentId:p.assigneeAgentId,state:p.state?.label||null,reason:p.state?.reason||undefined,question:p.state?.question||undefined,decision:p.decision?{kind:p.decision.kind,state:p.decision.state}:null,objective:String(this.d.flow.root(p.id).instruction).slice(0,200),readPurpose:['conversations','read',x.c.id,run,JSON.stringify({kind:'purpose',id:p.id})],deliveries:x.c.deliveries.filter(e=>purposeId(this.d.flow.root(e.humanRequestId))===p.id&&(()=>{const source=this.d.flow.run(e.runId);return source&&accepted(source)&&source.conversationSequence<=x.r.conversationSequence;})()).map(e=>({id:e.id,kind:e.kind,read:['conversations','read',x.c.id,run,JSON.stringify({kind:'delivery',id:e.id})]}))})),delivered:view.currentDeliveries.map(e=>({kind:e.kind,purpose:purposeId(this.d.flow.root(e.humanRequestId))}))};
  }
 }

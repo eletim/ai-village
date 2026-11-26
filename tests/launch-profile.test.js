@@ -24,13 +24,14 @@ import {createHash} from 'node:crypto';
 test('create payload idempotency, lost reply, old launcher and restart never duplicate profile launch',async t=>{
  const dir=await mkdtemp(join(tmpdir(),'profile-create-'));t.after(()=>rm(dir,{recursive:true,force:true}));let creates=0,workspaces=0,lose=false,cap=true;
  const remote=async args=>{
+  if(args[0]==='env')return JSON.stringify({ok:true,clientConnectionVersion:1,result:s.rules.specification('work')});
   if(args[0]==='python3'&&args[2]===installInstructionsScript)return JSON.stringify({installed:true,hash:createHash('sha256').update(args.at(-1)).digest('hex')});
   if(args[1]==='tab'&&args[2]==='capabilities')return JSON.stringify({launchProfile:cap?{version:1,provider:'claude',arguments:true,sessionStart:true}:null});
   if(args[1]==='workspace'){workspaces++;return JSON.stringify({id:'ws',initialTab:{tabId:'initial'}});}
   if(args[1]==='tab'&&args[2]==='create'){creates++;assert.deepEqual(JSON.parse(args.at(-1)),p);if(lose)throw Error('lost response');return JSON.stringify({tabId:'tab',sessionName:'tmux',launchEvidence:agent().runtime.launchEvidence});}
   throw Error('unexpected operation');
  };
- const options={dir,remote};let s=new DirectAgents(options);await s.init({watch:false});t.after(()=>s.close());const w=await s.putWorkshop({name:'fixture',sshHost:'test',baseUrl:'http://test',workplaces:['/tmp']});
+ const options={dir,remote};let s=new DirectAgents(options);await s.init({watch:false});t.after(()=>s.close());const w=await s.putWorkshop({name:'fixture',villageConnection:{url:'http://100.64.0.2:15680',cliPath:'/fixture/scripts/village.mjs'},sshHost:'test',baseUrl:'http://test',workplaces:['/tmp']});
  const input={workshopId:w.id,cwd:'/tmp',requestId:'profile-create-test',provider:'claude',launchProfile:p};
  cap=false;await assert.rejects(s.create(input),/サポート/);assert.equal(workspaces,0);cap=true;
  const [a,b]=await Promise.all([s.create(input),s.create(input)]);assert.equal(a.id,b.id);assert.equal(creates,1);assert.equal(launchReceiptMatches(a,a.launchEvidence),true);

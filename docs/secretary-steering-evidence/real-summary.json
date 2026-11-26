@@ -1,0 +1,39 @@
+{
+  "model": {
+    "available": true,
+    "model": "gpt-6-astra",
+    "serviceTier": null,
+    "recordedAt": "2026-11-26T08:20:35.763Z",
+    "source": "native-session"
+  },
+  "first": {
+    "id": "af3172a6-f8ad-4d01-9d70-f4ab8db5de30",
+    "state": "superseded",
+    "sessionId": "01a216f0-cebc-7f73-8e30-0dc9873c0397",
+    "turnId": "01a216f1-3145-7570-ab94-d2c06342139e",
+    "dispatchAttemptedAt": "2026-11-26T08:20:34.934Z",
+    "acceptedAt": "2026-11-26T08:20:35.925Z",
+    "output": "指定のフォルダ内だけで約60秒待機し、その後 result.txt に BLUE と書き込みます。途中の訂正は同じ作業に反映します。\n"
+  },
+  "addition": {
+    "id": "03141139-4004-4e42-a77a-79bc65852bf2",
+    "state": "completed",
+    "sessionId": "01a216f0-cebc-7f73-8e30-0dc9873c0397",
+    "turnId": "01a216f1-3145-7570-ab94-d2c06342139e",
+    "dispatchAttemptedAt": "2026-11-26T08:20:41.433Z",
+    "acceptedAt": "2026-11-26T08:20:45.371Z",
+    "completedAt": "2026-11-26T08:24:08.236Z",
+    "output": "訂正を反映し、現在の待機を続けます。終了後、result.txt には GREEN と書き込みます。\n\n\n約60秒の待機が完了しました。訂正を反映し、[result.txt](/tmp/secretary-steer-real-work/result.txt) に `GREEN` を書き込み、内容を確認しました。外部への操作は行っていません。",
+    "notification": {
+      "status": "disabled",
+      "messageId": "conversation-answer:03141139-4004-4e42-a77a-79bc65852bf2",
+      "attemptedAt": "2026-11-26T08:24:08.436Z",
+      "kind": "conversation",
+      "clickUrl": null,
+      "at": "2026-11-26T08:24:08.437Z",
+      "delivered": false
+    }
+  },
+  "file": "GREEN\n",
+  "actionAtSend": "exec: exec"
+}

@@ -212,6 +212,7 @@ function renderHistory(){
 }
 function renderBoard(){
  capturePositions();
+ const restoreLogs=new Map([...scrolls].map(([id,scroll])=>[id,scroll.prepare()]));
  unread=unreadByAgent(state);updateCompletionIndicator();
  const validScope=selectedPlace==='all'||(sidebarMode==='projects'?(state.projects||[]).some(p=>'project:'+p.id===selectedPlace):selectedPlace==='mayor'||state.workshops.some(w=>w.id===selectedPlace)||(selectedPlace==='unassigned'&&live().some(a=>placeId(a)==='unassigned')));
  let pageCount=Math.max(1,Math.ceil(filtered().length/PAGE_SIZE));
@@ -269,7 +270,7 @@ function renderBoard(){
    pending.delete(a.id);outbox.delete(a.id);storeDrafts();
   }
   updateReportHTML(card.querySelector('.agent-recovery-host'),conversationAlertHTML(a));
-  const area=card.querySelector('.runs'),html=runHTML(a),wasLoading=area.dataset.loading==='true';area.dataset.loading=String(!!state.conversations&&!state.conversations[a.id]);if(wasLoading){updateReportHTML(area,html);scrolls.get(a.id).loaded();}else scrolls.get(a.id).preserve(()=>updateReportHTML(area,html));loadOpenBodies(area);
+  const area=card.querySelector('.runs'),html=runHTML(a);area.dataset.loading=String(!!state.conversations&&!state.conversations[a.id]);updateReportHTML(area,html);(restoreLogs.get(a.id)||scrolls.get(a.id).loaded)();loadOpenBodies(area);
   const prompt=card.querySelector('textarea[name=instruction]'),promptLabel=(a.name||'Agent')+'に聞く';
   prompt.placeholder=promptLabel;prompt.title=promptLabel+(mobilePromptUI()?'（Enterで改行、送信ボタン / Ctrl+Enterで送信）':'（Enter / Ctrl+Enterで送信、Shift+Enterで改行、変換中のEnterは確定）');prompt.setAttribute('aria-label',prompt.title);
   const send=card.querySelector('[data-send] button:not([data-reconcile])');

@@ -22,7 +22,10 @@ export class PartitionStore {
   const add=(kind,id,value)=>{const body=encode(kind,value);if(this.cache.get(kind+':'+id)!==body)changes.push({kind,id,body});};
   add('meta','village',meta);
   for(const kind of collections)for(const value of selected?.[kind]||(!selected?data[kind]||[]:[]))add(kind,value.id,value);
-  if(!selected)for(const key of this.cache.keys()){const colon=key.indexOf(':'),kind=key.slice(0,colon),id=key.slice(colon+1);if(collections.includes(kind)&&!(data[kind]||[]).some(r=>r.id===id))changes.push({kind,id,body:null});}
+  if(!selected){
+   const ids=new Map(collections.map(kind=>[kind,new Set((data[kind]||[]).map(r=>r.id))]));
+   for(const key of this.cache.keys()){const colon=key.indexOf(':'),kind=key.slice(0,colon),id=key.slice(colon+1);if(ids.has(kind)&&!ids.get(kind).has(id))changes.push({kind,id,body:null});}
+  }
   const wakeups=[...new Set([...this.affected(changes),...requested])];
   if(!changes.length&&!wakeups.length)return;
   await this.write({changes,wakeups});

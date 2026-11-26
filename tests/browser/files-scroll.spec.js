@@ -131,3 +131,26 @@ test('legacy scroll positions open at newest and latest is available without a n
     await page.locator('.latest-message').click();
     await expect.poll(() => bottom(log)).toBe(true);
 });
+
+test('batched conversation updates preserve each reader anchor across prepends and moved panels',async({page})=>{
+ await page.route('**/api/**',r=>r.fulfill({json:{agents:[],workshops:[],runs:[],notification:{}}}));await page.goto('/agents');
+ await page.evaluate(async()=>{
+  const {chatScroll}=await import('/src/chat-scroll.js');window.batchLogs=[];
+  for(let i=0;i<3;i++){const log=document.createElement('div');log.id='batch-'+i;log.style.cssText=`position:fixed;top:100px;left:${i*320}px;width:300px;height:200px;overflow:auto`;log.innerHTML=Array.from({length:10},(_,j)=>`<div data-entry="${j}" style="height:100px">message ${j}</div>`).join('');document.body.append(log);window.batchLogs.push({log,scroll:chatScroll(log,{saved:{follow:false,top:120+i*100}})});}
+ });
+ for(let i=0;i<3;i++)await expect.poll(()=>page.locator('#batch-'+i).evaluate(n=>n.scrollTop)).toBe(120+i*100);
+ await page.evaluate(()=>{
+  // Hidden geometry must not be queried by prepare or the pending measure pass.
+  const hidden=window.batchLogs[2].log;hidden.hidden=true;Object.defineProperty(hidden,'clientHeight',{configurable:true,get(){throw Error('hidden layout read');}});
+  window.batchAnchors=window.batchLogs.slice(0,2).map(({log})=>{const edge=log.getBoundingClientRect().top,node=[...log.children].find(n=>n.getBoundingClientRect().bottom>edge);return {key:node.dataset.entry,offset:node.getBoundingClientRect().top-edge};});
+  const restores=window.batchLogs.map(({scroll})=>scroll.prepare());
+  for(const {log} of window.batchLogs){log.style.top='50px';log.insertAdjacentHTML('afterbegin','<div data-entry="older" style="height:150px">older page</div>');}
+  restores.forEach(restore=>restore());
+  // A second render in the same turn must keep the original anchor.
+  window.batchLogs[0].scroll.preserve(()=>window.batchLogs[0].log.insertAdjacentHTML('afterbegin','<div style="height:50px">more history</div>'));
+ });
+ await expect.poll(()=>page.evaluate(()=>window.batchLogs.slice(0,2).map(({log},i)=>{const a=window.batchAnchors[i];return Math.round(log.querySelector(`[data-entry="${a.key}"]`).getBoundingClientRect().top-log.getBoundingClientRect().top-a.offset);}))).toEqual([0,0]);
+ await page.evaluate(()=>{const {log,scroll}=window.batchLogs[2];delete log.clientHeight;log.hidden=false;scroll.restore();});
+ await expect.poll(()=>page.locator('#batch-2').evaluate(n=>n.scrollTop)).toBe(320);
+ await page.evaluate(()=>window.batchLogs.forEach(({scroll,log})=>{scroll.destroy();log.remove();}));
+});

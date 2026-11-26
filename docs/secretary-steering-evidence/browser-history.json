@@ -1,0 +1,106 @@
+[
+  {
+    "width": 1440,
+    "theme": "dark",
+    "first": "21f50429-ac66-4409-970e-41b3d2a2236d",
+    "second": "ef31953a-6627-4720-b1ca-514d8cbd36f0",
+    "last": "1c623b93-9704-486d-b241-6647e5f23e8b",
+    "turnId": "90d3f3d0-754a-4f33-b801-920f2a1d0526",
+    "sessionId": "0b4a2222-cdf4-46db-8035-be7584581d42",
+    "states": [
+      {
+        "id": "21f50429-ac66-4409-970e-41b3d2a2236d",
+        "state": "superseded",
+        "output": "変更前の途中報告 1440dark"
+      },
+      {
+        "id": "ef31953a-6627-4720-b1ca-514d8cbd36f0",
+        "state": "superseded",
+        "output": ""
+      },
+      {
+        "id": "1c623b93-9704-486d-b241-6647e5f23e8b",
+        "state": "completed",
+        "output": "訂正Bを反映中 1440dark"
+      }
+    ]
+  },
+  {
+    "width": 1440,
+    "theme": "light",
+    "first": "8d5d03d8-c6a1-4d81-8aa9-3b39fe6e55de",
+    "second": "9ca3e16b-8bb5-4578-bc65-61bd092373ee",
+    "last": "12a51b64-f315-4dff-9e18-4d4c03cfaef0",
+    "turnId": "eb36d158-a381-4680-9996-f5a6ed6c9d9f",
+    "sessionId": "0b4a2222-cdf4-46db-8035-be7584581d42",
+    "states": [
+      {
+        "id": "8d5d03d8-c6a1-4d81-8aa9-3b39fe6e55de",
+        "state": "superseded",
+        "output": "変更前の途中報告 1440light"
+      },
+      {
+        "id": "9ca3e16b-8bb5-4578-bc65-61bd092373ee",
+        "state": "superseded",
+        "output": ""
+      },
+      {
+        "id": "12a51b64-f315-4dff-9e18-4d4c03cfaef0",
+        "state": "completed",
+        "output": "訂正Bを反映中 1440light"
+      }
+    ]
+  },
+  {
+    "width": 390,
+    "theme": "dark",
+    "first": "b503d8ca-4f2a-406c-9c88-78a41f264f5a",
+    "second": "5e2c73f8-5c2d-42e6-af62-47c528bbd37b",
+    "last": "ea1a53a8-f8e8-4c7f-bbfa-25596e6c1019",
+    "turnId": "4e601631-55b4-43d5-958e-81fc82fd341e",
+    "sessionId": "0b4a2222-cdf4-46db-8035-be7584581d42",
+    "states": [
+      {
+        "id": "b503d8ca-4f2a-406c-9c88-78a41f264f5a",
+        "state": "superseded",
+        "output": "変更前の途中報告 390dark"
+      },
+      {
+        "id": "5e2c73f8-5c2d-42e6-af62-47c528bbd37b",
+        "state": "superseded",
+        "output": ""
+      },
+      {
+        "id": "ea1a53a8-f8e8-4c7f-bbfa-25596e6c1019",
+        "state": "completed",
+        "output": "訂正Bを反映中 390dark"
+      }
+    ]
+  },
+  {
+    "width": 390,
+    "theme": "light",
+    "first": "3b8f2b43-5bef-4bfd-a899-025afcb411f8",
+    "second": "bb2751b8-7173-40c9-bb51-e1ecc2574de3",
+    "last": "c799cb69-ca08-4adc-ac81-dec950c274aa",
+    "turnId": "1f3188f6-0d9f-4581-957b-31d818687cab",
+    "sessionId": "0b4a2222-cdf4-46db-8035-be7584581d42",
+    "states": [
+      {
+        "id": "3b8f2b43-5bef-4bfd-a899-025afcb411f8",
+        "state": "superseded",
+        "output": "変更前の途中報告 390light"
+      },
+      {
+        "id": "bb2751b8-7173-40c9-bb51-e1ecc2574de3",
+        "state": "superseded",
+        "output": ""
+      },
+      {
+        "id": "c799cb69-ca08-4adc-ac81-dec950c274aa",
+        "state": "completed",
+        "output": "訂正Bを反映中 390light"
+      }
+    ]
+  }
+]

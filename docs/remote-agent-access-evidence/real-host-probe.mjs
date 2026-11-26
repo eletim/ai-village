@@ -1,0 +1,20 @@
+import {createServer} from 'node:http';
+import {mkdtemp,writeFile} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {DirectAgents} from '/home/eletim/ai-village-remote-access/server/direct.mjs';
+import {VillageOperations} from '/home/eletim/ai-village-remote-access/server/operations.mjs';
+import {connectionArgs,connectionCommand,checkRemoteConnection} from '/home/eletim/ai-village-remote-access/server/agent-connection.mjs';
+import {accessPolicy} from '/home/eletim/ai-village-remote-access/server/access.mjs';
+import {remoteExecutor} from '/home/eletim/ai-village-remote-access/server/execution.mjs';
+import {bindAgent} from '/home/eletim/ai-village-remote-access/server/agent-lifecycle.mjs';
+const dir=await mkdtemp(join(tmpdir(),'remote-access-real-')),url='http://100.87.176.23:15681';
+const d=new DirectAgents({dir,villageUrl:'http://127.0.0.1:15681',notifier:{status:()=>({})},remote:remoteExecutor(dir)});await d.init({watch:false});
+const a=bindAgent({id:'remote-read-fixture',name:'isolated read fixture',provider:'codex',location:'workshop',connection:{connectionType:'ssh',sshHost:'E-frontier'},villageConnection:{url,cliPath:'/tmp/village-remote-access-4Mr8O1Rt/scripts/village.mjs',rulesAgentId:'remote-read-fixture'}});
+d.data.agents.push(a);await d.save();const ops=new VillageOperations({dir},null,{direct:d}),allow=await accessPolicy({host:'127.0.0.1',port:15681,vpnAddress:'100.87.176.23',origin:'',authFile:''});let requests=0;
+const server=createServer(async(req,res)=>{if(!allow(req,res))return;requests++;let raw='';for await(const c of req)raw+=c;const argv=JSON.parse(raw).argv;if(argv[0]!=='rules'){res.writeHead(403);return res.end();}const result=await ops.execute(argv,'isolated-remote-read');res.setHeader('Content-Type','application/json');res.end(JSON.stringify(result));});
+await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(15681,'100.87.176.23',resolve);});
+try{await checkRemoteConnection(d,a);const result=JSON.parse(await d.execute(a,[...connectionArgs(a.villageConnection,a.id),'rules','get','work','leader']));
+ if(!result.ok||!result.result.text.includes(a.villageConnection.cliPath)||result.result.revision!==d.rules.specification().revision)throw Error('remote proof mismatch');
+ await writeFile('/tmp/remote-access-evidence/real-host-result.json',JSON.stringify({at:new Date().toISOString(),host:'E-frontier',fixture:true,port:15681,requests,generatedCommand:connectionCommand(a.villageConnection,a.id)+' rules get work leader',revision:result.result.revision,scopedCLI:true,credentialsInCommand:false,state:dir,normalAgentLaunch:false},null,2));console.log('REAL_REMOTE_READ_OK '+requests);
+}finally{await new Promise(r=>server.close(r));d.close();}

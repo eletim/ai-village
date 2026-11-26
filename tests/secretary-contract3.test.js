@@ -63,7 +63,7 @@ test('a delivered result to a contract 3 secretary is plain text plus the tag',a
  const {f,d,first,completeJob}=await contract3(t);
  const one=await completeJob(first),text=f.sent.at(-1).text;
  // The first contract 3 turn also mentions the Project policy once.
- assert.match(text,/^(Projectの方針が更新されました[^\n]*\n\n)?リーダーから報告が届きました/);assert(text.endsWith('<village run="'+one.delivery.id+'"/>'));assert(!text.includes('<ai-village-'));
+ assert.match(text,/^(Projectの方針が更新されました[^\n]*\n\n)?担当（Worker 2）から報告が届きました/);assert(text.endsWith('<village run="'+one.delivery.id+'"/>'));assert(!text.includes('<ai-village-'));
 });
 test('contract 3 survives a restart; a contract 2 secretary keeps its envelope',async t=>{
  const {f,secretary}=await contract3(t);

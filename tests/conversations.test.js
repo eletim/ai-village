@@ -75,13 +75,13 @@ test('leader changes affect only new jobs; queued withdrawal prevents dispatch; 
  assert.equal(runState(f.service.flow.run(second.runId)),'terminated');await f.service.tick();assert(!f.sent.some(s=>s.text.includes(second.runId)));
  await f.complete(r);const direct=await f.service.send(f.agents[0].id,{requestId:randomUUID(),instruction:'従来の直接依頼'});await f.submit(direct);await claim(f,direct);await f.complete(direct);assert.equal(f.service.flow.get(direct.humanRequestId).status,'completed');
 });
-test('failed return is not human delivery and never automatically retried; restart preserves queued order',async t=>{
+test('steered return stays unconfirmed and never automatically retried; restart preserves queued order',async t=>{
  const {f,r,args}=await setup(t);const receipt=await f.service.conversations.job(args);await f.service.tick();const leader=f.service.flow.run(receipt.runId);await f.submit(leader);await claim(f,leader);await f.complete(leader);
  const c=f.service.conversations.record(r.conversationId),deliveryId=c.deliveries[0].runId;
  const next=await f.service.send(r.agentId,{mode:'conversation',requestId:randomUUID(),instruction:'先ほどの件について'});assert(next.conversationSequence>f.service.flow.run(deliveryId).conversationSequence);
  await f.restart();await f.service.tick();assert.equal(runState(f.service.flow.run(deliveryId)),'queued');
  const original=f.service.flow.run(r.id);await f.complete(original);const delivery=f.service.flow.run(deliveryId);await f.submit(delivery);await f.complete(delivery,'failed');
- await f.service.tick();assert.equal(f.sent.filter(s=>s.text.includes(delivery.id)).length,1);assert.equal(f.service.conversations.get(c.id).runs.find(r=>r.id===delivery.id).humanAnswer,null);assert.equal(f.service.flow.get(receipt.humanRequestId).returnDelivery.state,'failed');
+ await f.service.tick();assert.equal(f.sent.filter(s=>s.text.includes(delivery.id)).length,1);assert.equal(f.service.conversations.get(c.id).runs.find(r=>r.id===delivery.id).humanAnswer,null);assert.equal(f.service.flow.get(receipt.humanRequestId).returnDelivery.state,'superseded');
  assert.equal(f.service.data.runs.filter(r=>r.conversationSource?.kind==='leader').length,1);
 });
 test('failed leader sends one attention, never a successful result; secretary cannot move while job remains',async t=>{
@@ -142,12 +142,12 @@ test('prepared leader preserves admitted job across restart and adoption; new jo
  await f.service.prepareRuntime(a.id,{operationId:randomUUID(),revision:a.metadataRevision||0});
  assert.equal(a.runtimeUpgrade.state,'prepared');
  const next={...args,operationId:randomUUID()};
- await assert.rejects(f.service.conversations.job(next),/リーダーを利用できません/);
+ await assert.rejects(f.service.conversations.job(next),/担当を利用できません/);
  assert.deepEqual(await f.service.conversations.job(args),first);
  await f.service.tick();assert.equal(runState(f.service.flow.run(first.runId)),'queued');
  assert.equal(f.sent.filter(s=>s.agentId===leaderId).length,0);
  await f.restart();assert.equal(f.service.agent(leaderId).runtimeUpgrade.state,'prepared');
- await assert.rejects(f.service.conversations.job(next),/リーダーを利用できません/);
+ await assert.rejects(f.service.conversations.job(next),/担当を利用できません/);
  assert.deepEqual(await f.service.conversations.job(args),first);
  assert.equal(f.service.data.requests.length,1);assert.equal(f.service.data.runs.length,2);
  await f.service.adoptRuntime(leaderId,{operationId:randomUUID(),revision:f.service.agent(leaderId).metadataRevision,replacementRevision:f.service.agent(donorId).metadataRevision||0,replacementAgentId:donorId});

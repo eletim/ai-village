@@ -38,7 +38,7 @@ test('B: question -> answer -> result -> ask -> response -> continuation -> acce
  h=await human('はい、公開してください');await ok('status',h);const next=await ok('followup',h,'許可された公開を進めて');await f.complete(h);const two=await result(next);await ok('accept',two,'公開結果確認');await f.complete(two);await f.restart();snapshot('end');
 });
 test('C: accept -> late human -> stale -> retry accept fails run -> later recovery + transport lost observation',async t=>{
- const {f,ok,cmd,human,result,snapshot}=await setup(t,'C');let h=await human('レポート作成');const a=await ok('order',h,'レポート作成');await f.complete(h);const r=await result(a);await ok('accept',r,'内容確認');const late=await human('追加条件も確認して',false);await f.complete(r);await f.submit(late);snapshot('stale');await ok('status',late);await ok('accept',late,'追加条件も満たす');await f.complete(late,'failed');await f.restart();
+ const {f,ok,cmd,human,result,snapshot}=await setup(t,'C');let h=await human('レポート作成');const a=await ok('order',h,'レポート作成');await f.complete(h);const r=await result(a);await ok('accept',r,'内容確認');const late=await human('追加条件も確認して',false);await f.submit(late);snapshot('stale');await ok('status',late);await ok('accept',late,'追加条件も満たす');await f.complete(late,'failed');await f.restart();
  h=await human('保存済み成果で確認し直して');await ok('status',h);await ok('accept',h,'保存結果を確認');await f.complete(h);snapshot('recovered');
  f.lose(true);const unknown=await human('次の件',false);const sent=f.sent.length;const out=await cmd('order',unknown,'新しい件');assert.equal(out.ok,false);await cmd('status',unknown);assert.equal(f.sent.length,sent);f.lose(false);await f.submit(unknown);await ok('status',unknown);const b=await ok('order',unknown,'新しい件');await ok('withdraw',unknown,b.purposeId,'誤依頼のため取消');await f.complete(unknown);snapshot('end');
 });
@@ -50,7 +50,7 @@ test('D: failures around delivery and disk save; same operation retry and later 
 test('E: order and withdraw during late instruction; capture all outcomes',async t=>{
  const {f,ok,cmd,human,snapshot}=await setup(t,'E');let h=await human('Aを作成');const a=await ok('order',h,'A');await f.complete(h);
  h=await human('Bを依頼しAを取り下げて');const late=await human('訂正、Bは依頼しないで。Aは継続して',false);
- await cmd('order',h,'B');await cmd('followup',h,a.purposeId,'Aの補足');await cmd('withdraw',h,a.purposeId,'Aを取り下げ');snapshot('late-input-operations');await f.complete(h);await f.submit(late);await ok('status',late);await f.complete(late);
+ await cmd('order',h,'B');await cmd('followup',h,a.purposeId,'Aの補足');await cmd('withdraw',h,a.purposeId,'Aを取り下げ');snapshot('late-input-operations');await f.submit(late);await ok('status',late);await f.complete(late);
 });
 test('F: two purposes, acceptance and question in one reply, then continuation',async t=>{
  const {f,ok,cmd,human,result,snapshot}=await setup(t,'F');let h=await human('AとBを作成');const a=await ok('order',h,'A'),b=await ok('order',h,'B');await f.complete(h);
