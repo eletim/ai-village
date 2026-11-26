@@ -1,3 +1,4 @@
+import {previewMessages} from './secretary-preview.mjs';
 import {matchesRunInput} from './input-envelope.mjs';
 import {readFile} from 'node:fs/promises';
 export const runtimeScript=(await readFile(new URL('./runtime_index.py',import.meta.url),'utf8'))+'\n'+(await readFile(new URL('./runtime-events.py',import.meta.url),'utf8'));
@@ -10,7 +11,7 @@ export function outputBetween(turn,start,end=Infinity){
  return end===Infinity&&turn.completionOffset>start&&typeof turn.finalOutput==='string'?turn.finalOutput:'';
 }
 function ownedTurn(run,turn,input,snapshot){
- const result={...turn,turnId:turn.id,sessionId:snapshot.sessionId};
+ const result={...turn,turnId:turn.id,sessionId:snapshot.sessionId,livePreview:{runId:run.id,sessionId:snapshot.sessionId,turnId:turn.id,messages:previewMessages(turn,input?.offset)}};
  if(run.steerTarget){
   if(!input||!Number.isFinite(input.offset))return {state:'unknown',reason:'steering-input-boundary-missing'};
   if(run.steeringProvider==='claude'&&['completed','failed','interrupted'].includes(turn.state)&&(!Number.isFinite(turn.completionOffset)||turn.completionOffset<=input.offset))return {state:'unknown',reason:'steering-completion-before-input'};

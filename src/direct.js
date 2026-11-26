@@ -1,3 +1,4 @@
+import {visiblePreview} from './secretary-preview.js';
 import {conversationAlertHTML,answerJobsHTML,conversationTurnHTML,latestAnswerStatuses} from './conversation-status.js';
 import {isProjectLeader,leaderMarker} from './leader-marker.js';
 import {subscribeChanges} from './change-stream.js';
@@ -45,7 +46,7 @@ const labels={superseded:'補足runへ引継ぎ',queued:'送信待ち',awaiting_
 let projectOpening=true;
 let state,focusedHash='',selectedPlace='all',selectedPage=0,zoomId='',selectedAgent='',boardScroll=0,connected=false,refreshTask;
 // The agent IDs actually rendered as cards right now; sync only fetches conversation bodies for these.
-let focusIds=new Set();
+let focusIds=new Set(),previewAgent='',previewRefreshQueued=false;
 const focusKey=()=>JSON.stringify([...focusIds].sort());
 const navigationKey='ai-village-sidebar-v1';
 let navigation={mode:'projects',projects:{id:'all',page:0},places:{id:'all',page:0}};
@@ -175,7 +176,9 @@ function entryHTML(a,source,divider){
   '<div class="message internal">'+chatBodyHTML(r,'input',inputBody,true,exchangeLabel(r,state))+timeHTML(r.createdAt)+'</div>';
  // Legacy completed replies have no finalOutput/origin metadata; retain their human-facing answer.
  const showAnswer=published||isVisibleAnswer(r);
- const response=r.output||r.finalOutput||stubs.output?'<div class="message assistant">'+chatBodyHTML(r,'output',stubs.output||responseHTML({...r,collapsedHistory:false},{finalLabel}),!showAnswer,r.displayMode==='progress'?'途中経過':r.finalOutput||(stubs.output&&r.bodyDeferred.output.final)?finalLabel:'途中経過')+timeHTML(r.completedAt)+'</div>':'';
+ const preview=visiblePreview(a,r,previewViewId()===previewAgent?previewAgent:'');
+ const previewHTML=preview?'<section class="secretary-preview"><h3>'+esc(preview.label)+'</h3>'+preview.messages.map(m=>'<div data-preview-message="'+esc(JSON.stringify([r.sessionId,r.turnId,m.id,m.offset]))+'" data-phase="'+m.phase+'"><pre>'+esc(m.text)+'</pre></div>').join('')+'</section>':'';
+ const response=preview?'<div class="message assistant">'+previewHTML+'</div>':r.output||r.finalOutput||stubs.output?'<div class="message assistant">'+chatBodyHTML(r,'output',stubs.output||responseHTML({...r,collapsedHistory:false},{finalLabel}),!showAnswer,r.displayMode==='progress'?'途中経過':r.finalOutput||(stubs.output&&r.bodyDeferred.output.final)?finalLabel:'途中経過')+timeHTML(r.completedAt)+'</div>':'';
  const normal=!r.error&&!r.errorCode&&!r.attachmentError&&!r.needsReview&&!requestRootState(state.requests?.find(q=>q.id===r.humanRequestId))?.review?.length;
  return `${divider(r.createdAt||r.completedAt)}<div class="run" data-entry="${esc(JSON.stringify([r.external?'native':'run',r.external?(r.sessionId||r.agentSessionId||''):'',r.id]))}">${input}${response}${answerJobsHTML(r)}${r.conversationId?conversationTurnHTML(r):`<p class="run-status">${compactStatusPair(r.queueCancelledAt?'送信取消済み':r.reportStatus||labels[r.state]||r.state,r.conversationId?'':request?.purposeStatus?request.purposeStatus.label:r.humanRequestId?({active:'依頼継続中',finalizing:'最終報告の完了待ち',completed:'依頼全体完了',cancelled:'依頼キャンセル'})[state.requests?.find(q=>q.id===r.humanRequestId)?.status]||'依頼照合中':'達成状況: 未判定',normal,r.external?'PurpleMuxからの入力 · ':r.origin==='result'?'子作業結果の配送 · ':r.origin==='steering'?'実行中への補足 · ':'')} ${esc(r.errorCode||'')} ${esc(r.attachmentError||r.error||'')} ${r.notification?' · 通知: '+esc(r.notification.status)+(r.notification.reason?' / '+esc(r.notification.reason):''):''}</p>`}${canCancelQueued(r)?`<button type="button" data-cancel-queued="${esc(r.id)}" data-queue-agent="${esc(a.id)}">送信待ちを取り消す</button>`:''}${waiting?`<p class="request-waiting">${esc(waiting)}</p>`:''}${r.queueCancelledAt?'':recoveryHTML(r)}</div>`;
 }
@@ -340,18 +343,35 @@ function updateCompletionIndicator(){
 
 let viewFrame=0;
 const viewing=new Set();
-function activeView(){
- if(!connected||document.visibilityState!=='visible'||!document.hasFocus()||!selectedAgent)return false;
+function activeView(){return activeViewFor(selectedAgent);}
+function activeViewFor(id){
+ if(!connected||document.visibilityState!=='visible'||!document.hasFocus()||!id)return false;
  const dialog=document.querySelector('dialog[open]');
- if(dialog)return dialog.id==='history-dialog'&&$('#history-agent').value===selectedAgent;
- return !!cards.get(selectedAgent)&&!cards.get(selectedAgent).hidden;
+ if(dialog)return dialog.id==='history-dialog'&&$('#history-agent').value===id;
+ return !!cards.get(id)&&!cards.get(id).hidden;
 }
 function syncSelection(){
  const active=activeView();if(active)reportPresence();else reportLeave();
+ syncPreviewSelection();
  for(const [id,card] of cards){const selected=id===selectedAgent;card.dataset.selected=String(selected);if(selected)card.setAttribute('aria-current','true');else card.removeAttribute('aria-current');card.dataset.active=String(selected&&active);}
  cancelAnimationFrame(viewFrame);
  // Acknowledge only a revision rendered in the selected, visible window.
  viewFrame=requestAnimationFrame(()=>{void acknowledgeSelection();});
+}
+function previewViewId(){
+ const id=$('#history-dialog').open?$('#history-agent').value:zoomId||selectedAgent;
+ return activeViewFor(id)&&state?.agents.find(a=>a.id===id)?.location==='mayor'?id:'';
+}
+function syncPreviewSelection(leaving=false){
+ const next=leaving?'':previewViewId();
+ if(next===previewAgent)return;
+ const previous=previewAgent;previewAgent=next;
+ // Invalidate in-flight fetches immediately; never apply an old scope after leaving.
+ syncEpoch++;syncController?.abort();syncController=null;refreshTask=null;syncBase=null;if(connected)retryAt=0;disarmSyncIndicator();
+ if(previous)refreshMessageLog(previous);
+ if(next)refreshMessageLog(next);
+ if($('#history-dialog').open)renderHistory();
+ if(!previewRefreshQueued){previewRefreshQueued=true;queueMicrotask(()=>{previewRefreshQueued=false;if(connected&&!document.hidden)void refresh(true);});}
 }
 function selectAgent(id){selectedAgent=id;syncSelection();}
 // Tell the village that a human is looking at this Agent, so quick replies need no phone notification.
@@ -372,7 +392,7 @@ function reportLeave(){
  const id=presenceAgent;presenceAgent=null;presenceAt=0;presenceRequest(id,false).catch(()=>{});
 }
 setInterval(reportPresence,15000);
-window.addEventListener('pagehide',reportLeave);
+window.addEventListener('pagehide',()=>{reportLeave();syncPreviewSelection(true);});
 async function acknowledgeSelection(){
  if(!activeView())return;
  const id=selectedAgent,review=state.reviews?.[id];
@@ -547,7 +567,7 @@ function armSyncIndicator(){
 }
 function disarmSyncIndicator(){clearTimeout(syncIndicatorTimer);syncIndicatorTimer=null;syncIndicatorDue=false;}
 async function fetchWorkspace(signal){
- const path='?view=workspace&sync=1&bodies=lazy&client='+syncClient+'&ranges='+encodeURIComponent(JSON.stringify(historyRanges))+'&focus='+encodeURIComponent(JSON.stringify([...focusIds]));
+ const path='?view=workspace&sync=1&bodies=lazy&client='+syncClient+'&ranges='+encodeURIComponent(JSON.stringify(historyRanges))+'&focus='+encodeURIComponent(JSON.stringify([...focusIds]))+'&preview='+encodeURIComponent(previewAgent);
  const base=syncBase;
  const result=await api(path+(base?'&since='+encodeURIComponent(base.cursor):''),null,'GET',signal);
  signal.throwIfAborted();

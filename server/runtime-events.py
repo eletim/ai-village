@@ -13,8 +13,8 @@ def parse_event(db,provider,x,offset):
   if t is None:
    t={'id':tid,'state':'running','startedAt':at,'output':'','offset':offset,'messageOffsets':True};db.put('turn',tid,t)
   return t
- def message(tid,uid,body):
-  db.put('message',str(offset),{'turnId':tid,'id':uid,'text':body,'at':at,'offset':offset})
+ def message(tid,uid,body,phase=None):
+  db.put('message',str(offset),{'turnId':tid,'id':uid,'text':body,'at':at,'offset':offset,**({'phase':phase} if phase else {})})
  if provider=='codex':
   if x.get('type')=='turn_context':db.put('model','model',{'model':v.get('model'),'serviceTier':v.get('service_tier'),'recordedAt':at})
   if x.get('type')=='event_msg' and kind=='task_started':
@@ -31,7 +31,8 @@ def parse_event(db,provider,x,offset):
   t=db.get('turn',tid) if tid else None
   if x.get('type')=='response_item' and v.get('role')=='assistant' and t:
    body=text(v.get('content'))
-   if body:message(tid,v.get('id') or str(offset),body);t['outputFromMessages']=True;db.put('turn',tid,t)
+   phase={'commentary':'commentary','final_answer':'final','final':'final'}.get(v.get('phase')) if v.get('type')=='message' and v.get('recipient') in (None,'all') else None
+   if body:message(tid,v.get('id') or str(offset),body,phase);t['outputFromMessages']=True;db.put('turn',tid,t)
   if x.get('type')=='event_msg' and kind in ('task_complete','turn_aborted'):
    tid=v.get('turn_id');t=db.get('turn',tid) if tid else None
    if t:
@@ -72,7 +73,7 @@ def parse_event(db,provider,x,offset):
    if x.get('type')=='assistant':
     if not x.get('isApiErrorMessage') and m.get('model')!='<synthetic>':db.put('model','model',{'model':m.get('model'),**({'effort':x['effort']} if x.get('effort') in ('low','medium','high','xhigh','max') else {}),'serviceTier':(m.get('usage') or {}).get('speed'),'recordedAt':at})
     t=db.get('turn',tid);body=text(content)
-    if body:message(tid,uid,body)
+    if body:message(tid,uid,body,('final' if m.get('stop_reason') in ('end_turn','stop_sequence') else 'commentary') if not x.get('isApiErrorMessage') and m.get('model')!='<synthetic>' else None)
     if x.get('isApiErrorMessage') is True:t.update(state='failed',outputFromMessages=True,outputThrough=offset,error=x.get('error') or 'runtime-api-error',completedAt=at,completionEvent=uid,completionOffset=offset)
     elif m.get('stop_reason') in ('end_turn','stop_sequence','max_tokens'):t.update(state='interrupted' if m.get('stop_reason')=='max_tokens' else 'completed',finalOutput=body,outputFromMessages=True,outputThrough=offset,completedAt=at,completionEvent=uid,completionOffset=offset)
     elif m.get('stop_reason')=='tool_use':t.update(state='running',outputFromMessages=True)
