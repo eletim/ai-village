@@ -2,6 +2,23 @@ import {fixtureModels} from './model-fixtures.mjs';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {humanProjection} from '../server/report-view.mjs';
+import {apiValue} from '../server/state-projection.mjs';
+import {workspaceSnapshot,historyPage} from '../server/conversation-pages.mjs';
+import {orderedAgents} from '../src/board-state.js';
+test('deleted Agent remains in workspace history but never counts as an active board member',()=>{
+ const deletedAt='2026-11-26T00:00:00.000Z';
+ const data={agents:[
+  {id:'old',name:'Old',location:'mayor',projectId:'p',deletedAt,agentModel:{id:'old',intent:'stop',observation:null},nativeTurns:[]},
+  {id:'current',name:'Current',location:'mayor',projectId:'p',agentModel:{id:'current',intent:null,observation:{connected:true,process:'alive',activity:'idle',canSteer:false}},nativeTurns:[]}
+ ],runs:[],requests:[],conversations:[],projects:[{id:'p',name:'Project'}],workshops:[]};
+ const view=humanProjection(data),wire=apiValue(workspaceSnapshot(view,{},null,{lean:true}));
+ assert.equal(view.agents.find(a=>a.id==='old').state,'terminated');
+ assert.equal(wire.agents.find(a=>a.id==='old').state,'terminated');
+ assert.equal(wire.agents.find(a=>a.id==='old').deletedAt,deletedAt);
+ assert.deepEqual(orderedAgents(wire.agents.filter(a=>a.projectId==='p')).map(a=>a.id),['current']);
+ assert.deepEqual(historyPage(view,'old').entries,[]);
+ assert.equal(data.agents[0].state,undefined);
+});
 test('shows work until report commits, hides internal report streams, preserves later unrelated turns',()=>{
  const data={agents:[{id:'a',location:'mayor',nativeTurns:[{id:'old',sessionId:'s',offset:1,output:'old history'},{id:'unknown',sessionId:'s',offset:20,output:'secret unbound'}],runtime:{lastMessage:'secret runtime'}}],runs:[{id:'r',humanRequestId:'q',agentId:'a',origin:'human',instruction:'question',output:'secret draft',finalOutput:'secret final',baselineRuntime:{sessionId:'s',cursor:10},dispatchAttemptedAt:'now',state:'unknown',context:'secret metadata'}],requests:[{id:'q',reportMode:true,status:'active',works:[{currentRunId:'r'}]}]};
  let view=humanProjection(fixtureModels(data,{refresh:true}));assert.equal(view.runs[0].output,'secret draft');assert.equal(view.agents[0].nativeTurns.length,2);assert.equal(view.agents[0].nativeTurns[0].output,'old history');assert.equal(data.runs[0].output,'secret draft');
