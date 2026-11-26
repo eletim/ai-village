@@ -8,7 +8,7 @@ test('desktop grids fit four as 2x2 and nine as 3x3, narrow layouts keep readabl
  assert.deepEqual(boardLayout(9,1100,700),{cols:3,rows:3,rowHeight:228});
  assert.equal(boardLayout(9,250,700).cols,1);assert.equal(boardLayout(9,250,700).rowHeight,220);
  assert.equal(PAGE_SIZE,9);
- const list=[{id:'a2',state:'idle',createdAt:'2026-01-02'},{id:'a1',state:'busy',createdAt:'2026-01-01'},{id:'gone',state:'terminated'}];
+ const list=[{id:'a2',state:'idle',createdAt:'2026-01-02'},{id:'a1',state:'busy',createdAt:'2026-01-01'},{id:'gone',state:'terminated'},{id:'deleted',state:'stopping',deletedAt:'2026-01-03'}];
  assert.deepEqual(orderedAgents(list).map(a=>a.id),['a1','a2']);list[0].state='busy';list.reverse();assert.deepEqual(orderedAgents(list).map(a=>a.id),['a1','a2']);
 });
 test('completion identities deduplicate native/managed views and never confuse sessions or idle',()=>{

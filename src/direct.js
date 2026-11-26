@@ -202,7 +202,7 @@ function clearSubmittedDraft(id,receipt,message){
 }
 function renderHistory(){
  const orphaned=(state.recoveryRequests||[]).filter(q=>!state.agents.some(a=>a.id===q.agentId));
- options($('#history-agent'),[...state.agents.filter(a=>a.state==='terminated').map(a=>({id:a.id,name:placeName(a)+' / '+a.name+(state.reviews?.[a.id]?.attention?' · 依頼完了・要確認':unread.get(a.id)?' · 更新あり':'')})),...(orphaned.length?[{id:'orphaned',name:'担当Agentがない依頼'}]:[])]);
+ options($('#history-agent'),[...state.agents.filter(a=>a.deletedAt||a.state==='terminated').map(a=>({id:a.id,name:placeName(a)+' / '+a.name+(state.reviews?.[a.id]?.attention?' · 依頼完了・要確認':unread.get(a.id)?' · 更新あり':'')})),...(orphaned.length?[{id:'orphaned',name:'担当Agentがない依頼'}]:[])]);
  const a=state.agents.find(a=>a.id===$('#history-agent').value);
  // Terminated agents sit outside the board's focus set; viewing one in the dialog is its own focus.
  if($('#history-dialog').open&&a)focusIds.add(a.id);
@@ -450,7 +450,7 @@ function focusAgent(){
 
  if(location.hash===focusedHash||!/^#agent-[0-9a-f-]{36}$/.test(location.hash)||!state)return;
  const id=location.hash.slice(7),a=state.agents.find(a=>a.id===id);if(!a)return;focusedHash=location.hash;
- if(a.state==='terminated'){renderHistory();$('#history-agent').value=id;renderHistory();$('#history-dialog').showModal();return;}
+ if(a.deletedAt||a.state==='terminated'){renderHistory();$('#history-agent').value=id;renderHistory();$('#history-dialog').showModal();return;}
  if(!filtered().some(x=>x.id===id))choosePlace(isSuspended(state.projects||[],a)?'project:'+a.projectId:'all');
  selectedPage=Math.max(0,Math.floor(filtered().findIndex(a=>a.id===id)/PAGE_SIZE));
  if(zoomId!==id)toggleZoom(id);cards.get(id)?.focus({preventScroll:true});
