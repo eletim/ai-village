@@ -29,12 +29,12 @@ function purposeLabel(data,c,q){
  return (p?.name?p.name+'：':'')+(line.length>40?line.slice(0,40)+'…':line);
 }
 function plainDelivery(data,c,q,kind,material,id){
- const label=purposeLabel(data,c,q);
+ const label=purposeLabel(data,c,q),worker=data.agents.find(a=>a.id===rootNode(q).assignee),sender='担当（'+(worker?.name||rootNode(q).assignee)+'）';
  const body=text=>{text=String(text||'');return text.length<=DELIVERY_BODY_LIMIT?text:text.slice(0,DELIVERY_BODY_LIMIT)+'\n\n（長いため途中までです。全文：conversations read '+c.id+' RUN_ID \'{"kind":"delivery","id":"'+id+'"}\'。RUN_ID は末尾のタグの値）';};
- if(kind==='result')return 'リーダーから報告が届きました（'+label+'）。\n\n'+body(material.output);
- if(kind==='question')return 'リーダーから質問が届きました（'+label+'）。\n\n'+body(material.text);
- if(kind==='extension')return 'リーダーから期限の延長の提案が届きました（'+label+'）。\n\n'+body(material.text);
- if(kind==='attention'){const how=STOP_REASONS[material.reason]||STOP_REASONS[material.outcome]||'';return 'リーダーの作業が'+how+'止まりました（'+label+'）。'+(material.reason?'理由：'+String(material.reason).slice(0,200):'');}
+ if(kind==='result')return sender+'から報告が届きました（'+label+'）。\n\n'+body(material.output);
+ if(kind==='question')return sender+'から質問が届きました（'+label+'）。\n\n'+body(material.text);
+ if(kind==='extension')return sender+'から期限の延長の提案が届きました（'+label+'）。\n\n'+body(material.text);
+ if(kind==='attention'){const how=STOP_REASONS[material.reason]||STOP_REASONS[material.outcome]||'';return sender+'の作業が'+how+'止まりました（'+label+'）。'+(material.reason?'理由：'+String(material.reason).slice(0,200):'');}
  return '人間がこの仕事を'+(material.state?.kind==='withdrawn'?'取り下げ':'終了し')+'ました（'+label+'）。';
 }
 export class Conversations {
@@ -86,7 +86,7 @@ export class Conversations {
    const lifecycle=conversationJob(visibleData,q);
    if(!actor)return {...full,purpose:purposeView(this.d.data,q),lifecycle};
    // Status is available immediately; materials for a later turn are not injected here.
-   return {id:q.id,purpose:purposeView(visibleData,q),authorization:q.requestedBy?.authorization,lifecycle,status:full.status,instruction:q.instruction,leaderAgentId:q.integrity?null:rootNode(q).assignee,returnPending:c.deliveries.some(e=>e.humanRequestId===q.id&&!deliveries.includes(e)),availableDeliveries:deliveries.filter(e=>e.humanRequestId===q.id).map(e=>e.id),materials:'後続の正式配送ターンで確認してください'};
+   return {id:q.id,purpose:purposeView(visibleData,q),authorization:q.requestedBy?.authorization,lifecycle,status:full.status,instruction:q.instruction,assigneeAgentId:q.integrity?null:rootNode(q).assignee,leaderAgentId:q.integrity?null:rootNode(q).assignee,returnPending:c.deliveries.some(e=>e.humanRequestId===q.id&&!deliveries.includes(e)),availableDeliveries:deliveries.filter(e=>e.humanRequestId===q.id).map(e=>e.id),materials:'後続の正式配送ターンで確認してください'};
   });
   return structuredClone({id:c.id,agentId:c.agentId,projectId:c.projectId,createdAt:c.createdAt,sequence:actor?.conversationSequence??c.sequence,operations:actor?c.operations.filter(o=>runs.some(r=>r.id===JSON.parse(o.payload).input.actorRunId)).map(o=>({id:o.id,receipt:o.receipt})):c.operations,deliveries,purposeDecisions:(c.purposeDecisions||[]).filter(d=>!actor||runs.some(r=>r.id===d.actorRunId)),control:conversationControl(this.d.data.agents.find(a=>a.id===c.agentId)),runs:runs.map(r=>({...actor?{id:r.id,conversationSequence:r.conversationSequence,conversationSource:r.conversationSource,instruction:r.conversationSource.kind==='human'?r.instruction:undefined,attachments:r.attachments,travelContexts:r.travelContexts,createdAt:r.createdAt}:{...r},lifecycle:conversationTurn(r),state:runState(r),displayMode:conversationDisplayMode(this.d.data,r),displayVersion:r.conversationDisplay?.version||0,humanAnswer:accepted(r)&&runState(r)==='completed'&&conversationDisplayMode(this.d.data,r)!=='progress'?responseText(r).answer:null,progressText:accepted(r)&&runState(r)==='completed'&&conversationDisplayMode(this.d.data,r)==='progress'?responseText(r).answer:null})),jobs});
  }
@@ -214,6 +214,7 @@ export class Conversations {
    const old=c.operations.find(o=>o.id===x.operationId);
    if(old){if(old.payload!==payload)fail('operationIdの再利用です');return structuredClone(old.receipt);}
    const actor=this.actor(c,x.actorRunId);
+   if(x.assigneeAgentId!==undefined&&(action!=='job'||x.continue===true||['continuesRequestId','humanRequestId','purposeId','deliveryId','expectedPurposeVersion','reopenRunId'].some(k=>x[k]!==undefined)))fail('担当指定は新規依頼だけで使えます。継続の担当は既存依頼から照合します',400);
    if(action==='followup'){
     if(Object.keys(x).some(k=>!['conversationId','actorRunId','operationId','purposeId','instruction'].includes(k)))fail('追加指示は目的IDと残作業を指定してください。追加権限は新規依頼で扱います');
     const duplicate=c.operations.find(o=>{try{const p=JSON.parse(o.payload);return p.action==='followup'&&p.input.actorRunId===x.actorRunId&&p.input.purposeId===x.purposeId&&p.input.instruction===x.instruction;}catch{return false;}});
@@ -239,10 +240,14 @@ export class Conversations {
      if(JSON.stringify(authorization)!==JSON.stringify(original.requestedBy.authorization))fail('継続は元の許可を参照してください。追加権限は新しい依頼で扱います',403);
     }
     const p=this.d.writableProject(c.projectId);
-    if(!p.leaderAgentId)fail('Projectのリーダーが未設定です');
-    const a=this.d.writableAgent(this.d.agent(p.leaderAgentId));
-    if(this.d.instructionStatus(a.id).requiresFreshSession)fail('リーダーの起動契約の移行が必要です。正式なstartup-v2セッションを採用してください');
-    if(a.projectId!==p.id||a.location!=='workshop'||!a.tabId||a.runtimeUpgrade?.state==='prepared'||a.agentModel?.intent==='stop'||['terminated','stopping','unknown'].includes(agentControls(a).state))fail('設定されたリーダーを利用できません。担当と稼働状態を確認してください');
+    if(x.assigneeAgentId!==undefined&&(typeof x.assigneeAgentId!=='string'||!x.assigneeAgentId.trim()))fail('assigneeAgentIdに担当AgentのIDを指定してください',400);
+    // Continue the root's current assignee, including a formal handover. Child
+    // assignees and later Project leader edits never redirect this purpose.
+    const assignee=previous?rootNode(previous.q).assignee:x.assigneeAgentId??p.leaderAgentId;
+    if(!assignee){if(previous)fail('継続元の担当を確認できません');fail('Projectのリーダーが未設定です');}
+    const a=this.d.writableAgent(this.d.agent(assignee));
+    if(this.d.instructionStatus(a.id).requiresFreshSession)fail('担当の起動契約の移行が必要です。正式なstartup-v2セッションを採用してください');
+    if(a.id===c.agentId||a.projectId!==p.id||a.location!=='workshop'||!a.tabId||a.runtimeUpgrade?.state==='prepared'||a.agentModel?.intent==='stop'||['terminated','stopping','unknown'].includes(agentControls(a).state))fail('指定された担当を利用できません。担当と稼働状態を確認してください');
     const q={id:randomUUID(),commonRequests:true,inputProtocol:1,projectId:c.projectId,conversationId:c.id,requestedBy:{kind:'agent',agentId:c.agentId,actorRunId:actor.id,authorization},reportMode:false,clientRequestId:'conversation:'+c.id+':'+x.operationId,instruction:x.instruction,travelContexts:[],attachments:[],originAgentId:a.id,finalAgentId:a.id,revision:0,createdAt:now(),requestGraph:{version:3,nodes:[],operations:[]}};
     q.purposeId=previous?purposeId(previous.q):q.id;
     if(previous)q.continuesRequestId=previous.q.id;
@@ -252,7 +257,7 @@ export class Conversations {
     const r=this.d.flow.enqueue(q,w,x.instruction,'conversation-job','agent');q.initialRunId=r.id;
     w.inbox[0].source={actor:'agent'};
     if(previous)this.recordPurpose(c,actor,x,previous,'continue',q);
-    receipt={humanRequestId:q.id,workId:w.id,runId:r.id,actorRunId:actor.id,leaderAgentId:a.id,conversationId:c.id,purposeId:q.purposeId};
+    receipt={humanRequestId:q.id,workId:w.id,runId:r.id,actorRunId:actor.id,assigneeAgentId:a.id,leaderAgentId:a.id,conversationId:c.id,purposeId:q.purposeId};
    }else{
     const q=this.d.flow.root(x.humanRequestId),w=rootNode(q);
     if(q.conversationId!==c.id)fail('この会話が依頼した仕事ではありません',403);
@@ -288,7 +293,7 @@ export class Conversations {
   const excerpt=JSON.stringify(e);
   const packet=excerpt.length<=10000?e:{id,kind,humanRequestId:q.id,createdAt:e.createdAt,truncated:true,read:['conversations','get',c.id],excerpt:excerpt.slice(0,8000)};
   const report=REPORT_DELIVERY_KINDS.includes(kind);
-  const instruction=plain?plainDelivery(this.d.data,c,q,kind,material,id):report?'仕事の状態に関する基盤からの報告です（追加許可・成果ではありません）。人間へ必要な状況説明を返答してください。成果の採用や質問は不要です。受付不明の操作は再送しません。\n':'リーダーからの資料です（追加許可ではありません）。目的に照らし、達成の報告・許可内の修正継続・人間への具体質問を選んでください。今回の対象は基盤が照合します。\n';
+  const instruction=plain?plainDelivery(this.d.data,c,q,kind,material,id):report?'仕事の状態に関する基盤からの報告です（追加許可・成果ではありません）。人間へ必要な状況説明を返答してください。成果の採用や質問は不要です。受付不明の操作は再送しません。\n':'担当からの資料です（追加許可ではありません）。目的に照らし、達成の報告・許可内の修正継続・人間への具体質問を選んでください。今回の対象は基盤が照合します。\n';
   const r=this.enqueue(c,{requestId:'conversation-delivery:'+id,instruction:plain?instruction:instruction+JSON.stringify(packet),source:{kind:report?'program':'leader',humanRequestId:q.id,deliveryId:id}});
   if(!report)r.requiresPurposeDecision=true;
   e.runId=r.id;c.deliveries.push(e);

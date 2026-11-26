@@ -142,12 +142,12 @@ test('prepared leader preserves admitted job across restart and adoption; new jo
  await f.service.prepareRuntime(a.id,{operationId:randomUUID(),revision:a.metadataRevision||0});
  assert.equal(a.runtimeUpgrade.state,'prepared');
  const next={...args,operationId:randomUUID()};
- await assert.rejects(f.service.conversations.job(next),/リーダーを利用できません/);
+ await assert.rejects(f.service.conversations.job(next),/担当を利用できません/);
  assert.deepEqual(await f.service.conversations.job(args),first);
  await f.service.tick();assert.equal(runState(f.service.flow.run(first.runId)),'queued');
  assert.equal(f.sent.filter(s=>s.agentId===leaderId).length,0);
  await f.restart();assert.equal(f.service.agent(leaderId).runtimeUpgrade.state,'prepared');
- await assert.rejects(f.service.conversations.job(next),/リーダーを利用できません/);
+ await assert.rejects(f.service.conversations.job(next),/担当を利用できません/);
  assert.deepEqual(await f.service.conversations.job(args),first);
  assert.equal(f.service.data.requests.length,1);assert.equal(f.service.data.runs.length,2);
  await f.service.adoptRuntime(leaderId,{operationId:randomUUID(),revision:f.service.agent(leaderId).metadataRevision,replacementRevision:f.service.agent(donorId).metadataRevision||0,replacementAgentId:donorId});
