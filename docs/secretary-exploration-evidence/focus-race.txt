@@ -1,0 +1,14 @@
+[WebServer] (node:1707951) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:1707951) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+
+Running 4 tests using 1 worker
+
+(node:1708046) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 tests/browser/image-gestures.spec.js:16:31 › wheel anchor, bounds, keyboard, snapshot and focus 1440 (545ms)
+  ✓  2 tests/browser/image-gestures.spec.js:16:31 › wheel anchor, bounds, keyboard, snapshot and focus 390 (512ms)
+  ✓  3 tests/browser/image-gestures.spec.js:31:1 › Chromium touch pinch continuously zooms and pans; switching and reopening reset (961ms)
+  ✓  4 tests/browser/image-gestures.spec.js:43:1 › close sync removes a formerly connected opener: focus falls back to conversation (263ms)
+
+  4 passed (2.9s)

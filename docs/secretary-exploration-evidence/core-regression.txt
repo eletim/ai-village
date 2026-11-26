@@ -1,0 +1,180 @@
+TAP version 13
+# (node:1647462) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: order: the run is enough; permission is this human utterance; a rerun is the same operation
+ok 1 - order: the run is enough; permission is this human utterance; a rerun is the same operation
+  ---
+  duration_ms: 96.668591
+  type: 'test'
+  ...
+# Subtest: accept and ask are bound to the result delivered in this run; elsewhere the village explains
+ok 2 - accept and ask are bound to the result delivered in this run; elsewhere the village explains
+  ---
+  duration_ms: 88.014125
+  type: 'test'
+  ...
+# Subtest: ask records a concrete question for the human on the delivered result
+ok 3 - ask records a concrete question for the human on the delivered result
+  ---
+  duration_ms: 69.834102
+  type: 'test'
+  ...
+# Subtest: followup: the delivered purpose or the only purpose is implied; otherwise PURPOSE (a prefix) is required
+ok 4 - followup: the delivered purpose or the only purpose is implied; otherwise PURPOSE (a prefix) is required
+  ---
+  duration_ms: 118.692243
+  type: 'test'
+  ...
+# Subtest: withdraw uses the purpose and the automatic permission; status shows the purposes
+ok 5 - withdraw uses the purpose and the automatic permission; status shows the purposes
+  ---
+  duration_ms: 54.337559
+  type: 'test'
+  ...
+# Subtest: a delivery run inherits the original permission of its purpose
+ok 6 - a delivery run inherits the original permission of its purpose
+  ---
+  duration_ms: 64.292127
+  type: 'test'
+  ...
+# Subtest: the CLI explains a missing or foreign run, wrong arguments, and accepts long text
+ok 7 - the CLI explains a missing or foreign run, wrong arguments, and accepts long text
+  ---
+  duration_ms: 57.505133
+  type: 'test'
+  ...
+# Subtest: status identifies every visible purpose and bounds long authorization quotes
+ok 8 - status identifies every visible purpose and bounds long authorization quotes
+  ---
+  duration_ms: 56.919798
+  type: 'test'
+  ...
+# Subtest: accept rejects a consultation with actionable guidance; pending followup explains the wait
+ok 9 - accept rejects a consultation with actionable guidance; pending followup explains the wait
+  ---
+  duration_ms: 80.787428
+  type: 'test'
+  ...
+# Subtest: a first command observes an already delivered input without requiring status first
+ok 10 - a first command observes an already delivered input without requiring status first
+  ---
+  duration_ms: 50.20013
+  type: 'test'
+  ...
+# Subtest: unobserved sent run is denied without dispatching new work
+ok 11 - unobserved sent run is denied without dispatching new work
+  ---
+  duration_ms: 45.906861
+  type: 'test'
+  ...
+# 受付をまだ確認できません。送信は繰り返さず、village status --run 70d78d41-42f0-4caf-b913-9c86b777eeb3 で受付状態を確認してください。
+# Subtest: 500 leading spaces retain an exact nonempty authorization quote
+ok 12 - 500 leading spaces retain an exact nonempty authorization quote
+  ---
+  duration_ms: 52.96952
+  type: 'test'
+  ...
+# Subtest: real consultation allows ask
+ok 13 - real consultation allows ask
+  ---
+  duration_ms: 72.587191
+  type: 'test'
+  ...
+# Subtest: real consultation allows followup
+ok 14 - real consultation allows followup
+  ---
+  duration_ms: 76.228652
+  type: 'test'
+  ...
+# Subtest: failed leader guidance cannot be followed via followup
+ok 15 - failed leader guidance cannot be followed via followup
+  ---
+  duration_ms: 82.069066
+  type: 'test'
+  ...
+# {"kind":"attention","accept":"停止・状態変更の報告はacceptできません。village status で状態を確認し、保存記録を照合して人間に状況を説明してください。送信は繰り返さないでください。","followup":"旧実行が失敗・受付不明です。再送せず保存記録の照合が必要です\\n案内: 前回の仕事が失敗または受付不明で止まっています。自動では再送しません。人間に状況を伝えてください。\\n使い方: village help（followup）"}
+# Subtest: each documented refusal has guidance, preserving the original core reason
+ok 16 - each documented refusal has guidance, preserving the original core reason
+  ---
+  duration_ms: 63.034454
+  type: 'test'
+  ...
+# Subtest: accept guidance distinguishes question/extension from stop/state reports without mutation
+ok 17 - accept guidance distinguishes question/extension from stop/state reports without mutation
+  ---
+  duration_ms: 64.219822
+  type: 'test'
+  ...
+# (node:1647463) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: A: consultation -> two purposes -> running amendment -> correction -> missed judgment -> accept -> withdraw
+ok 18 - A: consultation -> two purposes -> running amendment -> correction -> missed judgment -> accept -> withdraw
+  ---
+  duration_ms: 288.392667
+  type: 'test'
+  ...
+# Subtest: B: question -> answer -> result -> ask -> response -> continuation -> accepted; restart and replay
+ok 19 - B: question -> answer -> result -> ask -> response -> continuation -> accepted; restart and replay
+  ---
+  duration_ms: 204.271223
+  type: 'test'
+  ...
+# Subtest: C: accept -> late human -> stale -> retry accept fails run -> later recovery + transport lost observation
+ok 20 - C: accept -> late human -> stale -> retry accept fails run -> later recovery + transport lost observation
+  ---
+  duration_ms: 116.722889
+  type: 'test'
+  ...
+# Subtest: D: failures around delivery and disk save; same operation retry and later rejection
+ok 21 - D: failures around delivery and disk save; same operation retry and later rejection
+  ---
+  duration_ms: 184.514421
+  type: 'test'
+  ...
+# Subtest: E: order and withdraw during late instruction; capture all outcomes
+ok 22 - E: order and withdraw during late instruction; capture all outcomes
+  ---
+  duration_ms: 93.31545
+  type: 'test'
+  ...
+# Subtest: F: two purposes, acceptance and question in one reply, then continuation
+ok 23 - F: two purposes, acceptance and question in one reply, then continuation
+  ---
+  duration_ms: 202.827452
+  type: 'test'
+  ...
+# (node:1647464) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: order rollback/retry persists finish and never resurrects or resends work (control)
+ok 24 - order rollback/retry persists finish and never resurrects or resends work (control)
+  ---
+  duration_ms: 119.224237
+  type: 'test'
+  ...
+# Subtest: order rollback/retry persists finish and never resurrects or resends work (fault)
+ok 25 - order rollback/retry persists finish and never resurrects or resends work (fault)
+  ---
+  duration_ms: 89.247131
+  type: 'test'
+  ...
+# Subtest: order rollback/retry persists finish and never resurrects or resends work (fault)
+ok 26 - order rollback/retry persists finish and never resurrects or resends work (fault)
+  ---
+  duration_ms: 83.462952
+  type: 'test'
+  ...
+# Subtest: order rollback/retry persists finish and never resurrects or resends work (fault)
+ok 27 - order rollback/retry persists finish and never resurrects or resends work (fault)
+  ---
+  duration_ms: 91.429132
+  type: 'test'
+  ...
+1..27
+# tests 27
+# suites 0
+# pass 27
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1302.285151

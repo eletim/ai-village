@@ -1,0 +1,23 @@
+[WebServer] (node:1691848) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:1691848) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+
+Running 9 tests using 3 workers
+
+(node:1691940) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:1691939) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:1691946) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 tests/browser/image-gestures.spec.js:16:31 › wheel anchor, bounds, keyboard, snapshot and focus 1440 (611ms)
+  ✓  2 tests/browser/image-gestures.spec.js:16:31 › wheel anchor, bounds, keyboard, snapshot and focus 1440 (647ms)
+  ✓  3 tests/browser/image-gestures.spec.js:16:31 › wheel anchor, bounds, keyboard, snapshot and focus 1440 (654ms)
+  ✓  4 tests/browser/image-gestures.spec.js:16:31 › wheel anchor, bounds, keyboard, snapshot and focus 390 (547ms)
+  ✓  5 tests/browser/image-gestures.spec.js:16:31 › wheel anchor, bounds, keyboard, snapshot and focus 390 (526ms)
+  ✓  6 tests/browser/image-gestures.spec.js:16:31 › wheel anchor, bounds, keyboard, snapshot and focus 390 (529ms)
+  ✓  7 tests/browser/image-gestures.spec.js:31:1 › Chromium touch pinch continuously zooms and pans; switching and reopening reset (992ms)
+  ✓  8 tests/browser/image-gestures.spec.js:31:1 › Chromium touch pinch continuously zooms and pans; switching and reopening reset (976ms)
+  ✓  9 tests/browser/image-gestures.spec.js:31:1 › Chromium touch pinch continuously zooms and pans; switching and reopening reset (978ms)
+
+  9 passed (2.8s)

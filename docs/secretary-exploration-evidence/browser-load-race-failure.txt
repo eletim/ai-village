@@ -1,0 +1,338 @@
+
+> ai-village@0.1.0 test:ui
+> playwright test
+
+[WebServer] (node:1677834) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:1677834) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(node:1677673) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 254 tests using 12 workers
+
+(node:1677999) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:1677993) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:1678018) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:1678005) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:1678024) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:1678035) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:1677991) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:1678048) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:1678012) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:1678063) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:1678054) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:1678083) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:1678018) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(node:1678005) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+  ✓    3 tests/browser/compact-status.spec.js:5:67 › light 1440: normal icons retain accessible labels on both screens (588ms)
+  ✓   10 tests/browser/conversation-lifecycle.spec.js:7:31 › secretary mailbox remains available while leader work is blocked; explicit status and next action 1440 (628ms)
+  ✓    8 tests/browser/board-review.spec.js:19:1 › four cards use 2x2, nine use 3x3, narrow screen uses readable rows and one consistent state palette (840ms)
+  ✓   13 tests/browser/compact-status.spec.js:5:67 › light 390: normal icons retain accessible labels on both screens (293ms)
+  ✓    7 tests/browser/conversation-answer.spec.js:5:31 › leader-sourced conversation answer remains visible through paging and repaint 1440 (936ms)
+  ✓   12 tests/browser/chat-navigation.spec.js:12:31 › chat shells stay visible and bodies fold independently at 1440px (871ms)
+  ✓    6 tests/browser/conversation-polish.spec.js:3:1 › date separators and explicit notification test with saved destination, failure and disabled handling (1.0s)
+  ✓   14 tests/browser/conversation-lifecycle.spec.js:7:31 › secretary mailbox remains available while leader work is blocked; explicit status and next action 390 (402ms)
+  ✓    4 tests/browser/agent-profile.spec.js:6:1 › project and secretary entries, safe Markdown, latest reload, draft and mobile (1.2s)
+  ✓    1 tests/browser/autogrow-inputs.spec.js:19:5 › direct: grow/shrink, wrap, IME, draft, resize, cap, send failure and clear (1.2s)
+  ✓   16 tests/browser/compact-status.spec.js:5:67 › dark 1440: normal icons retain accessible labels on both screens (370ms)
+  ✓   11 tests/browser/answer-work-status.spec.js:7:31 › answer-local states: advice, active, complete, multiple jobs, question and failure 1440 (1.2s)
+  ✓    5 tests/browser/access-boundaries.spec.js:11:43 › real human API and browser controls (PC) (1.3s)
+  ✓    9 tests/browser/conversation-pages.spec.js:6:1 › 100 initial entries; older fetch, stable scroll and polling updates (1.5s)
+  ✓   23 tests/browser/compact-status.spec.js:5:67 › dark 390: normal icons retain accessible labels on both screens (272ms)
+  ✓   17 tests/browser/conversation-answer.spec.js:5:31 › leader-sourced conversation answer remains visible through paging and repaint 390 (645ms)
+  ✓   18 tests/browser/chat-navigation.spec.js:12:31 › chat shells stay visible and bodies fold independently at 390px (655ms)
+  ✓   21 tests/browser/agent-profile.spec.js:21:1 › unset, errors, loading and no use of another Project guide (489ms)
+  ✓    2 tests/browser/compact-input.spec.js:5:2 › light 1440 › one-line composer grows, restores, sends and keeps attachments and unread selection (1.7s)
+  ✓   19 tests/browser/conversation-lifecycle.spec.js:39:31 › actual graph and delivery projections distinguish working, completed return, review and failed receipt 1440 (639ms)
+  ✓   26 tests/browser/conversation-pages.spec.js:20:1 › immediate upload and POST progress, no duplicate send, failure keeps draft and uncertain receipt (346ms)
+  ✓   20 tests/browser/conversation-progress.spec.js:5:31 › progress closed, question and confirmed reply visible, history and redraw 1440 (825ms)
+  ✓   27 tests/browser/compact-status.spec.js:14:1 › sending, queue, steering, failed request and disconnected states retain words (375ms)
+  ✓   24 tests/browser/answer-work-status.spec.js:7:31 › answer-local states: advice, active, complete, multiple jobs, question and failure 390 (765ms)
+  ✓   33 tests/browser/conversation-pages.spec.js:29:1 › successful delayed submit shows acceptance status then clears draft, icons accessible and details preserved (193ms)
+  ✓   35 tests/browser/compact-status.spec.js:23:1 › review keeps completion wording and recovery actions; merged success becomes a check (194ms)
+  ✓   29 tests/browser/agent-profile.spec.js:27:1 › late responses after closing/switching cannot replace current document (496ms)
+  ✓   32 tests/browser/conversation-lifecycle.spec.js:39:31 › actual graph and delivery projections distinguish working, completed return, review and failed receipt 390 (452ms)
+  ✓   25 tests/browser/access-boundaries.spec.js:11:43 › real human API and browser controls (mobile) (1.1s)
+  ✓   34 tests/browser/conversation-progress.spec.js:5:31 › progress closed, question and confirmed reply visible, history and redraw 390 (585ms)
+  ✓   36 tests/browser/docx.spec.js:6:5 › direct: DOCX selection, draft restore, real upload and inert exact download (425ms)
+  ✓   37 tests/browser/conversation-pages.spec.js:35:1 › history failure retains rendered entries, can retry; terminated Agent history pages independently (531ms)
+PREVIEW_AFTER_CLOSE 1440 1
+FOCUS_AFTER_IMAGE_CLOSE 1440 {"tag":"BUTTON","label":"検証画像0を拡大","text":""}
+  ✓   30 tests/browser/display-settings.spec.js:5:1 › settings preserve display, safe plain text, visuals, draft and quiet completion (1.2s)
+RECOVERY_BY_INPUT_FOCUS 1440 true
+  ✓   45 tests/browser/display-settings.spec.js:13:1 › HTTP notification status/configure validates and persists without sending test (36ms)
+  ✓   44 tests/browser/conversation-pages.spec.js:40:1 › recovery fetches full request only on explicit retry and uses current revision (261ms)
+  ✓   43 tests/browser/font-size.spec.js:8:1 › Direct font sizes, reflow, caret, follow and read position (502ms)
+  ✓   40 tests/browser/exploration-recovery.spec.js:5:31 › explore long preview read, image keyboard return, project round trip 1440 (853ms)
+  ✓   31 tests/browser/compact-input.spec.js:5:2 › light 390 › one-line composer grows, restores, sends and keeps attachments and unread selection (1.4s)
+  ✓   46 tests/browser/display-settings.spec.js:18:1 › font and viewer changes retain read position and latest following without touching input (319ms)
+  ✓   42 tests/browser/files-scroll.spec.js:5:5 › direct attachment-only sends keep draft and request identity; history follows only near bottom (965ms)
+  ✓   47 tests/browser/image-gestures.spec.js:16:31 › wheel anchor, bounds, keyboard, snapshot and focus 1440 (569ms)
+  ✓   48 tests/browser/font-size.spec.js:22:1 › three themes at narrow width and invalid stored values (518ms)
+PREVIEW_AFTER_CLOSE 390 1
+  ✓   41 tests/browser/access-boundaries.spec.js:11:43 › real human API and browser controls (HTTPS) (1.3s)
+FOCUS_AFTER_IMAGE_CLOSE 390 {"tag":"BUTTON","label":"検証画像0を拡大","text":""}
+  ✓   52 tests/browser/files-scroll.spec.js:63:1 › unsupported server prevents upload without losing existing binary draft (178ms)
+RECOVERY_BY_INPUT_FOCUS 390 true
+  ✓   54 tests/browser/font-size.spec.js:26:1 › terminated Agent history uses stored size and font for both viewer modes (189ms)
+  ✓   51 tests/browser/lazy-bodies.spec.js:23:2 › opening a folded exchange loads its body; closed folds never fetch (desktop) (606ms)
+  ✓   49 tests/browser/exploration-recovery.spec.js:5:31 › explore long preview read, image keyboard return, project round trip 390 (805ms)
+  ✓   56 tests/browser/files-scroll.spec.js:77:1 › image load and streamed text follow newest content, but respect a reader scrolling upward (363ms)
+  ✘   53 tests/browser/image-gestures.spec.js:16:31 › wheel anchor, bounds, keyboard, snapshot and focus 390 (506ms)
+  ✓   22 tests/browser/autogrow-inputs.spec.js:59:1 › Direct input growth preserves reader position, follow mode, poll identity and selection (2.9s)
+  ✓   57 tests/browser/font-size.spec.js:31:1 › touch composers stay at or above the iOS zoom threshold across text sizes and orientations; desktop keeps the plain text-scale size (479ms)
+  ✓   59 tests/browser/exploration-recovery.spec.js:25:31 › explore slow send double activation, new draft, project switch 1440 (406ms)
+(node:1680741) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   62 tests/browser/lean-fetch.spec.js:4:2 › map reads the lean map view, never the complete snapshot (desktop) (103ms)
+  ✓   55 tests/browser/leader-marker.spec.js:3:66 › leader assignment, replacement and removal across views 1440 roles (717ms)
+  ✓   60 tests/browser/files-scroll.spec.js:94:1 › direct Agent uses the common menu for image and file previews, deletion, image-only upload and history (335ms)
+  ✓   58 tests/browser/lazy-bodies.spec.js:23:2 › opening a folded exchange loads its body; closed folds never fetch (phone) (616ms)
+  ✓   28 tests/browser/direct.spec.js:6:1 › direct workshop editor, safe output and persistent instruction draft (2.8s)
+  ✓   64 tests/browser/lean-fetch.spec.js:4:2 › map reads the lean map view, never the complete snapshot (phone) (97ms)
+  ✓   50 tests/browser/compact-input.spec.js:5:2 › dark 1440 › one-line composer grows, restores, sends and keeps attachments and unread selection (1.4s)
+  ✓   70 tests/browser/lean-fetch.spec.js:14:1 › workspace still loads through scoped sync on the real server (129ms)
+  ✓   39 tests/browser/agent-profile.spec.js:36:1 › name remains keyboard accessible across polling; existing rename stays in management (2.5s)
+  ✓   66 tests/browser/files-scroll.spec.js:123:1 › legacy scroll positions open at newest and latest is available without a new reply (303ms)
+  ✓   63 tests/browser/exploration-recovery.spec.js:25:31 › explore slow send double activation, new draft, project switch 390 (430ms)
+  ✓   72 tests/browser/links.spec.js:3:5 › direct: conversation links are clickable without losing line breaks (133ms)
+  ✓   68 tests/browser/lazy-bodies.spec.js:39:1 › a failed body load says so and retries when the fold is reopened (323ms)
+  ✓   69 tests/browser/direct.spec.js:38:1 › notification deep link focuses the matching Agent after asynchronous loading (351ms)
+  ✓   61 tests/browser/autogrow-inputs.spec.js:82:1 › Direct paste and card resize keep conversation space, and zoom/reload retain input sizing (728ms)
+  ✓   77 tests/browser/lazy-bodies.spec.js:46:1 › a turn started by a background-task notice is labelled as such, never shown as a human message (157ms)
+HEIGHT android light {"open":95,"closed":49}
+  ✓   78 tests/browser/direct.spec.js:48:1 › local workshop registration and editing do not require an SSH host (323ms)
+  ✓   65 tests/browser/leader-marker.spec.js:3:66 › leader assignment, replacement and removal across views 1440 dots (778ms)
+  ✓   79 tests/browser/model-usage.spec.js:4:1 › profile records and weekly core-only usage; stale/reset and responsive sidebar remain clear (348ms)
+  ✓   75 tests/browser/exploration-recovery.spec.js:32:1 › explore discoverable image help and real local upload on isolated HTTP (495ms)
+  ✓   73 tests/browser/agent-profile.spec.js:45:1 › worker and unknown profiles never request secretary guidance; late secretary response is discarded (550ms)
+  ✓   38 tests/browser/event-driven.spec.js:2:1 › idle page makes no periodic snapshot requests and receives committed changes over SSE (3.1s)
+  ✓   83 tests/browser/model-usage.spec.js:14:1 › unavailable model/usage never shows zero or unlimited (183ms)
+  ✓   81 tests/browser/direct.spec.js:67:1 › Agent launch creates an idempotency key without secure-context randomUUID (227ms)
+  ✓   86 tests/browser/pending-message.spec.js:9:1 › immediate safe bubble, poll before POST, unchanged identity and later edited draft retained (213ms)
+  ✓   80 tests/browser/notification-provenance.spec.js:4:31 › conversation API keeps internal supplements folded after final report 1440 (556ms)
+  ✓   87 tests/browser/pr-window.spec.js:2:1 › Workspace serves shared PR registry and health without remote mutations (132ms)
+FOOTER android light [true,false,true]
+  ✓   76 tests/browser/mobile-top.spec.js:6:2 › android light › toolbar, project and stable keyboard footer (852ms)
+  ✓   67 tests/browser/image-gestures.spec.js:31:1 › Chromium touch pinch continuously zooms and pans; switching and reopening reset (1.1s)
+  ✓   85 tests/browser/event-driven.spec.js:11:1 › deadline and latest report are visible, human changes root deadline with version and reason (363ms)
+  ✓   89 tests/browser/pending-message.spec.js:15:1 › attachment-only upload bubble, failed upload and reload interrupted upload preserve draft (258ms)
+HEIGHT android dark {"open":95,"closed":49}
+  ✓   84 tests/browser/notification-themes.spec.js:5:45 › dark: shared theme covers Direct, archive, settings and persists (610ms)
+  ✓   82 tests/browser/leader-marker.spec.js:3:66 › leader assignment, replacement and removal across views 390 roles (717ms)
+  ✓   71 tests/browser/compact-input.spec.js:5:2 › dark 390 › one-line composer grows, restores, sends and keeps attachments and unread selection (1.4s)
+  ✓   95 tests/browser/pending-message.spec.js:20:1 › upload snapshots text before await, retyped same draft is not cleared; repeated same text is distinct (202ms)
+  ✓   98 tests/browser/project-guide-entry.spec.js:2:1 › retired office routes are absent (42ms)
+  ✓   90 tests/browser/notification-provenance.spec.js:4:31 › conversation API keeps internal supplements folded after final report 390 (556ms)
+  ✓   91 tests/browser/presence.spec.js:3:1 › viewing a selected Agent reports presence through the human-only route without flooding (638ms)
+  ✓   15 tests/browser/board-review.spec.js:33:1 › virtual groups and all pages reach every Agent, preserve order across activity changes and restore zoom (5.4s)
+  ✓   93 tests/browser/project-actions.spec.js:7:1 › scoped operations, rename revision, keyboard focus and unchanged global settings (695ms)
+  ✓   99 tests/browser/pending-message.spec.js:25:1 › uncertain receipt persists reload, explicit reconcile uses same request ID; queue and steering labels (422ms)
+  ✓   94 tests/browser/project-deletion.spec.js:18:1 › confirmation cancel has no effect; partial result remains retryable, success hides members and retains history (798ms)
+  ✓   96 tests/browser/notification-themes.spec.js:5:45 › light: shared theme covers Direct, archive, settings and persists (599ms)
+FOOTER android dark [true,false,true]
+  ✓   88 tests/browser/direct.spec.js:88:1 › sidebar uses registered places, auto layout, same-button restore and archived termination (1.1s)
+  ✓   92 tests/browser/mobile-top.spec.js:6:2 › android dark › toolbar, project and stable keyboard footer (909ms)
+  ✓   97 tests/browser/leader-marker.spec.js:3:66 › leader assignment, replacement and removal across views 390 dots (711ms)
+  ✓  105 tests/browser/pending-message.spec.js:31:1 › new default settings preserve explicit saved choices (290ms)
+HEIGHT iphone light {"open":95,"closed":49}
+  ✓  106 tests/browser/project-deletion.spec.js:26:1 › changed confirmation requires reconfirmation; reopened partial operation preserves its identity (352ms)
+  ✓  102 tests/browser/presence.spec.js:20:1 › without the server capability the page never reports presence (663ms)
+  ✓  104 tests/browser/project-actions.spec.js:15:1 › add locks target membership, mobile and delete confirmation cancel (544ms)
+  ✓  111 tests/browser/pending-message.spec.js:35:1 › interrupted upload reload never POSTs and travel/attachment labels stay local (220ms)
+  ✓  100 tests/browser/project-guides-live.spec.js:23:1 › real policy API: defaults, legacy, edit, conflict, reload and server restart (806ms)
+  ✓  107 tests/browser/notification-themes.spec.js:5:45 › sepia: shared theme covers Direct, archive, settings and persists (569ms)
+  ✓  115 tests/browser/pending-message.spec.js:41:1 › explicit rejection is not accepted, draft survives, desktop pending bubble (206ms)
+  ✓  114 tests/browser/project-actions.spec.js:20:1 › no workshop does not open unrelated settings; stale deletion plan cannot reopen closed menu (357ms)
+  ✓  118 tests/browser/queued-cancel.spec.js:2:1 › unsent entry cancels with keyboard, retains draft, dispatched/unknown entries have no cancel (175ms)
+  ✓   74 tests/browser/markdown-replies.spec.js:5:1 › Direct Markdown, inert code/HTML/URLs, user text, streaming and unchanged poll DOM (2.6s)
+  ✓  110 tests/browser/project-suspension.spec.js:6:1 › suspend by project menu, hidden in all/place, accessible still paused; resume, pin, draft, mobile and restore (768ms)
+FOOTER iphone light [true,false,true]
+  ✓  112 tests/browser/project-deletion.spec.js:29:1 › partial operation survives dialog close and page reload (655ms)
+  ✓  113 tests/browser/projects.spec.js:5:1 › Project spans places with nine-card groups, zoom restore, dots and explicit membership (644ms)
+  ✓  109 tests/browser/mobile-top.spec.js:6:2 › iphone light › toolbar, project and stable keyboard footer (974ms)
+  ✓  120 tests/browser/queued-cancel.spec.js:7:1 › dispatch race failure does not paint a successful cancellation (200ms)
+  ✓  117 tests/browser/notification-themes.spec.js:10:1 › destination form saves only explicit fields, reports errors, preserves blank fields and resets explicitly (530ms)
+  ✓  121 tests/browser/markdown-replies.spec.js:14:1 › narrow Markdown code and tables remain within the card; HTML/URL attack cases stay inert (218ms)
+  ✓  127 tests/browser/notification-themes.spec.js:14:1 › real isolated HTTP accepts destination, rejects invalid URL/topic/token and blank saves preserve (58ms)
+HEIGHT iphone dark {"open":95,"closed":49}
+  ✓  126 tests/browser/request-inbox.spec.js:3:1 › busy secretary explicitly chooses A supplement without steering B; closed target never becomes new request (236ms)
+  ✓  108 tests/browser/direct.spec.js:106:1 › drafts, conversation and board scroll survive place, zoom, polling and responsive layout (1.3s)
+  ✓  122 tests/browser/project-suspension.spec.js:15:1 › stale update fails without pretending to suspend; all suspended and empty projects remain reachable (409ms)
+  ✓  128 tests/browser/request-integrity.spec.js:4:1 › isolated broken request explains reference error without offering automatic recovery (211ms)
+  ✓  123 tests/browser/request-composition.spec.js:2:1 › human saves an unassigned child, chooses an Agent and starts it once (384ms)
+  ✓  131 tests/browser/direct.spec.js:125:1 › notification link to a terminated Agent opens saved history, not an Agent tab (153ms)
+  ✓  130 tests/browser/request-inbox.spec.js:17:1 › supplement is chronological, visible with attachments, and remains stable through polling (170ms)
+  ✓  129 tests/browser/notification-themes.spec.js:20:1 › narrow sepia settings remain usable and input/dialog/text areas follow the theme (348ms)
+  ✓  132 tests/browser/project-suspension.spec.js:21:1 › map excludes resting residents, retains warnings and links to paused Project Workspace (278ms)
+  ✓  136 tests/browser/resume-sync.spec.js:3:61 › resume replaces stuck sync without replay or stale overwrite: visibilitychange (144ms)
+  ✓  119 tests/browser/report-mode.spec.js:11:1 › Direct preserves original work until report commits; failure keeps original, internal report stays hidden (844ms)
+  ✓  140 tests/browser/report-mode.spec.js:46:1 › official HTTP report setting validates and remains independent of notifications (53ms)
+  ✓  133 tests/browser/request-integrity.spec.js:19:1 › review requests stay with their Agent, including paged-out conversations and terminated history (410ms)
+  ✓  139 tests/browser/resume-sync.spec.js:3:61 › resume replaces stuck sync without replay or stale overwrite: pageshow (144ms)
+  ✓  141 tests/browser/report-mode.spec.js:57:1 › report mode off separates progress and final in Direct (131ms)
+  ✓  143 tests/browser/resume-sync.spec.js:3:61 › resume replaces stuck sync without replay or stale overwrite: online (133ms)
+FOOTER iphone dark [true,false,true]
+  ✓  135 tests/browser/direct.spec.js:129:1 › empty workshop launch inherits context and supports another launch after termination (488ms)
+  ✓  125 tests/browser/mobile-top.spec.js:6:2 › iphone dark › toolbar, project and stable keyboard footer (959ms)
+  ✓  137 tests/browser/rework-history.spec.js:2:1 › two reworks remain readable and linked; genuine withdrawals and accepted result are distinct (458ms)
+  ✓  144 tests/browser/report-mode.spec.js:64:1 › published report is visible outside internal exchanges after work and delivery separate (174ms)
+  ✓  138 tests/browser/project-suspension.spec.js:24:1 › paused groups retain nine-card pages, zoom and membership changes (428ms)
+HEIGHT pc light {"open":105,"closed":105}
+  ✓  145 tests/browser/runtime-recovery.spec.js:4:1 › failed runtime displays model review reason and explicit revision-safe retry/cancel (379ms)
+  ✓  142 tests/browser/runtime-migration.spec.js:27:1 › running waits, compatible unused candidate switches same identity and explicit review resumes (547ms)
+  ✓  150 tests/browser/secretary-conversations.spec.js:2:1 › conversation choice, leader setting and internal result differ from human answer (425ms)
+(node:1677991) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+  ✓  146 tests/browser/direct.spec.js:134:1 › server send eligibility, chat alignment, draft and scroll survive refresh and reload (607ms)
+  ✓  101 tests/browser/project-opening.spec.js:2:1 › project opening defaults to secretary, preserves manual split, and saves split preference (3.0s)
+  ✓  151 tests/browser/runtime-recovery.spec.js:27:1 › shared graph normal waits explain progress without recovery controls, stalled progress requires judgment (360ms)
+  ✓  148 tests/browser/rework-history.spec.js:12:31 › long multiline instructions collapse independently at 1440px (685ms)
+(node:1678063) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+FOOTER pc light [true]
+  ✓  154 tests/browser/direct.spec.js:140:1 › lost send response keeps the draft and verifies with the same idempotency key on explicit action (329ms)
+  ✓  147 tests/browser/mobile-top.spec.js:6:2 › pc light › toolbar, project and stable keyboard footer (927ms)
+  ✓  116 tests/browser/prompt-input.spec.js:4:5 › direct: Enter and Ctrl+Enter send, Shift+Enter adds newline, IME Enter never sends (2.4s)
+  ✓  153 tests/browser/secretary-later-decision.spec.js:6:31 › contract 3 missing judgment stays visible and can be decided later 1440 (473ms)
+  ✓  152 tests/browser/runtime-migration.spec.js:36:1 › lost adoption response survives reload and reuses immutable operation and payload (708ms)
+  ✓  155 tests/browser/secretary-preview.spec.js:9:31 › secretary preview starts mid-run, follows, leaves, revisits and finalizes once 1440 (449ms)
+HEIGHT pc dark {"open":105,"closed":105}
+  ✓  160 tests/browser/prompt-input.spec.js:53:1 › direct input respects disabled sending, empty text and pending request (197ms)
+  ✓  157 tests/browser/secretary-purpose.spec.js:5:31 › secretary decision, autonomous correction and final report stay one visible purpose 1440 (521ms)
+  ✓  156 tests/browser/rework-history.spec.js:12:31 › long multiline instructions collapse independently at 390px (592ms)
+  ✓  161 tests/browser/secretary-later-decision.spec.js:6:31 › contract 3 missing judgment stays visible and can be decided later 390 (400ms)
+  ✓  164 tests/browser/prompt-input.spec.js:82:1 › busy agent accepts consecutive additional instructions into queue (236ms)
+  ✓  163 tests/browser/secretary-preview.spec.js:9:31 › secretary preview starts mid-run, follows, leaves, revisits and finalizes once 390 (429ms)
+  ✓  168 tests/browser/sidebar-live-completion.spec.js:2:31 › sidebar completion refresh without click or reload 1440 (173ms)
+  ✓  166 tests/browser/self-resume.spec.js:2:31 › single resume reservation is visible without adding human controls 1440 (338ms)
+  ✓  162 tests/browser/runtime-migration.spec.js:41:1 › server rejects race; no silent retry and new revision requires explicit reconfirmation (614ms)
+  ✓  167 tests/browser/prompt-input.spec.js:105:42 › IME shortcut waits for final input: send (278ms)
+  ✓  158 tests/browser/direct.spec.js:146:1 › each place menu launches and sends to its exact Agent without switching another connection (814ms)
+  ✓  165 tests/browser/secretary-purpose.spec.js:5:31 › secretary decision, autonomous correction and final report stay one visible purpose 390 (552ms)
+  ✓  170 tests/browser/sidebar-live-completion.spec.js:2:31 › sidebar completion refresh without click or reload 390 (185ms)
+FOOTER pc dark [true]
+  ✓  124 tests/browser/projects.spec.js:19:1 › human management survives absent secretary, requires stop confirmation and does not overwrite a stale edit (2.9s)
+  ✓  173 tests/browser/prompt-input.spec.js:105:42 › IME shortcut waits for final input: newline (182ms)
+  ✓  159 tests/browser/mobile-top.spec.js:6:2 › pc dark › toolbar, project and stable keyboard footer (983ms)
+  ✓  169 tests/browser/secretary-preview.spec.js:23:1 › hidden/blurred view and reconnect restore latest; failed preview never final; foreign identities rejected (391ms)
+  ✓  171 tests/browser/self-resume.spec.js:2:31 › single resume reservation is visible without adding human controls 390 (358ms)
+  ✓  178 tests/browser/prompt-input.spec.js:119:1 › Chromium composition commits through blur before Ctrl+Enter sends (296ms)
+  ✓  172 tests/browser/runtime-migration.spec.js:44:1 › pending delivery forbids redundant resume and double click creates one prepare (573ms)
+  ✓  180 tests/browser/secretary-preview.spec.js:34:1 › separate run identities and workshop output do not become secretary previews (307ms)
+  ✓  175 tests/browser/secretary-purpose.spec.js:34:31 › missing judgment recovers automatically then stops after bounded attempts 1440 (488ms)
+  ✓  182 tests/browser/prompt-input.spec.js:127:1 › mobile UI Enter inserts newline and resizing to desktop restores Enter send (194ms)
+  ✓  179 tests/browser/sidebar-toggle.spec.js:2:31 › sidebar toggle keeps draft and scope, grows board, persists at 1440px (508ms)
+  ✓  184 tests/browser/secretary-preview.spec.js:40:1 › project secretary opens preview without an extra card click; blur and dialogs stop only preview (330ms)
+  ✓  183 tests/browser/runtime-migration.spec.js:48:1 › failed terminal is not an idle normal boundary; draft stays safe on a narrow display (382ms)
+  ✓  185 tests/browser/secretary-purpose.spec.js:34:31 › missing judgment recovers automatically then stops after bounded attempts 390 (397ms)
+  ✓  176 tests/browser/sidebar-order.spec.js:17:1 › sidebar drags projects and members across pages, survives reload and keeps all view without text (935ms)
+  ✓  186 tests/browser/steering.spec.js:3:1 › busy supplement sends pinned target, while queue and unknown are labelled honestly (332ms)
+  ✓  103 tests/browser/board-review.spec.js:49:1 › selection acknowledges only the Agent, supports keyboard and never turns normal completions into attention (5.0s)
+  ✓  187 tests/browser/sidebar-toggle.spec.js:2:31 › sidebar toggle keeps draft and scope, grows board, persists at 390px (402ms)
+  ✓  192 tests/browser/steering.spec.js:9:1 › Workspace entry uses steering and preserves failed draft (174ms)
+  ✓  190 tests/browser/trailing-today.spec.js:3:32 › agents: empty, past and new today messages have one today marker (287ms)
+  ✓  188 tests/browser/secretary-preview.spec.js:47:1 › late response after leaving cannot restore preview, two tabs keep independent scopes (478ms)
+  ✓  195 tests/browser/steering.spec.js:16:1 › accepted supplement displays its segment, not the cumulative native turn (133ms)
+  ✓  189 tests/browser/runtime-migration.spec.js:53:40 › metadata drift permits local donor and explicit switch (528ms)
+  ✓  198 tests/browser/steering.spec.js:23:1 › Claude steering labels uncertain timing without changing Codex label (129ms)
+  ✓  191 tests/browser/sidebar-order.spec.js:29:1 › cross-project drop is ignored; conflict restores server order with an error (545ms)
+  ✓  201 tests/browser/sidebar-order.spec.js:35:1 › keyboard ordering uses the same save and mobile handles do not overflow (141ms)
+  ✓  149 tests/browser/scoped-sync-review.spec.js:5:1 › scoped HTTP conversations: summary, switch, paging, race, unread, drafts and reconnect (3.5s)
+(node:1680741) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+  ✓  200 tests/browser/ui-polish.spec.js:7:67 › light 1440: rename placeholder, combined completion and real fixture-file usage (299ms)
+  ✓  197 tests/browser/secretary-preview.spec.js:56:31 › preview images enlarge, navigate, survive completion and reopen 1440 (484ms)
+  ✓  199 tests/browser/runtime-migration.spec.js:53:40 › metadata drift permits ssh donor and explicit switch (475ms)
+  ✓  202 tests/browser/sidebar-order.spec.js:39:1 › real sidebar reorder endpoint saves both projects together (316ms)
+  ✓  204 tests/browser/ui-polish.spec.js:7:67 › light 390: rename placeholder, combined completion and real fixture-file usage (311ms)
+  ✓  203 tests/browser/unified-requests.spec.js:7:1 › isolated real API and browser preserve nested requests, result handling and root-only attention (471ms)
+  ✓  206 tests/browser/runtime-migration.spec.js:62:87 › candidate rejects target after explicit refresh (385ms)
+  ✓  196 tests/browser/travel.spec.js:14:5 › direct: travel editing, draft restoration, lost-response retry identity and conversation (1.0s)
+  ✓  205 tests/browser/secretary-preview.spec.js:56:31 › preview images enlarge, navigate, survive completion and reopen 390 (477ms)
+  ✓  194 tests/browser/travel-registry.spec.js:3:1 › registered computer/folder CRUD, selection isolation, immutable draft and concurrent editing (1.3s)
+  ✓  208 tests/browser/ui-polish.spec.js:7:67 › dark 1440: rename placeholder, combined completion and real fixture-file usage (325ms)
+  ✓  207 tests/browser/sidebar-order.spec.js:46:1 › touch drag works and Escape cancels without saving (477ms)
+  ✓  211 tests/browser/travel.spec.js:60:1 › old server never silently drops a travel attachment during static-only rollout (357ms)
+  ✓  210 tests/browser/runtime-migration.spec.js:62:87 › candidate rejects user after explicit refresh (381ms)
+  ✓  174 tests/browser/direct.spec.js:173:1 › secretary setup opens local runtime registration, and zoom survives polling until explicit place change (2.7s)
+  ✓  214 tests/browser/ui-polish.spec.js:7:67 › dark 390: rename placeholder, combined completion and real fixture-file usage (282ms)
+  ✓  216 tests/browser/travel.spec.js:72:1 › travel dialog is keyboard accessible and fits a narrow screen (226ms)
+  ✓  209 tests/browser/unified-requests.spec.js:36:1 › isolated persisted failed declaration stays unhandled in API/browser after restart (661ms)
+  ✓  217 tests/browser/direct.spec.js:187:1 › registering a local runtime from secretary entry continues to secretary launch (265ms)
+  ✓  212 tests/browser/village.spec.js:6:1 › registered village, selection, poll movement/deletion, deep link and return; no acknowledgement (635ms)
+  ✓  215 tests/browser/sidebar-order.spec.js:58:1 › project name click still selects; settings order preserves rename draft and Escape keeps dialog open (516ms)
+  ✓  219 tests/browser/work-guidance.spec.js:3:31 › direct original answer stays readable and procedure notice stays internal 1440 (328ms)
+  ✓  218 tests/browser/runtime-migration.spec.js:62:87 › candidate rejects transport after explicit refresh (407ms)
+  ✓  181 tests/browser/status-icons.spec.js:9:1 › default roles, dots and roles preserve other preferences, match headers, rename/poll stable, unknown and escaped labels (2.9s)
+  ✓  177 tests/browser/projects.spec.js:28:1 › sidebar modes persist their own group, restore drafts and reach unassigned Agents without auto-view (3.1s)
+  ✓  224 tests/browser/work-guidance.spec.js:3:31 › direct original answer stays readable and procedure notice stays internal 390 (276ms)
+  ✓  225 tests/browser/runtime-migration.spec.js:62:87 › candidate rejects cwd permission after explicit refresh (377ms)
+  ✓  222 tests/browser/village.spec.js:15:1 › large village, mobile keyboard navigation and three themes stay within viewport (595ms)
+  ✓  226 tests/browser/status-icons.spec.js:16:45 › dark: role colours, attention, animation, narrow wrapping and keyboard selection (454ms)
+  ✓  221 tests/browser/workspace-sync.spec.js:5:43 › incremental workspace retains history, drafts and repeated text through append, lost base and removal (localhost) (688ms)
+  ✓  134 tests/browser/resource-limits.spec.js:4:1 › mobile composer explains oversize and uploads screenshot and 48MP images without resizing (6.0s)
+  ✓  223 tests/browser/sidebar-order.spec.js:67:1 › settings up/down moves keep dialog and draft; boundaries and drag share the same order (628ms)
+  ✓  227 tests/browser/projects.spec.js:41:1 › invalid or removed saved scopes and virtual groups safely fall back to all (536ms)
+  ✓  228 tests/browser/runtime-migration.spec.js:62:87 › candidate rejects current target after explicit refresh (377ms)
+  ✓  220 tests/browser/workshop-pattern.spec.js:9:45 › dark: edit all eight cells, preview and save; sidebar/header share saved pattern (1.0s)
+  ✓  231 tests/browser/sidebar-order.spec.js:76:1 › settings reorder conflict shows error without changing displayed order (257ms)
+  ✓  229 tests/browser/status-icons.spec.js:16:45 › light: role colours, attention, animation, narrow wrapping and keyboard selection (342ms)
+  ✓  232 tests/browser/projects.spec.js:49:1 › configured project/member order controls sidebar, cards and page boundaries after reload (293ms)
+  ✓  233 tests/browser/runtime-migration.spec.js:73:48 › identity match does not bypass unused protection (374ms)
+  ✓  230 tests/browser/workspace-sync.spec.js:5:43 › incremental workspace retains history, drafts and repeated text through append, lost base and removal (http) (684ms)
+  ✓  235 tests/browser/status-icons.spec.js:16:45 › sepia: role colours, attention, animation, narrow wrapping and keyboard selection (403ms)
+  ✓  236 tests/browser/runtime-migration.spec.js:73:48 › identity match does not bypass unknown protection (328ms)
+  ✓  234 tests/browser/workshop-pattern.spec.js:9:45 › light: edit all eight cells, preview and save; sidebar/header share saved pattern (900ms)
+  ✓  238 tests/browser/runtime-migration.spec.js:73:48 › identity match does not bypass sent protection (312ms)
+  ✓  240 tests/browser/runtime-migration.spec.js:81:1 › formal stopped evidence offers explicit adoption with server final authority (335ms)
+  ✓  213 tests/browser/visual-reports.spec.js:4:1 › local upload CLI, real Mermaid, inline image zoom, safe fallback and poll stability (3.0s)
+  ✓  241 tests/browser/runtime-migration.spec.js:87:75 › stopped UI refuses proof (224ms)
+  ✓  239 tests/browser/workshop-pattern.spec.js:9:45 › sepia: edit all eight cells, preview and save; sidebar/header share saved pattern (863ms)
+  ✓  242 tests/browser/runtime-migration.spec.js:87:75 › stopped UI refuses count (228ms)
+  ✓  243 tests/browser/workshop-pattern.spec.js:16:1 › isolated HTTP pattern-only update preserves connection, rejects invalid cells and CLI advertises operation (37ms)
+  ✓  244 tests/browser/runtime-migration.spec.js:87:75 › stopped UI refuses sent (229ms)
+  ✓  245 tests/browser/runtime-migration.spec.js:87:75 › stopped UI refuses unconfirmed (229ms)
+  ✓  246 tests/browser/runtime-migration.spec.js:87:75 › stopped UI refuses donor stopped (228ms)
+  ✓  247 tests/browser/runtime-migration.spec.js:97:31 › retired uncertainty and delayed work remain visible 1440 (299ms)
+  ✓  248 tests/browser/runtime-migration.spec.js:97:31 › retired uncertainty and delayed work remain visible 390 (280ms)
+  ✓  193 tests/browser/board-review.spec.js:62:1 › hidden, unfocused and modal-covered windows do not acknowledge arrivals; focus restoration acknowledges selected only (7.3s)
+  ✓  249 tests/browser/board-review.spec.js:73:1 › stale view rejects newer completion and does not clear it after changing selection (2.7s)
+  ✓  250 tests/browser/board-review.spec.js:79:1 › off-page and archived Agents are not reviewed merely by display (4.9s)
+  ✓  251 tests/browser/board-review.spec.js:86:1 › quiet selection preserves blue and muted green; unread turns alone have no wash or ring (384ms)
+  ✓  252 tests/browser/board-review.spec.js:100:1 › strong green attention and favicon require finalized human request, and Agent selection clears only its viewed revision (426ms)
+  ✓  237 tests/browser/workspace-sync.spec.js:28:1 › slow HTTP initial sync survives ten seconds and recovers from an interrupted delta (16.9s)
+  ✓  253 tests/browser/workspace-sync.spec.js:45:1 › quick change notifications keep the connected footer without flashing the syncing text (295ms)
+  ✓  254 tests/browser/workspace-sync.spec.js:57:1 › initial sync shows immediately and subsequent sync uses last success age (203ms)
+
+
+  1) tests/browser/image-gestures.spec.js:16:31 › wheel anchor, bounds, keyboard, snapshot and focus 390
+
+    Error: expect(received).toBeGreaterThanOrEqual(expected)
+
+    Expected: >= 369.0875
+    Received:    368.796875
+
+      25 |  // Keyboard arrows pan while enlarged; no accidental image navigation.
+      26 |  await v.focus();await page.keyboard.press('ArrowRight');await expect(d.locator('[data-count]')).toHaveText('1 / 2');await page.keyboard.press('0');await expect(v).toHaveAttribute('data-scale','1');await page.keyboard.press('ArrowRight');await expect(d.locator('[data-count]')).toHaveText('2 / 2');await expect(v).toHaveAttribute('data-scale','1');
+    > 27 |  for(let i=0;i<14;i++)await page.keyboard.press('+');await expect(v).toHaveAttribute('data-scale','8');for(let i=0;i<30;i++)await page.keyboard.press('ArrowLeft');const clamped=await img.boundingBox();expect(clamped.x).toBeLessThanOrEqual(box.x+.1);expect(clamped.x+clamped.width).toBeGreaterThanOrEqual(box.x+box.width-.1);
+         |                                                                                                                                                                                                                                                                                          ^
+      28 |  const src=await img.getAttribute('src');r.livePreview.messages[0].text='Images removed during viewing';r.output='Images removed during viewing';await notifySnapshot(page);await expect(img).toHaveAttribute('src',src);await page.keyboard.press('Escape');await expect(page.locator('.secretary-preview')).toContainText('Images removed during viewing');await expect(page.locator('#agent-s .runs')).toBeFocused();
+      29 |  expect(writes).toEqual([]);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:`/tmp/exploration-fixes-focus-${width}.png`});
+      30 | });
+        at /home/eletim/ai-village-exploration-fixes/tests/browser/image-gestures.spec.js:27:282
+
+    Error Context: test-results/image-gestures-wheel-ancho-df41c-oard-snapshot-and-focus-390/error-context.md
+
+  1 failed
+    tests/browser/image-gestures.spec.js:16:31 › wheel anchor, bounds, keyboard, snapshot and focus 390
+  253 passed (32.9s)

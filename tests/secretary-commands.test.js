@@ -137,7 +137,7 @@ for(const action of ['ask','followup'])test('real consultation allows '+action,a
 test('failed leader guidance cannot be followed via followup',async t=>{
  const {f,human,first}=await purposeFixture(t),v=cli(f);await f.service.tick();const leader=f.service.flow.run(first.runId);await f.submit(leader);await f.complete(leader,'failed');
  const c=f.service.conversations.record(human.conversationId),e=c.deliveries.at(-1),r=f.service.flow.run(e.runId);await f.submit(r);
- const bad=await v('accept','--run',r.id,'採用');assert.equal(bad.ok,false);assert.match(bad.error,/相談への回答はfollowup/);
+ const bad=await v('accept','--run',r.id,'採用');assert.equal(bad.ok,false);assert.match(bad.error,/village status.*保存記録.*人間/);assert.doesNotMatch(bad.error,/followup/);
  const out=await v('followup','--run',r.id,'修正してください');assert.equal(out.ok,false);assert.match(out.error,/失敗・受付不明/);t.diagnostic(JSON.stringify({kind:e.kind,accept:bad.error,followup:out.error}));
 });
 
@@ -154,4 +154,13 @@ test('each documented refusal has guidance, preserving the original core reason'
   f.service.conversations.job=async()=>{throw Object.assign(Error(reason),{status:409});};
   const out=await village('order','--run',human.id,'作業');assert.equal(out.ok,false);assert(out.error.includes(reason));assert(out.error.includes('案内: '),prefix);assert(out.error.includes(hint),prefix);
  }
+});
+test('accept guidance distinguishes question/extension from stop/state reports without mutation',async t=>{
+ const {f,first,completeJob}=await purposeFixture(t),v=cli(f),one=await completeJob(first);
+ for(const kind of ['question','extension','attention','important-change']){
+  one.event.kind=kind;const out=await v('accept','--run',one.delivery.id,'確認');assert.equal(out.ok,false);
+  if(['question','extension'].includes(kind))assert.match(out.error,/相談への回答はfollowup.*質問はask/);
+  else {assert.match(out.error,/status.*保存記録.*人間/);assert.doesNotMatch(out.error,/followup/);}
+ }
+ assert.equal(f.service.data.conversations[0].purposeDecisions?.length||0,0);
 });

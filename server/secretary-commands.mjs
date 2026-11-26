@@ -99,6 +99,7 @@ export class SecretaryCommands {
   this.d.conversations.actor(x.c,run);
   const {event,q,current}=target;
   if(!event)fail('未判断の正式配送済み成果がありません。village status で確認してください。');
+  if(action==='accept'&&['attention','important-change'].includes(event.kind))fail('停止・状態変更の報告はacceptできません。village status で状態を確認し、保存記録を照合して人間に状況を説明してください。送信は繰り返さないでください。');
   if(action==='accept'&&event.kind!=='result')fail('成果ではない資料はacceptできません。相談への回答はfollowup、人間への質問はaskを使ってください。');
   const view=purposeView(this.d.data,q);
   if(!current&&view.decision?.deliveryId===event.id&&['pending','committed','continued'].includes(view.decision.state))fail('この目的は判断済み、または判断の確定待ちです。village status で確認してください。');
