@@ -252,3 +252,34 @@ test('recheck blocks later changes before save, dispatch and apply and rolls bac
   assert.equal(d.data.runs.filter(r=>r.secretaryRecovery).length,0);
  }
 });
+
+
+test('recovery pins resolved same-turn reviewer while original payload remains idempotent',async t=>{
+ const x=await rechecked(t),{d,f}=x;
+ const successor=await d.send(x.human.agentId,{mode:'conversation',requestId:id(),instruction:'元範囲のまま進めて'});await f.submit(successor);
+ assert.equal(d.conversations.currentActor(x.human).id,successor.id);
+ x.recover.recheck.inputs=laterHumanReferences(d,x.source,x.entry);
+ const receipt=await d.conversations.relayRecover(x.recover);
+ assert.equal(x.entry.recovery.actorRunId,successor.id);
+ assert.equal(JSON.parse(x.entry.recovery.payload).actorRunId,x.human.id);
+ assert.deepEqual(await d.conversations.relayRecover(x.recover),receipt);
+ await d.tick();const receiver=d.flow.run(receipt.runId);await f.submit(receiver);
+ const result=await d.conversations.relayApply({conversationId:receiver.conversationId,actorRunId:receiver.id,operationId:id(),deliveryId:receipt.deliveryId});
+ assert.equal(result.previousRunId,x.old.id);assert.equal(d.data.runs.filter(r=>r.secretaryRecovery).length,1);
+});
+test('pinned reviewer never follows a later human and rejects unaccepted or foreign-session successors',async t=>{
+ for(const variant of ['later','unaccepted','session']){
+  const x=await rechecked(t),{d,f}=x;
+  const successor=await d.send(x.human.agentId,{mode:'conversation',requestId:id(),instruction:'元範囲を確認'});
+  if(variant!=='unaccepted')await f.submit(successor);
+  if(variant==='session')successor.sessionId='foreign-session';
+  x.recover.recheck.inputs=laterHumanReferences(d,x.source,x.entry);
+  if(variant!=='later'){
+   await assert.rejects(d.conversations.relayRecover(x.recover));assert.equal(d.data.runs.filter(r=>r.relayRecoveryOf).length,0);continue;
+  }
+  const receipt=await d.conversations.relayRecover(x.recover),reviewer=x.entry.recovery.actorRunId;
+  await d.send(x.human.agentId,{mode:'conversation',requestId:id(),instruction:'復旧を中止'});
+  const before=f.sent.length;await d.tick();assert.equal(f.sent.length,before);assert.equal(x.entry.recovery.actorRunId,reviewer);
+  assert.equal(d.flow.run(receipt.runId).runModel.state.kind,'ended');assert.equal(d.data.runs.filter(r=>r.secretaryRecovery).length,0);
+ }
+});

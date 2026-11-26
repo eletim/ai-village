@@ -129,7 +129,7 @@ export class SecretaryRelay {
     const old=d.flow.run(e.runId);
     if(old?.runModel?.state.kind!=='ended'||old.runModel.state.outcome!=='unconfirmed'||old.runModel.state.reason!=='turn-ended-without-marker'||old.error!=='competing-or-unmatched-input'||accepted(old)||old.runModel.facts.some(f=>f.type==='input')||old.conversationSource?.relayId!==e.id)fail('対象は未受付の混入入力だけです');
     if(d.data.runs.some(r=>r.agentId===b.a.id&&['queued','sent','running'].includes(r.runModel?.state.kind))||d.data.runs.some(r=>r.secretaryRecovery?.previousRunId===e.target.currentRunId))fail('別の未終了runまたは既存の再開があります');
-    return {e,b,old,recheck};
+    return {e,b,old,recheck,actorRunId:actor.id};
    };
    const first=check();if(first.saved)return d.persist(async()=>structuredClone(first.e.recovery.receipt));
    const oldDigest=hash(first.old);
@@ -146,7 +146,7 @@ export class SecretaryRelay {
     const e=current.e,r=d.conversations.enqueue(recipient,{requestId:'secretary-relay-recovery:'+e.id,source:{kind:'secretary',relayId:e.id},instruction:current.old.instruction});
     r.relayRecoveryOf=e.runId;r.relayRecoveryBoundary={sessionId:snapshot.sessionId,fileIdentity:snapshot.fileIdentity,cursor:snapshot.cursor};
     const receipt={deliveryId:e.id,conversationId:recipient.id,runId:r.id,previousRunId:e.runId,purposeId:e.target.purposeId};
-    e.recovery={...(current.recheck?{recheck:current.recheck}:{}),operationId:x.operationId,payload,actorRunId:x.actorRunId,previousRunId:e.runId,proof,receipt,createdAt:new Date().toISOString()};
+    e.recovery={...(current.recheck?{recheck:current.recheck}:{}),operationId:x.operationId,payload,actorRunId:current.actorRunId,previousRunId:e.runId,proof,receipt,createdAt:new Date().toISOString()};
     await d.save();return structuredClone(receipt);
    });
   }));
