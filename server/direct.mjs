@@ -548,6 +548,12 @@ export class DirectAgents {
       confirmed=await this.observe(a);chooseConversationTarget(confirmed);
       if(!allowed(confirmed))return r;
     }
+    if(r.relayRecoveryOf){
+      const boundary=r.relayRecoveryBoundary;
+      if(!boundary||!confirmed.available||confirmed.incompleteTail||confirmed.more||confirmed.sessionId!==boundary.sessionId||confirmed.fileIdentity!==boundary.fileIdentity||confirmed.cursor!==boundary.cursor)return blocked('relay-recovery-native-changed','回復確認後にnativeが変化しました。自動送信しません。');
+      let cap;try{cap=await this.pmux(a,'tab','capabilities');}catch{}
+      if(cap?.guardedCodexInput?.version!==1||cap.guardedCodexInput.client!==1)return blocked('relay-recovery-guard-unavailable','入力欄を保護するPurpleMux server/CLIが必要です。未送信です。');
+    }
     const status=a.runtime;
     if(runState(r)!=='queued'||r.phase==='report'&&!this.flow.reportCurrent(r))return r;
     // Contract 3 secretary turn (4.1, 4.4): only the tag; the Project policy is mentioned once when
@@ -581,7 +587,7 @@ export class DirectAgents {
     if(deliveredInstruction===null)return r;
     if(this.agentDeleting(a))return blocked('project-deletion-before-dispatch');
     let sent=false;
-    try{await this.pmux(a,'tab','send','-w',a.workspaceId,a.tabId,deliveredInstruction);sent=true;}catch{/* An uncertain transport is never replayed. */}
+    try{await this.pmux(a,'tab','send','-w',a.workspaceId,...(r.relayRecoveryOf?['--require-empty-codex']:[]),a.tabId,deliveredInstruction);sent=true;}catch{/* An uncertain transport is never replayed. */}
     await this.persist(async()=>{
       if(sent)changeRun(r,{type:'transport-ack',actor:'program',at:Date.now()});
       else{r.unknownSince ||= now();r.error='送信結果不明。native入力を照合します。自動再送しません。';}

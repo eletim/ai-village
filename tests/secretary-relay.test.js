@@ -132,3 +132,72 @@ test('source later-human stops apply, receipt return is finite on failed receive
 });
 
  test('existing contract 3 secretaries use the same relay without runtime replacement',async t=>{const x=await setup(t,{contract3:true}),{r,input}=await received(x);assert(x.d.conversations.context(r).includes('<village run="'));assert(!x.d.conversations.context(r).includes('ai-village-request'));const result=await x.d.conversations.relayApply(input);assert.equal(result.humanRequestId,x.job.humanRequestId);await x.f.complete(r);assert.equal(x.d.data.runs.filter(r=>r.conversationSource?.relayReturnId===input.deliveryId).length,1);});
+
+async function contaminated(t){
+ const x=await setup(t),receipt=await x.d.conversations.relay(x.send);await x.d.tick();const r=x.d.flow.run(receipt.runId),native=x.f.runtimes.get(r.agentId),tid=id(),text='未送信の旧連絡\n'+x.f.sent.findLast(s=>s.agentId===r.agentId).text;
+ native.inputs.push({id:'mixed-'+tid,turnId:tid,offset:++native.cursor,explicitTurn:true,source:'response',text});native.turns.push({id:tid,state:'completed',output:'API拒否',completionOffset:++native.cursor});await x.d.tick();
+ assert.equal(r.runModel.state.outcome,'unconfirmed');assert.equal(r.error,'competing-or-unmatched-input');
+ const pmux=x.d.pmux.bind(x.d);x.d.pmux=(a,...args)=>args[1]==='capabilities'?Promise.resolve({guardedCodexInput:{version:1,client:1}}):pmux(a,...args);
+ return {...x,receipt,r,native,recover:{conversationId:x.sender.conversationId,actorRunId:x.sender.id,operationId:id(),deliveryId:receipt.deliveryId,nativeInputHash:inputHash(text),nativeTurnId:tid}};
+}
+
+test('contaminated relay recovery preserves unknown/history, receives exactly, applies once and survives restart',async t=>{
+ const x=await contaminated(t),{d,f,r,native}=x,before=structuredClone(r),original=d.conversations.record(r.conversationId).relayInbox[0];
+ const legacyReceipt=structuredClone(original),receipt=await d.conversations.relayRecover(x.recover);
+ assert.deepEqual(r,before);assert.equal(original.runId,r.id);assert.equal(original.returnRunId,legacyReceipt.returnRunId);
+ assert.deepEqual(await d.conversations.relayRecover(x.recover),receipt);
+ await assert.rejects(d.conversations.relayRecover({...x.recover,operationId:id()}),/一度/);
+ const pmux=d.pmux.bind(d);d.pmux=(a,...args)=>args[1]==='capabilities'?Promise.resolve({guardedCodexInput:{version:1,client:1}}):pmux(a,...args);
+ await d.tick();const rr=d.flow.run(receipt.runId);await f.submit(rr);
+ const apply={conversationId:r.conversationId,actorRunId:rr.id,operationId:id(),deliveryId:receipt.deliveryId};
+ const result=await d.conversations.relayApply(apply);assert.equal(result.previousRunId,x.old.id);assert.equal(d.data.runs.filter(r=>r.secretaryRecovery).length,1);assert.deepEqual(r,before);
+ await f.complete(rr);assert(original.recovery.returnRunId);assert.notEqual(original.recovery.returnRunId,original.returnRunId);
+ await f.restart();assert.deepEqual(await f.service.conversations.relayRecover(x.recover),receipt);assert.deepEqual(await f.service.conversations.relayApply(apply),result);
+});
+
+test('recovery rejects changed proof, foreign source, later native, later human, changed target and applied delivery',async t=>{
+ for(const variant of ['hash','turn','source','native','source-human','target-human','revision','applied','unclosed','session']){
+  const x=await contaminated(t),{d,r,native}=x;const input={...x.recover};
+  if(variant==='hash')input.nativeInputHash='0'.repeat(64);
+  if(variant==='turn')input.nativeTurnId=id();
+  if(variant==='source')input.conversationId=r.conversationId;
+  if(variant==='native')native.inputs.push({...native.inputs.at(-1),id:id(),offset:++native.cursor});
+  if(variant==='source-human')await d.send(x.sender.agentId,{mode:'conversation',requestId:id(),instruction:'中止'});
+  if(variant==='target-human')await d.send(r.agentId,{mode:'conversation',requestId:id(),instruction:'中止'});
+  if(variant==='revision')d.flow.root(x.job.humanRequestId).revision++;
+  if(variant==='applied')d.conversations.record(r.conversationId).relayInbox[0].actionReceipt={action:'amend'};
+  if(variant==='unclosed')native.turns.at(-1).state='running';
+  if(variant==='session')native.sessionId=id();
+  await assert.rejects(d.conversations.relayRecover(input),undefined,variant);assert.equal(d.data.runs.filter(r=>r.relayRecoveryOf).length,0);
+ }
+});
+
+test('recovery concurrent calls, save rollback and commit uncertainty cannot duplicate',async t=>{
+ const x=await contaminated(t),d=x.d,write=d.store.write,before=JSON.stringify(d.data);
+ d.store.write=()=>{throw Error('rollback proof');};await assert.rejects(d.conversations.relayRecover(x.recover),/rollback proof/);assert.equal(JSON.stringify(d.data),before);d.store.write=write;
+ const [a,b]=await Promise.all([d.conversations.relayRecover(x.recover),d.conversations.relayRecover(x.recover)]);assert.deepEqual(a,b);assert.equal(d.data.runs.filter(r=>r.relayRecoveryOf).length,1);
+ const y=await contaminated(t);y.d.store.write=()=>{throw Object.assign(Error('commit uncertain'),{persistenceUncertain:true});};await assert.rejects(y.d.conversations.relayRecover(y.recover),/commit uncertain/);await assert.rejects(y.d.conversations.relayRecover(y.recover),/commit uncertain/);
+});
+
+test('recovery dispatch rejects unavailable guarded transport and changed native without sending',async t=>{
+ for(const variant of ['capability','native']){
+  const x=await contaminated(t),receipt=await x.d.conversations.relayRecover(x.recover),before=x.f.sent.length;
+  if(variant==='native')x.native.cursor++;
+  if(variant==='capability'){const pmux=x.d.pmux.bind(x.d);x.d.pmux=(a,...args)=>args[1]==='capabilities'?Promise.resolve({}):pmux(a,...args);}
+  await x.d.tick();assert.equal(x.f.sent.length,before);assert.equal(x.d.flow.run(receipt.runId).runModel.state.kind,'ended');
+ }
+});
+
+test('native arriving between evidence read and save refuses recovery',async t=>{
+ const x=await contaminated(t),runtime=x.d.runtime.bind(x.d);let reads=0;
+ x.d.runtime=async(a,s)=>{const snapshot=structuredClone(await runtime(a,s));if(++reads===1)x.native.inputs.push({...x.native.inputs.at(-1),id:id(),offset:++x.native.cursor});return snapshot;};
+ await assert.rejects(x.d.conversations.relayRecover(x.recover),/native/);assert.equal(x.d.data.runs.filter(r=>r.relayRecoveryOf).length,0);
+});
+
+test('human input racing recovery is serialized and prevents apply when it arrives after creation',async t=>{
+ const x=await contaminated(t),runtime=x.d.runtime.bind(x.d);let human;
+ x.d.runtime=async(a,s)=>{const snapshot=await runtime(a,s);human ||= x.d.send(x.sender.agentId,{mode:'conversation',requestId:id(),instruction:'復旧を保留して'});return snapshot;};
+ const recovered=await x.d.conversations.relayRecover(x.recover);await human;
+ await x.d.tick();const r=x.d.flow.run(recovered.runId);await x.f.submit(r);
+ await assert.rejects(x.d.conversations.relayApply({conversationId:r.conversationId,actorRunId:r.id,operationId:id(),deliveryId:recovered.deliveryId}),/後着/);assert.equal(x.d.data.runs.filter(r=>r.secretaryRecovery).length,0);
+});
