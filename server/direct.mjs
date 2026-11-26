@@ -1,3 +1,4 @@
+import {initialRelayObservation,bindInitialRelayRuntime} from './relay-initial-launch.mjs';
 import {previewMessages} from './secretary-preview.mjs';
 import {retireDecisionReminder} from './conversation-decision-recovery.mjs';
 import {secretaryHandoverPlan,handoverSecretary} from './secretary-handover.mjs';
@@ -548,6 +549,13 @@ export class DirectAgents {
       confirmed=await this.observe(a);chooseConversationTarget(confirmed);
       if(!allowed(confirmed))return r;
     }
+    if(r.relayRecoveryOf){
+      try{this.conversations.relayService.dispatchBoundary(r);}catch{return blocked('relay-recovery-context-changed','回復確認後に入力・対象・許可が変化しました。自動送信しません。');}
+      const boundary=r.relayRecoveryBoundary;
+      if(!boundary||!confirmed.available||confirmed.incompleteTail||confirmed.more||confirmed.sessionId!==boundary.sessionId||confirmed.fileIdentity!==boundary.fileIdentity||confirmed.cursor!==boundary.cursor)return blocked('relay-recovery-native-changed','回復確認後にnativeが変化しました。自動送信しません。');
+      let cap;try{cap=await this.pmux(a,'tab','capabilities');}catch{}
+      if(cap?.guardedCodexInput?.version!==1||cap.guardedCodexInput.client!==1)return blocked('relay-recovery-guard-unavailable','入力欄を保護するPurpleMux server/CLIが必要です。未送信です。');
+    }
     const status=a.runtime;
     if(runState(r)!=='queued'||r.phase==='report'&&!this.flow.reportCurrent(r))return r;
     // Contract 3 secretary turn (4.1, 4.4): only the tag; the Project policy is mentioned once when
@@ -556,6 +564,7 @@ export class DirectAgents {
     const guide=plain&&a.projectId?await this.projectGuides.get(a.projectId,'secretary').catch(()=>null):null;
     const deliveredInstruction=await this.persist(async()=>{
       if(retireDecisionReminder(this.data,r)){await this.save();return null;}
+      if(r.relayRecoveryOf)this.conversations.relayService.dispatchBoundary(r);
       if(this.agentDeleting(a)||runState(r)!=='queued'||r.phase==='report'&&!this.flow.reportCurrent(r))return null;
       if(!retirementIntact(this.data,a)||!retirementRunAllowed(this.data,a,r))return null;
       const compatibility=legacyAllowed(a);if(a.inputEnvelope?.mode!=='startup-v2'&&!compatibility)return null;
@@ -581,7 +590,7 @@ export class DirectAgents {
     if(deliveredInstruction===null)return r;
     if(this.agentDeleting(a))return blocked('project-deletion-before-dispatch');
     let sent=false;
-    try{await this.pmux(a,'tab','send','-w',a.workspaceId,a.tabId,deliveredInstruction);sent=true;}catch{/* An uncertain transport is never replayed. */}
+    try{await this.pmux(a,'tab','send','-w',a.workspaceId,...(r.relayRecoveryOf?['--require-empty-codex']:[]),a.tabId,deliveredInstruction);sent=true;}catch{/* An uncertain transport is never replayed. */}
     await this.persist(async()=>{
       if(sent)changeRun(r,{type:'transport-ack',actor:'program',at:Date.now()});
       else{r.unknownSince ||= now();r.error='送信結果不明。native入力を照合します。自動再送しません。';}
@@ -622,6 +631,8 @@ export class DirectAgents {
     if(!this.units.context.getStore()?.agentIds?.has(a.id))return this.units.agent(a.id,()=>this.observe(a));
     if(this.agentDeleting(a))return this.persist(async()=>{this.releaseStuckRuns(a);this.updateAvailability(a);await this.save();return {available:false,turns:[],inputs:[]};});
     try{
+      const initial=this.data.runs.find(r=>r.agentId===a.id&&r.relayInitial&&active(r)&&!r.turnId);
+      if(initial&&!a.sessionName)await bindInitialRelayRuntime(this.conversations.relayService,a,initial);
       let s;
       try{s=await this.observationPmux(a,'tab','status','-w',a.workspaceId,a.tabId);}catch(error){
         const {tabs}=await this.observationPmux(a,'tab','list','-w',a.workspaceId);
@@ -658,6 +669,11 @@ export class DirectAgents {
       if(a.contractVerifiedSessionId&&observation.process==='absent')delete a.contractVerifiedSessionId;
       if(snapshot.sessionId)a.observedSessionId=snapshot.sessionId;
       for(const r of this.data.runs.filter(r=>r.agentId===a.id&&active(r)&&!quarantinedRun(this.data,r))){
+        if(r.relayInitial&&!r.turnId){
+          let initial;try{initial=await initialRelayObservation(this.conversations.relayService,a,r,snapshot,s);}catch(error){r.error=error.message;continue;}
+          if(!initial){r.error='初回起動のreceipt/本文を照合中。自動再送しません';continue;}
+          Object.assign(r.relayInitial,initial);r.baselineRuntime={sessionId:initial.sessionId,fileIdentity:initial.fileIdentity,cursor:0};
+        }
         const observation=correlate(r,snapshot);
         observeRun(r,observation,snapshot);
         if(observation.turnId&&a.location==='mayor'&&r.conversationId)r.livePreview=observation.livePreview;else if(r.livePreview)delete r.livePreview;

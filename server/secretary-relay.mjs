@@ -1,4 +1,7 @@
+import {reserveInitialRelay,launchInitialRelay,initialRelayObservation} from './relay-initial-launch.mjs';
 import {randomUUID,createHash} from 'node:crypto';
+import {checkRelayRecheck} from './secretary-relay-recheck.mjs';
+import {recoveryEvidence} from './secretary-relay-recovery.mjs';
 import {accepted,runState} from './run-lifecycle.mjs';
 import {confirmedInterruption} from './state/run.ts';
 import {resolveFollowup} from './conversation-followup.mjs';
@@ -10,6 +13,7 @@ const fields=(x,allowed)=>{if(!x||typeof x!=='object'||Array.isArray(x)||Object.
 const text=x=>{if(typeof x!=='string'||!x.trim()||x.length>12000)fail('本文は1〜12000文字です',400);return x;};
 const key=x=>{if(typeof x!=='string'||! /^[\w-]{8,100}$/.test(x))fail('操作IDが必要です',400);};
 const humanSequence=(d,c)=>Math.max(0,...d.data.runs.filter(r=>r.conversationId===c.id&&r.conversationSource?.kind==='human'&&!r.queueCancelledAt).map(r=>r.conversationSequence));
+export const relayRunId=e=>e.recovery?.receipt.runId||e.runId;
 const stopped=r=>{const input=r?.runModel?.facts.findLast(f=>f.type==='input');return r?.runModel&&confirmedInterruption(r.runModel)&&accepted(r)&&r.inputId===input.inputId&&r.sessionId===input.sessionId&&r.turnId===input.turnId;};
 function target(d,t){
  const c=d.conversations.record(t.conversationId),a=d.writableAgent(d.agent(c.agentId));d.writableProject(c.projectId);
@@ -34,19 +38,25 @@ export class SecretaryRelay {
    for(const e of inbox){
     const source=d.data.conversations.find(s=>s.id===e.sourceConversationId),receipt=source?.relaySent?.find(s=>s.receipt.deliveryId===e.id),r=d.flow.run(e.runId),sender=d.flow.run(e.sourceRunId);
     if(!receipt||receipt.receipt.runId!==e.runId||receipt.actorRunId!==e.sourceRunId||sender?.conversationId!==source.id||!accepted(sender)||r?.conversationId!==c.id||r.conversationSource?.relayId!==e.id||r.conversationSource.kind!=='secretary'||e.target.conversationId!==c.id)fail('Invalid secretary relay linkage');
+    if(e.recovery){
+     const rr=d.flow.run(e.recovery.receipt.runId);
+     if(e.recovery.previousRunId!==e.runId||rr?.conversationId!==c.id||rr.conversationSource?.relayId!==e.id||rr.conversationSource.kind!=='secretary'||rr.relayRecoveryOf!==e.runId||!e.recovery.proof?.inputHash)fail('Invalid secretary recovery linkage');
+     if(rr.relayInitial){const i=rr.relayInitial,l=i.launch,a=d.agent(rr.agentId);if(l?.runId!==rr.id||l.operationId!==e.recovery.initialLaunchId||l.tabId!=='tab-relay-'+l.operationId||createHash('sha256').update(l.body).digest('hex')!==rr.inputCorrelation?.digest||!a.retainedRelayRuntimes?.some(old=>old.operationId===l.operationId&&old.runId===rr.id&&hash(old.runtime)===hash(i.oldRuntime)))fail('Invalid initial relay linkage');}
+    }
     if(e.actionReceipt?.action==='resume-interrupted'){
      const resumed=d.flow.run(e.actionReceipt.runId);
      if(resumed?.secretaryRecovery?.deliveryId!==e.id||resumed.secretaryRecovery.previousRunId!==e.target.currentRunId||resumed.humanRequestId!==e.target.requestId||resumed.workId!==e.target.workId||resumed.runModel.createdBy!=='agent')fail('Invalid secretary resume receipt');
     }
+    if(e.recovery?.returnRunId){const rr=d.flow.run(e.recovery.returnRunId);if(rr?.conversationId!==source.id||rr.conversationSource?.relayReturnId!==e.id)fail('Invalid recovery return receipt');}
     if(e.returnRunId){const r=d.flow.run(e.returnRunId);if(r?.conversationId!==source.id||r.conversationSource?.relayReturnId!==e.id)fail('Invalid secretary return receipt');}
    }
    for(const s of sent)if(!d.data.conversations.some(target=>target.relayInbox?.some(e=>e.id===s.receipt.deliveryId&&e.sourceConversationId===c.id)))fail('Missing secretary relay delivery');
   }
  }
  // Bind the one historical recovery subject, not IDs invented in a new message.
- evidence(c,actor,x){
+ evidence(c,actor,x,recheck){
   const d=this.d,authorization=d.conversations.authorize(c,actor,x.authorization),human=d.flow.run(authorization.runId);
-  if(humanSequence(d,c)!==human.conversationSequence)fail('後着の人間入力があります。許可を再照合してください');
+  if(!recheck&&humanSequence(d,c)!==human.conversationSequence)fail('後着の人間入力があります。許可を再照合してください');
   const event=c.deliveries.find(e=>e.id===x.evidenceDeliveryId),review=event&&d.flow.run(event.runId);
   if(!review||review.conversationId!==c.id||review.conversationSource?.deliveryId!==event.id||review.conversationSource?.humanRequestId!==event.humanRequestId||event.decisionRecovery||review.conversationSequence+1!==human.conversationSequence||!accepted(review)||runState(review)!=='completed'||!['question','result'].includes(event.kind))fail('直前に正式配送・正常返答された復旧資料が必要です',403);
   const recovery=d.flow.root(event.humanRequestId),rw=rootNode(recovery),reportRun=d.flow.run(event.material.actorRunId||event.material.runId);
@@ -98,20 +108,77 @@ export class SecretaryRelay {
   }));
  }
  event(c,actor,id){
-  const e=(c.relayInbox||[]).find(e=>e.id===id&&e.runId===actor.id&&actor.conversationSource?.relayId===e.id);
+  const e=(c.relayInbox||[]).find(e=>e.id===id&&relayRunId(e)===actor.id&&actor.conversationSource?.relayId===e.id);
   if(!e)fail('今回の正式中継だけを操作できます',403);return e;
+ }
+ async recover(x){
+  fields(x,['conversationId','actorRunId','operationId','deliveryId','nativeInputHash','nativeTurnId','recheck','freshTui']);key(x.operationId);
+  if(!/^[a-f0-9]{64}$/.test(x.nativeInputHash||'')||typeof x.nativeTurnId!=='string')fail('保存nativeのinput hashとturn IDが必要です',400);
+  const d=this.d,source=d.conversations.record(x.conversationId),sent=source.relaySent?.find(s=>s.receipt.deliveryId===x.deliveryId);
+  if(!sent)fail('送信元本人の配送だけ回復できます',403);
+  const recipient=d.conversations.record(sent.receipt.conversationId);
+  return d.locked('request-graph',()=>d.locked(recipient.agentId,async()=>{
+   const payload=JSON.stringify(x);
+   if(x.freshTui!==undefined)fields(x.freshTui,['handover']);
+   const check=()=>{
+    const c=d.conversations.record(x.conversationId),e=d.conversations.record(recipient.id).relayInbox.find(e=>e.id===x.deliveryId);
+    if(e?.recovery){if(e.recovery.payload!==payload)fail('この配送の回復は一度だけです');return {e,saved:true};}
+    const actor=d.conversations.actor(c,x.actorRunId);
+    if(!e||c.agentId!==e.sourceSecretaryId||actor.agentId!==e.sourceSecretaryId||actor.conversationSource?.kind==='secretary')fail('送信元本人の正式runが必要です',403);
+    if(e.actionReceipt||e.target.mode!=='resume-interrupted'||humanSequence(d,recipient)!==e.targetHumanSequence)fail('適用済み・後着入力・回復対象外です');
+    const recheck=x.recheck?checkRelayRecheck(d,c,e,x.recheck,actor):null;
+    const b=target(d,e.target),proof=this.evidence(c,actor,{authorization:e.authorization,evidenceDeliveryId:e.evidenceDeliveryId,target:e.target},recheck);
+    if(proof.evidenceDigest!==e.evidenceDigest||!c.relaySent.some(s=>s.receipt.deliveryId===e.id&&s.receipt.runId===e.runId&&s.actorRunId===e.sourceRunId))fail('保存許可が一致しません',403);
+    const old=d.flow.run(e.runId);
+    if(old?.runModel?.state.kind!=='ended'||old.runModel.state.outcome!=='unconfirmed'||old.runModel.state.reason!=='turn-ended-without-marker'||old.error!=='competing-or-unmatched-input'||accepted(old)||old.runModel.facts.some(f=>f.type==='input')||old.conversationSource?.relayId!==e.id)fail('対象は未受付の混入入力だけです');
+    if(d.data.runs.some(r=>r.agentId===b.a.id&&['queued','sent','running'].includes(r.runModel?.state.kind))||d.data.runs.some(r=>r.secretaryRecovery?.previousRunId===e.target.currentRunId))fail('別の未終了runまたは既存の再開があります');
+    return {e,b,old,recheck,actorRunId:actor.id};
+   };
+   const first=check();if(first.saved)return d.persist(async()=>structuredClone(first.e.recovery.receipt));
+   const oldDigest=hash(first.old);
+   const cap=await d.pmux(first.b.a,'tab','capabilities');
+   if(x.freshTui ? cap?.initialCodexLaunch?.version!==1||cap.initialCodexLaunch.client!==1 : cap?.guardedCodexInput?.version!==1||cap.guardedCodexInput.client!==1)fail(x.freshTui?'回復前にPurpleMux initialCodexLaunch server/CLIが必要です':'回復前にPurpleMux guardedCodexInput server/CLIが必要です');
+   const status=await d.pmux(first.b.a,'tab','status','-w',first.b.a.workspaceId,first.b.a.tabId),snapshot=await d.runtime(first.b.a,status);
+   const proof=recoveryEvidence(first.old,snapshot,status,x);
+   const result=await d.persist(async()=>{
+    const beforeSaveStatus=await d.pmux(first.b.a,'tab','status','-w',first.b.a.workspaceId,first.b.a.tabId);
+    const beforeSave=await d.runtime(first.b.a,beforeSaveStatus);
+    if(hash(recoveryEvidence(first.old,beforeSave,beforeSaveStatus,x))!==hash(proof))fail('証拠読取後にnativeが変化しました');
+    const current=check();if(current.saved)return structuredClone(current.e.recovery.receipt);
+    if(hash(current.old)!==oldDigest)fail('旧配送が変化しました');
+    const e=current.e,r=d.conversations.enqueue(recipient,{requestId:'secretary-relay-recovery:'+e.id,source:{kind:'secretary',relayId:e.id},instruction:current.old.instruction});
+    r.relayRecoveryOf=e.runId;r.relayRecoveryBoundary={sessionId:snapshot.sessionId,fileIdentity:snapshot.fileIdentity,cursor:snapshot.cursor};
+    const receipt={deliveryId:e.id,conversationId:recipient.id,runId:r.id,previousRunId:e.runId,purposeId:e.target.purposeId};
+    e.recovery={...(current.recheck?{recheck:current.recheck}:{}),operationId:x.operationId,payload,actorRunId:current.actorRunId,previousRunId:e.runId,proof,receipt,createdAt:new Date().toISOString()};
+    if(x.freshTui)reserveInitialRelay(d,current.b.a,r,e,x.freshTui.handover);
+    await d.save();return structuredClone(receipt);
+   });
+   if(x.freshTui)await launchInitialRelay(this,d.flow.run(result.runId));
+   return result;
+  }));
+ }
+ dispatchBoundary(r){
+  const d=this.d,c=d.conversations.record(r.conversationId),e=c.relayInbox?.find(e=>e.recovery?.receipt.runId===r.id);
+  if(!e||e.actionReceipt||humanSequence(d,c)!==e.targetHumanSequence)fail('中継回復の配送境界が変わりました');
+  const source=d.conversations.record(e.sourceConversationId);
+  const recheck=e.recovery.recheck?checkRelayRecheck(d,source,e,e.recovery.recheck,d.flow.run(e.recovery.actorRunId)):null;
+  const proof=this.evidence(source,d.flow.run(e.sourceRunId),{authorization:e.authorization,evidenceDeliveryId:e.evidenceDeliveryId,target:e.target},recheck);
+  if(proof.evidenceDigest!==e.evidenceDigest)fail('保存許可が変わりました');
+  if(d.data.runs.some(x=>x.secretaryRecovery?.previousRunId===e.target.currentRunId))fail('既に再開されています');
  }
  async apply(x){
   fields(x,['conversationId','actorRunId','operationId','deliveryId']);key(x.operationId);
   return this.d.locked('request-graph',()=>this.d.persist(async()=>{
    const d=this.d,c=d.conversations.record(x.conversationId);
-   const saved=(c.relayInbox||[]).find(e=>e.id===x.deliveryId&&e.runId===x.actorRunId);
+   const saved=(c.relayInbox||[]).find(e=>e.id===x.deliveryId&&relayRunId(e)===x.actorRunId);
    if(saved?.actionReceipt)return structuredClone(saved.actionReceipt);
    const actor=d.conversations.actor(c,x.actorRunId),e=this.event(c,actor,x.deliveryId);
+   if(actor.relayInitial){const a=d.agent(actor.agentId),status=await d.pmux(a,'tab','status','-w',a.workspaceId,a.tabId),snapshot=await d.runtime(a,status);if(!await initialRelayObservation(this,a,actor,snapshot,status))fail('初回起動の受付証拠を再確認できません');}
    if((c.relayInbox||[]).some(y=>y!==e&&y.actionOperationId===x.operationId))fail('operationIdの再利用です');
    if(humanSequence(d,c)!==e.targetHumanSequence)fail('後着の人間入力があります。自動継続しません');
    const b=target(d,e.target),source=d.conversations.record(e.sourceConversationId),sourceRun=d.flow.run(e.sourceRunId);
-   const proof=this.evidence(source,sourceRun,{authorization:e.authorization,evidenceDeliveryId:e.evidenceDeliveryId,target:e.target});
+   const recheck=e.recovery?.recheck?checkRelayRecheck(d,source,e,e.recovery.recheck,d.flow.run(e.recovery.actorRunId)):null;
+   const proof=this.evidence(source,sourceRun,{authorization:e.authorization,evidenceDeliveryId:e.evidenceDeliveryId,target:e.target},recheck);
    if(source.agentId!==e.sourceSecretaryId||proof.evidenceDigest!==e.evidenceDigest||!(source.relaySent||[]).some(s=>s.receipt.deliveryId===e.id&&s.receipt.runId===e.runId&&s.actorRunId===e.sourceRunId))fail('保存された中継許可が一致しません',403);
    d.conversations.authorize(c,actor,b.original.requestedBy.authorization);
    let receipt;
@@ -130,16 +197,17 @@ export class SecretaryRelay {
   }));
  }
  async returns(){
-  const d=this.d,ids=d.data.conversations.flatMap(c=>(c.relayInbox||[]).filter(e=>!e.returnRunId).map(e=>({conversationId:c.id,id:e.id})));
+  const d=this.d,ids=d.data.conversations.flatMap(c=>(c.relayInbox||[]).filter(e=>e.recovery?!e.recovery.returnRunId:!e.returnRunId).map(e=>({conversationId:c.id,id:e.id})));
   for(const {conversationId,id} of ids){
-   const e=d.conversations.record(conversationId).relayInbox.find(e=>e.id===id),r=d.flow.run(e.runId);
+   const e=d.conversations.record(conversationId).relayInbox.find(e=>e.id===id),r=d.flow.run(relayRunId(e));
    if(!r||!['completed','failed','interrupted','terminated','superseded'].includes(runState(r)))continue;
    await d.locked('request-graph',()=>d.persist(async()=>{
-    const e=d.conversations.record(conversationId).relayInbox.find(e=>e.id===id);if(e.returnRunId)return;
-    const r=d.flow.run(e.runId),source=d.conversations.record(e.sourceConversationId);
-    const material={deliveryId:e.id,sourceRunId:e.runId,state:runState(r),actionReceipt:e.actionReceipt||null,answer:r.finalOutput||r.output||'',error:r.error||null};
-    const answer=d.conversations.enqueue(source,{requestId:'secretary-relay-return:'+e.id,source:{kind:'program',relayReturnId:e.id},instruction:'秘書間連絡の応答です。再開受付と元仕事の完了は別です。自動転送・再送はしません。\n'+JSON.stringify(material)});
-    e.returnRunId=answer.id;(source.relayReturns||=[]).push({...material,runId:answer.id});await d.save();
+    const e=d.conversations.record(conversationId).relayInbox.find(e=>e.id===id);if(e.recovery?e.recovery.returnRunId:e.returnRunId)return;
+    const r=d.flow.run(relayRunId(e)),source=d.conversations.record(e.sourceConversationId);
+    if(!r||!['completed','failed','interrupted','terminated','superseded'].includes(runState(r)))return;
+    const material={deliveryId:e.id,sourceRunId:r.id,state:runState(r),actionReceipt:e.actionReceipt||null,answer:r.finalOutput||r.output||'',error:r.error||null};
+    const answer=d.conversations.enqueue(source,{requestId:'secretary-relay-return:'+e.id+(e.recovery?':recovery':''),source:{kind:'program',relayReturnId:e.id},instruction:'秘書間連絡の応答です。再開受付と元仕事の完了は別です。自動転送・再送はしません。\n'+JSON.stringify(material)});
+    if(e.recovery)e.recovery.returnRunId=answer.id;else e.returnRunId=answer.id;(source.relayReturns||=[]).push({...material,runId:answer.id});await d.save();
    }));
   }
  }

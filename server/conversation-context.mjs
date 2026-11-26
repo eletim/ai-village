@@ -24,7 +24,7 @@ export function conversationContext(view,actorRunId){
  const groups=purposeGroups(view);
  return structuredClone({
   id:view.id,agentId:view.agentId,projectId:view.projectId,sequence:view.sequence,control:view.control,
-  projection:'agent-context-v1',current:actor,currentDeliveries,relaySent:view.relaySent||[],relays:(view.relayInbox||[]).map(e=>({id:e.id,runId:e.runId,target:e.target,sourceConversationId:e.sourceConversationId,material:ref('relay',e.id)})),relayReturns:view.relayReturns||[],
+  projection:'agent-context-v1',current:actor,currentDeliveries,relaySent:view.relaySent||[],relays:(view.relayInbox||[]).map(e=>({id:e.id,runId:e.recovery?.receipt.runId||e.runId,...(e.recovery?{previousRunId:e.runId}:{}),target:e.target,sourceConversationId:e.sourceConversationId,material:ref('relay',e.id)})),relayReturns:view.relayReturns||[],
   purposes:groups.map(({id,root,last,jobs})=>({id,currentRequestId:last.id,assigneeAgentId:last.assigneeAgentId||last.leaderAgentId,state:lifecycle(last.lifecycle),decision:decision(last.purpose?.decision),
    requestIds:jobs.map(j=>j.id),material:ref('purpose',id),
    ...(jobs.some(j=>currentRequests.has(j.id))?{objective:root.instruction,authorization:root.authorization}:{}),

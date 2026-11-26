@@ -49,7 +49,7 @@ export class Conversations {
    if(sequences.size!==runs.length||runs.some(r=>!conversationRunOwner(this.d.data,c,r)||r.humanRequestId||r.runModel.phase!=='conversation'||!Number.isSafeInteger(r.conversationSequence)||r.conversationSequence<1||r.conversationSequence>c.sequence||!['human','leader','program','secretary'].includes(r.conversationSource?.kind)||r.runModel.createdBy!==(r.conversationSource.kind==='human'?'human':'program')))throw Error('Invalid conversation run');
    if(runs.some(r=>r.conversationDisplay&&(!['reply','progress'].includes(r.conversationDisplay.mode)||!Number.isSafeInteger(r.conversationDisplay.version)||r.conversationDisplay.version<1)))throw Error('Invalid conversation display');
    if(new Set(c.deliveries.map(e=>e.id)).size!==c.deliveries.length||c.deliveries.some(e=>!runs.some(r=>r.id===e.runId&&r.conversationSource.deliveryId===e.id)||!this.d.flow.requests.some(q=>q.id===e.humanRequestId&&q.conversationId===c.id)))throw Error('Invalid conversation delivery');
-   for(const r of runs.filter(r=>r.conversationSource?.kind==='secretary'))if(!(c.relayInbox||[]).some(e=>e.id===r.conversationSource.relayId&&e.runId===r.id&&e.target.conversationId===c.id))throw Error('Invalid secretary relay run');
+   for(const r of runs.filter(r=>r.conversationSource?.kind==='secretary'))if(!(c.relayInbox||[]).some(e=>e.id===r.conversationSource.relayId&&(e.runId===r.id||e.recovery?.receipt.runId===r.id)&&e.target.conversationId===c.id))throw Error('Invalid secretary relay run');
    for(const e of c.deliveries.filter(e=>e.decisionRecovery))if(!resultSourceEvent(c,e))throw Error('Invalid decision recovery delivery');
    for(const d of c.purposeDecisions||[]){
     if(!['accept','continue','resume','question'].includes(d.kind)||!runs.some(r=>r.id===d.actorRunId)||!c.deliveries.some(e=>e.id===d.deliveryId&&e.humanRequestId===d.humanRequestId)||!this.d.flow.requests.some(q=>q.id===d.purposeId&&q.conversationId===c.id)||!Number.isSafeInteger(d.humanSequence))throw Error('Invalid purpose decision');
@@ -285,6 +285,7 @@ export class Conversations {
   }));
  }
  relay(x){return this.relayService.send(x);}
+ relayRecover(x){return this.relayService.recover(x);}
  relayApply(x){return this.relayService.apply(x);}
  followup(x){return this.mutate('followup',x);}
  job(x){return this.mutate('job',x);}
