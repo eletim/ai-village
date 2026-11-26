@@ -37,3 +37,13 @@ Codex nativeのassistant messageで明示的なcommentary/final_answerのみ（r
 独立レビューの重要残件解消後、SQLite backup APIの一貫スナップショット、設定/添付/画像/通知記録、旧コードhead、dist、サービス定義を保存し、integrity_checkとファイルhash読取を検証する。承認head限定で既存PRを統合へマージ、build、サービス更新、HTTPと履歴ID・dispatch記録・秘書runtime同一性を読取確認する。Agentや仕事の停止・runtime交換・mainマージはしない。
 
 障害時は現時点データを保全して旧コード/distへ戻す。DBスキーマ変更はない。稼働後DBを古いバックアップで無条件に上書きしない。復元は新規履歴/操作を保全し重複送信を防いで判断する。
+
+## 2026-11-26 進捗記録（未反映）
+
+PR #160。91d678cまでの独立レビューは高0・中0・低0・情報2。全文をsecretary-preview-evidence/independent-review-r1.txtに保存。独立工房で全ブラウザ244/244、同一source時の並べ替えボタン保持probeも成功。
+
+実装側単体は922成功1skip、偽通知7/7、構文/型/build成功。全体ブラウザの失敗履歴も保持：SVG sourceとDOM文字列の比較が同期ごとに同じボタンを再生成していたためsource比較へ修正し、元sidebarテストを変更せず14/14成功。その後全体で初期画面読込待ち1件（その回はbuildのvendor再生成を並行実行していた。単独3回は成功）、さらに既存workspace同期テストで不要なpreview scope追加によるfull取得回数差1件を確認。後者は会話runの未確定出力がない場合はpreview購読を開始しないよう修正した。新しいscope限定差分と後着の画像修正を含む最終レビュー・全体回帰が必要。
+
+オンラインSQLite backup APIによるバックアップ：`.runtime/backups/secretary-preview-20261126T002656Z`。integrity_check=ok、283ファイルSHA256読取検証、旧head90c648e、71Agent/1723run/5会話。SQLiteは一貫snapshot、添付/画像/設定/記録/dist/旧code.tar/サービス定義も保存。実装反映もサービス再起動も未実施。
+
+正式後着入力で画像拡大・複数画像左右切替・秘書向け画像出力案内の修正が追加されたため、反映前に同PRへ含める。初期読取ではreport-lightboxに左右ボタン自体がなく、プレビューは現在plain textなので画像参照をそのまま表示している。これはまだ修正済みではない。画像案内は毎回の秘書入力を増やさず必要時ヘルプを優先し、稼働runtimeは交換しない。

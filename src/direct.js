@@ -360,7 +360,11 @@ function syncSelection(){
 }
 function previewViewId(){
  const id=$('#history-dialog').open?$('#history-agent').value:zoomId||selectedAgent;
- return activeViewFor(id)&&state?.agents.find(a=>a.id===id)?.location==='mayor'?id:'';
+ const a=state?.agents.find(a=>a.id===id);
+ if(!activeViewFor(id)||a?.location!=='mayor')return '';
+ const entries=state.conversations?.[id]?.entries||agentEntries(state,a);
+ // Legacy/job-only and settled conversations need no preview subscription or extra full sync.
+ return entries.some(r=>r.conversationId&&!r.conversationAnswer&&['running','failed','interrupted','superseded','terminated'].includes(r.state))?id:'';
 }
 function syncPreviewSelection(leaving=false){
  const next=leaving?'':previewViewId();

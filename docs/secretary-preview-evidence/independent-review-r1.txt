@@ -1,0 +1,117 @@
+秘書の閲覧中プレビュー 独立レビュー R1
+担当: Codex c801436c-5627-44c3-9fac-837c35322103（実装者とは別）
+最終対象: 91d678c（完全SHAは最終追記）
+中間対象: de6d5b3492a11bace515cf74959fac556dabee66
+初回対象: 29a82f1a54bbd03903330491169e2feac5b1e02c
+正式補足24f69610-56f2-4c29-b666-97f912c73acfを受け、同じ専用cloneを最終commitへ固定し直した。
+base: 90c648e
+固定別clone: /tmp/secretary-preview-review-r1（detached HEAD、追跡ファイル無変更）
+調査依頼3d9788a0-0eb5-423d-b275-2454ef009502の最終調査報告と最新Project方針を確認。レビュー個別指示に従い本番反映は禁止。
+
+結論
+高0・中0・低0・情報2。重要残数（高＋中）0。
+閲覧中の発言単位プレビューと既存責務の分離を確認。初回に再現した同期回復試験の失敗は最終commitの追加修正を評価し、最終検証結果は末尾に記載する。
+
+初回失敗と追加修正の評価
+初回29a82f1の全体ブラウザは243成功・1失敗。tests/browser/workspace-sync.spec.js:35-42のslow HTTP回復がExpected4/Received5で失敗し、単独・追跡コピーでも再現した。
+追跡ではcall3のpreview=slow取得が失敗した直後、追加イベントでscope空のcall4、その回復後のscope slowのcall5が続いた。初回は固定3回目を失敗させる試験前提と追加プレビュー取得の競合として低指摘候補にしたが、正式補足により実装側でforce取得がbackoffを迂回する点も修正されたため、テストだけの問題と断定せず追加差分を検証した。
+src/direct.js:587-588の修正は、inflight失敗に重なった呼出で即再試行せず、forceでもretryAt前なら取得しないもの。通常のscope切替時の同期世代破棄・失敗時のプレビュー解除は維持する。
+独立ブラウザprobeは安定後にfailNextで通信失敗を発生させ、待機中に追加SSEイベントも送り、2.2秒の追加取得なし・回復・下書き保持を確認する。既存の失敗試験は書き換えず最終全体で再検証する。
+server/secretary-preview.mjs:4-6の修正は同一native発言IDの更新を最新1件へ集約し、異なるIDの同文は保持。時系列は最新offsetで並べ直す。既存追加テストと独立probeで確認。
+初回の失敗履歴は残すが、修正済み事象を最終残件へ重複計上しない。コード修正案の残件なし。
+正式補足09a032af-aab6-449b-81ea-37c1853e4e9fに従い、最終91d678cの追加差分も確認。src/direct.js:695はSVGを含むinnerHTMLの正規化後文字列比較を、前回生成source文字列renderedHTMLの比較へ変更。同内容の同期ではbutton DOMを保持し、名前/状態/metadataRevision/Project/順序が変わればsource差により再描画する。bindSidebarOrderはgesture/saving中の再描画防止を維持し、gesture用data-drop等は自分でclearする。sidebar-order.spec.jsはde6d5b3と同じで、失敗を隠すテスト改変は最終差分にない。
+docs/secretary-visible-preview.md全文とスマホ幅assert/画像追加を確認。動作、未確定、通知/既読分離、旧UI互換、sidebarのSSE自動更新、試験限界、バックアップ/戻し方を記載。文書の反映権限は実装担当向けであり、本レビュー担当は反映しない。
+
+重点確認の結果
+- server/runtime-events.py:16-17,34-35,76付近でphaseを追加。Codexはtype=message、recipientが未指定/null/all、明示commentary/final_answer/finalだけをプレビュー分類。analysis、分類なし、ツール宛て、function_call等は分類されない。
+- Claudeはtextブロックだけ抽出し、thinking/tool_use/tool_resultを表示対象にしない。synthetic/API error本文はプレビューphaseなし。max_tokensの途切れはinterruptedのまま。独立fixtureで確認。Claudeプロセスを起動したわけではない。
+- server/secretary-preview.mjs:2-11は入力offset以降・次入力境界前、発言phase、IDを選別。同一native発言IDの再出現/更新は最新1件へ集約し、異なるIDで同じ文章を話した場合は保持。session/turn/runが不一致ならプレビューなし。
+- server/runtime-events.mjsのownedTurnと既存correlateを併用。後着の未照合入力、session変更、不確実な照合ではlivePreviewを渡さない。server/direct.mjs:615で不確実化時の既存livePreviewを削除。steeringの先行runは入力間の範囲へ切り直す。
+- server/conversation-pages.mjs:66-89は明示previewAgentの秘書だけにpreviewを添える。focus対象外は本文なし。非閲覧時の新UIでは実行中本文もdeferし、従来API呼出は互換維持。リーダー/工房出力は既存形式。
+- src/secretary-preview.js:2-7は表示側でもsession/turn/run/選択秘書を再照合。正常確定後はプレビューなし、failed/interrupted/superseded/terminatedでは「途中で終了・未確定」。final phaseが届いただけで完了にしない。
+- src/direct.js:179-181は人間向け発言をescapeしてpreに表示。HTML/script文字列は実行されず文字として表示。通常完了時は同じrunの回答領域に置換し、assistant枠1つ。390px画像も目視確認。
+- 閲覧開始/途中からの表示/追加発言/離脱/再訪/非表示/blur/モーダル/切断復旧/複数run/複数タブ/遅延応答を追加ブラウザ試験で確認。離脱時はsyncEpoch更新・AbortControllerによる旧応答棄却とpreview scope解除。実行停止操作は呼ばない。保存・再起動復元は単体fixtureで確認。
+- プレビューは既存のSSE通知で取得する表示情報。成果採否、conversationAnswer、正常終了、通知、既読に新しい判断・書込みを加えていない。fixtureで通知0、review不変、humanAnswer未確定、表示試験でPOSTなし。独立probeでもprojectionの元状態不変と工房出力の同一性を確認。
+- sidebarは既存SSEによって状態/attention/未読の表示がクリック・reloadなしで更新される。1440/390の追加試験が通過し、既存event-drivenの実SSE試験も通過。今回sidebar仕様変更なし。
+- parser parityは新規表示メタデータphaseだけ比較から除外し、他のlegacy fieldsの比較は維持。PARSER_VERSION12への更新で旧キャッシュを再構築する。
+
+独立probe
+/tmp/secretary-preview-independent.test.mjs : 最終6/6成功。
+1. Claudeのthinking/ツール内容/synthetic除外とmax_tokens中断。
+2. Codexのanalysis/不明phase/ツール宛て/ツール結果除外。
+3. steering offset境界と重複除外、別発言の同文保持。
+4. preview scope分離、元state不変、工房表示互換。
+5. 各異常終端の未確定表示、各identity不一致、正常確定でpreviewなし。
+6. 同一native発言IDの更新が古い内容を置換し、別ID同文は残る。
+/tmp/preview-browser-probes/probe.spec.mjs : 安定したpreview閲覧中の通信失敗と追加SSEに対するbackoff/回復/下書き保持。最終実行結果は末尾。
+/tmp/preview-browser-probes/original.spec.mjs : 初回既存試験への観測追加。旧commitで1失敗した切分け資料であり、最終残件ではない。
+
+情報
+I1 [情報] 発言単位であり、文字生成ストリームや無発言時間の改善は対象外。
+場所: server/runtime-events.py:16-17、server/secretary-preview.mjs:2-5。
+根拠: nativeに保存された本文イベントだけを選ぶ。対応: 実機説明でも文字単位ストリーミングを実装したと言わない。通常本文にモデル自身が書いた秘密まで内容分類で検知する機能ではない。
+I2 [情報] ブラウザプレビューの新規試験はsnapshot/API route fixtureを使う。
+場所: tests/browser/secretary-preview.spec.js:4-7。
+根拠: APIをworkspaceSnapshotで応答しSSE通知をテストが発火する。parser→観測保存は単体で、実SSEは既存試験で別途確認する構成。今回実Agentでの一貫通し試験は実施していない。
+対応: この検証範囲を正確に保持。現秘書停止・交換や旧Claude起動で補う必要はない。必要なら将来の隔離実機で追加する。
+
+テスト結果（初回）
+- npm ci、構文/型チェック成功。
+- 29a82f1単体929件: 923成功・5通知OFF競合失敗・1skip。
+- notifier.test.js全文を読んで一時偽CLI/スタブだけと確認し、そのファイル単独に限りenv -u VILLAGE_NOTIFICATIONSで実行: 7/7成功。実通知なし。追加commitは通知実装/テストを変更していないためこの確認を保持。
+- 29a82f1ブラウザ244件: 243成功・1失敗。単独/追跡でも失敗。上記修正で追跡。
+- 初回独立probe5/5、安定scopeでの失敗回復ブラウザ1/1成功。最終では追加SSE条件と発言ID更新を強化。
+- ブラウザはすべて専用15545、mkdtemp一時state、通知OFF。独立native記録も一時ディレクトリのみ。
+
+成果物
+/tmp/secretary-preview-review-r1.txt
+/tmp/secretary-preview-review-r1-unit.log
+/tmp/secretary-preview-review-r1-ui.log
+/tmp/secretary-preview-review-r1-notifier.log
+/tmp/secretary-preview-review-r1-probes.log
+/tmp/secretary-preview-review-r1-browser-probes.log
+/tmp/secretary-preview-review-r1-retry.log
+/tmp/secretary-preview-review-r1-trace.log
+/tmp/secretary-preview-independent.test.mjs
+/tmp/preview-browser-probes/probe.spec.mjs
+/tmp/preview-browser-probes/original.spec.mjs
+
+現場コード・追跡ファイル変更なし。commit/push/PR/本番反映/mainマージなし。秘書停止・runtime交換、旧依頼再開、Claude起動なし。今回の正式完了申告のみ別途行う。
+
+最終commit de6d5b3の追加検証結果
+- npm run check / npm run typecheck成功。
+- ブラウザ244/244成功（34.1秒）。初回失敗したslow HTTP試験も17.0秒で成功。既存テスト自体の変更なし。
+- 独立単体probe6/6成功。
+- 独立ブラウザprobe1/1成功（10.9秒）。安定したpreview scopeで失敗させ、待機中の追加SSEでも2.2秒間取得増加なし、その後回復し下書きを保持。
+- 最終全体単体の1回目930件: 923成功・6失敗・1skip（34.2秒）。5件は既述の通知OFF競合。残り1件はhost-events.test.js:24のstarts数（期待1/実際3）。この時は全体ブラウザも並行実行していた。
+- host-events.test.jsとserver/host-events.mjsは今回差分なし。通知OFFで同ファイル単独再実行は5/5成功（1.9秒）。負荷/タイミングに依存する可能性はあるが、原因を断定して隠さない。全体単体もブラウザ終了後に再実行し、結果を以下に追記する。
+
+追加成果物
+/tmp/secretary-preview-review-final-unit.log
+/tmp/secretary-preview-review-final-unit-repeat.log
+/tmp/secretary-preview-review-final-ui.log
+/tmp/secretary-preview-review-final-probes.log
+/tmp/secretary-preview-review-final-browser-probes.log
+/tmp/secretary-preview-review-final-host.log
+
+最終追記
+- 全体単体をブラウザ終了後に同じconcurrency=4、通知OFFで再実行: 930件中924成功・5失敗・1skip（26.3秒）。失敗はnotifier.test.jsの既知5件のみ。host-eventsも成功。前回の一過性失敗は履歴として保持し、今回差分による再現性ある欠陥とは確認できなかった。
+- 通知OFF全体一括を全件greenとはしない。通知対象は安全な偽CLIの単独7/7成功で別検証。
+- 最終高0・中0・低0・情報2、重要残数0。最終固定HEAD de6d5b3492a11bace515cf74959fac556dabee66、git status --short空。
+- 初回のL1候補は29a82f1時点の切分けであり、正式補足後の最終判定では解消済み。未提出草稿も /tmp/secretary-preview-review-29a82f1-draft.txt に保存し、過去結果を捏造しない。
+
+最終対象更新91d678cの確定結果
+固定HEAD: 91d678ccc384f90ed4ddfbf19db32c1844f8f718。git status --short空。
+de6d5b3以降の差分は文書・スマホ幅assert/画像・renderProjectOrderのsource比較のみ。サーバー/単体実装は不変のため、上記単体と通知検証を保持。
+- 構文/型チェック成功。
+- 全体ブラウザ244/244成功（33.0秒）。sidebar-orderの既存8件を含む。元テスト改変なし。
+- 独立DOM identity probe1/1成功（883ms）。同一sourceのSSE更新ではbutton要素そのものを保持。Agent名/metadataRevision更新では再描画し、別Projectを開くと正しい対象へ置換することを確認。
+- スマホ390px途中表示画像を目視確認。応答中・未確定、発言単位表示、script文字列はただの文字として表示。幅assert成功。
+- 最終判定: 高0・中0・低0・情報2、重要残数0。
+追加成果物: /tmp/secretary-preview-review-91d678c-ui.log、/tmp/secretary-preview-review-91d678c-identity.log、/tmp/preview-browser-probes/identity.spec.mjs、/tmp/secretary-preview-live-390.png。
+
+正式手続きの補足
+最初のfinishは補足ID（attemptsが空、当該run未配送）も列挙したためstale-or-foreign-inputで明示拒否。成功扱い・同内容の自動再送はしていない。rules/inputsを再確認し、当該runへ配送された元入力のみを正式申告する。補足2件の内容は本報告のde6d5b3/91d678c再検証として対応済みであり、未配送IDを対応済みと偽って申告しない。
+
+補足の正式配送後の確認
+run fdd7b04d-63e9-448a-b3b3-ff3f7e689d97で補足24f69610-56f2-4c29-b666-97f912c73acfと09a032af-aab6-449b-81ea-37c1853e4e9fの配送を確認。両補足の内容は上記91d678cまでの検証で対応済み。固定clone・報告書・成功ログを再照合し、結論を保持する。追加コード差分の依頼はなく、試験・外部操作を再実行せず、このrunで補足2件の対応を正式申告する。
