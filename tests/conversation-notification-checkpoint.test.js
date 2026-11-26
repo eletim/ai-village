@@ -49,3 +49,27 @@ test('commit-unknown remains fail closed even when all notifications are settled
  const {d,sent}=await fixture(t);const error=Object.assign(Error('commit unknown'),{persistenceUncertain:true});d.persistence.failure=error;
  await assert.rejects(d.conversations.notifications(),e=>e===error);assert.equal(sent.length,0);
 });
+
+test('an in-flight uncertain commit blocks notification instead of reading tentative suppression',async t=>{
+ const {d,r,sent}=await fixture(t);delete r.notification;await d.save();
+ const entered=deferred(),release=deferred(),error=Object.assign(Error('commit uncertain'),{persistenceUncertain:true});
+ const writer=d.persist(async()=>{r.notificationSuppressed={reason:'tentative'};entered.resolve();await release.promise;throw error;});
+ const rejected=assert.rejects(writer,e=>e===error);await entered.promise;
+ const notify=assert.rejects(d.conversations.notifications(),e=>e===error);
+ release.resolve();await rejected;await notify;assert.equal(sent.length,0);assert.equal(d.persistence.failure,error);
+});
+
+test('pending progress suppression is durable across restart without notification',async t=>{
+ const {d,r,sent}=await fixture(t);r.notification.status='pending';r.conversationDisplay={mode:'progress',version:1};await d.save();
+ await d.conversations.notifications();assert.equal(r.notification,undefined);assert.equal(r.notificationSuppressed.reason,'explicit-conversation-progress');
+ d.close();await d.init({watch:false});await d.conversations.notifications();
+ assert.equal(sent.length,0);assert.equal(d.data.runs.find(x=>x.id===r.id).notificationSuppressed.reason,'explicit-conversation-progress');
+});
+
+test('external notification failure stays unknown after restart and is not resent',async t=>{
+ const {d,r}=await fixture(t);delete r.notification;await d.save();let attempts=0;
+ d.notifier.enqueue=async()=>{attempts++;throw Error('delivery outcome unknown');};
+ await d.conversations.notifications();assert.equal(r.notification.status,'delivery_unknown');
+ d.close();await d.init({watch:false});await d.conversations.notifications();
+ assert.equal(attempts,1);assert.equal(d.data.runs.find(x=>x.id===r.id).notification.status,'delivery_unknown');
+});
