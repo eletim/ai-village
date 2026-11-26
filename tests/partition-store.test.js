@@ -77,3 +77,22 @@ test('failed timer persistence does not consume the timer event',async()=>{
   assert.equal(attempts,2);assert.equal(progress,1);assert.equal(monitor.fired.size,1);
  }finally{monitor.close();}
 });
+
+test('global deletion keeps collection identity and rolls back records and wakeups together',async()=>{
+ const dir=await mkdtemp(join(tmpdir(),'village-delete-'));
+ const data={runs:[{id:'same:colon'},{id:'keep'}],requests:[{id:'same:colon'}]};let selection=null;
+ const store=new PartitionStore({dir,capture:()=>data,selection:()=>selection,affected:changes=>changes.map(c=>c.id)});
+ try{
+  store.open();await store.save();data.runs=data.runs.filter(r=>r.id==='keep');
+  selection={requests:data.requests};await store.save();
+  assert.ok(store.db.prepare("SELECT body FROM records WHERE kind='runs' AND id='same:colon'").get());
+  selection=null;store.db.exec("CREATE TRIGGER fail_delete BEFORE DELETE ON records BEGIN SELECT RAISE(ABORT,'delete failed'); END");
+  const before=store.db.prepare('SELECT * FROM wakeups ORDER BY id').all();
+  await assert.rejects(store.save(),/delete failed/);
+  assert.ok(store.cache.has('runs:same:colon'));assert.deepEqual(store.db.prepare('SELECT * FROM wakeups ORDER BY id').all(),before);
+  store.db.exec('DROP TRIGGER fail_delete');await store.save();
+  assert.deepEqual(store.lastChanges,[{kind:'runs',id:'same:colon',body:null}]);
+  assert.ok(store.db.prepare("SELECT body FROM records WHERE kind='requests' AND id='same:colon'").get());
+  assert.equal(store.db.prepare("SELECT body FROM records WHERE kind='runs' AND id='same:colon'").get(),undefined);
+ }finally{store.close();await rm(dir,{recursive:true,force:true});}
+});

@@ -1,0 +1,12 @@
+--- scripts/performance/cold-display.mjs	2026-11-26 17:04:09.986904959 +0900
++++ scripts/performance/rework-probe.mjs	2026-11-26 18:04:49.069832390 +0900
+@@ -50,7 +50,8 @@
+   const ready=performance.now()-at;let paintedReadyMs=null;if(instrumented){await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));paintedReadyMs=performance.now()-at;}await page.waitForTimeout(500);
+   let layout=[];
+   if(cdp){const done=new Promise(r=>cdp.once('Tracing.tracingComplete',r));await cdp.send('Tracing.end');const tr=await done;let trace='';for(;;){const x=await cdp.send('IO.read',{handle:tr.stream});trace+=x.data;if(x.eof)break;}await cdp.send('IO.close',{handle:tr.stream});layout=JSON.parse(trace).traceEvents.filter(e=>['Layout','UpdateLayoutTree'].includes(e.name)&&e.ph==='X').map(e=>({name:e.name,ms:e.dur/1000,ts:e.ts}));await writeFile(out+'/'+name+'-layout.json',JSON.stringify(layout));}
+-  const metrics=await page.evaluate(()=>({origin:performance.timeOrigin,longtasks:window.longtasks,resources:performance.getEntriesByType('resource').filter(e=>!e.name.includes('/events')).map(e=>({url:e.name,start:e.startTime,duration:e.duration,ttfb:e.responseStart-e.requestStart,encoded:e.encodedBodySize,decoded:e.decodedBodySize})),entries:document.querySelectorAll('.run').length,visibleEntries:[...document.querySelectorAll('.agent-panel:not([hidden]) .run')].length,nodes:document.querySelectorAll('*').length}));
++  const metrics=await page.evaluate(()=>({origin:performance.timeOrigin,longtasks:window.longtasks,resources:performance.getEntriesByType('resource').filter(e=>!e.name.includes('/events')).map(e=>({url:e.name,start:e.startTime,duration:e.duration,ttfb:e.responseStart-e.requestStart,encoded:e.encodedBodySize,decoded:e.decodedBodySize})),text:[...document.querySelectorAll('.run')].map(n=>n.textContent),entries:document.querySelectorAll('.run').length,visibleEntries:[...document.querySelectorAll('.agent-panel:not([hidden]) .run')].length,nodes:document.querySelectorAll('*').length}));
++  metrics.contentHash=createHash('sha256').update(JSON.stringify(metrics.text)).digest('hex');delete metrics.text;
+   const end=await (await fetch(base+'/api/direct?view=workspace&focus=[]')).json();
+   results.push({name,idStyle,count,width,single,reviewed,trial,instrumented,started,readyMs:ready,paintedReadyMs,layout,metrics,unreadAfter:Object.values(end.reviews).filter(r=>r.unreviewed).length});
+   await writeFile(out+'/measurements.json',JSON.stringify(results,null,2));console.log(name,Math.round(ready));
