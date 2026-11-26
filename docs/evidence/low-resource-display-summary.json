@@ -1,0 +1,3420 @@
+{
+  "base": "226873e969fdfb62a2f0fc5409c17f6312362413",
+  "environment": {
+    "browser": "Chromium emulation, not physical hardware",
+    "network": {
+      "downloadBitsPerSecond": 1600000,
+      "uploadBitsPerSecond": 750000,
+      "latencyMs": 150
+    },
+    "cpuSlowdown": 4,
+    "server": "warm presentation cache; fresh temporary server/state for each case",
+    "client": "fresh Context; network cache disabled",
+    "fixture": "generated 3 agents; 300 runs each or short 10; 40 Japanese lines per output; half internal/folded; no real data"
+  },
+  "groups": {
+    "preliminary-base": [
+      {
+        "name": "0-normal-1440",
+        "role": 0,
+        "mode": "normal",
+        "count": 300,
+        "width": 1440,
+        "single": true,
+        "reviewed": false,
+        "trial": 0,
+        "instrumented": false,
+        "readyMs": 241.85922500000015,
+        "serverReadyMs": null,
+        "contentHash": null,
+        "switchMs": null,
+        "firstTextMs": null,
+        "paintedTextMs": null,
+        "interactiveMs": null,
+        "resourceCount": 59,
+        "assetRequests": 53,
+        "assetEncodedBytes": 313369,
+        "assetDecodedBytes": 313369,
+        "visibleEntries": 100,
+        "nodes": 3638,
+        "workspaceRequests": [
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=9ad599e9-20fb-46c8-b2e8-17bb7aefc243&ranges=%7B%7D&focus=%5B%5D&preview=",
+            "start": 42.69999980926514,
+            "duration": 3.4000000953674316,
+            "ttfb": 3.0999999046325684,
+            "encoded": 1548,
+            "decoded": 6400
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=9ad599e9-20fb-46c8-b2e8-17bb7aefc243&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=7bbdbb93-9f50-4cd2-9358-e3fb0027e004",
+            "start": 69.69999980926514,
+            "duration": 58.5,
+            "ttfb": 57.69999980926514,
+            "encoded": 18759,
+            "decoded": 526223
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=9ad599e9-20fb-46c8-b2e8-17bb7aefc243&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=067c1b21-1b83-4710-b60d-2c3697d31190",
+            "start": 233.40000009536743,
+            "duration": 28.799999713897705,
+            "ttfb": 28.199999809265137,
+            "encoded": 240,
+            "decoded": 240
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=9ad599e9-20fb-46c8-b2e8-17bb7aefc243&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=95feaf97-a955-4ed0-aa9d-0727e32051be",
+            "start": 275.5,
+            "duration": 12.699999809265137,
+            "ttfb": 12.199999809265137,
+            "encoded": 136,
+            "decoded": 136
+          }
+        ],
+        "observedBackgroundResponseEndMs": 288.19999980926514,
+        "parseCosts": null,
+        "layoutTotalMs": 0,
+        "longtasks": [
+          {
+            "at": 132.09999990463257,
+            "ms": 101
+          }
+        ]
+      },
+      {
+        "name": "1-normal-1440",
+        "role": 1,
+        "mode": "normal",
+        "count": 300,
+        "width": 1440,
+        "single": true,
+        "reviewed": false,
+        "trial": 0,
+        "instrumented": false,
+        "readyMs": 243.04501900000014,
+        "serverReadyMs": null,
+        "contentHash": null,
+        "switchMs": null,
+        "firstTextMs": null,
+        "paintedTextMs": null,
+        "interactiveMs": null,
+        "resourceCount": 59,
+        "assetRequests": 53,
+        "assetEncodedBytes": 313369,
+        "assetDecodedBytes": 313369,
+        "visibleEntries": 100,
+        "nodes": 3638,
+        "workspaceRequests": [
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=8a61a3c6-a594-4875-8565-8072dc4bc9b2&ranges=%7B%7D&focus=%5B%5D&preview=",
+            "start": 35.90000009536743,
+            "duration": 3.3000001907348633,
+            "ttfb": 3.0999999046325684,
+            "encoded": 1550,
+            "decoded": 6400
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=8a61a3c6-a594-4875-8565-8072dc4bc9b2&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000604%22%5D&preview=&since=1a746f67-26e7-47c9-80c8-3696bd16b363",
+            "start": 59.90000009536743,
+            "duration": 62.30000019073486,
+            "ttfb": 61.60000038146973,
+            "encoded": 18748,
+            "decoded": 526223
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=8a61a3c6-a594-4875-8565-8072dc4bc9b2&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000604%22%5D&preview=&since=79597317-15f9-4228-ac43-5faf846cfbf3",
+            "start": 234.90000009536743,
+            "duration": 30.59999990463257,
+            "ttfb": 30,
+            "encoded": 240,
+            "decoded": 240
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=8a61a3c6-a594-4875-8565-8072dc4bc9b2&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000604%22%5D&preview=&since=f89f4115-b202-479c-9bce-99ce9cca83df",
+            "start": 281.40000009536743,
+            "duration": 16,
+            "ttfb": 15.299999713897705,
+            "encoded": 136,
+            "decoded": 136
+          }
+        ],
+        "observedBackgroundResponseEndMs": 297.40000009536743,
+        "parseCosts": null,
+        "layoutTotalMs": 0,
+        "longtasks": [
+          {
+            "at": 123,
+            "ms": 111
+          }
+        ]
+      },
+      {
+        "name": "2-normal-1440",
+        "role": 2,
+        "mode": "normal",
+        "count": 300,
+        "width": 1440,
+        "single": true,
+        "reviewed": false,
+        "trial": 0,
+        "instrumented": false,
+        "readyMs": 244.89590399999906,
+        "serverReadyMs": null,
+        "contentHash": null,
+        "switchMs": null,
+        "firstTextMs": null,
+        "paintedTextMs": null,
+        "interactiveMs": null,
+        "resourceCount": 59,
+        "assetRequests": 53,
+        "assetEncodedBytes": 313369,
+        "assetDecodedBytes": 313369,
+        "visibleEntries": 100,
+        "nodes": 3638,
+        "workspaceRequests": [
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=c3cc7a40-0200-44c3-8cf3-bef64b16a427&ranges=%7B%7D&focus=%5B%5D&preview=",
+            "start": 38.09999990463257,
+            "duration": 3.3000001907348633,
+            "ttfb": 2.9000000953674316,
+            "encoded": 1547,
+            "decoded": 6400
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=c3cc7a40-0200-44c3-8cf3-bef64b16a427&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000001206%22%5D&preview=&since=72303ade-03ad-436c-bdb1-c864e53e64e3",
+            "start": 63.40000009536743,
+            "duration": 65.69999980926514,
+            "ttfb": 65.10000038146973,
+            "encoded": 18620,
+            "decoded": 526223
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=c3cc7a40-0200-44c3-8cf3-bef64b16a427&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000001206%22%5D&preview=&since=2624f126-a41e-47a3-a399-e5384ea03476",
+            "start": 236.2000002861023,
+            "duration": 29.59999990463257,
+            "ttfb": 29,
+            "encoded": 240,
+            "decoded": 240
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=c3cc7a40-0200-44c3-8cf3-bef64b16a427&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000001206%22%5D&preview=&since=aacafb82-7f1b-4397-9365-824bd29b6115",
+            "start": 279.2000002861023,
+            "duration": 12,
+            "ttfb": 11.599999904632568,
+            "encoded": 136,
+            "decoded": 136
+          }
+        ],
+        "observedBackgroundResponseEndMs": 291.2000002861023,
+        "parseCosts": null,
+        "layoutTotalMs": 0,
+        "longtasks": [
+          {
+            "at": 131.7000002861023,
+            "ms": 104
+          }
+        ]
+      },
+      {
+        "name": "0-network-1440",
+        "role": 0,
+        "mode": "network",
+        "count": 300,
+        "width": 1440,
+        "single": true,
+        "reviewed": false,
+        "trial": 0,
+        "instrumented": false,
+        "readyMs": 3246.095405,
+        "serverReadyMs": null,
+        "contentHash": null,
+        "switchMs": null,
+        "firstTextMs": null,
+        "paintedTextMs": null,
+        "interactiveMs": null,
+        "resourceCount": 59,
+        "assetRequests": 53,
+        "assetEncodedBytes": 313369,
+        "assetDecodedBytes": 313369,
+        "visibleEntries": 100,
+        "nodes": 3638,
+        "workspaceRequests": [
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=a81e3ed3-7979-4cc9-b11d-b4bdb5fc2db5&ranges=%7B%7D&focus=%5B%5D&preview=",
+            "start": 2680.5,
+            "duration": 176.89999961853027,
+            "ttfb": 2.9000000953674316,
+            "encoded": 1549,
+            "decoded": 6400
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=a81e3ed3-7979-4cc9-b11d-b4bdb5fc2db5&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=ad644572-9a09-455d-b1b2-a69cbcbb2cb9",
+            "start": 2877.699999809265,
+            "duration": 257.30000019073486,
+            "ttfb": 58.09999990463257,
+            "encoded": 18760,
+            "decoded": 526223
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=a81e3ed3-7979-4cc9-b11d-b4bdb5fc2db5&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=3b5cabf9-97ee-4e08-afd7-60e6c5fa1a8e",
+            "start": 3238.0999999046326,
+            "duration": 151.90000009536743,
+            "ttfb": 30.09999990463257,
+            "encoded": 240,
+            "decoded": 240
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=a81e3ed3-7979-4cc9-b11d-b4bdb5fc2db5&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=0a044100-0ed2-49d2-9b45-1b57b5858540",
+            "start": 3404.199999809265,
+            "duration": 158.69999980926514,
+            "ttfb": 14.799999713897705,
+            "encoded": 136,
+            "decoded": 136
+          }
+        ],
+        "observedBackgroundResponseEndMs": 3562.8999996185303,
+        "parseCosts": null,
+        "layoutTotalMs": 0,
+        "longtasks": [
+          {
+            "at": 3135.2999997138977,
+            "ms": 102
+          }
+        ]
+      },
+      {
+        "name": "0-cpu-1440",
+        "role": 0,
+        "mode": "cpu",
+        "count": 300,
+        "width": 1440,
+        "single": true,
+        "reviewed": false,
+        "trial": 0,
+        "instrumented": false,
+        "readyMs": 707.7312229999989,
+        "serverReadyMs": null,
+        "contentHash": null,
+        "switchMs": null,
+        "firstTextMs": null,
+        "paintedTextMs": null,
+        "interactiveMs": null,
+        "resourceCount": 59,
+        "assetRequests": 53,
+        "assetEncodedBytes": 313369,
+        "assetDecodedBytes": 313369,
+        "visibleEntries": 100,
+        "nodes": 3638,
+        "workspaceRequests": [
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=648f720c-9d84-4e05-9cda-7d7aa57e09b0&ranges=%7B%7D&focus=%5B%5D&preview=",
+            "start": 120,
+            "duration": 3.1999998092651367,
+            "ttfb": 2.8000001907348633,
+            "encoded": 1547,
+            "decoded": 6400
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=648f720c-9d84-4e05-9cda-7d7aa57e09b0&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=5d12943f-0760-4aad-aafa-8aaa1b5862fd",
+            "start": 211.09999990463257,
+            "duration": 57.40000009536743,
+            "ttfb": 56.700000286102295,
+            "encoded": 18757,
+            "decoded": 526223
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=648f720c-9d84-4e05-9cda-7d7aa57e09b0&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=18df9380-5851-4fdc-934d-72849496c949",
+            "start": 679.1999998092651,
+            "duration": 28.700000286102295,
+            "ttfb": 28.199999809265137,
+            "encoded": 240,
+            "decoded": 240
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=648f720c-9d84-4e05-9cda-7d7aa57e09b0&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=1036da81-f976-4827-8cac-e73ac051ac94",
+            "start": 778.4000000953674,
+            "duration": 14.5,
+            "ttfb": 13.300000190734863,
+            "encoded": 136,
+            "decoded": 136
+          }
+        ],
+        "observedBackgroundResponseEndMs": 792.9000000953674,
+        "parseCosts": null,
+        "layoutTotalMs": 0,
+        "longtasks": [
+          {
+            "at": 129.69999980926514,
+            "ms": 81
+          },
+          {
+            "at": 275.5,
+            "ms": 403
+          },
+          {
+            "at": 723.6999998092651,
+            "ms": 55
+          },
+          {
+            "at": 793.5,
+            "ms": 50
+          }
+        ]
+      },
+      {
+        "name": "0-both-1440",
+        "role": 0,
+        "mode": "both",
+        "count": 300,
+        "width": 1440,
+        "single": true,
+        "reviewed": false,
+        "trial": 0,
+        "instrumented": false,
+        "readyMs": 3686.4832860000024,
+        "serverReadyMs": null,
+        "contentHash": null,
+        "switchMs": null,
+        "firstTextMs": null,
+        "paintedTextMs": null,
+        "interactiveMs": null,
+        "resourceCount": 59,
+        "assetRequests": 53,
+        "assetEncodedBytes": 313369,
+        "assetDecodedBytes": 313369,
+        "visibleEntries": 100,
+        "nodes": 3638,
+        "workspaceRequests": [
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=e22e1d46-e0cb-45c6-ac4f-6b36fbd23a03&ranges=%7B%7D&focus=%5B%5D&preview=",
+            "start": 2712.3999996185303,
+            "duration": 160.2000002861023,
+            "ttfb": 3.6999998092651367,
+            "encoded": 1546,
+            "decoded": 6400
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=e22e1d46-e0cb-45c6-ac4f-6b36fbd23a03&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=170eef4c-a434-4227-a88e-f123de06429e",
+            "start": 2968.5,
+            "duration": 263.3999996185303,
+            "ttfb": 21.300000190734863,
+            "encoded": 18753,
+            "decoded": 526223
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=e22e1d46-e0cb-45c6-ac4f-6b36fbd23a03&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=e430805a-6f15-47ca-b99f-58360c6394ed",
+            "start": 3656.3999996185303,
+            "duration": 153,
+            "ttfb": 29.199999809265137,
+            "encoded": 240,
+            "decoded": 240
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=e22e1d46-e0cb-45c6-ac4f-6b36fbd23a03&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=80237725-2a3f-4211-acdc-0e987b979a37",
+            "start": 3873.8999996185303,
+            "duration": 153.40000009536743,
+            "ttfb": 15.599999904632568,
+            "encoded": 136,
+            "decoded": 136
+          }
+        ],
+        "observedBackgroundResponseEndMs": 4027.2999997138977,
+        "parseCosts": null,
+        "layoutTotalMs": 0,
+        "longtasks": [
+          {
+            "at": 2873.699999809265,
+            "ms": 95
+          },
+          {
+            "at": 3233.0999999046326,
+            "ms": 423
+          },
+          {
+            "at": 3810.699999809265,
+            "ms": 63
+          },
+          {
+            "at": 4028.199999809265,
+            "ms": 56
+          }
+        ]
+      },
+      {
+        "name": "0-both-390",
+        "role": 0,
+        "mode": "both",
+        "count": 300,
+        "width": 390,
+        "single": true,
+        "reviewed": false,
+        "trial": 0,
+        "instrumented": false,
+        "readyMs": 3738.7835190000005,
+        "serverReadyMs": null,
+        "contentHash": null,
+        "switchMs": null,
+        "firstTextMs": null,
+        "paintedTextMs": null,
+        "interactiveMs": null,
+        "resourceCount": 59,
+        "assetRequests": 53,
+        "assetEncodedBytes": 313369,
+        "assetDecodedBytes": 313369,
+        "visibleEntries": 100,
+        "nodes": 3638,
+        "workspaceRequests": [
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=4eba953a-080e-405e-a480-912bc8553400&ranges=%7B%7D&focus=%5B%5D&preview=",
+            "start": 2723.5,
+            "duration": 170.90000009536743,
+            "ttfb": 3,
+            "encoded": 1547,
+            "decoded": 6400
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=4eba953a-080e-405e-a480-912bc8553400&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=457c9cca-bb18-425f-85e4-cd4bed9e70d9",
+            "start": 2982.5,
+            "duration": 257.1000003814697,
+            "ttfb": 20.699999809265137,
+            "encoded": 18758,
+            "decoded": 526223
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=4eba953a-080e-405e-a480-912bc8553400&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=144bc725-a0b2-44e1-8cf0-b81616923daf",
+            "start": 3705,
+            "duration": 157,
+            "ttfb": 30.300000190734863,
+            "encoded": 240,
+            "decoded": 240
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=4eba953a-080e-405e-a480-912bc8553400&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=337e7cc7-7484-4624-a132-b3e2ab81f42e",
+            "start": 3926.300000190735,
+            "duration": 153.80000019073486,
+            "ttfb": 15.200000286102295,
+            "encoded": 136,
+            "decoded": 136
+          }
+        ],
+        "observedBackgroundResponseEndMs": 4080.1000003814697,
+        "parseCosts": null,
+        "layoutTotalMs": 0,
+        "longtasks": [
+          {
+            "at": 2895,
+            "ms": 87
+          },
+          {
+            "at": 3240.6000003814697,
+            "ms": 464
+          },
+          {
+            "at": 3863.2000002861023,
+            "ms": 63
+          },
+          {
+            "at": 4081.2000002861023,
+            "ms": 56
+          }
+        ]
+      }
+    ],
+    "compression-and-focus": [
+      {
+        "name": "0-normal-1440",
+        "role": 0,
+        "mode": "normal",
+        "count": 300,
+        "width": 1440,
+        "single": true,
+        "reviewed": false,
+        "trial": 0,
+        "instrumented": false,
+        "readyMs": 233.5394040000001,
+        "serverReadyMs": null,
+        "contentHash": null,
+        "switchMs": null,
+        "firstTextMs": null,
+        "paintedTextMs": null,
+        "interactiveMs": null,
+        "resourceCount": 58,
+        "assetRequests": 53,
+        "assetEncodedBytes": 119016,
+        "assetDecodedBytes": 313679,
+        "visibleEntries": 100,
+        "nodes": 3638,
+        "workspaceRequests": [
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=96a2f2e8-3c2e-43ab-8a33-50c72bdd0734&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=",
+            "start": 48.60000038146973,
+            "duration": 19.799999713897705,
+            "ttfb": 19.09999990463257,
+            "encoded": 20225,
+            "decoded": 526267
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=96a2f2e8-3c2e-43ab-8a33-50c72bdd0734&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=9eab5191-b9fb-423d-91bd-12f097a192bb",
+            "start": 224.30000019073486,
+            "duration": 17.800000190734863,
+            "ttfb": 17.299999713897705,
+            "encoded": 136,
+            "decoded": 136
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=96a2f2e8-3c2e-43ab-8a33-50c72bdd0734&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=54215d78-12be-4d3e-ae08-d237cc28b405",
+            "start": 295.80000019073486,
+            "duration": 30.09999990463257,
+            "ttfb": 29.5,
+            "encoded": 240,
+            "decoded": 240
+          }
+        ],
+        "observedBackgroundResponseEndMs": 325.90000009536743,
+        "parseCosts": null,
+        "layoutTotalMs": 0,
+        "longtasks": [
+          {
+            "at": 69.30000019073486,
+            "ms": 155
+          }
+        ]
+      },
+      {
+        "name": "1-normal-1440",
+        "role": 1,
+        "mode": "normal",
+        "count": 300,
+        "width": 1440,
+        "single": true,
+        "reviewed": false,
+        "trial": 0,
+        "instrumented": false,
+        "readyMs": 225.72584600000027,
+        "serverReadyMs": null,
+        "contentHash": null,
+        "switchMs": null,
+        "firstTextMs": null,
+        "paintedTextMs": null,
+        "interactiveMs": null,
+        "resourceCount": 58,
+        "assetRequests": 53,
+        "assetEncodedBytes": 119016,
+        "assetDecodedBytes": 313679,
+        "visibleEntries": 100,
+        "nodes": 3638,
+        "workspaceRequests": [
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=5dc8f104-3af4-48b5-8321-feb30a09cbb4&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000604%22%5D&preview=",
+            "start": 41,
+            "duration": 19.700000286102295,
+            "ttfb": 19.09999990463257,
+            "encoded": 20221,
+            "decoded": 526267
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=5dc8f104-3af4-48b5-8321-feb30a09cbb4&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000604%22%5D&preview=&since=fe801c05-7315-4e0b-b06c-255faf8196bf",
+            "start": 217.09999990463257,
+            "duration": 16,
+            "ttfb": 15.5,
+            "encoded": 136,
+            "decoded": 136
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=5dc8f104-3af4-48b5-8321-feb30a09cbb4&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000604%22%5D&preview=&since=10551ae2-4e4e-4e9f-abed-12c86f64a153",
+            "start": 274.80000019073486,
+            "duration": 28.90000009536743,
+            "ttfb": 28.40000009536743,
+            "encoded": 240,
+            "decoded": 240
+          }
+        ],
+        "observedBackgroundResponseEndMs": 303.7000002861023,
+        "parseCosts": null,
+        "layoutTotalMs": 0,
+        "longtasks": [
+          {
+            "at": 61.5,
+            "ms": 155
+          }
+        ]
+      },
+      {
+        "name": "2-normal-1440",
+        "role": 2,
+        "mode": "normal",
+        "count": 300,
+        "width": 1440,
+        "single": true,
+        "reviewed": false,
+        "trial": 0,
+        "instrumented": false,
+        "readyMs": 224.49430399999983,
+        "serverReadyMs": null,
+        "contentHash": null,
+        "switchMs": null,
+        "firstTextMs": null,
+        "paintedTextMs": null,
+        "interactiveMs": null,
+        "resourceCount": 58,
+        "assetRequests": 53,
+        "assetEncodedBytes": 119016,
+        "assetDecodedBytes": 313679,
+        "visibleEntries": 100,
+        "nodes": 3638,
+        "workspaceRequests": [
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=d58e569b-3473-4910-8e56-0d05004d0fcc&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000001206%22%5D&preview=",
+            "start": 40.09999990463257,
+            "duration": 19.09999990463257,
+            "ttfb": 18.40000009536743,
+            "encoded": 20080,
+            "decoded": 526267
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=d58e569b-3473-4910-8e56-0d05004d0fcc&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000001206%22%5D&preview=&since=e98539f8-8d02-4c8f-93ae-3054479acb6b",
+            "start": 215.09999990463257,
+            "duration": 16.299999713897705,
+            "ttfb": 15.800000190734863,
+            "encoded": 136,
+            "decoded": 136
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=d58e569b-3473-4910-8e56-0d05004d0fcc&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000001206%22%5D&preview=&since=92aeeeb9-997c-4e7b-8334-8db610024bda",
+            "start": 273,
+            "duration": 30.199999809265137,
+            "ttfb": 29.800000190734863,
+            "encoded": 240,
+            "decoded": 240
+          }
+        ],
+        "observedBackgroundResponseEndMs": 303.19999980926514,
+        "parseCosts": null,
+        "layoutTotalMs": 0,
+        "longtasks": [
+          {
+            "at": 59.69999980926514,
+            "ms": 155
+          }
+        ]
+      },
+      {
+        "name": "0-network-1440",
+        "role": 0,
+        "mode": "network",
+        "count": 300,
+        "width": 1440,
+        "single": true,
+        "reviewed": false,
+        "trial": 0,
+        "instrumented": false,
+        "readyMs": 2399.8284349999994,
+        "serverReadyMs": null,
+        "contentHash": null,
+        "switchMs": null,
+        "firstTextMs": null,
+        "paintedTextMs": null,
+        "interactiveMs": null,
+        "resourceCount": 58,
+        "assetRequests": 53,
+        "assetEncodedBytes": 119016,
+        "assetDecodedBytes": 313679,
+        "visibleEntries": 100,
+        "nodes": 3638,
+        "workspaceRequests": [
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=9e6c05a1-7c94-494c-878c-38fad3895bae&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=",
+            "start": 1968,
+            "duration": 267.09999990463257,
+            "ttfb": 18.59999990463257,
+            "encoded": 20224,
+            "decoded": 526267
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=9e6c05a1-7c94-494c-878c-38fad3895bae&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=f5056f9d-eac0-4fe4-b3b5-6f83348d206b",
+            "start": 2391.0999999046326,
+            "duration": 159.59999990463257,
+            "ttfb": 15.700000286102295,
+            "encoded": 136,
+            "decoded": 136
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=9e6c05a1-7c94-494c-878c-38fad3895bae&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=dd95e0e3-01d0-4941-967a-241875157094",
+            "start": 2566.199999809265,
+            "duration": 156.5,
+            "ttfb": 31.799999713897705,
+            "encoded": 240,
+            "decoded": 240
+          }
+        ],
+        "observedBackgroundResponseEndMs": 2722.699999809265,
+        "parseCosts": null,
+        "layoutTotalMs": 0,
+        "longtasks": [
+          {
+            "at": 2235.5999999046326,
+            "ms": 155
+          }
+        ]
+      },
+      {
+        "name": "0-cpu-1440",
+        "role": 0,
+        "mode": "cpu",
+        "count": 300,
+        "width": 1440,
+        "single": true,
+        "reviewed": false,
+        "trial": 0,
+        "instrumented": false,
+        "readyMs": 877.3585479999965,
+        "serverReadyMs": null,
+        "contentHash": null,
+        "switchMs": null,
+        "firstTextMs": null,
+        "paintedTextMs": null,
+        "interactiveMs": null,
+        "resourceCount": 58,
+        "assetRequests": 53,
+        "assetEncodedBytes": 119016,
+        "assetDecodedBytes": 313679,
+        "visibleEntries": 100,
+        "nodes": 3638,
+        "workspaceRequests": [
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=2b258edc-1895-4854-af44-fce0c5476377&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=",
+            "start": 127.59999990463257,
+            "duration": 20.40000009536743,
+            "ttfb": 19.699999809265137,
+            "encoded": 20230,
+            "decoded": 526267
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=2b258edc-1895-4854-af44-fce0c5476377&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=8f0c24a9-0ed5-4cc4-9069-5a6987c59395",
+            "start": 793.2000002861023,
+            "duration": 15.599999904632568,
+            "ttfb": 15.199999809265137,
+            "encoded": 136,
+            "decoded": 136
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=2b258edc-1895-4854-af44-fce0c5476377&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=3eaf6514-dfe6-47ba-a174-5145b2974a3e",
+            "start": 936.0999999046326,
+            "duration": 30,
+            "ttfb": 28.59999990463257,
+            "encoded": 240,
+            "decoded": 240
+          }
+        ],
+        "observedBackgroundResponseEndMs": 966.0999999046326,
+        "parseCosts": null,
+        "layoutTotalMs": 0,
+        "longtasks": [
+          {
+            "at": 168.40000009536743,
+            "ms": 624
+          },
+          {
+            "at": 794.2000002861023,
+            "ms": 59
+          },
+          {
+            "at": 877.2000002861023,
+            "ms": 59
+          },
+          {
+            "at": 950.0999999046326,
+            "ms": 63
+          },
+          {
+            "at": 1020.5,
+            "ms": 62
+          }
+        ]
+      },
+      {
+        "name": "0-both-1440",
+        "role": 0,
+        "mode": "both",
+        "count": 300,
+        "width": 1440,
+        "single": true,
+        "reviewed": false,
+        "trial": 0,
+        "instrumented": false,
+        "readyMs": 2911.6632659999996,
+        "serverReadyMs": null,
+        "contentHash": null,
+        "switchMs": null,
+        "firstTextMs": null,
+        "paintedTextMs": null,
+        "interactiveMs": null,
+        "resourceCount": 58,
+        "assetRequests": 53,
+        "assetEncodedBytes": 119016,
+        "assetDecodedBytes": 313679,
+        "visibleEntries": 100,
+        "nodes": 3638,
+        "workspaceRequests": [
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=a9701631-2f7b-4b8f-930e-09f6516ead2c&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=",
+            "start": 2032.2000002861023,
+            "duration": 262.3999996185303,
+            "ttfb": 17.5,
+            "encoded": 20228,
+            "decoded": 526267
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=a9701631-2f7b-4b8f-930e-09f6516ead2c&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=bb38a934-0712-4453-9ce9-4b854cf4ad54",
+            "start": 2879.9000000953674,
+            "duration": 157.09999990463257,
+            "ttfb": 13.5,
+            "encoded": 136,
+            "decoded": 136
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=a9701631-2f7b-4b8f-930e-09f6516ead2c&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=385191f6-b19e-410d-9b29-f1e304580380",
+            "start": 3087.0999999046326,
+            "duration": 152.90000009536743,
+            "ttfb": 27.199999809265137,
+            "encoded": 240,
+            "decoded": 240
+          }
+        ],
+        "observedBackgroundResponseEndMs": 3240.0,
+        "parseCosts": null,
+        "layoutTotalMs": 0,
+        "longtasks": [
+          {
+            "at": 2294.9000000953674,
+            "ms": 585
+          },
+          {
+            "at": 2880.5999999046326,
+            "ms": 54
+          },
+          {
+            "at": 3240.7000002861023,
+            "ms": 51
+          }
+        ]
+      },
+      {
+        "name": "0-both-390",
+        "role": 0,
+        "mode": "both",
+        "count": 300,
+        "width": 390,
+        "single": true,
+        "reviewed": false,
+        "trial": 0,
+        "instrumented": false,
+        "readyMs": 3024.606398,
+        "serverReadyMs": null,
+        "contentHash": null,
+        "switchMs": null,
+        "firstTextMs": null,
+        "paintedTextMs": null,
+        "interactiveMs": null,
+        "resourceCount": 58,
+        "assetRequests": 53,
+        "assetEncodedBytes": 119016,
+        "assetDecodedBytes": 313679,
+        "visibleEntries": 100,
+        "nodes": 3638,
+        "workspaceRequests": [
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=7221db2c-23dd-44a0-a632-4a8aba9ea9bc&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=",
+            "start": 2035.8999996185303,
+            "duration": 258.7000002861023,
+            "ttfb": 19.5,
+            "encoded": 20228,
+            "decoded": 526267
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=7221db2c-23dd-44a0-a632-4a8aba9ea9bc&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=dd2f0f88-0127-46bb-9a44-168b6fdcda62",
+            "start": 2992.2999997138977,
+            "duration": 165.09999990463257,
+            "ttfb": 13.699999809265137,
+            "encoded": 136,
+            "decoded": 136
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=7221db2c-23dd-44a0-a632-4a8aba9ea9bc&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=704cca86-de79-4975-81e2-8e14af89fb5c",
+            "start": 3210.2999997138977,
+            "duration": 157.5,
+            "ttfb": 26.40000009536743,
+            "encoded": 240,
+            "decoded": 240
+          }
+        ],
+        "observedBackgroundResponseEndMs": 3367.7999997138977,
+        "parseCosts": null,
+        "layoutTotalMs": 0,
+        "longtasks": [
+          {
+            "at": 2295.5,
+            "ms": 696
+          },
+          {
+            "at": 3158,
+            "ms": 52
+          },
+          {
+            "at": 3368.0999999046326,
+            "ms": 53
+          }
+        ]
+      }
+    ],
+    "initial-render-batch": [
+      {
+        "name": "0-normal-1440",
+        "role": 0,
+        "mode": "normal",
+        "count": 300,
+        "width": 1440,
+        "single": true,
+        "reviewed": false,
+        "trial": 0,
+        "instrumented": false,
+        "readyMs": 204.18121999999994,
+        "serverReadyMs": null,
+        "contentHash": null,
+        "switchMs": null,
+        "firstTextMs": null,
+        "paintedTextMs": null,
+        "interactiveMs": null,
+        "resourceCount": 58,
+        "assetRequests": 53,
+        "assetEncodedBytes": 119225,
+        "assetDecodedBytes": 314652,
+        "visibleEntries": 100,
+        "nodes": 3638,
+        "workspaceRequests": [
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=05aa5317-7808-45ce-bcba-d3d4a71ead1e&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=",
+            "start": 45.5,
+            "duration": 19.40000009536743,
+            "ttfb": 18.59999990463257,
+            "encoded": 20233,
+            "decoded": 526267
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=05aa5317-7808-45ce-bcba-d3d4a71ead1e&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=cb30f439-9362-442f-b1fd-27179eda766c",
+            "start": 195.60000038146973,
+            "duration": 16.59999990463257,
+            "ttfb": 16.09999990463257,
+            "encoded": 136,
+            "decoded": 136
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=05aa5317-7808-45ce-bcba-d3d4a71ead1e&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=441241b2-a8cb-4f6f-8f7f-c60b8c3510ac",
+            "start": 252.30000019073486,
+            "duration": 29,
+            "ttfb": 28.5,
+            "encoded": 240,
+            "decoded": 240
+          }
+        ],
+        "observedBackgroundResponseEndMs": 281.30000019073486,
+        "parseCosts": null,
+        "layoutTotalMs": 0,
+        "longtasks": [
+          {
+            "at": 65.5,
+            "ms": 130
+          }
+        ]
+      },
+      {
+        "name": "1-normal-1440",
+        "role": 1,
+        "mode": "normal",
+        "count": 300,
+        "width": 1440,
+        "single": true,
+        "reviewed": false,
+        "trial": 0,
+        "instrumented": false,
+        "readyMs": 205.88900000000012,
+        "serverReadyMs": null,
+        "contentHash": null,
+        "switchMs": null,
+        "firstTextMs": null,
+        "paintedTextMs": null,
+        "interactiveMs": null,
+        "resourceCount": 58,
+        "assetRequests": 53,
+        "assetEncodedBytes": 119225,
+        "assetDecodedBytes": 314652,
+        "visibleEntries": 100,
+        "nodes": 3638,
+        "workspaceRequests": [
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=e4adda6d-91f5-422b-8c72-94fbdc3f0b56&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000604%22%5D&preview=",
+            "start": 43.90000009536743,
+            "duration": 19.899999618530273,
+            "ttfb": 19,
+            "encoded": 20225,
+            "decoded": 526267
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=e4adda6d-91f5-422b-8c72-94fbdc3f0b56&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000604%22%5D&preview=&since=af6b5d5a-d715-4889-95cf-2f549fece140",
+            "start": 197.69999980926514,
+            "duration": 19.90000009536743,
+            "ttfb": 19.40000009536743,
+            "encoded": 136,
+            "decoded": 136
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=e4adda6d-91f5-422b-8c72-94fbdc3f0b56&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000604%22%5D&preview=&since=af4c235d-35ef-4740-bcc4-f3bcca153918",
+            "start": 261.09999990463257,
+            "duration": 31.40000009536743,
+            "ttfb": 30.799999713897705,
+            "encoded": 240,
+            "decoded": 240
+          }
+        ],
+        "observedBackgroundResponseEndMs": 292.5,
+        "parseCosts": null,
+        "layoutTotalMs": 0,
+        "longtasks": [
+          {
+            "at": 65.09999990463257,
+            "ms": 132
+          }
+        ]
+      },
+      {
+        "name": "2-normal-1440",
+        "role": 2,
+        "mode": "normal",
+        "count": 300,
+        "width": 1440,
+        "single": true,
+        "reviewed": false,
+        "trial": 0,
+        "instrumented": false,
+        "readyMs": 203.08378300000004,
+        "serverReadyMs": null,
+        "contentHash": null,
+        "switchMs": null,
+        "firstTextMs": null,
+        "paintedTextMs": null,
+        "interactiveMs": null,
+        "resourceCount": 58,
+        "assetRequests": 53,
+        "assetEncodedBytes": 119225,
+        "assetDecodedBytes": 314652,
+        "visibleEntries": 100,
+        "nodes": 3638,
+        "workspaceRequests": [
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=7ba32750-f2b3-49a8-89e1-bab685fbf9d4&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000001206%22%5D&preview=",
+            "start": 43.09999990463257,
+            "duration": 20.300000190734863,
+            "ttfb": 19.40000009536743,
+            "encoded": 20084,
+            "decoded": 526267
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=7ba32750-f2b3-49a8-89e1-bab685fbf9d4&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000001206%22%5D&preview=&since=608a5439-4759-460c-9eff-1696e1d3dbe8",
+            "start": 194.90000009536743,
+            "duration": 17,
+            "ttfb": 16.59999990463257,
+            "encoded": 136,
+            "decoded": 136
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=7ba32750-f2b3-49a8-89e1-bab685fbf9d4&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000001206%22%5D&preview=&since=a08fe4c8-c144-4fe1-9410-0c909dc2293f",
+            "start": 252.59999990463257,
+            "duration": 30.5,
+            "ttfb": 30,
+            "encoded": 240,
+            "decoded": 240
+          }
+        ],
+        "observedBackgroundResponseEndMs": 283.09999990463257,
+        "parseCosts": null,
+        "layoutTotalMs": 0,
+        "longtasks": [
+          {
+            "at": 64.19999980926514,
+            "ms": 130
+          }
+        ]
+      },
+      {
+        "name": "0-network-1440",
+        "role": 0,
+        "mode": "network",
+        "count": 300,
+        "width": 1440,
+        "single": true,
+        "reviewed": false,
+        "trial": 0,
+        "instrumented": false,
+        "readyMs": 2396.407256999999,
+        "serverReadyMs": null,
+        "contentHash": null,
+        "switchMs": null,
+        "firstTextMs": null,
+        "paintedTextMs": null,
+        "interactiveMs": null,
+        "resourceCount": 58,
+        "assetRequests": 53,
+        "assetEncodedBytes": 119225,
+        "assetDecodedBytes": 314652,
+        "visibleEntries": 100,
+        "nodes": 3638,
+        "workspaceRequests": [
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=bac696e2-791f-4cd1-9ada-ae94270eafa1&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=",
+            "start": 1983,
+            "duration": 266.90000009536743,
+            "ttfb": 18.700000286102295,
+            "encoded": 20225,
+            "decoded": 526267
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=bac696e2-791f-4cd1-9ada-ae94270eafa1&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=aca86e3a-dfbf-4709-84e5-4a8d2eb61fd0",
+            "start": 2388.5,
+            "duration": 154.2999997138977,
+            "ttfb": 15.800000190734863,
+            "encoded": 136,
+            "decoded": 136
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=bac696e2-791f-4cd1-9ada-ae94270eafa1&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=5fa46238-5f00-4526-9eb2-e9ff3868592f",
+            "start": 2557.7999997138977,
+            "duration": 156.90000009536743,
+            "ttfb": 30.09999990463257,
+            "encoded": 240,
+            "decoded": 240
+          }
+        ],
+        "observedBackgroundResponseEndMs": 2714.699999809265,
+        "parseCosts": null,
+        "layoutTotalMs": 0,
+        "longtasks": [
+          {
+            "at": 2250.0999999046326,
+            "ms": 138
+          }
+        ]
+      },
+      {
+        "name": "0-cpu-1440",
+        "role": 0,
+        "mode": "cpu",
+        "count": 300,
+        "width": 1440,
+        "single": true,
+        "reviewed": false,
+        "trial": 0,
+        "instrumented": false,
+        "readyMs": 753.8992230000003,
+        "serverReadyMs": null,
+        "contentHash": null,
+        "switchMs": null,
+        "firstTextMs": null,
+        "paintedTextMs": null,
+        "interactiveMs": null,
+        "resourceCount": 58,
+        "assetRequests": 53,
+        "assetEncodedBytes": 119225,
+        "assetDecodedBytes": 314652,
+        "visibleEntries": 100,
+        "nodes": 3638,
+        "workspaceRequests": [
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=d3e35de4-0535-447c-9058-33f9d5ead7a1&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=",
+            "start": 120.80000019073486,
+            "duration": 18.59999990463257,
+            "ttfb": 17.800000190734863,
+            "encoded": 20227,
+            "decoded": 526267
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=d3e35de4-0535-447c-9058-33f9d5ead7a1&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=bf51ffb3-52b9-4ca5-9711-f19978aaba6a",
+            "start": 680.7000002861023,
+            "duration": 17.299999713897705,
+            "ttfb": 17,
+            "encoded": 136,
+            "decoded": 136
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=d3e35de4-0535-447c-9058-33f9d5ead7a1&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=fb148806-ef7c-4e54-814e-526142edc159",
+            "start": 809,
+            "duration": 27.59999990463257,
+            "ttfb": 27,
+            "encoded": 240,
+            "decoded": 240
+          }
+        ],
+        "observedBackgroundResponseEndMs": 836.5999999046326,
+        "parseCosts": null,
+        "layoutTotalMs": 0,
+        "longtasks": [
+          {
+            "at": 158.09999990463257,
+            "ms": 522
+          },
+          {
+            "at": 680.8000001907349,
+            "ms": 54
+          },
+          {
+            "at": 753,
+            "ms": 53
+          },
+          {
+            "at": 819.8000001907349,
+            "ms": 52
+          }
+        ]
+      },
+      {
+        "name": "0-both-1440",
+        "role": 0,
+        "mode": "both",
+        "count": 300,
+        "width": 1440,
+        "single": true,
+        "reviewed": false,
+        "trial": 0,
+        "instrumented": false,
+        "readyMs": 2805.8514780000005,
+        "serverReadyMs": null,
+        "contentHash": null,
+        "switchMs": null,
+        "firstTextMs": null,
+        "paintedTextMs": null,
+        "interactiveMs": null,
+        "resourceCount": 58,
+        "assetRequests": 53,
+        "assetEncodedBytes": 119225,
+        "assetDecodedBytes": 314652,
+        "visibleEntries": 100,
+        "nodes": 3638,
+        "workspaceRequests": [
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=1b20f484-1330-48bb-a257-57693f3fc782&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=",
+            "start": 2031.5999999046326,
+            "duration": 262.90000009536743,
+            "ttfb": 18.300000190734863,
+            "encoded": 20228,
+            "decoded": 526267
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=1b20f484-1330-48bb-a257-57693f3fc782&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=a6b6c7a9-b064-405e-a17a-e0adf72d61d9",
+            "start": 2777.5,
+            "duration": 155.09999990463257,
+            "ttfb": 13.700000286102295,
+            "encoded": 136,
+            "decoded": 136
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=1b20f484-1330-48bb-a257-57693f3fc782&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=a2c4c0a7-6371-454c-abdc-8aae32b701a8",
+            "start": 2988.5,
+            "duration": 154,
+            "ttfb": 26.40000009536743,
+            "encoded": 240,
+            "decoded": 240
+          }
+        ],
+        "observedBackgroundResponseEndMs": 3142.5,
+        "parseCosts": null,
+        "layoutTotalMs": 0,
+        "longtasks": [
+          {
+            "at": 2295.5999999046326,
+            "ms": 481
+          },
+          {
+            "at": 2777.5,
+            "ms": 51
+          },
+          {
+            "at": 2933.5,
+            "ms": 55
+          },
+          {
+            "at": 3000.5999999046326,
+            "ms": 56
+          },
+          {
+            "at": 3142.7999997138977,
+            "ms": 50
+          }
+        ]
+      },
+      {
+        "name": "0-both-390",
+        "role": 0,
+        "mode": "both",
+        "count": 300,
+        "width": 390,
+        "single": true,
+        "reviewed": false,
+        "trial": 0,
+        "instrumented": false,
+        "readyMs": 2948.0228690000004,
+        "serverReadyMs": null,
+        "contentHash": null,
+        "switchMs": null,
+        "firstTextMs": null,
+        "paintedTextMs": null,
+        "interactiveMs": null,
+        "resourceCount": 58,
+        "assetRequests": 53,
+        "assetEncodedBytes": 119225,
+        "assetDecodedBytes": 314652,
+        "visibleEntries": 100,
+        "nodes": 3638,
+        "workspaceRequests": [
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=84eeb498-0502-4478-a2d7-ee6600f6b49f&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=",
+            "start": 2047.8000001907349,
+            "duration": 262.19999980926514,
+            "ttfb": 18.59999990463257,
+            "encoded": 20229,
+            "decoded": 526267
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=84eeb498-0502-4478-a2d7-ee6600f6b49f&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=6aa1a791-c4b6-46f5-8fb8-1518d3b36188",
+            "start": 2916.7000002861023,
+            "duration": 157.90000009536743,
+            "ttfb": 14.300000190734863,
+            "encoded": 136,
+            "decoded": 136
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=84eeb498-0502-4478-a2d7-ee6600f6b49f&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=57da4506-9dd9-4980-b4db-74c7340da72a",
+            "start": 3132.1000003814697,
+            "duration": 152.69999980926514,
+            "ttfb": 28.09999990463257,
+            "encoded": 240,
+            "decoded": 240
+          }
+        ],
+        "observedBackgroundResponseEndMs": 3284.800000190735,
+        "parseCosts": null,
+        "layoutTotalMs": 0,
+        "longtasks": [
+          {
+            "at": 2310.7000002861023,
+            "ms": 606
+          },
+          {
+            "at": 3075.4000000953674,
+            "ms": 56
+          }
+        ]
+      }
+    ],
+    "role-corrected-base": [
+      {
+        "name": "0-normal-1440-300-hash-unread-0",
+        "role": 0,
+        "mode": "normal",
+        "count": 300,
+        "width": 1440,
+        "single": true,
+        "reviewed": false,
+        "trial": 0,
+        "instrumented": false,
+        "readyMs": 261.9951229999997,
+        "serverReadyMs": null,
+        "contentHash": null,
+        "switchMs": 220.69999980926514,
+        "firstTextMs": 252.7000002861023,
+        "paintedTextMs": 264.40000009536743,
+        "interactiveMs": 265.1000003814697,
+        "resourceCount": 59,
+        "assetRequests": 53,
+        "assetEncodedBytes": 313369,
+        "assetDecodedBytes": 313369,
+        "visibleEntries": 100,
+        "nodes": 3638,
+        "workspaceRequests": [
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=14e81081-0ff7-4ceb-b273-b65c5dd45963&ranges=%7B%7D&focus=%5B%5D&preview=",
+            "start": 49,
+            "duration": 3.5,
+            "ttfb": 3.3999996185302734,
+            "encoded": 1546,
+            "decoded": 6400
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=14e81081-0ff7-4ceb-b273-b65c5dd45963&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=0fb8d077-c9e5-4fb6-af0b-0c1e38078416",
+            "start": 79,
+            "duration": 63.40000009536743,
+            "ttfb": 62.59999990463257,
+            "encoded": 18761,
+            "decoded": 526223
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=14e81081-0ff7-4ceb-b273-b65c5dd45963&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=e6018feb-9cfb-4dbc-bc68-2c7b80903b2c",
+            "start": 252.90000009536743,
+            "duration": 32.59999990463257,
+            "ttfb": 31.90000009536743,
+            "encoded": 240,
+            "decoded": 240
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=14e81081-0ff7-4ceb-b273-b65c5dd45963&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=65fbaf82-d852-4ad5-8ec1-b235ecb8d1b8",
+            "start": 302.5,
+            "duration": 16.300000190734863,
+            "ttfb": 15.800000190734863,
+            "encoded": 136,
+            "decoded": 136
+          }
+        ],
+        "observedBackgroundResponseEndMs": 318.80000019073486,
+        "parseCosts": null,
+        "layoutTotalMs": 0,
+        "longtasks": [
+          {
+            "at": 146,
+            "ms": 106
+          }
+        ]
+      },
+      {
+        "name": "1-normal-1440-300-hash-unread-0",
+        "role": 1,
+        "mode": "normal",
+        "count": 300,
+        "width": 1440,
+        "single": true,
+        "reviewed": false,
+        "trial": 0,
+        "instrumented": false,
+        "readyMs": 237.4013190000005,
+        "serverReadyMs": null,
+        "contentHash": null,
+        "switchMs": 200.90000009536743,
+        "firstTextMs": 228.69999980926514,
+        "paintedTextMs": 240.59999990463257,
+        "interactiveMs": 241.2999997138977,
+        "resourceCount": 59,
+        "assetRequests": 53,
+        "assetEncodedBytes": 313369,
+        "assetDecodedBytes": 313369,
+        "visibleEntries": 100,
+        "nodes": 4138,
+        "workspaceRequests": [
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=c82d7444-65f3-46cc-8760-80699916683c&ranges=%7B%7D&focus=%5B%5D&preview=",
+            "start": 37.299999713897705,
+            "duration": 3.3000001907348633,
+            "ttfb": 3.200000286102295,
+            "encoded": 1552,
+            "decoded": 6400
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=c82d7444-65f3-46cc-8760-80699916683c&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000604%22%5D&preview=&since=1d43f70e-50e9-4fe6-a8e2-03c2ad75c1ec",
+            "start": 61.5,
+            "duration": 54.5,
+            "ttfb": 53.90000009536743,
+            "encoded": 17540,
+            "decoded": 485423
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=c82d7444-65f3-46cc-8760-80699916683c&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000604%22%5D&preview=&since=06859085-a8b0-4c6b-a233-0509f5317623",
+            "start": 229,
+            "duration": 27.199999809265137,
+            "ttfb": 26.700000286102295,
+            "encoded": 240,
+            "decoded": 240
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=c82d7444-65f3-46cc-8760-80699916683c&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000604%22%5D&preview=&since=a0f6242b-8215-4368-8677-d4ae3fe8c8a1",
+            "start": 271.8999996185303,
+            "duration": 11.600000381469727,
+            "ttfb": 11,
+            "encoded": 136,
+            "decoded": 136
+          }
+        ],
+        "observedBackgroundResponseEndMs": 283.5,
+        "parseCosts": null,
+        "layoutTotalMs": 0,
+        "longtasks": [
+          {
+            "at": 119.19999980926514,
+            "ms": 109
+          }
+        ]
+      },
+      {
+        "name": "2-normal-1440-300-hash-unread-0",
+        "role": 2,
+        "mode": "normal",
+        "count": 300,
+        "width": 1440,
+        "single": true,
+        "reviewed": false,
+        "trial": 0,
+        "instrumented": false,
+        "readyMs": 244.7277780000004,
+        "serverReadyMs": null,
+        "contentHash": null,
+        "switchMs": 192.60000038146973,
+        "firstTextMs": 235.59999990463257,
+        "paintedTextMs": 248.40000009536743,
+        "interactiveMs": 249.09999990463257,
+        "resourceCount": 59,
+        "assetRequests": 53,
+        "assetEncodedBytes": 313369,
+        "assetDecodedBytes": 313369,
+        "visibleEntries": 100,
+        "nodes": 4138,
+        "workspaceRequests": [
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=f78b1c47-b3cf-4831-b6c6-c31cfc11d762&ranges=%7B%7D&focus=%5B%5D&preview=",
+            "start": 42.200000286102295,
+            "duration": 4,
+            "ttfb": 3.6999998092651367,
+            "encoded": 1545,
+            "decoded": 6400
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=f78b1c47-b3cf-4831-b6c6-c31cfc11d762&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000001206%22%5D&preview=&since=7b19e186-e706-4147-b35f-31119b055161",
+            "start": 66.80000019073486,
+            "duration": 58.40000009536743,
+            "ttfb": 57.80000019073486,
+            "encoded": 17544,
+            "decoded": 485423
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=f78b1c47-b3cf-4831-b6c6-c31cfc11d762&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000001206%22%5D&preview=&since=f5a51697-b0cf-4e5f-910c-7a9f700cf3d5",
+            "start": 235.80000019073486,
+            "duration": 29,
+            "ttfb": 28.09999990463257,
+            "encoded": 240,
+            "decoded": 240
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=f78b1c47-b3cf-4831-b6c6-c31cfc11d762&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000001206%22%5D&preview=&since=2e70e68d-20e8-4bac-a330-6330dcaf9064",
+            "start": 280,
+            "duration": 13.099999904632568,
+            "ttfb": 12.400000095367432,
+            "encoded": 136,
+            "decoded": 136
+          }
+        ],
+        "observedBackgroundResponseEndMs": 293.09999990463257,
+        "parseCosts": null,
+        "layoutTotalMs": 0,
+        "longtasks": [
+          {
+            "at": 126.5,
+            "ms": 109
+          }
+        ]
+      },
+      {
+        "name": "0-network-1440-300-hash-unread-0",
+        "role": 0,
+        "mode": "network",
+        "count": 300,
+        "width": 1440,
+        "single": true,
+        "reviewed": false,
+        "trial": 0,
+        "instrumented": false,
+        "readyMs": 3246.744598000001,
+        "serverReadyMs": null,
+        "contentHash": null,
+        "switchMs": 393.2999997138977,
+        "firstTextMs": 3238.9000000953674,
+        "paintedTextMs": 3247.4000000953674,
+        "interactiveMs": 3248.1000003814697,
+        "resourceCount": 59,
+        "assetRequests": 53,
+        "assetEncodedBytes": 313369,
+        "assetDecodedBytes": 313369,
+        "visibleEntries": 100,
+        "nodes": 3638,
+        "workspaceRequests": [
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=b8d25461-8c6a-467c-8f2f-649e1425b27b&ranges=%7B%7D&focus=%5B%5D&preview=",
+            "start": 2682.6000003814697,
+            "duration": 174.39999961853027,
+            "ttfb": 3.9000000953674316,
+            "encoded": 1547,
+            "decoded": 6400
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=b8d25461-8c6a-467c-8f2f-649e1425b27b&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=053595e5-7042-4abe-bc13-77c236102625",
+            "start": 2878.2000002861023,
+            "duration": 257,
+            "ttfb": 63.30000019073486,
+            "encoded": 18754,
+            "decoded": 526223
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=b8d25461-8c6a-467c-8f2f-649e1425b27b&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=ffd4e261-03ce-459d-940a-4f112678585b",
+            "start": 3239.1000003814697,
+            "duration": 158.19999980926514,
+            "ttfb": 27.5,
+            "encoded": 240,
+            "decoded": 240
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=b8d25461-8c6a-467c-8f2f-649e1425b27b&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=f882f7e8-b0f1-4fc1-ae9a-ea1b6999c348",
+            "start": 3410.300000190735,
+            "duration": 152.5,
+            "ttfb": 14.599999904632568,
+            "encoded": 136,
+            "decoded": 136
+          }
+        ],
+        "observedBackgroundResponseEndMs": 3562.800000190735,
+        "parseCosts": null,
+        "layoutTotalMs": 0,
+        "longtasks": [
+          {
+            "at": 3135.4000000953674,
+            "ms": 103
+          }
+        ]
+      },
+      {
+        "name": "0-cpu-1440-300-hash-unread-0",
+        "role": 0,
+        "mode": "cpu",
+        "count": 300,
+        "width": 1440,
+        "single": true,
+        "reviewed": false,
+        "trial": 0,
+        "instrumented": false,
+        "readyMs": 734.760212000001,
+        "serverReadyMs": null,
+        "contentHash": null,
+        "switchMs": 653.1999998092651,
+        "firstTextMs": 678.3000001907349,
+        "paintedTextMs": 726.5,
+        "interactiveMs": 729,
+        "resourceCount": 59,
+        "assetRequests": 53,
+        "assetEncodedBytes": 313369,
+        "assetDecodedBytes": 313369,
+        "visibleEntries": 100,
+        "nodes": 3638,
+        "workspaceRequests": [
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=954117e4-a014-4c26-af1a-f9f184e45dec&ranges=%7B%7D&focus=%5B%5D&preview=",
+            "start": 119.60000038146973,
+            "duration": 3.5,
+            "ttfb": 3,
+            "encoded": 1555,
+            "decoded": 6400
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=954117e4-a014-4c26-af1a-f9f184e45dec&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=58368637-0629-4b39-9df9-30248871459d",
+            "start": 212,
+            "duration": 20.40000009536743,
+            "ttfb": 19.5,
+            "encoded": 18754,
+            "decoded": 526223
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=954117e4-a014-4c26-af1a-f9f184e45dec&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=839cfc1e-1bc6-4bc2-a43e-9fd90712702f",
+            "start": 679.2000002861023,
+            "duration": 28.799999713897705,
+            "ttfb": 28.200000286102295,
+            "encoded": 240,
+            "decoded": 240
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=954117e4-a014-4c26-af1a-f9f184e45dec&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=2b0078eb-2de6-4f78-be8a-08b1f9fdf457",
+            "start": 789.7000002861023,
+            "duration": 14.299999713897705,
+            "ttfb": 13.5,
+            "encoded": 136,
+            "decoded": 136
+          }
+        ],
+        "observedBackgroundResponseEndMs": 804.0,
+        "parseCosts": null,
+        "layoutTotalMs": 0,
+        "longtasks": [
+          {
+            "at": 129.60000038146973,
+            "ms": 82
+          },
+          {
+            "at": 252.80000019073486,
+            "ms": 426
+          },
+          {
+            "at": 733.8000001907349,
+            "ms": 55
+          },
+          {
+            "at": 800.7000002861023,
+            "ms": 56
+          }
+        ]
+      },
+      {
+        "name": "0-both-1440-300-hash-unread-0",
+        "role": 0,
+        "mode": "both",
+        "count": 300,
+        "width": 1440,
+        "single": true,
+        "reviewed": false,
+        "trial": 0,
+        "instrumented": false,
+        "readyMs": 3618.9927700000007,
+        "serverReadyMs": null,
+        "contentHash": null,
+        "switchMs": 772.1999998092651,
+        "firstTextMs": 3588.5,
+        "paintedTextMs": 3624.199999809265,
+        "interactiveMs": 3627.2999997138977,
+        "resourceCount": 59,
+        "assetRequests": 53,
+        "assetEncodedBytes": 313369,
+        "assetDecodedBytes": 313369,
+        "visibleEntries": 100,
+        "nodes": 3638,
+        "workspaceRequests": [
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=00199b4f-3858-4b20-89ed-b345c39a2e8a&ranges=%7B%7D&focus=%5B%5D&preview=",
+            "start": 2705.2999997138977,
+            "duration": 159.2000002861023,
+            "ttfb": 3,
+            "encoded": 1547,
+            "decoded": 6400
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=00199b4f-3858-4b20-89ed-b345c39a2e8a&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=5d7aac0a-f184-450e-807a-546bd55e964b",
+            "start": 2943.0999999046326,
+            "duration": 258.59999990463257,
+            "ttfb": 57.299999713897705,
+            "encoded": 18760,
+            "decoded": 526223
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=00199b4f-3858-4b20-89ed-b345c39a2e8a&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=905bb830-abd1-4149-8f38-373798b38546",
+            "start": 3589.199999809265,
+            "duration": 153.30000019073486,
+            "ttfb": 28.5,
+            "encoded": 240,
+            "decoded": 240
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=00199b4f-3858-4b20-89ed-b345c39a2e8a&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=5fedb036-80a6-437a-8e82-8bffa0a6c5c8",
+            "start": 3795.5,
+            "duration": 156.40000009536743,
+            "ttfb": 17.600000381469727,
+            "encoded": 136,
+            "decoded": 136
+          }
+        ],
+        "observedBackgroundResponseEndMs": 3951.9000000953674,
+        "parseCosts": null,
+        "layoutTotalMs": 0,
+        "longtasks": [
+          {
+            "at": 2864.699999809265,
+            "ms": 78
+          },
+          {
+            "at": 3202.7999997138977,
+            "ms": 386
+          },
+          {
+            "at": 3743,
+            "ms": 52
+          },
+          {
+            "at": 3952.7999997138977,
+            "ms": 53
+          }
+        ]
+      },
+      {
+        "name": "0-both-390-300-hash-unread-0",
+        "role": 0,
+        "mode": "both",
+        "count": 300,
+        "width": 390,
+        "single": true,
+        "reviewed": false,
+        "trial": 0,
+        "instrumented": false,
+        "readyMs": 3692.0086889999984,
+        "serverReadyMs": null,
+        "contentHash": null,
+        "switchMs": 805.9000000953674,
+        "firstTextMs": 3656,
+        "paintedTextMs": 3696.300000190735,
+        "interactiveMs": 3699.300000190735,
+        "resourceCount": 59,
+        "assetRequests": 53,
+        "assetEncodedBytes": 313369,
+        "assetDecodedBytes": 313369,
+        "visibleEntries": 100,
+        "nodes": 3638,
+        "workspaceRequests": [
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=b6d43caf-76d3-446b-8773-5071bf87799a&ranges=%7B%7D&focus=%5B%5D&preview=",
+            "start": 2711.5,
+            "duration": 160.90000009536743,
+            "ttfb": 2.8999996185302734,
+            "encoded": 1547,
+            "decoded": 6400
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=b6d43caf-76d3-446b-8773-5071bf87799a&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=9f9176d8-970a-43bc-a356-c538b8f70770",
+            "start": 2965.9000000953674,
+            "duration": 258.59999990463257,
+            "ttfb": 18.200000286102295,
+            "encoded": 18756,
+            "decoded": 526223
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=b6d43caf-76d3-446b-8773-5071bf87799a&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=9a087311-6b83-4384-9468-385335ee089e",
+            "start": 3657.0999999046326,
+            "duration": 152.90000009536743,
+            "ttfb": 27.800000190734863,
+            "encoded": 240,
+            "decoded": 240
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=b6d43caf-76d3-446b-8773-5071bf87799a&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=858ed24a-b982-4099-9c38-9b2dfffe23ac",
+            "start": 3862.0999999046326,
+            "duration": 157.30000019073486,
+            "ttfb": 13.400000095367432,
+            "encoded": 136,
+            "decoded": 136
+          }
+        ],
+        "observedBackgroundResponseEndMs": 4019.4000000953674,
+        "parseCosts": null,
+        "layoutTotalMs": 0,
+        "longtasks": [
+          {
+            "at": 2873.199999809265,
+            "ms": 92
+          },
+          {
+            "at": 3225.5999999046326,
+            "ms": 431
+          },
+          {
+            "at": 3810.800000190735,
+            "ms": 51
+          },
+          {
+            "at": 4020.199999809265,
+            "ms": 50
+          }
+        ]
+      },
+      {
+        "name": "0-both-1440-300-board-unread-0",
+        "role": 0,
+        "mode": "both",
+        "count": 300,
+        "width": 1440,
+        "single": false,
+        "reviewed": false,
+        "trial": 0,
+        "instrumented": false,
+        "readyMs": 4667.918854000003,
+        "serverReadyMs": null,
+        "contentHash": null,
+        "switchMs": 268.69999980926514,
+        "firstTextMs": 4576.200000286102,
+        "paintedTextMs": 4685.400000095367,
+        "interactiveMs": 4692.099999904633,
+        "resourceCount": 59,
+        "assetRequests": 53,
+        "assetEncodedBytes": 313369,
+        "assetDecodedBytes": 313369,
+        "visibleEntries": 300,
+        "nodes": 10622,
+        "workspaceRequests": [
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=29937fb9-7705-4788-90b6-39309424c27b&ranges=%7B%7D&focus=%5B%5D&preview=",
+            "start": 2708.2000002861023,
+            "duration": 171.2999997138977,
+            "ttfb": 2.8999996185302734,
+            "encoded": 1551,
+            "decoded": 6400
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=29937fb9-7705-4788-90b6-39309424c27b&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%2C%2200000000-0000-4000-8000-000000000604%22%2C%2200000000-0000-4000-8000-000000001206%22%5D&preview=&since=471c0dfc-69ac-46e4-aedd-8a7908e494eb",
+            "start": 2949.5999999046326,
+            "duration": 417.90000009536743,
+            "ttfb": 39.90000009536743,
+            "encoded": 52910,
+            "decoded": 1484403
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=29937fb9-7705-4788-90b6-39309424c27b&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%2C%2200000000-0000-4000-8000-000000000604%22%2C%2200000000-0000-4000-8000-000000001206%22%5D&preview=&since=b7cd8891-ed3e-4ca6-a622-297be8ba0f80",
+            "start": 4577,
+            "duration": 155.59999990463257,
+            "ttfb": 37.30000019073486,
+            "encoded": 136,
+            "decoded": 136
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=29937fb9-7705-4788-90b6-39309424c27b&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%2C%2200000000-0000-4000-8000-000000000604%22%2C%2200000000-0000-4000-8000-000000001206%22%5D&preview=&since=3694f383-552c-4b76-be5e-8ed272022389",
+            "start": 4923.800000190735,
+            "duration": 153.40000009536743,
+            "ttfb": 45.700000286102295,
+            "encoded": 240,
+            "decoded": 240
+          }
+        ],
+        "observedBackgroundResponseEndMs": 5077.200000286102,
+        "parseCosts": null,
+        "layoutTotalMs": 0,
+        "longtasks": [
+          {
+            "at": 2880.0999999046326,
+            "ms": 69
+          },
+          {
+            "at": 3369.5,
+            "ms": 1207
+          },
+          {
+            "at": 4577,
+            "ms": 99
+          },
+          {
+            "at": 4737.300000190735,
+            "ms": 173
+          },
+          {
+            "at": 4927.5,
+            "ms": 165
+          }
+        ]
+      },
+      {
+        "name": "0-both-1440-10-hash-unread-0",
+        "role": 0,
+        "mode": "both",
+        "count": 10,
+        "width": 1440,
+        "single": true,
+        "reviewed": false,
+        "trial": 0,
+        "instrumented": false,
+        "readyMs": 3239.619289999995,
+        "serverReadyMs": null,
+        "contentHash": null,
+        "switchMs": 284.7999997138977,
+        "firstTextMs": 3233.7999997138977,
+        "paintedTextMs": 3243.2999997138977,
+        "interactiveMs": 3245.0999999046326,
+        "resourceCount": 59,
+        "assetRequests": 53,
+        "assetEncodedBytes": 313369,
+        "assetDecodedBytes": 313369,
+        "visibleEntries": 10,
+        "nodes": 937,
+        "workspaceRequests": [
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=326ac3f4-0879-44a1-b5cc-df6d0e386a6e&ranges=%7B%7D&focus=%5B%5D&preview=",
+            "start": 2719.8999996185303,
+            "duration": 159.60000038146973,
+            "ttfb": 2.0999999046325684,
+            "encoded": 1536,
+            "decoded": 6394
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=326ac3f4-0879-44a1-b5cc-df6d0e386a6e&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=463474ff-fa6d-4ab8-9a42-56ba9cdd9919",
+            "start": 2979.7999997138977,
+            "duration": 177.40000009536743,
+            "ttfb": 4.099999904632568,
+            "encoded": 2942,
+            "decoded": 52322
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=326ac3f4-0879-44a1-b5cc-df6d0e386a6e&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=eeb2bdb0-eb20-4b00-907a-3c680a86a622",
+            "start": 3233.8999996185303,
+            "duration": 155.60000038146973,
+            "ttfb": 4.900000095367432,
+            "encoded": 240,
+            "decoded": 240
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=326ac3f4-0879-44a1-b5cc-df6d0e386a6e&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=66ec818a-b68c-4598-b728-851ee5cc6975",
+            "start": 3403.2999997138977,
+            "duration": 159.2000002861023,
+            "ttfb": 3.3000001907348633,
+            "encoded": 136,
+            "decoded": 136
+          }
+        ],
+        "observedBackgroundResponseEndMs": 3562.5,
+        "parseCosts": null,
+        "layoutTotalMs": 0,
+        "longtasks": [
+          {
+            "at": 2880.199999809265,
+            "ms": 99
+          },
+          {
+            "at": 3157.7999997138977,
+            "ms": 76
+          }
+        ]
+      },
+      {
+        "name": "0-both-1440-300-hash-read-0",
+        "role": 0,
+        "mode": "both",
+        "count": 300,
+        "width": 1440,
+        "single": true,
+        "reviewed": true,
+        "trial": 0,
+        "instrumented": false,
+        "readyMs": 3696.236772999997,
+        "serverReadyMs": null,
+        "contentHash": null,
+        "switchMs": 769.0999999046326,
+        "firstTextMs": 3665.4000000953674,
+        "paintedTextMs": 3704.7999997138977,
+        "interactiveMs": 3708.0999999046326,
+        "resourceCount": 57,
+        "assetRequests": 53,
+        "assetEncodedBytes": 313369,
+        "assetDecodedBytes": 313369,
+        "visibleEntries": 100,
+        "nodes": 3638,
+        "workspaceRequests": [
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=d8e8eb6e-d14e-4320-87ab-cd3fb6e35d22&ranges=%7B%7D&focus=%5B%5D&preview=",
+            "start": 2713,
+            "duration": 159.40000009536743,
+            "ttfb": 3,
+            "encoded": 1544,
+            "decoded": 6403
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=d8e8eb6e-d14e-4320-87ab-cd3fb6e35d22&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=16aa0aac-1dcc-40f3-8f34-ca2fce0bf1f8",
+            "start": 2974.7999997138977,
+            "duration": 249.90000009536743,
+            "ttfb": 19.09999990463257,
+            "encoded": 18762,
+            "decoded": 526223
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=d8e8eb6e-d14e-4320-87ab-cd3fb6e35d22&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=4ba76dc3-0dfe-4044-b88b-bb8fdb09d5f3",
+            "start": 3666.2999997138977,
+            "duration": 158.90000009536743,
+            "ttfb": 18.199999809265137,
+            "encoded": 136,
+            "decoded": 136
+          }
+        ],
+        "observedBackgroundResponseEndMs": 3825.199999809265,
+        "parseCosts": null,
+        "layoutTotalMs": 0,
+        "longtasks": [
+          {
+            "at": 2873,
+            "ms": 101
+          },
+          {
+            "at": 3225.4000000953674,
+            "ms": 441
+          },
+          {
+            "at": 3826.2999997138977,
+            "ms": 67
+          }
+        ]
+      }
+    ],
+    "role-corrected-before-hidden-skip": [
+      {
+        "name": "0-normal-1440-300-hash-unread-0",
+        "role": 0,
+        "mode": "normal",
+        "count": 300,
+        "width": 1440,
+        "single": true,
+        "reviewed": false,
+        "trial": 0,
+        "instrumented": false,
+        "readyMs": 202.11352199999965,
+        "serverReadyMs": null,
+        "contentHash": null,
+        "switchMs": 203.80000019073486,
+        "firstTextMs": 193.69999980926514,
+        "paintedTextMs": 210.19999980926514,
+        "interactiveMs": 210.89999961853027,
+        "resourceCount": 58,
+        "assetRequests": 53,
+        "assetEncodedBytes": 119225,
+        "assetDecodedBytes": 314652,
+        "visibleEntries": 100,
+        "nodes": 3638,
+        "workspaceRequests": [
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=f9054014-7dda-40aa-a405-490e1454b667&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=",
+            "start": 49.799999713897705,
+            "duration": 16.700000286102295,
+            "ttfb": 16.09999990463257,
+            "encoded": 20225,
+            "decoded": 526267
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=f9054014-7dda-40aa-a405-490e1454b667&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=0a14e2e1-299c-4e3b-8e99-628472e2fea3",
+            "start": 193.7999997138977,
+            "duration": 20.200000286102295,
+            "ttfb": 19.699999809265137,
+            "encoded": 136,
+            "decoded": 136
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=f9054014-7dda-40aa-a405-490e1454b667&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=cb8e4622-7fc0-4b62-894f-ce10e4008762",
+            "start": 248.39999961853027,
+            "duration": 26.800000190734863,
+            "ttfb": 26.300000190734863,
+            "encoded": 240,
+            "decoded": 240
+          }
+        ],
+        "observedBackgroundResponseEndMs": 275.19999980926514,
+        "parseCosts": null,
+        "layoutTotalMs": 0,
+        "longtasks": [
+          {
+            "at": 67.39999961853027,
+            "ms": 126
+          }
+        ]
+      },
+      {
+        "name": "1-normal-1440-300-hash-unread-0",
+        "role": 1,
+        "mode": "normal",
+        "count": 300,
+        "width": 1440,
+        "single": true,
+        "reviewed": false,
+        "trial": 0,
+        "instrumented": false,
+        "readyMs": 206.40151799999967,
+        "serverReadyMs": null,
+        "contentHash": null,
+        "switchMs": 192.10000038146973,
+        "firstTextMs": 197.90000009536743,
+        "paintedTextMs": 217.40000009536743,
+        "interactiveMs": 218.09999990463257,
+        "resourceCount": 58,
+        "assetRequests": 53,
+        "assetEncodedBytes": 119225,
+        "assetDecodedBytes": 314652,
+        "visibleEntries": 100,
+        "nodes": 4138,
+        "workspaceRequests": [
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=a5512467-b94b-4b6d-8d26-6217d5343404&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000604%22%5D&preview=",
+            "start": 45.59999990463257,
+            "duration": 17.800000190734863,
+            "ttfb": 17.199999809265137,
+            "encoded": 18981,
+            "decoded": 485467
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=a5512467-b94b-4b6d-8d26-6217d5343404&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000604%22%5D&preview=&since=1bdfd711-f530-4035-8e23-3efeacc9e705",
+            "start": 198.09999990463257,
+            "duration": 12.400000095367432,
+            "ttfb": 12,
+            "encoded": 136,
+            "decoded": 136
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=a5512467-b94b-4b6d-8d26-6217d5343404&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000604%22%5D&preview=&since=f5e54f71-bfb2-4866-8f7b-7d79fa91bf74",
+            "start": 243.80000019073486,
+            "duration": 26,
+            "ttfb": 25.5,
+            "encoded": 240,
+            "decoded": 240
+          }
+        ],
+        "observedBackgroundResponseEndMs": 269.80000019073486,
+        "parseCosts": null,
+        "layoutTotalMs": 0,
+        "longtasks": [
+          {
+            "at": 63.90000009536743,
+            "ms": 134
+          }
+        ]
+      },
+      {
+        "name": "2-normal-1440-300-hash-unread-0",
+        "role": 2,
+        "mode": "normal",
+        "count": 300,
+        "width": 1440,
+        "single": true,
+        "reviewed": false,
+        "trial": 0,
+        "instrumented": false,
+        "readyMs": 207.62239399999999,
+        "serverReadyMs": null,
+        "contentHash": null,
+        "switchMs": 192.2999997138977,
+        "firstTextMs": 197.40000009536743,
+        "paintedTextMs": 217.90000009536743,
+        "interactiveMs": 218.80000019073486,
+        "resourceCount": 58,
+        "assetRequests": 53,
+        "assetEncodedBytes": 119225,
+        "assetDecodedBytes": 314652,
+        "visibleEntries": 100,
+        "nodes": 4138,
+        "workspaceRequests": [
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=a9dafc8a-9db9-43cb-9bbc-0c8c8626003a&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000001206%22%5D&preview=",
+            "start": 44.5,
+            "duration": 15.099999904632568,
+            "ttfb": 14.399999618530273,
+            "encoded": 18968,
+            "decoded": 485467
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=a9dafc8a-9db9-43cb-9bbc-0c8c8626003a&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000001206%22%5D&preview=&since=e3d3fec0-a844-4c5d-a2a8-c7c0510de0fa",
+            "start": 197.59999990463257,
+            "duration": 14,
+            "ttfb": 13.400000095367432,
+            "encoded": 136,
+            "decoded": 136
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=a9dafc8a-9db9-43cb-9bbc-0c8c8626003a&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000001206%22%5D&preview=&since=864d0566-3774-4f5a-a349-8073fd643fd0",
+            "start": 263.7000002861023,
+            "duration": 23.299999713897705,
+            "ttfb": 22.800000190734863,
+            "encoded": 240,
+            "decoded": 240
+          }
+        ],
+        "observedBackgroundResponseEndMs": 287.0,
+        "parseCosts": null,
+        "layoutTotalMs": 0,
+        "longtasks": [
+          {
+            "at": 60.09999990463257,
+            "ms": 137
+          }
+        ]
+      },
+      {
+        "name": "0-network-1440-300-hash-unread-0",
+        "role": 0,
+        "mode": "network",
+        "count": 300,
+        "width": 1440,
+        "single": true,
+        "reviewed": false,
+        "trial": 0,
+        "instrumented": false,
+        "readyMs": 2393.747066,
+        "serverReadyMs": null,
+        "contentHash": null,
+        "switchMs": 414.7999997138977,
+        "firstTextMs": 2385.0999999046326,
+        "paintedTextMs": 2399.699999809265,
+        "interactiveMs": 2400.4000000953674,
+        "resourceCount": 58,
+        "assetRequests": 53,
+        "assetEncodedBytes": 119225,
+        "assetDecodedBytes": 314652,
+        "visibleEntries": 100,
+        "nodes": 3638,
+        "workspaceRequests": [
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=bc4eac5a-0eaf-40b2-8bee-5c99e4fd9705&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=",
+            "start": 1983.2999997138977,
+            "duration": 266.80000019073486,
+            "ttfb": 17.40000009536743,
+            "encoded": 20226,
+            "decoded": 526267
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=bc4eac5a-0eaf-40b2-8bee-5c99e4fd9705&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=89356be5-420d-4cfc-856d-3ad2216e3d8c",
+            "start": 2385.199999809265,
+            "duration": 157.30000019073486,
+            "ttfb": 18.09999990463257,
+            "encoded": 136,
+            "decoded": 136
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=bc4eac5a-0eaf-40b2-8bee-5c99e4fd9705&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=7819f44d-2481-4c71-859b-bb3bde2f08ac",
+            "start": 2557,
+            "duration": 158.7999997138977,
+            "ttfb": 29.700000286102295,
+            "encoded": 240,
+            "decoded": 240
+          }
+        ],
+        "observedBackgroundResponseEndMs": 2715.7999997138977,
+        "parseCosts": null,
+        "layoutTotalMs": 0,
+        "longtasks": [
+          {
+            "at": 2250.4000000953674,
+            "ms": 134
+          }
+        ]
+      },
+      {
+        "name": "0-cpu-1440-300-hash-unread-0",
+        "role": 0,
+        "mode": "cpu",
+        "count": 300,
+        "width": 1440,
+        "single": true,
+        "reviewed": false,
+        "trial": 0,
+        "instrumented": false,
+        "readyMs": 743.0294150000009,
+        "serverReadyMs": null,
+        "contentHash": null,
+        "switchMs": 674.0999999046326,
+        "firstTextMs": 660.5999999046326,
+        "paintedTextMs": 730.9000000953674,
+        "interactiveMs": 733.9000000953674,
+        "resourceCount": 58,
+        "assetRequests": 53,
+        "assetEncodedBytes": 119225,
+        "assetDecodedBytes": 314652,
+        "visibleEntries": 100,
+        "nodes": 3638,
+        "workspaceRequests": [
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=9d8e6a6d-46fd-4bca-9abb-bdeaa0a1296b&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=",
+            "start": 129.40000009536743,
+            "duration": 18.299999713897705,
+            "ttfb": 17.59999990463257,
+            "encoded": 20226,
+            "decoded": 526267
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=9d8e6a6d-46fd-4bca-9abb-bdeaa0a1296b&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=8e5d0fa9-db32-4ac1-96ae-782141974efa",
+            "start": 661.3000001907349,
+            "duration": 15.199999809265137,
+            "ttfb": 14.799999713897705,
+            "encoded": 136,
+            "decoded": 136
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=9d8e6a6d-46fd-4bca-9abb-bdeaa0a1296b&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=7c641967-426c-40e1-942b-f9a496df9074",
+            "start": 796.9000000953674,
+            "duration": 28,
+            "ttfb": 27.399999618530273,
+            "encoded": 240,
+            "decoded": 240
+          }
+        ],
+        "observedBackgroundResponseEndMs": 824.9000000953674,
+        "parseCosts": null,
+        "layoutTotalMs": 0,
+        "longtasks": [
+          {
+            "at": 165.90000009536743,
+            "ms": 495
+          },
+          {
+            "at": 661.4000000953674,
+            "ms": 51
+          },
+          {
+            "at": 743,
+            "ms": 53
+          },
+          {
+            "at": 808.9000000953674,
+            "ms": 53
+          },
+          {
+            "at": 873.4000000953674,
+            "ms": 50
+          }
+        ]
+      },
+      {
+        "name": "0-both-1440-300-hash-unread-0",
+        "role": 0,
+        "mode": "both",
+        "count": 300,
+        "width": 1440,
+        "single": true,
+        "reviewed": false,
+        "trial": 0,
+        "instrumented": false,
+        "readyMs": 2869.1018970000005,
+        "serverReadyMs": null,
+        "contentHash": null,
+        "switchMs": 782.2999997138977,
+        "firstTextMs": 2837.5,
+        "paintedTextMs": 2901.9000000953674,
+        "interactiveMs": 2905.7000002861023,
+        "resourceCount": 58,
+        "assetRequests": 53,
+        "assetEncodedBytes": 119225,
+        "assetDecodedBytes": 314652,
+        "visibleEntries": 100,
+        "nodes": 3638,
+        "workspaceRequests": [
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=23b3dafe-a7c3-4053-bda6-28376934ed25&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=",
+            "start": 2039.5,
+            "duration": 262.59999990463257,
+            "ttfb": 15.799999713897705,
+            "encoded": 20224,
+            "decoded": 526267
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=23b3dafe-a7c3-4053-bda6-28376934ed25&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=a84196e6-8547-4835-b719-99511a573345",
+            "start": 2838.300000190735,
+            "duration": 154,
+            "ttfb": 18.59999990463257,
+            "encoded": 136,
+            "decoded": 136
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=23b3dafe-a7c3-4053-bda6-28376934ed25&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=1bb027e2-f56a-4b40-86ed-63a00987a58b",
+            "start": 3056.5999999046326,
+            "duration": 153,
+            "ttfb": 28.199999809265137,
+            "encoded": 240,
+            "decoded": 240
+          }
+        ],
+        "observedBackgroundResponseEndMs": 3209.5999999046326,
+        "parseCosts": null,
+        "layoutTotalMs": 0,
+        "longtasks": [
+          {
+            "at": 2303.2000002861023,
+            "ms": 535
+          },
+          {
+            "at": 2838.300000190735,
+            "ms": 58
+          },
+          {
+            "at": 2993.800000190735,
+            "ms": 62
+          },
+          {
+            "at": 3070,
+            "ms": 51
+          }
+        ]
+      },
+      {
+        "name": "0-both-390-300-hash-unread-0",
+        "role": 0,
+        "mode": "both",
+        "count": 300,
+        "width": 390,
+        "single": true,
+        "reviewed": false,
+        "trial": 0,
+        "instrumented": false,
+        "readyMs": 2919.7675610000006,
+        "serverReadyMs": null,
+        "contentHash": null,
+        "switchMs": 844.4000000953674,
+        "firstTextMs": 2886.7000002861023,
+        "paintedTextMs": 2932.2000002861023,
+        "interactiveMs": 2936,
+        "resourceCount": 58,
+        "assetRequests": 53,
+        "assetEncodedBytes": 119225,
+        "assetDecodedBytes": 314652,
+        "visibleEntries": 100,
+        "nodes": 3638,
+        "workspaceRequests": [
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=18d1ac61-c3a7-4cef-bcd4-9119e8664a81&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=",
+            "start": 2038,
+            "duration": 264.1000003814697,
+            "ttfb": 16.09999990463257,
+            "encoded": 20226,
+            "decoded": 526267
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=18d1ac61-c3a7-4cef-bcd4-9119e8664a81&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=69af7767-039d-4d69-935f-ef30e4bd00af",
+            "start": 2887.300000190735,
+            "duration": 157.59999990463257,
+            "ttfb": 15.299999713897705,
+            "encoded": 136,
+            "decoded": 136
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=18d1ac61-c3a7-4cef-bcd4-9119e8664a81&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=e9d3ed6a-9d19-40cb-84cb-05abc1608387",
+            "start": 3100.1000003814697,
+            "duration": 154.39999961853027,
+            "ttfb": 27.09999990463257,
+            "encoded": 240,
+            "decoded": 240
+          }
+        ],
+        "observedBackgroundResponseEndMs": 3254.5,
+        "parseCosts": null,
+        "layoutTotalMs": 0,
+        "longtasks": [
+          {
+            "at": 2303.2000002861023,
+            "ms": 584
+          },
+          {
+            "at": 3045.7000002861023,
+            "ms": 54
+          }
+        ]
+      },
+      {
+        "name": "0-both-1440-300-board-unread-0",
+        "role": 0,
+        "mode": "both",
+        "count": 300,
+        "width": 1440,
+        "single": false,
+        "reviewed": false,
+        "trial": 0,
+        "instrumented": false,
+        "readyMs": 3984.9751770000003,
+        "serverReadyMs": null,
+        "contentHash": null,
+        "switchMs": 288.09999990463257,
+        "firstTextMs": 3891.0999999046326,
+        "paintedTextMs": 4000.800000190735,
+        "interactiveMs": 4006.5999999046326,
+        "resourceCount": 59,
+        "assetRequests": 53,
+        "assetEncodedBytes": 119225,
+        "assetDecodedBytes": 314652,
+        "visibleEntries": 300,
+        "nodes": 10622,
+        "workspaceRequests": [
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=dfd41354-d1a0-4311-ab63-6110e987204b&ranges=%7B%7D&focus=%5B%5D&preview=",
+            "start": 2040.0999999046326,
+            "duration": 172.40000009536743,
+            "ttfb": 2.299999713897705,
+            "encoded": 1547,
+            "decoded": 6400
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=dfd41354-d1a0-4311-ab63-6110e987204b&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%2C%2200000000-0000-4000-8000-000000000604%22%2C%2200000000-0000-4000-8000-000000001206%22%5D&preview=&since=42fb44b7-1df9-446d-a3c6-3e7bda36199a",
+            "start": 2275.0999999046326,
+            "duration": 416.6000003814697,
+            "ttfb": 38.200000286102295,
+            "encoded": 52907,
+            "decoded": 1484403
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=dfd41354-d1a0-4311-ab63-6110e987204b&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%2C%2200000000-0000-4000-8000-000000000604%22%2C%2200000000-0000-4000-8000-000000001206%22%5D&preview=&since=6c045e40-ab7c-48c9-b90b-f789e5d31f78",
+            "start": 3891.5999999046326,
+            "duration": 158.30000019073486,
+            "ttfb": 34.90000009536743,
+            "encoded": 136,
+            "decoded": 136
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=dfd41354-d1a0-4311-ab63-6110e987204b&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%2C%2200000000-0000-4000-8000-000000000604%22%2C%2200000000-0000-4000-8000-000000001206%22%5D&preview=&since=d6656e20-4235-406e-a10c-851f5ef72c65",
+            "start": 4240.5,
+            "duration": 154.2000002861023,
+            "ttfb": 39.59999990463257,
+            "encoded": 240,
+            "decoded": 240
+          }
+        ],
+        "observedBackgroundResponseEndMs": 4394.700000286102,
+        "parseCosts": null,
+        "layoutTotalMs": 0,
+        "longtasks": [
+          {
+            "at": 2212.7000002861023,
+            "ms": 62
+          },
+          {
+            "at": 2693.0999999046326,
+            "ms": 1198
+          },
+          {
+            "at": 3891.5999999046326,
+            "ms": 100
+          },
+          {
+            "at": 4051.7000002861023,
+            "ms": 174
+          },
+          {
+            "at": 4245.099999904633,
+            "ms": 169
+          }
+        ]
+      },
+      {
+        "name": "0-both-1440-10-hash-unread-0",
+        "role": 0,
+        "mode": "both",
+        "count": 10,
+        "width": 1440,
+        "single": true,
+        "reviewed": false,
+        "trial": 0,
+        "instrumented": false,
+        "readyMs": 2371.7960440000024,
+        "serverReadyMs": null,
+        "contentHash": null,
+        "switchMs": 280.2000002861023,
+        "firstTextMs": 2365.3999996185303,
+        "paintedTextMs": 2384.699999809265,
+        "interactiveMs": 2387.199999809265,
+        "resourceCount": 58,
+        "assetRequests": 53,
+        "assetEncodedBytes": 119225,
+        "assetDecodedBytes": 314652,
+        "visibleEntries": 10,
+        "nodes": 937,
+        "workspaceRequests": [
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=2fd28fed-6b8b-4933-bd57-c766fc774402&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=",
+            "start": 2053.699999809265,
+            "duration": 181.09999990463257,
+            "ttfb": 3.8000001907348633,
+            "encoded": 4136,
+            "decoded": 57760
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=2fd28fed-6b8b-4933-bd57-c766fc774402&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=224bc03a-0dc5-43ca-8364-4b2f07d2d0e9",
+            "start": 2365.8999996185303,
+            "duration": 154.2000002861023,
+            "ttfb": 4.199999809265137,
+            "encoded": 136,
+            "decoded": 136
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=2fd28fed-6b8b-4933-bd57-c766fc774402&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=2059ed35-3eff-4cdc-a374-24bcd985755b",
+            "start": 2537.699999809265,
+            "duration": 154.80000019073486,
+            "ttfb": 3.6999998092651367,
+            "encoded": 240,
+            "decoded": 240
+          }
+        ],
+        "observedBackgroundResponseEndMs": 2692.5,
+        "parseCosts": null,
+        "layoutTotalMs": 0,
+        "longtasks": [
+          {
+            "at": 2234.8999996185303,
+            "ms": 131
+          }
+        ]
+      },
+      {
+        "name": "0-both-1440-300-hash-read-0",
+        "role": 0,
+        "mode": "both",
+        "count": 300,
+        "width": 1440,
+        "single": true,
+        "reviewed": true,
+        "trial": 0,
+        "instrumented": false,
+        "readyMs": 2828.5603730000003,
+        "serverReadyMs": null,
+        "contentHash": null,
+        "switchMs": 797.5,
+        "firstTextMs": 2798,
+        "paintedTextMs": 2857,
+        "interactiveMs": 2859.7000002861023,
+        "resourceCount": 56,
+        "assetRequests": 53,
+        "assetEncodedBytes": 119225,
+        "assetDecodedBytes": 314652,
+        "visibleEntries": 100,
+        "nodes": 3638,
+        "workspaceRequests": [
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=176dd223-041b-45cf-a120-33efd8d0e72d&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=",
+            "start": 2033.7000002861023,
+            "duration": 261.2999997138977,
+            "ttfb": 16.100000381469727,
+            "encoded": 20220,
+            "decoded": 526270
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=176dd223-041b-45cf-a120-33efd8d0e72d&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=12908148-5e61-43a4-950c-db79b45accdd",
+            "start": 2798.0999999046326,
+            "duration": 156.60000038146973,
+            "ttfb": 16.5,
+            "encoded": 136,
+            "decoded": 136
+          }
+        ],
+        "observedBackgroundResponseEndMs": 2954.7000002861023,
+        "parseCosts": null,
+        "layoutTotalMs": 0,
+        "longtasks": [
+          {
+            "at": 2295.9000000953674,
+            "ms": 502
+          },
+          {
+            "at": 2798.0999999046326,
+            "ms": 54
+          },
+          {
+            "at": 2955.300000190735,
+            "ms": 56
+          }
+        ]
+      }
+    ],
+    "final-base-repeat": [
+      {
+        "name": "0-both-1440-300-hash-unread-0",
+        "role": 0,
+        "mode": "both",
+        "count": 300,
+        "width": 1440,
+        "single": true,
+        "reviewed": false,
+        "trial": 0,
+        "instrumented": false,
+        "readyMs": 3630.7851169999994,
+        "serverReadyMs": 276.977442,
+        "contentHash": "7876c965413928c78a01056adddc5c81e8145b13b447696c5237fed356fba7c8",
+        "switchMs": 762,
+        "firstTextMs": 3599.5,
+        "paintedTextMs": 3636.800000190735,
+        "interactiveMs": 3639.6000003814697,
+        "resourceCount": 59,
+        "assetRequests": 53,
+        "assetEncodedBytes": 313369,
+        "assetDecodedBytes": 313369,
+        "visibleEntries": 100,
+        "nodes": 3638,
+        "workspaceRequests": [
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=a49e9909-bdab-4149-bcf8-a7cb60850adb&ranges=%7B%7D&focus=%5B%5D&preview=",
+            "start": 2697.1000003814697,
+            "duration": 159,
+            "ttfb": 3,
+            "encoded": 1549,
+            "decoded": 6400
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=a49e9909-bdab-4149-bcf8-a7cb60850adb&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=50e7b355-eebe-4f94-8e14-a140f914db73",
+            "start": 2939.4000000953674,
+            "duration": 262,
+            "ttfb": 17.5,
+            "encoded": 18759,
+            "decoded": 526223
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=a49e9909-bdab-4149-bcf8-a7cb60850adb&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=f0e79771-e59d-4ecc-b65e-6d30fb62c48c",
+            "start": 3600.5,
+            "duration": 155.40000009536743,
+            "ttfb": 27.5,
+            "encoded": 240,
+            "decoded": 240
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=a49e9909-bdab-4149-bcf8-a7cb60850adb&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=d768ab3c-2d8f-4d9d-94fe-6f71029c8865",
+            "start": 3810.5,
+            "duration": 156.2000002861023,
+            "ttfb": 17.90000009536743,
+            "encoded": 136,
+            "decoded": 136
+          }
+        ],
+        "observedBackgroundResponseEndMs": 3966.7000002861023,
+        "parseCosts": null,
+        "layoutTotalMs": 0,
+        "longtasks": [
+          {
+            "at": 2856.4000000953674,
+            "ms": 83
+          },
+          {
+            "at": 3202.300000190735,
+            "ms": 398
+          },
+          {
+            "at": 3756.9000000953674,
+            "ms": 54
+          },
+          {
+            "at": 3967.5,
+            "ms": 53
+          }
+        ]
+      },
+      {
+        "name": "0-both-1440-300-hash-unread-1",
+        "role": 0,
+        "mode": "both",
+        "count": 300,
+        "width": 1440,
+        "single": true,
+        "reviewed": false,
+        "trial": 1,
+        "instrumented": false,
+        "readyMs": 3655.176174,
+        "serverReadyMs": 273.73300500000005,
+        "contentHash": "7876c965413928c78a01056adddc5c81e8145b13b447696c5237fed356fba7c8",
+        "switchMs": 778.7999997138977,
+        "firstTextMs": 3622.5999999046326,
+        "paintedTextMs": 3660.9000000953674,
+        "interactiveMs": 3664.0999999046326,
+        "resourceCount": 59,
+        "assetRequests": 53,
+        "assetEncodedBytes": 313369,
+        "assetDecodedBytes": 313369,
+        "visibleEntries": 100,
+        "nodes": 3638,
+        "workspaceRequests": [
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=c0c42ab6-e271-47d1-838b-01a2960fa364&ranges=%7B%7D&focus=%5B%5D&preview=",
+            "start": 2698.0999999046326,
+            "duration": 173.60000038146973,
+            "ttfb": 3.5999999046325684,
+            "encoded": 1550,
+            "decoded": 6400
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=c0c42ab6-e271-47d1-838b-01a2960fa364&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=b0a21ed9-8479-4924-8379-d63457945907",
+            "start": 2949.800000190735,
+            "duration": 260.09999990463257,
+            "ttfb": 17.100000381469727,
+            "encoded": 18757,
+            "decoded": 526223
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=c0c42ab6-e271-47d1-838b-01a2960fa364&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=272efbdd-f804-4199-a2bf-20b107a4a17f",
+            "start": 3623.7000002861023,
+            "duration": 156.2999997138977,
+            "ttfb": 25.299999713897705,
+            "encoded": 240,
+            "decoded": 240
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=c0c42ab6-e271-47d1-838b-01a2960fa364&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=ba74d4ce-d77e-49c8-bdd9-046ddfb9d9c7",
+            "start": 3833.300000190735,
+            "duration": 156.90000009536743,
+            "ttfb": 14.200000286102295,
+            "encoded": 136,
+            "decoded": 136
+          }
+        ],
+        "observedBackgroundResponseEndMs": 3990.2000002861023,
+        "parseCosts": null,
+        "layoutTotalMs": 0,
+        "longtasks": [
+          {
+            "at": 2872.2000002861023,
+            "ms": 77
+          },
+          {
+            "at": 3210.5999999046326,
+            "ms": 413
+          },
+          {
+            "at": 3780.5,
+            "ms": 52
+          },
+          {
+            "at": 3991.5,
+            "ms": 53
+          }
+        ]
+      },
+      {
+        "name": "0-both-1440-300-hash-unread-2",
+        "role": 0,
+        "mode": "both",
+        "count": 300,
+        "width": 1440,
+        "single": true,
+        "reviewed": false,
+        "trial": 2,
+        "instrumented": false,
+        "readyMs": 3657.7279019999987,
+        "serverReadyMs": 270.9738610000004,
+        "contentHash": "7876c965413928c78a01056adddc5c81e8145b13b447696c5237fed356fba7c8",
+        "switchMs": 809.2999997138977,
+        "firstTextMs": 3621.5,
+        "paintedTextMs": 3663.4000000953674,
+        "interactiveMs": 3666.300000190735,
+        "resourceCount": 59,
+        "assetRequests": 53,
+        "assetEncodedBytes": 313369,
+        "assetDecodedBytes": 313369,
+        "visibleEntries": 100,
+        "nodes": 3638,
+        "workspaceRequests": [
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=507f380b-7946-4b22-bb06-62d44a797eba&ranges=%7B%7D&focus=%5B%5D&preview=",
+            "start": 2722.5999999046326,
+            "duration": 171.59999990463257,
+            "ttfb": 3.5999999046325684,
+            "encoded": 1547,
+            "decoded": 6400
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=507f380b-7946-4b22-bb06-62d44a797eba&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=6da7d82f-6194-4632-bba4-51d388efc6a8",
+            "start": 2977.199999809265,
+            "duration": 255.30000019073486,
+            "ttfb": 57.09999990463257,
+            "encoded": 18756,
+            "decoded": 526223
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=507f380b-7946-4b22-bb06-62d44a797eba&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=816a08fb-ddb4-44e0-b9d0-03d12d00e2f5",
+            "start": 3622.300000190735,
+            "duration": 157.69999980926514,
+            "ttfb": 25.699999809265137,
+            "encoded": 240,
+            "decoded": 240
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=507f380b-7946-4b22-bb06-62d44a797eba&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=6dca4710-1d03-4c7c-9021-38e869459b27",
+            "start": 3837.300000190735,
+            "duration": 152.89999961853027,
+            "ttfb": 15.100000381469727,
+            "encoded": 136,
+            "decoded": 136
+          }
+        ],
+        "observedBackgroundResponseEndMs": 3990.199999809265,
+        "parseCosts": null,
+        "layoutTotalMs": 0,
+        "longtasks": [
+          {
+            "at": 2894.9000000953674,
+            "ms": 82
+          },
+          {
+            "at": 3232.699999809265,
+            "ms": 389
+          },
+          {
+            "at": 3780.800000190735,
+            "ms": 56
+          },
+          {
+            "at": 3991.5999999046326,
+            "ms": 52
+          }
+        ]
+      }
+    ],
+    "final-head-repeat": [
+      {
+        "name": "0-both-1440-300-hash-unread-0",
+        "role": 0,
+        "mode": "both",
+        "count": 300,
+        "width": 1440,
+        "single": true,
+        "reviewed": false,
+        "trial": 0,
+        "instrumented": false,
+        "readyMs": 2804.575609,
+        "serverReadyMs": 282.21051800000004,
+        "contentHash": "7876c965413928c78a01056adddc5c81e8145b13b447696c5237fed356fba7c8",
+        "switchMs": 728.0999999046326,
+        "firstTextMs": 2775.0999999046326,
+        "paintedTextMs": 2832.0999999046326,
+        "interactiveMs": 2835.199999809265,
+        "resourceCount": 58,
+        "assetRequests": 53,
+        "assetEncodedBytes": 119330,
+        "assetDecodedBytes": 314917,
+        "visibleEntries": 100,
+        "nodes": 3612,
+        "workspaceRequests": [
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=570b31b6-0dd9-4437-b5b8-4f6fa0ead58d&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=",
+            "start": 2038.0999999046326,
+            "duration": 263.5,
+            "ttfb": 17.300000190734863,
+            "encoded": 20229,
+            "decoded": 526267
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=570b31b6-0dd9-4437-b5b8-4f6fa0ead58d&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=49fe305c-4c72-4bbb-a75e-6bb3ef8aba52",
+            "start": 2775.5999999046326,
+            "duration": 155.80000019073486,
+            "ttfb": 15.200000286102295,
+            "encoded": 136,
+            "decoded": 136
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=570b31b6-0dd9-4437-b5b8-4f6fa0ead58d&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=275276a0-2b16-4517-ba0d-8816b6e94c90",
+            "start": 2987.5,
+            "duration": 153.69999980926514,
+            "ttfb": 27,
+            "encoded": 240,
+            "decoded": 240
+          }
+        ],
+        "observedBackgroundResponseEndMs": 3141.199999809265,
+        "parseCosts": null,
+        "layoutTotalMs": 0,
+        "longtasks": [
+          {
+            "at": 2302.4000000953674,
+            "ms": 473
+          },
+          {
+            "at": 2775.5999999046326,
+            "ms": 50
+          },
+          {
+            "at": 2932.699999809265,
+            "ms": 54
+          },
+          {
+            "at": 3005.4000000953674,
+            "ms": 54
+          }
+        ]
+      },
+      {
+        "name": "0-both-1440-300-hash-unread-1",
+        "role": 0,
+        "mode": "both",
+        "count": 300,
+        "width": 1440,
+        "single": true,
+        "reviewed": false,
+        "trial": 1,
+        "instrumented": false,
+        "readyMs": 2864.140911999999,
+        "serverReadyMs": 259.58321200000046,
+        "contentHash": "7876c965413928c78a01056adddc5c81e8145b13b447696c5237fed356fba7c8",
+        "switchMs": 729.5999999046326,
+        "firstTextMs": 2831.6000003814697,
+        "paintedTextMs": 2897,
+        "interactiveMs": 2901,
+        "resourceCount": 58,
+        "assetRequests": 53,
+        "assetEncodedBytes": 119330,
+        "assetDecodedBytes": 314917,
+        "visibleEntries": 100,
+        "nodes": 3612,
+        "workspaceRequests": [
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=a8429f4c-31bb-421c-b755-81250b68cf9c&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=",
+            "start": 2044.4000000953674,
+            "duration": 257.5,
+            "ttfb": 17.09999990463257,
+            "encoded": 20235,
+            "decoded": 526267
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=a8429f4c-31bb-421c-b755-81250b68cf9c&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=7c277c77-17cb-4bf1-8d23-6341927deb36",
+            "start": 2832,
+            "duration": 160.5,
+            "ttfb": 17.699999809265137,
+            "encoded": 136,
+            "decoded": 136
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=a8429f4c-31bb-421c-b755-81250b68cf9c&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=98a9d722-b648-4cae-b488-73b9f1c421d1",
+            "start": 3048.5,
+            "duration": 153.90000009536743,
+            "ttfb": 26.199999809265137,
+            "encoded": 240,
+            "decoded": 240
+          }
+        ],
+        "observedBackgroundResponseEndMs": 3202.4000000953674,
+        "parseCosts": null,
+        "layoutTotalMs": 0,
+        "longtasks": [
+          {
+            "at": 2303.2000002861023,
+            "ms": 528
+          },
+          {
+            "at": 2832.1000003814697,
+            "ms": 58
+          },
+          {
+            "at": 2993,
+            "ms": 55
+          },
+          {
+            "at": 3065.6000003814697,
+            "ms": 50
+          }
+        ]
+      },
+      {
+        "name": "0-both-1440-300-hash-unread-2",
+        "role": 0,
+        "mode": "both",
+        "count": 300,
+        "width": 1440,
+        "single": true,
+        "reviewed": false,
+        "trial": 2,
+        "instrumented": false,
+        "readyMs": 2787.6998509999994,
+        "serverReadyMs": 261.854100999999,
+        "contentHash": "7876c965413928c78a01056adddc5c81e8145b13b447696c5237fed356fba7c8",
+        "switchMs": 794.9000000953674,
+        "firstTextMs": 2757.300000190735,
+        "paintedTextMs": 2817.800000190735,
+        "interactiveMs": 2820.9000000953674,
+        "resourceCount": 58,
+        "assetRequests": 53,
+        "assetEncodedBytes": 119330,
+        "assetDecodedBytes": 314917,
+        "visibleEntries": 100,
+        "nodes": 3612,
+        "workspaceRequests": [
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=e5e91011-c045-41f9-ba8f-dcfe24d48c93&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=",
+            "start": 2015.5,
+            "duration": 256.59999990463257,
+            "ttfb": 16.09999990463257,
+            "encoded": 20226,
+            "decoded": 526267
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=e5e91011-c045-41f9-ba8f-dcfe24d48c93&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=e681fe1a-cbf7-4600-bd2c-08c172ad912f",
+            "start": 2758.0999999046326,
+            "duration": 159.7000002861023,
+            "ttfb": 15.599999904632568,
+            "encoded": 136,
+            "decoded": 136
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=e5e91011-c045-41f9-ba8f-dcfe24d48c93&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=ff829d7a-a91b-4a1a-b5a6-ad7aa1f48201",
+            "start": 2975.5,
+            "duration": 159.40000009536743,
+            "ttfb": 27.5,
+            "encoded": 240,
+            "decoded": 240
+          }
+        ],
+        "observedBackgroundResponseEndMs": 3134.9000000953674,
+        "parseCosts": null,
+        "layoutTotalMs": 0,
+        "longtasks": [
+          {
+            "at": 2272.9000000953674,
+            "ms": 485
+          },
+          {
+            "at": 2758.300000190735,
+            "ms": 54
+          },
+          {
+            "at": 2918.9000000953674,
+            "ms": 56
+          },
+          {
+            "at": 2989.9000000953674,
+            "ms": 53
+          },
+          {
+            "at": 3135.7000002861023,
+            "ms": 55
+          }
+        ]
+      }
+    ],
+    "instrumented-base": [
+      {
+        "name": "0-both-1440-300-hash-unread-0",
+        "role": 0,
+        "mode": "both",
+        "count": 300,
+        "width": 1440,
+        "single": true,
+        "reviewed": false,
+        "trial": 0,
+        "instrumented": true,
+        "readyMs": 3652.642873,
+        "serverReadyMs": 282.481018,
+        "contentHash": "7876c965413928c78a01056adddc5c81e8145b13b447696c5237fed356fba7c8",
+        "switchMs": 757.5999999046326,
+        "firstTextMs": 3621.0999999046326,
+        "paintedTextMs": 3659.8999996185303,
+        "interactiveMs": 3662.7999997138977,
+        "resourceCount": 59,
+        "assetRequests": 53,
+        "assetEncodedBytes": 313369,
+        "assetDecodedBytes": 313369,
+        "visibleEntries": 100,
+        "nodes": 3638,
+        "workspaceRequests": [
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=182a62f1-19fd-4b7c-b5e9-1b54b757df9c&ranges=%7B%7D&focus=%5B%5D&preview=",
+            "start": 2718.2999997138977,
+            "duration": 163.5,
+            "ttfb": 3.0999999046325684,
+            "encoded": 1554,
+            "decoded": 6400
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=182a62f1-19fd-4b7c-b5e9-1b54b757df9c&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=172dd142-7ddd-4f36-a570-6f206f3d77dc",
+            "start": 2966.199999809265,
+            "duration": 261,
+            "ttfb": 18.600000381469727,
+            "encoded": 18756,
+            "decoded": 526223
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=182a62f1-19fd-4b7c-b5e9-1b54b757df9c&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=c7dbca0e-a596-482f-b22b-ba03028b500c",
+            "start": 3621.8999996185303,
+            "duration": 153.10000038146973,
+            "ttfb": 27.200000286102295,
+            "encoded": 240,
+            "decoded": 240
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=182a62f1-19fd-4b7c-b5e9-1b54b757df9c&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=a5f2e25c-bf05-4aa2-8a67-d84599ce2bc1",
+            "start": 3830.0999999046326,
+            "duration": 154.59999990463257,
+            "ttfb": 14.799999713897705,
+            "encoded": 136,
+            "decoded": 136
+          }
+        ],
+        "observedBackgroundResponseEndMs": 3984.699999809265,
+        "parseCosts": [
+          {
+            "chars": 346523,
+            "ms": 2.8000001907348633
+          }
+        ],
+        "layoutTotalMs": 400.87200000000007,
+        "longtasks": [
+          {
+            "at": 2882.7999997138977,
+            "ms": 83
+          },
+          {
+            "at": 3228.199999809265,
+            "ms": 393
+          },
+          {
+            "at": 3776,
+            "ms": 54
+          },
+          {
+            "at": 3986.199999809265,
+            "ms": 54
+          }
+        ]
+      }
+    ],
+    "instrumented-head": [
+      {
+        "name": "0-both-1440-300-hash-unread-0",
+        "role": 0,
+        "mode": "both",
+        "count": 300,
+        "width": 1440,
+        "single": true,
+        "reviewed": false,
+        "trial": 0,
+        "instrumented": true,
+        "readyMs": 2856.932298,
+        "serverReadyMs": 281.464795,
+        "contentHash": "7876c965413928c78a01056adddc5c81e8145b13b447696c5237fed356fba7c8",
+        "switchMs": 735.6999998092651,
+        "firstTextMs": 2826,
+        "paintedTextMs": 2886.7000002861023,
+        "interactiveMs": 2890.800000190735,
+        "resourceCount": 58,
+        "assetRequests": 53,
+        "assetEncodedBytes": 119330,
+        "assetDecodedBytes": 314917,
+        "visibleEntries": 100,
+        "nodes": 3612,
+        "workspaceRequests": [
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=382e749d-b62c-4084-880e-c57541fcc9fb&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=",
+            "start": 2059.7000002861023,
+            "duration": 260.40000009536743,
+            "ttfb": 16.600000381469727,
+            "encoded": 20226,
+            "decoded": 526267
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=382e749d-b62c-4084-880e-c57541fcc9fb&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=52afabf1-cd16-4afd-841b-e023448c0481",
+            "start": 2826.4000000953674,
+            "duration": 153.09999990463257,
+            "ttfb": 15.099999904632568,
+            "encoded": 136,
+            "decoded": 136
+          },
+          {
+            "url": "http://127.0.0.1:15810/api/direct?view=workspace&sync=1&bodies=lazy&client=382e749d-b62c-4084-880e-c57541fcc9fb&ranges=%7B%7D&focus=%5B%2200000000-0000-4000-8000-000000000002%22%5D&preview=&since=923affcf-d0cc-418c-a936-f83e9bb0573c",
+            "start": 3037.5,
+            "duration": 152.5,
+            "ttfb": 31.699999809265137,
+            "encoded": 240,
+            "decoded": 240
+          }
+        ],
+        "observedBackgroundResponseEndMs": 3190.0,
+        "parseCosts": [
+          {
+            "chars": 346195,
+            "ms": 4.299999713897705
+          }
+        ],
+        "layoutTotalMs": 442.8550000000001,
+        "longtasks": [
+          {
+            "at": 2320.9000000953674,
+            "ms": 505
+          },
+          {
+            "at": 2826.5,
+            "ms": 54
+          },
+          {
+            "at": 2980.300000190735,
+            "ms": 57
+          },
+          {
+            "at": 3057.300000190735,
+            "ms": 53
+          },
+          {
+            "at": 3190.5,
+            "ms": 52
+          }
+        ]
+      }
+    ]
+  }
+}

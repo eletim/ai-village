@@ -46,7 +46,10 @@ const labels={superseded:'補足runへ引継ぎ',queued:'送信待ち',awaiting_
 let projectOpening=true;
 let state,focusedHash='',selectedPlace='all',selectedPage=0,zoomId='',selectedAgent='',boardScroll=0,connected=false,refreshTask;
 // The agent IDs actually rendered as cards right now; sync only fetches conversation bodies for these.
-let focusIds=new Set(),previewAgent='',previewRefreshQueued=false;
+// A deep link already identifies the first visible conversation. Fetch its body
+// with the initial snapshot instead of waiting for an overview round trip.
+// Unknown/deleted IDs still fall back through renderBoard's ordinary selection.
+let focusIds=new Set(/^#agent-[0-9a-f-]{36}$/.test(location.hash)?[location.hash.slice(7)]:[]),previewAgent='',previewRefreshQueued=false;
 const focusKey=()=>JSON.stringify([...focusIds].sort());
 const navigationKey='ai-village-sidebar-v1';
 let navigation={mode:'projects',projects:{id:'all',page:0},places:{id:'all',page:0}};
@@ -270,7 +273,14 @@ function renderBoard(){
    pending.delete(a.id);outbox.delete(a.id);storeDrafts();
   }
   updateReportHTML(card.querySelector('.agent-recovery-host'),conversationAlertHTML(a));
-  const area=card.querySelector('.runs'),html=runHTML(a);area.dataset.loading=String(!!state.conversations&&!state.conversations[a.id]);updateReportHTML(area,html);(restoreLogs.get(a.id)||scrolls.get(a.id).loaded)();loadOpenBodies(area);
+  const area=card.querySelector('.runs');
+  if(ids.has(a.id)){
+   const html=runHTML(a);area.dataset.loading=String(!!state.conversations&&!state.conversations[a.id]);updateReportHTML(area,html);(restoreLogs.get(a.id)||scrolls.get(a.id).loaded)();loadOpenBodies(area);
+  }else{
+   // capturePositions above saved the reader position. Do not parse the old
+   // thread again while switching away, nor retain off-screen body DOM.
+   area.dataset.loading='true';updateReportHTML(area,'');
+  }
   const prompt=card.querySelector('textarea[name=instruction]'),promptLabel=(a.name||'Agent')+'に聞く';
   prompt.placeholder=promptLabel;prompt.title=promptLabel+(mobilePromptUI()?'（Enterで改行、送信ボタン / Ctrl+Enterで送信）':'（Enter / Ctrl+Enterで送信、Shift+Enterで改行、変換中のEnterは確定）');prompt.setAttribute('aria-label',prompt.title);
   const send=card.querySelector('[data-send] button:not([data-reconcile])');
@@ -453,6 +463,21 @@ function toggleZoom(id){
  cards.get(id)?.querySelector('[data-zoom]')?.focus({preventScroll:true});
 }
 new ResizeObserver(()=>layoutBoard()).observe($('#agents'));
+function initialAgentFocus(){
+ if(!/^#agent-[0-9a-f-]{36}$/.test(location.hash))return '';
+ const id=location.hash.slice(7),a=state.agents.find(a=>a.id===id);
+ if(!a||a.state==='terminated')return '';
+ // No DOM or scroll position exists yet. Select before the first render, so
+ // focusAgent does not parse and lay out the same complete thread a second time.
+ if(!filtered().some(x=>x.id===id)){
+  selectedPlace=isSuspended(state.projects||[],a)?'project:'+a.projectId:'all';
+  if(isProject(selectedPlace))sidebarMode='projects';
+ }
+ selectedPage=Math.max(0,Math.floor(filtered().findIndex(a=>a.id===id)/PAGE_SIZE));
+ zoomId=id;projectOpening=false;focusedHash=location.hash;
+ if(isProject(selectedPlace)&&(state.projects||[]).find(p=>p.id===selectedPlace.slice(8))?.suspended)$('#suspended-projects').open=true;
+ return id;
+}
 function focusAgent(){
  if(location.hash!==focusedHash&&/^#project-[0-9a-f-]{36}$/.test(location.hash)&&state){const id=location.hash.slice(9);if((state.projects||[]).some(p=>p.id===id)){focusedHash=location.hash;choosePlace('project:'+id);}return;}
 
@@ -600,7 +625,7 @@ async function refresh(force=false){
  if(Date.now()<retryAt)return false;
  armSyncIndicator();
  const requestedFocus=focusKey(),controller=new AbortController();syncController=controller;
- const task=(async()=>{try{const next=await fetchWorkspace(controller.signal);if(epoch!==syncEpoch)return false;state=next;connected=true;retryAt=0;syncFailures=0;render();focusAgent();lastSyncSucceededAt=Date.now();disarmSyncIndicator();connectionStatus($('#connection'),new Date().toLocaleTimeString(),{normal:true});return true;}catch(e){if(epoch!==syncEpoch)return false;connected=false;const delay=Math.min(30000,5000*2**Math.min(syncFailures++,3));retryAt=Date.now()+delay;if(state)renderBoard();disarmSyncIndicator();connectionStatus($('#connection'),'接続不明: '+(e.message==='Failed to fetch'?'通信できませんでした。':e.message)+'（'+delay/1000+'秒後に再試行）');return false;}})();
+ const task=(async()=>{try{const next=await fetchWorkspace(controller.signal);if(epoch!==syncEpoch)return false;const initial=!state;state=next;const initialFocus=initial?initialAgentFocus():'';connected=true;retryAt=0;syncFailures=0;render();if(initialFocus)cards.get(initialFocus)?.focus({preventScroll:true});else focusAgent();lastSyncSucceededAt=Date.now();disarmSyncIndicator();connectionStatus($('#connection'),new Date().toLocaleTimeString(),{normal:true});return true;}catch(e){if(epoch!==syncEpoch)return false;connected=false;const delay=Math.min(30000,5000*2**Math.min(syncFailures++,3));retryAt=Date.now()+delay;if(state)renderBoard();disarmSyncIndicator();connectionStatus($('#connection'),'接続不明: '+(e.message==='Failed to fetch'?'通信できませんでした。':e.message)+'（'+delay/1000+'秒後に再試行）');return false;}})();
  refreshTask=task;
  let result;try{result=await task;}finally{if(epoch===syncEpoch&&refreshTask===task){refreshTask=null;syncController=null;}}
  // renderBoard() (inside render()/focusAgent()) may have widened focus past what we just asked for
@@ -674,7 +699,7 @@ window.addEventListener('pageshow',e=>{if(e.persisted)restartSync();});
 window.addEventListener('online',()=>{if(!document.hidden)restartSync();});
 
 function refreshMessageLog(id){
- const card=cards.get(id);if(!card)return;
+ const card=cards.get(id);if(!card||card.hidden)return;
  // Delivery feedback belongs to the message, not a second spinner beside the composer.
  const area=card.querySelector('.runs');scrolls.get(id).preserve(()=>updateReportHTML(area,runHTML(state.agents.find(a=>a.id===id))));loadOpenBodies(area);
 }
