@@ -16,7 +16,7 @@
 
 毎回新server/state、listen後2秒待機、presentation cacheを同じ読取でwarm化、新Context＋HTTP cache無効。サーバー起動coldは表示時間に混ぜない。既読ケースだけ事前viewを実行する。これらは全て隔離stateの操作。ブラウザChromium、1440×1000または390×1000。低性能条件はCDPでdown1.6Mbps/up750kbps、latency150ms、CPU4xを設定したemulation。物理スマホ/実回線ではない。サーバーCPUは制限していない。
 
-薄い7条件で支配要因を調べ、最終の詳細比較は役割ごとの通常条件と重い秘書代表に絞った。通常・通信のみ・CPUのみ・併用、全体表示、短履歴、既読済みを計測。新Context初回後、未取得の次Agentへのhash切替も測定。既存204/32試行や全suiteを再演していない。
+最初のpreliminary-base/stage1/stage2群は3配置ともconversation形の探索fixtureで、役割固有経路の証明には用いない。role-corrected以降は上記の秘書/通常runを分けたfixtureである。薄い7条件で支配要因を調べ、最終の詳細比較は役割ごとの通常条件と重い秘書代表に絞った。通常・通信のみ・CPUのみ・併用、全体表示、短履歴、既読済みを計測。新Context初回後、未取得の次Agentへのhash切替も測定。既存204/32試行や全suiteを再演していない。
 
 - firstText: 選択可視panelの実際の会話本文がDOMに存在し、loading=falseになったMutationObserver時刻。スケルトンは除外。
 - paintedText: その後2rAF。実デバイスの画面走査完了を保証する指標ではない。

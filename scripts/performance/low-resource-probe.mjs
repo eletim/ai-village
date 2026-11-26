@@ -1,7 +1,7 @@
 import {chromium} from '@playwright/test';
 import {conversationFixture} from '../../tests/helpers/conversation-answer-fixture.mjs';
 import {newRun,transitionRun} from '../../server/state/run.ts';
-import {mkdtemp,writeFile,rm,mkdir,readFile} from 'node:fs/promises';
+import {mkdtemp,writeFile,rm,mkdir} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {createHash} from 'node:crypto';
 // Stable generated IDs make payload and state identical across revisions.
@@ -11,7 +11,7 @@ import {spawn} from 'node:child_process';
 import {once} from 'node:events';
 import {createServer} from 'node:net';
 import {serverReady} from '../../tests/helpers/server-ready.mjs';
-const port=Number(process.env.PERF_PORT||15642),base='http://127.0.0.1:'+port;
+const port=Number(process.env.PERF_PORT||15810),base='http://127.0.0.1:'+port;
 const out=process.env.PERF_OUT;if(!out)throw Error('PERF_OUT required');await mkdir(out,{recursive:true});
 const probe=createServer();probe.listen(port,'127.0.0.1');await once(probe,'listening');await new Promise(r=>probe.close(r));
 const results=[],browser=await chromium.launch();
