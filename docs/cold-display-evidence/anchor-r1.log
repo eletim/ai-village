@@ -1,0 +1,16 @@
+[WebServer] (node:2420670) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:2420670) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+
+Running 6 tests using 1 worker
+
+(node:2420683) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 tests/browser/files-scroll.spec.js:5:5 › direct attachment-only sends keep draft and request identity; history follows only near bottom (920ms)
+  ✓  2 tests/browser/files-scroll.spec.js:63:1 › unsupported server prevents upload without losing existing binary draft (166ms)
+  ✓  3 tests/browser/files-scroll.spec.js:77:1 › image load and streamed text follow newest content, but respect a reader scrolling upward (457ms)
+  ✓  4 tests/browser/files-scroll.spec.js:94:1 › direct Agent uses the common menu for image and file previews, deletion, image-only upload and history (296ms)
+  ✓  5 tests/browser/files-scroll.spec.js:123:1 › legacy scroll positions open at newest and latest is available without a new reply (258ms)
+  ✓  6 tests/browser/files-scroll.spec.js:135:1 › batched conversation updates preserve each reader anchor across prepends and moved panels (223ms)
+
+  6 passed (2.9s)

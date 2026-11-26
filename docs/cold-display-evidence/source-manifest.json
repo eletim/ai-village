@@ -1,0 +1,26 @@
+{
+  "base": {
+    "gitHead": "78e952421ece54329341473dd4ba3cb4443bb1fa",
+    "sha256": {
+      "server/partition-store.mjs": "94008db82ff95d750b2d8b30964fbc1f4fe843ae6015e70fe48db2b9040c39d7",
+      "src/direct.js": "d1b23f60a30372c91746fe72fd617a8f1eb05e9f36f13025b9b95e920a11cea5",
+      "src/chat-scroll.js": "f5a69b73bac22ee7c83ab6abf8178edef79c565bfec2b5f0106712cf4874a305"
+    }
+  },
+  "store": {
+    "gitHead": "78e952421ece54329341473dd4ba3cb4443bb1fa",
+    "sha256": {
+      "server/partition-store.mjs": "4cfb4d3b42332ef8a6fe0b0cc3c4775f2622627b05d3c9831590673a232bbf57",
+      "src/direct.js": "d1b23f60a30372c91746fe72fd617a8f1eb05e9f36f13025b9b95e920a11cea5",
+      "src/chat-scroll.js": "f5a69b73bac22ee7c83ab6abf8178edef79c565bfec2b5f0106712cf4874a305"
+    }
+  },
+  "final": {
+    "gitHead": "2dfd3c1393aea73f41413f10b2bbc0ccca5c2d52",
+    "sha256": {
+      "server/partition-store.mjs": "4cfb4d3b42332ef8a6fe0b0cc3c4775f2622627b05d3c9831590673a232bbf57",
+      "src/direct.js": "a11771711cb5cea0db014097244f1523d7d1cef236712492bc211df8f83bfbad",
+      "src/chat-scroll.js": "5e648ab52e6d7f3dc63aa23373f07620cfa3c9131352a7c2bace892014f877e6"
+    }
+  }
+}
