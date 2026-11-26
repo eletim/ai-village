@@ -34,7 +34,7 @@ import {sessionModel} from './session-model.mjs';
 import {ProjectGuides} from './project-guides.mjs';
 import {humanProjection} from './report-view.mjs';
 import {validWorkshopPattern} from '../src/workshop-pattern.js';
-import {deleteAgent} from './agent-deletion.mjs';
+import {deleteAgent,retireUnverifiedAgent} from './agent-deletion.mjs';
 import {deletionPlan,deleteProject} from './project-deletion.mjs';
 import {stageAttachment} from './attachment-transfer.mjs';
 import {RequestFlow} from './requests.mjs';
@@ -175,6 +175,7 @@ export class DirectAgents {
   secretaryHandoverPlan(id,targetId){return secretaryHandoverPlan(this,id,targetId);}
   handoverSecretary(id,x){return handoverSecretary(this,id,x);}
   deleteAgent(id,input){return deleteAgent(this,id,input);}
+  retireUnverifiedAgent(id,input){return retireUnverifiedAgent(this,id,input);}
   agentDeleting(a){return !!(a.deletion||a.deletedAt||this.data.projects.find(p=>p.id===a.projectId)?.deletion);}
   writableAgent(a){if(a.secretaryHandover)fail('引継ぎ済みの旧秘書です');if(a.runtimeRetiredTo)fail('旧ランタイム保管用Agentです。新規依頼は移行先を使用してください');if(this.agentDeleting(a))fail('所属Projectは削除処理中または削除済みです');return a;}
   validName(name){if(typeof name!=='string'||!name.trim()||name.length>120)fail('名前を1〜120文字で指定してください',400);return name.trim();}
