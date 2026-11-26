@@ -305,7 +305,7 @@ async function initialFixture(t,{unknown=false}={}){
  d.observationPmux=(agent,...args)=>d.pmux(agent,...args);
  d.runtime=(agent,status)=>agent.tabId===oldTab?Promise.resolve(oldNative):agent.id===a.id?Promise.resolve(f.runtimes.get(a.id)):runtime(agent,status);
  x.recover.freshTui={handover:'旧TUI/draftはそのまま保管。fixtureの未適用を確認。'};
- return {...x,oldTab,oldNative,launches:()=>launches,transport:()=>transport};
+ return {...x,oldTab,oldNative,oldStatus,launches:()=>launches,transport:()=>transport};
 }
 test('fresh initial recovery persists intent, uses normal receipt/actor, applies once and retains old runtime',async t=>{
  const x=await initialFixture(t),{d,f}=x,before=structuredClone(x.r),receipt=await d.conversations.relayRecover(x.recover),r=d.flow.run(receipt.runId);
@@ -351,4 +351,33 @@ test('fresh initial attempt persistence failure and late input before launch nev
   await assert.rejects(d.conversations.relayRecover(x.recover));assert.equal(x.launches(),0);
   assert.equal(d.data.runs.filter(r=>r.secretaryRecovery).length,0);
  }
+});
+
+
+test('fresh recovery ready-for-review follows idle contract, rejects other states without saving, and applies once',async t=>{
+ const x=await initialFixture(t),{d,f}=x,entry=d.conversations.record(x.r.conversationId).relayInbox[0],before=structuredClone(x.r),runs=d.data.runs.length,agentBefore=structuredClone(d.agent(x.r.agentId));
+ for(const cliState of ['busy','unknown','needs-input','waiting-for-input','waiting-for-permission','permission','inactive',undefined]){
+  x.oldStatus.cliState=cliState;
+  await assert.rejects(d.conversations.relayRecover(x.recover),/証拠が不足/);
+  assert.equal(entry.recovery,undefined);assert.equal(d.data.runs.length,runs);assert.equal(x.launches(),0);assert.deepEqual(d.agent(x.r.agentId),agentBefore);assert.deepEqual(x.r,before);
+ }
+ for(const cliState of ['idle','ready-for-review']){
+  Object.assign(x.oldStatus,{cliState,permissionRequest:{kind:'permission'}});
+  await assert.rejects(d.conversations.relayRecover(x.recover),/証拠が不足/);
+  assert.equal(entry.recovery,undefined);assert.equal(x.launches(),0);
+ }
+ Object.assign(x.oldStatus,{cliState:'ready-for-review',permissionRequest:null});
+ for(const invalid of ['dead','running-native','wrong-body']){
+  const state=x.oldNative.turns.at(-1).state;
+  if(invalid==='dead')x.oldStatus.alive=false;
+  if(invalid==='running-native')x.oldNative.turns.at(-1).state='running';
+  await assert.rejects(d.conversations.relayRecover({...x.recover,...(invalid==='wrong-body'?{nativeInputHash:'0'.repeat(64)}:{})}),/証拠が不足/);
+  x.oldStatus.alive=true;x.oldNative.turns.at(-1).state=state;
+  assert.equal(entry.recovery,undefined);assert.equal(d.data.runs.length,runs);assert.equal(x.launches(),0);
+ }
+ const receipt=await d.conversations.relayRecover(x.recover),r=d.flow.run(receipt.runId);
+ assert.equal(x.launches(),1);await f.submit(r);
+ const apply={conversationId:r.conversationId,actorRunId:r.id,operationId:id(),deliveryId:receipt.deliveryId};
+ const result=await d.conversations.relayApply(apply);assert.equal(result.previousRunId,x.old.id);
+ assert.deepEqual(await d.conversations.relayApply(apply),result);assert.equal(d.data.runs.filter(r=>r.secretaryRecovery).length,1);assert.deepEqual(x.r,before);
 });
