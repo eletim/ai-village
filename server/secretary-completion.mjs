@@ -1,7 +1,7 @@
 import {agentEntries} from '../src/completions.js';
 
-// Presentation only: read receipts and job achievement never participate. Derive
-// before paging/focus removes conversation bodies, so sidebar and panel agree.
+// Normal-answer candidate only; presentation applies the revision-bound unread gate.
+// Derive before paging/focus removes bodies. Job achievement never participates.
 export function secretaryAnswerComplete(view,agent){
  if(agent.location!=='mayor'||!['idle','completed'].includes(agent.state))return false;
  const entries=agentEntries(view,agent).filter(e=>!e.inputReceipt);
