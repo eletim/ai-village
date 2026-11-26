@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-26T08:52:59.360Z",
+  "host": "E-frontier",
+  "fixture": true,
+  "port": 15681,
+  "requests": 2,
+  "generatedCommand": "'env' 'VILLAGE_URL=http://100.87.176.23:15681' 'VILLAGE_PUBLIC_ORIGIN=' 'VILLAGE_AUTH_FILE=' 'VILLAGE_AGENT_ID=remote-read-fixture' 'node' '/tmp/village-remote-access-4Mr8O1Rt/scripts/village.mjs' rules get work leader",
+  "revision": "277636edea42d3db00089a954223ec4a55174db60c04de86401c140cce495822",
+  "scopedCLI": true,
+  "credentialsInCommand": false,
+  "state": "/tmp/remote-access-real-F8aCjB",
+  "normalAgentLaunch": false
+}
