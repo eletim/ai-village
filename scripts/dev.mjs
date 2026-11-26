@@ -7,7 +7,7 @@ import {mapSnapshot} from '../server/map-view.mjs';
 // Rollback switch for the lean views (docs/lean-fetch.md): VILLAGE_LEGACY_FETCH=1 restores the full payloads.
 const leanFetch=process.env.VILLAGE_LEGACY_FETCH!=='1';
 import {WorkspaceSync} from '../server/workspace-sync.mjs';
-import {syncResponse} from '../server/sync-response.mjs';
+import {syncResponse,contentResponse} from '../server/sync-response.mjs';
 const workspaceSync=new WorkspaceSync();
 import {WeeklyUsage} from '../server/weekly-usage.mjs';
 const weeklyUsage=new WeeklyUsage();
@@ -178,7 +178,7 @@ const handleRequest = async (req, res) => {
     const file = resolve(root, ['/agents','/agents/'].includes(pathname) ? 'agents.html' : pathname === '/' ? 'index.html' : '.' + pathname);
     const content = await readFile(file);
     if(extname(file)==='.html')humanIntent.issue(req,res);
-    res.writeHead(200, { 'Content-Type': mime[extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-store' }); res.end(content);
+    await contentResponse(req,res,content,mime[extname(file)] || 'application/octet-stream');
   } catch (error) {
     if (error.code === 'ENOENT') { res.writeHead(404); res.end('Not found'); }
     else json(res, error.status || 500, { error: error.message });
