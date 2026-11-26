@@ -1,3 +1,4 @@
+import {reserveInitialRelay,launchInitialRelay,initialRelayObservation} from './relay-initial-launch.mjs';
 import {randomUUID,createHash} from 'node:crypto';
 import {checkRelayRecheck} from './secretary-relay-recheck.mjs';
 import {recoveryEvidence} from './secretary-relay-recovery.mjs';
@@ -40,6 +41,7 @@ export class SecretaryRelay {
     if(e.recovery){
      const rr=d.flow.run(e.recovery.receipt.runId);
      if(e.recovery.previousRunId!==e.runId||rr?.conversationId!==c.id||rr.conversationSource?.relayId!==e.id||rr.conversationSource.kind!=='secretary'||rr.relayRecoveryOf!==e.runId||!e.recovery.proof?.inputHash)fail('Invalid secretary recovery linkage');
+     if(rr.relayInitial){const i=rr.relayInitial,l=i.launch,a=d.agent(rr.agentId);if(l?.runId!==rr.id||l.operationId!==e.recovery.initialLaunchId||l.tabId!=='tab-relay-'+l.operationId||createHash('sha256').update(l.body).digest('hex')!==rr.inputCorrelation?.digest||!a.retainedRelayRuntimes?.some(old=>old.operationId===l.operationId&&old.runId===rr.id&&hash(old.runtime)===hash(i.oldRuntime)))fail('Invalid initial relay linkage');}
     }
     if(e.actionReceipt?.action==='resume-interrupted'){
      const resumed=d.flow.run(e.actionReceipt.runId);
@@ -110,13 +112,14 @@ export class SecretaryRelay {
   if(!e)fail('今回の正式中継だけを操作できます',403);return e;
  }
  async recover(x){
-  fields(x,['conversationId','actorRunId','operationId','deliveryId','nativeInputHash','nativeTurnId','recheck']);key(x.operationId);
+  fields(x,['conversationId','actorRunId','operationId','deliveryId','nativeInputHash','nativeTurnId','recheck','freshTui']);key(x.operationId);
   if(!/^[a-f0-9]{64}$/.test(x.nativeInputHash||'')||typeof x.nativeTurnId!=='string')fail('保存nativeのinput hashとturn IDが必要です',400);
   const d=this.d,source=d.conversations.record(x.conversationId),sent=source.relaySent?.find(s=>s.receipt.deliveryId===x.deliveryId);
   if(!sent)fail('送信元本人の配送だけ回復できます',403);
   const recipient=d.conversations.record(sent.receipt.conversationId);
   return d.locked('request-graph',()=>d.locked(recipient.agentId,async()=>{
    const payload=JSON.stringify(x);
+   if(x.freshTui!==undefined)fields(x.freshTui,['handover']);
    const check=()=>{
     const c=d.conversations.record(x.conversationId),e=d.conversations.record(recipient.id).relayInbox.find(e=>e.id===x.deliveryId);
     if(e?.recovery){if(e.recovery.payload!==payload)fail('この配送の回復は一度だけです');return {e,saved:true};}
@@ -134,10 +137,10 @@ export class SecretaryRelay {
    const first=check();if(first.saved)return d.persist(async()=>structuredClone(first.e.recovery.receipt));
    const oldDigest=hash(first.old);
    const cap=await d.pmux(first.b.a,'tab','capabilities');
-   if(cap?.guardedCodexInput?.version!==1||cap.guardedCodexInput.client!==1)fail('回復前にPurpleMux guardedCodexInput server/CLIが必要です');
+   if(x.freshTui ? cap?.initialCodexLaunch?.version!==1||cap.initialCodexLaunch.client!==1 : cap?.guardedCodexInput?.version!==1||cap.guardedCodexInput.client!==1)fail(x.freshTui?'回復前にPurpleMux initialCodexLaunch server/CLIが必要です':'回復前にPurpleMux guardedCodexInput server/CLIが必要です');
    const status=await d.pmux(first.b.a,'tab','status','-w',first.b.a.workspaceId,first.b.a.tabId),snapshot=await d.runtime(first.b.a,status);
    const proof=recoveryEvidence(first.old,snapshot,status,x);
-   return d.persist(async()=>{
+   const result=await d.persist(async()=>{
     const beforeSaveStatus=await d.pmux(first.b.a,'tab','status','-w',first.b.a.workspaceId,first.b.a.tabId);
     const beforeSave=await d.runtime(first.b.a,beforeSaveStatus);
     if(hash(recoveryEvidence(first.old,beforeSave,beforeSaveStatus,x))!==hash(proof))fail('証拠読取後にnativeが変化しました');
@@ -147,8 +150,11 @@ export class SecretaryRelay {
     r.relayRecoveryOf=e.runId;r.relayRecoveryBoundary={sessionId:snapshot.sessionId,fileIdentity:snapshot.fileIdentity,cursor:snapshot.cursor};
     const receipt={deliveryId:e.id,conversationId:recipient.id,runId:r.id,previousRunId:e.runId,purposeId:e.target.purposeId};
     e.recovery={...(current.recheck?{recheck:current.recheck}:{}),operationId:x.operationId,payload,actorRunId:current.actorRunId,previousRunId:e.runId,proof,receipt,createdAt:new Date().toISOString()};
+    if(x.freshTui)reserveInitialRelay(d,current.b.a,r,e,x.freshTui.handover);
     await d.save();return structuredClone(receipt);
    });
+   if(x.freshTui)await launchInitialRelay(this,d.flow.run(result.runId));
+   return result;
   }));
  }
  dispatchBoundary(r){
@@ -167,6 +173,7 @@ export class SecretaryRelay {
    const saved=(c.relayInbox||[]).find(e=>e.id===x.deliveryId&&relayRunId(e)===x.actorRunId);
    if(saved?.actionReceipt)return structuredClone(saved.actionReceipt);
    const actor=d.conversations.actor(c,x.actorRunId),e=this.event(c,actor,x.deliveryId);
+   if(actor.relayInitial){const a=d.agent(actor.agentId),status=await d.pmux(a,'tab','status','-w',a.workspaceId,a.tabId),snapshot=await d.runtime(a,status);if(!await initialRelayObservation(this,a,actor,snapshot,status))fail('初回起動の受付証拠を再確認できません');}
    if((c.relayInbox||[]).some(y=>y!==e&&y.actionOperationId===x.operationId))fail('operationIdの再利用です');
    if(humanSequence(d,c)!==e.targetHumanSequence)fail('後着の人間入力があります。自動継続しません');
    const b=target(d,e.target),source=d.conversations.record(e.sourceConversationId),sourceRun=d.flow.run(e.sourceRunId);

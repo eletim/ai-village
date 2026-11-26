@@ -283,3 +283,70 @@ test('pinned reviewer never follows a later human and rejects unaccepted or fore
   assert.equal(d.flow.run(receipt.runId).runModel.state.kind,'ended');assert.equal(d.data.runs.filter(r=>r.secretaryRecovery).length,0);
  }
 });
+
+async function initialFixture(t,{unknown=false}={}){
+ const x=await contaminated(t),{d,f}=x,a=d.agent(x.r.agentId),oldTab=a.tabId,oldNative=structuredClone(x.native),oldStatus={alive:true,cliState:'idle',agentSessionId:oldNative.sessionId};
+ const pmux=d.pmux.bind(d),runtime=d.runtime.bind(d);let launches=0,launch,transport;
+ d.pmux=async(agent,...args)=>{
+  if(args[1]==='capabilities')return {initialCodexLaunch:{version:1,client:1}};
+  if(args[1]==='initial-launch'){
+   launches++;launch=JSON.parse(args[2]);assert(d.store);assert(d.flow.run(launch.runId).relayInitial.attemptedAt);
+   if(unknown)throw Error('unknown launch');
+   transport={state:'started',...launch,bodyHash:inputHash(launch.body),processMatches:true,receipt:{workspaceId:launch.workspaceId,tabId:launch.tabId,sessionName:'fresh-pane',pid:123,startTicks:'42'}};
+   const n=f.runtimes.get(a.id);Object.assign(n,{sessionId:'fresh-session',fileIdentity:'fresh-file',cursor:0,inputs:[],turns:[]});
+   f.sent.push({agentId:a.id,text:launch.body});return transport;
+  }
+  if(args[1]==='initial-status')return transport||{state:'unknown'};
+  if(args[1]==='status'&&args.at(-1)===oldTab)return oldStatus;
+  if(args[1]==='status'&&agent.id===a.id&&launch)return {alive:true,cliState:'busy',agentSessionId:'fresh-session'};
+  return pmux(agent,...args);
+ };
+ d.observationPmux=(agent,...args)=>d.pmux(agent,...args);
+ d.runtime=(agent,status)=>agent.tabId===oldTab?Promise.resolve(oldNative):agent.id===a.id?Promise.resolve(f.runtimes.get(a.id)):runtime(agent,status);
+ x.recover.freshTui={handover:'旧TUI/draftはそのまま保管。fixtureの未適用を確認。'};
+ return {...x,oldTab,oldNative,launches:()=>launches,transport:()=>transport};
+}
+test('fresh initial recovery persists intent, uses normal receipt/actor, applies once and retains old runtime',async t=>{
+ const x=await initialFixture(t),{d,f}=x,before=structuredClone(x.r),receipt=await d.conversations.relayRecover(x.recover),r=d.flow.run(receipt.runId);
+ assert.equal(x.launches(),1);assert.equal(d.agent(r.agentId).retainedRelayRuntimes[0].runtime.tabId,x.oldTab);assert.deepEqual(x.r,before);
+ await f.submit(r);assert.equal(r.sessionId,'fresh-session');assert.equal(r.relayInitial.receipt.pid,123);
+ const result=await d.conversations.relayApply({conversationId:r.conversationId,actorRunId:r.id,operationId:id(),deliveryId:receipt.deliveryId});
+ assert.equal(result.previousRunId,x.old.id);assert.equal(d.data.runs.filter(r=>r.secretaryRecovery).length,1);
+ assert.deepEqual(await d.conversations.relayRecover(x.recover),receipt);assert.equal(x.launches(),1);
+ await assert.rejects(d.conversations.relayRecover({...x.recover,operationId:id()}),/一度/);
+ const reboot=await f.restart();assert.deepEqual(await reboot.conversations.relayRecover(x.recover),receipt);assert.equal(reboot.flow.run(x.r.id).runModel.state.outcome,'unconfirmed');
+});
+test('fresh initial unknown launch is never repeated; uncertain save never launches',async t=>{
+ const x=await initialFixture(t,{unknown:true}),receipt=await x.d.conversations.relayRecover(x.recover);
+ await x.d.conversations.relayRecover(x.recover);await x.d.tick();assert.equal(x.launches(),1);assert.equal(x.d.flow.run(receipt.runId).turnId,undefined);
+ for(const uncertain of [false,true]){
+  const y=await initialFixture(t);y.d.store.write=()=>{throw Object.assign(Error('save failure'),{persistenceUncertain:uncertain});};
+  await assert.rejects(y.d.conversations.relayRecover(y.recover),/save failure/);assert.equal(y.launches(),0);
+ }
+});
+test('fresh receipt rejects changed process, old native, later human and target revision before apply',async t=>{
+ for(const variant of ['process','old-native','human','revision']){
+  const x=await initialFixture(t),{d,f}=x,receipt=await d.conversations.relayRecover(x.recover),r=d.flow.run(receipt.runId);
+  await f.submit(r);
+  if(variant==='process')x.transport().receipt.startTicks='other';
+  if(variant==='old-native')x.oldNative.cursor++;
+  if(variant==='human')await d.send(x.sender.agentId,{mode:'conversation',requestId:id(),instruction:'再開を撤回'});
+  if(variant==='revision')d.flow.root(x.job.humanRequestId).revision++;
+  await assert.rejects(d.conversations.relayApply({conversationId:r.conversationId,actorRunId:r.id,operationId:id(),deliveryId:receipt.deliveryId}));
+  assert.equal(d.data.runs.filter(r=>r.secretaryRecovery).length,0);
+ }
+});
+test('fresh initial attempt persistence failure and late input before launch never create a process',async t=>{
+ for(const kind of ['rollback','uncertain','late-human']){
+  const x=await initialFixture(t),{d}=x,save=d.save.bind(d);let reserved=false;
+  d.save=async(...args)=>{
+   const r=d.data.runs.find(r=>r.relayInitial);
+   if(r?.relayInitial.attemptedAt&&kind!=='late-human')throw Object.assign(Error('attempt save failed'),{persistenceUncertain:kind==='uncertain',persistenceFailure:true});
+   const result=await save(...args);
+   if(r&&!reserved){reserved=true;if(kind==='late-human'){const h=structuredClone(x.sender);h.id=id();h.conversationSequence++;h.instruction='範囲を撤回';d.data.runs.push(h);}}
+   return result;
+  };
+  await assert.rejects(d.conversations.relayRecover(x.recover));assert.equal(x.launches(),0);
+  assert.equal(d.data.runs.filter(r=>r.secretaryRecovery).length,0);
+ }
+});

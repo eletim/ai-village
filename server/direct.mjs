@@ -1,3 +1,4 @@
+import {initialRelayObservation,bindInitialRelayRuntime} from './relay-initial-launch.mjs';
 import {previewMessages} from './secretary-preview.mjs';
 import {retireDecisionReminder} from './conversation-decision-recovery.mjs';
 import {secretaryHandoverPlan,handoverSecretary} from './secretary-handover.mjs';
@@ -630,6 +631,8 @@ export class DirectAgents {
     if(!this.units.context.getStore()?.agentIds?.has(a.id))return this.units.agent(a.id,()=>this.observe(a));
     if(this.agentDeleting(a))return this.persist(async()=>{this.releaseStuckRuns(a);this.updateAvailability(a);await this.save();return {available:false,turns:[],inputs:[]};});
     try{
+      const initial=this.data.runs.find(r=>r.agentId===a.id&&r.relayInitial&&active(r)&&!r.turnId);
+      if(initial&&!a.sessionName)await bindInitialRelayRuntime(this.conversations.relayService,a,initial);
       let s;
       try{s=await this.observationPmux(a,'tab','status','-w',a.workspaceId,a.tabId);}catch(error){
         const {tabs}=await this.observationPmux(a,'tab','list','-w',a.workspaceId);
@@ -666,6 +669,11 @@ export class DirectAgents {
       if(a.contractVerifiedSessionId&&observation.process==='absent')delete a.contractVerifiedSessionId;
       if(snapshot.sessionId)a.observedSessionId=snapshot.sessionId;
       for(const r of this.data.runs.filter(r=>r.agentId===a.id&&active(r)&&!quarantinedRun(this.data,r))){
+        if(r.relayInitial&&!r.turnId){
+          let initial;try{initial=await initialRelayObservation(this.conversations.relayService,a,r,snapshot,s);}catch(error){r.error=error.message;continue;}
+          if(!initial){r.error='初回起動のreceipt/本文を照合中。自動再送しません';continue;}
+          Object.assign(r.relayInitial,initial);r.baselineRuntime={sessionId:initial.sessionId,fileIdentity:initial.fileIdentity,cursor:0};
+        }
         const observation=correlate(r,snapshot);
         observeRun(r,observation,snapshot);
         if(observation.turnId&&a.location==='mayor'&&r.conversationId)r.livePreview=observation.livePreview;else if(r.livePreview)delete r.livePreview;
