@@ -115,3 +115,32 @@ test('individual partial deletion blocks new work and reconciles same operation 
  f.offline('');const restored=new DirectAgents(f.opts);await restored.init({watch:false});
  assert.equal((await restored.deleteAgent('a',x)).status,'deleted');assert.deepEqual(f.closed,['a']);
 });
+test('explicit registry retirement preserves unknown process status, history and the original partial deletion',async t=>{
+ const f=await fixture(t),a=f.d.agent('a'),deletion={operationId:'delete-unverified-a',revision:0};
+ a.location='mayor';a.agentModel.observation={connected:true,process:'alive',activity:'idle',canSteer:false};f.present.delete('a');
+ assert.equal((await f.d.deleteAgent('a',deletion)).status,'partial');
+ const input={operationId:'retire-unverified-a',revision:0,deletionOperationId:deletion.operationId,workspaceId:a.workspaceId,tabId:a.tabId,acknowledgement:'Agent a の所有プロセス不在は未確認。孤児プロセスのリスクを受け入れ、登録上のみ退役する。'};
+ const {VillageOperations}=await import('../server/operations.mjs'),ops=new VillageOperations({dir:f.d.dir},null,{direct:f.d});
+ const calls=f.calls.length,first=await ops.execute(['agents','retire-unverified','a',JSON.stringify(input)]);
+ assert.equal(first.ok,true);assert.equal(first.result.mode,'registry-only');assert.equal(first.result.processStatus,'unverified');
+ assert.equal(a.deletion.status,'registry-retired-unverified');assert.equal(a.deletion.registryRetirement.originalDeletion.status,'partial');
+ assert.equal(f.closed.length,0);assert(f.calls.slice(calls).every(call=>call[2]==='list'));
+ assert.deepEqual(f.d.discovery().agents.map(x=>x.agentId),['b']);assert.equal(f.d.snapshot().runs[0].output,'保持する履歴');
+ const restored=new DirectAgents(f.opts);await restored.init({watch:false});
+ assert.deepEqual(await restored.retireUnverifiedAgent('a',input),first.result);
+ assert.equal(restored.agent('a').deletion.status,'registry-retired-unverified');
+ const before=f.calls.length;assert.equal((await restored.deleteAgent('a',deletion)).status,'registry-retired-unverified');assert.equal(f.calls.length,before);
+});
+test('registry retirement refuses a returned tab, unsafe request references and changed acknowledgement',async t=>{
+ const f=await fixture(t),a=f.d.agent('a'),deletion={operationId:'delete-unverified-a',revision:0};
+ a.location='mayor';a.agentModel.observation={connected:true,process:'alive',activity:'idle',canSteer:false};f.present.delete('a');
+ assert.equal((await f.d.deleteAgent('a',deletion)).status,'partial');
+ const input={operationId:'retire-unverified-a',revision:0,deletionOperationId:deletion.operationId,workspaceId:a.workspaceId,tabId:a.tabId,acknowledgement:'Agent a の所有プロセス不在は未確認。孤児プロセスのリスクを受け入れ、登録上のみ退役する。'};
+ await assert.rejects(f.d.retireUnverifiedAgent('a',{...input,acknowledgement:'delete it'}),/リスク承認/);
+ f.present.add('a');await assert.rejects(f.d.retireUnverifiedAgent('a',input),/旧tab/);f.present.delete('a');
+ f.d.data.requests.push({id:'quarantined',originAgentId:'a',integrity:{reasons:['unknown']}});
+ await assert.rejects(f.d.retireUnverifiedAgent('a',input),/隔離中/);f.d.data.requests.pop();
+ f.d.data.requests.push({id:'active',requestGraph:{nodes:[{assignee:'a',state:{kind:'active'}}]}});
+ await assert.rejects(f.d.retireUnverifiedAgent('a',input),/未完了/);f.d.data.requests.pop();
+ assert.equal(a.deletedAt,undefined);assert.equal(a.deletion.status,'partial');
+});

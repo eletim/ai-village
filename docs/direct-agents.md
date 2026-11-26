@@ -84,3 +84,5 @@ E-ryzen（村長PC）のローカルPurpleMuxとE-frontierのSSH接続を同じ�
 ## 不要なAgentの個別削除
 
 `agents list` でIDとmetadataRevisionを確認し、依頼で許可された対象だけ `agents delete AGENT_ID '{"operationId":"unique-delete-operation","revision":0}'` で削除する。待機・終了済み、担当中の依頼と未送信/受付中/実行中runがないことを検査する。所有プロセスの終了確認後に一覧から除外し、依頼・run・成果の履歴は保持する。終了を確認できない場合はpartialを返し、新規依頼を拒否する。受付不明は自動再送せず、確認して再試行する場合は同じoperationIdとrevisionを使う。
+
+旧tabが既に消え、所有PIDを記録できなかったpartial削除には `agents retire-unverified AGENT_ID JSON` を使える。これは孤児プロセスの可能性を人間が当該個体について了承した後の**登録上のみの退役**で、プロセス停止や不在証明を行わない。入力には新しいoperationId、元の削除operationId、元のrevision、表示したworkspaceId/tabId、および `Agent AGENT_ID の所有プロセス不在は未確認。孤児プロセスのリスクを受け入れ、登録上のみ退役する。` の正確なacknowledgementを指定する。サーバーは元のpartial理由、tabの再不在、未完了の依頼・追跡run・会話・隔離記録がないことを確認する。履歴と元のpartial理由を保存し、退役状態を `registry-retired-unverified` と記録する。同じoperationIdと入力だけが冪等な再照合になる。
