@@ -1,3 +1,4 @@
+import {secretaryPreview} from './secretary-preview.mjs';
 import {requestProgress} from '../src/request-progress.js';
 import {agentEntries} from '../src/completions.js';
 import {isHumanInput,isVisibleAnswer,entryIdentity} from '../src/run-groups.js';
@@ -20,8 +21,9 @@ function foldedSides(e,view){
  if((e.output||e.finalOutput)&&terminal.has(e.state)&&!(published||isVisibleAnswer(e)))sides.push('output');
  return sides;
 }
-function deferBodies(e,view){
- const sides=foldedSides(e,view);if(!sides.length)return e;
+function deferBodies(e,view,previewMode=false){
+ const sides=foldedSides(e,view);
+ if(previewMode&&e.conversationId&&!terminal.has(e.state)&&(e.output||e.finalOutput)&&!sides.includes('output'))sides.push('output');if(!sides.length)return e;
  const lean={...e,bodyDeferred:{}};
  for(const side of sides){
   const body=bodyOf[side](e);for(const k of Object.keys(body))delete lean[k];
@@ -61,7 +63,8 @@ const leanAgent=({secretaryHandover,runtimeMigrations,...rest})=>{
 };
 // lazyBodies: only for a client that asked (bodies=lazy); a page loaded before this build cannot
 // render deferred bodies and keeps receiving them inline.
-export function workspaceSnapshot(view,ranges={},focus=null,{lean=false,lazyBodies=false}={}){
+export function workspaceSnapshot(view,ranges={},focus=null,{lean=false,lazyBodies=false,previewAgent=null}={}){
+ if(previewAgent!==null&&(typeof previewAgent!=='string'||previewAgent.length>200))throw Object.assign(Error('Invalid preview agent'),{status:400});
  if(!ranges||typeof ranges!=='object'||Array.isArray(ranges)||Object.keys(ranges).length>1000)throw Object.assign(Error('Invalid history ranges'),{status:400});
  let focusIds=null;
  if(focus!=null){
@@ -81,7 +84,7 @@ export function workspaceSnapshot(view,ranges={},focus=null,{lean=false,lazyBodi
   // Keep unsent/uncertain/running controls reachable even when older than the window.
   const entries=all.filter(r=>visible.has(r)||!r.inputReceipt&&!r.external&&!terminal.has(r.state));
   entries.forEach(r=>{if(!r.external)included.add(r.id);});
-  conversations[a.id]={entries:entries.map(r=>{const e=present(r,view);return lazyBodies?deferBodies(e,view):e;}),hasMore:all.some(r=>window.length&&entryKey(r)<entryKey(window[0])),cursor:window.length?cursor(a.id,entryKey(window[0])):null};
+  conversations[a.id]={entries:entries.map(r=>{let e=present(r,view);if(lazyBodies)e=deferBodies(e,view,previewAgent!==null&&a.location==='mayor');if(previewAgent===a.id){const preview=secretaryPreview(a,r);if(preview)e.preview=preview;}return e;}),hasMore:all.some(r=>window.length&&entryKey(r)<entryKey(window[0])),cursor:window.length?cursor(a.id,entryKey(window[0])):null};
  }
  const runs=view.runs.filter(r=>included.has(r.id));
  const agents=view.agents.map(a=>{const {nativeTurns,runtime,creationInput,ownedProcesses,processVerification,initialTabId,sessionName,...rest}=a;const agent={...rest,nativeTurns:(nativeTurns||[]).slice(-1).map(t=>({id:t.id,sessionId:t.sessionId,state:t.state}))};return lean?leanAgent(agent):agent;});
