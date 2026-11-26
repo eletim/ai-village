@@ -480,6 +480,17 @@ export class DirectAgents {
     if(!retirementIntact(this.data,a))return retirementHold();
     if(this.agentDeleting(a))return blocked('project-deletion-before-dispatch');
     if(r.childContinuation&&!this.flow.childContinuationBoundary(this.flow.run(r.runModel.retryOf),baseline,a.runtime))return blocked('dispatch-boundary-changed','継続元の終了境界が変わりました。自動送信せず状況確認が必要です。');
+    // Resolve at dispatch, under the agent lock. Earlier queued input and every
+    // unacknowledged send retain their place; another conversation never steers.
+    const chooseConversationTarget=snapshot=>{if(r.conversationId&&r.conversationSource?.kind==='human'&&!r.dispatchAttemptedAt){
+      const target=a.steerTarget,previous=target&&this.flow.run(target.runId);
+      if(previous?.conversationId===r.conversationId&&previous.conversationSequence<r.conversationSequence&&
+         !this.data.runs.some(x=>x.agentId===a.id&&x.id!==r.id&&runState(x)==='queued'&&x.createdAt<r.createdAt)){
+        r.steerTarget=structuredClone(target);r.steeringProvider=a.provider;
+        r.priorInputs=snapshot.inputs.filter(i=>i.turnId===target.turnId).map(({id,offset})=>({id,offset}));
+      }else{delete r.steerTarget;delete r.steeringProvider;delete r.priorInputs;}
+    }};
+    chooseConversationTarget(baseline);
     const allowed=snapshot=>launchProfileReady(a)&&(r.steerTarget?this.steeringBoundary(r,a,snapshot):agentControls(a).canSend);
     if(!launchProfileReady(a)){await this.persist(async()=>{r.queuedReason='launch-profile-unverified';await this.save();});return r;}
     if(!allowed(baseline)){
@@ -490,6 +501,7 @@ export class DirectAgents {
     try{for(const record of r.attachments||[])files.push(await this.transferAttachment(a,record,await this.attachments.content(record.id)));}
     catch{await this.persist(async()=>{r.attachmentError='添付を接続先へ転送できません。送信前に再試行します。';r.nextTransferAt=Date.now()+30000;await this.save();});return r;}
     let confirmed=r.attachments?.length?await this.observe(a):baseline;
+    chooseConversationTarget(confirmed);
     if(!allowed(confirmed)||this.agentDeleting(a)){if(r.steerTarget)return blocked('dispatch-boundary-changed','添付転送中に補足対象が変わりました。自動送信しません。');return r;}
     if(r.childContinuation&&!this.flow.childContinuationBoundary(this.flow.run(r.runModel.retryOf),confirmed,a.runtime))return blocked('dispatch-boundary-changed','添付転送中に継続元の終了境界が変わりました。自動送信しません。');
     if(r.autoRecoveryFrom&&(Date.now()>r.recoveryDeadline||!this.flow.recoveryBoundary(this.flow.run(r.autoRecoveryFrom),confirmed,a.runtime)))return blocked('dispatch-boundary-changed','自動再試行前に新しい入力または状態変化を検出しました。requests getで確認し手動で復旧してください。');
@@ -502,6 +514,10 @@ export class DirectAgents {
     // asynchronous contract verification, then recheck the proof in the save boundary.
     if(!confirmed.sessionId||confirmed.unrecorded===true&&(a.runtimeMigrations?.at(-1)?.freshProof||latestRetirement(a))){
       confirmed=await this.observe(a);
+      if(!allowed(confirmed))return r;
+    }
+    if(r.conversationId&&r.steerTarget){
+      confirmed=await this.observe(a);chooseConversationTarget(confirmed);
       if(!allowed(confirmed))return r;
     }
     const status=a.runtime;
@@ -529,7 +545,7 @@ export class DirectAgents {
       if(policy)a.secretaryGuideSeen=a.projectId+':'+guide.hash;
       const body=policy+instruction+(plain?'':this.secretaryContext(a))+this.flow.context(r)+(compatibility?legacyContext(this.rules,r,a):'');
       const text=a.provider==='codex'?body.trim():body;
-      if(r.steerTarget){const previous=this.flow.run(r.steerTarget.runId);changeRun(previous,{type:'close-tracking',actor:'human',reason:'steering-successor-dispatched'});}
+      if(r.steerTarget){const previous=this.flow.run(r.steerTarget.runId);if(r.conversationId)changeRun(previous,{type:'supersede',actor:'human',successorId:r.id});changeRun(previous,{type:'close-tracking',actor:'human',reason:'steering-successor-dispatched'});}
       changeRun(r,{type:'dispatch',actor:'program',at:Date.now(),sessionId:confirmed.sessionId||null,agentIdle:true});
       Object.assign(r,{inputCorrelation:inputCorrelation(text,a.provider),inputEnvelopeMode:compatibility?'legacy-compat':'startup-v2',dispatchAttemptedAt:now(),baselineRuntime:{sessionId:confirmed.sessionId,cursor:confirmed.cursor,fileIdentity:confirmed.fileIdentity},agentSessionId:status.agentSessionId||null});
       await this.save();return text;
@@ -547,7 +563,8 @@ export class DirectAgents {
   steeringBoundary(r,a,snapshot){
     const t=r.steerTarget,previous=t&&this.flow.run(t.runId);
     if(!previous||!['codex','claude'].includes(a.provider)||(a.provider==='claude'&&previous.phase==='report')||agentControls(a).lifecycle!=='alive'||agentControls(a).connectionState!=='connected'||agentControls(a).activityState!=='busy'||a.runtime?.cliState!=='busy'||a.runtime?.permissionRequest||a.setupRequired||snapshot.incompleteTail||!snapshot.available)return false;
-    const q=this.flow.root(r.humanRequestId);
+    if(!r.conversationId)this.flow.root(r.humanRequestId);
+    if(r.conversationId&&(previous.conversationId!==r.conversationId||previous.agentId!==r.agentId||r.conversationSource?.kind!=='human'))return false;
     if(snapshot.sessionId!==t.sessionId||a.runtime.agentSessionId!==t.sessionId||snapshot.turns.at(-1)?.id!==t.turnId)return false;
     const observed=correlate(previous,snapshot);
     return observed.state==='running'&&observed.turnId===t.turnId&&snapshot.inputs.filter(i=>i.turnId===t.turnId).every(i=>r.priorInputs.some(p=>inputMatches(i,p)));

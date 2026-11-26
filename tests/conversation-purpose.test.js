@@ -68,7 +68,7 @@ test('stale versions, undelivered result, permission substitution, post-arrival 
  const receipt=await command.run([JSON.stringify(input)]);assert.deepEqual(await command.run([JSON.stringify(input)]),receipt);
  await assert.rejects(command.run([JSON.stringify({...input,question:'different'})]),/再利用/);
  await f.service.send(human.agentId,{mode:'conversation',requestId:randomUUID(),instruction:'後からの指示'});
- await assert.rejects(f.service.conversations.decide({...args(one,1),decision:'accept'}),/後着/);
+ await assert.rejects(f.service.conversations.decide({...args(one,1),decision:'accept'}),/受付照合/);
 });
 test('leader asks secretary, secretary explicitly asks human, original permission resumes active work after restart',async t=>{
  const {f,human,auth,first,view}=await purposeFixture(t);

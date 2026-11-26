@@ -14,7 +14,7 @@ function ownedTurn(run,turn,input,snapshot){
  const result={...turn,turnId:turn.id,sessionId:snapshot.sessionId,livePreview:{runId:run.id,sessionId:snapshot.sessionId,turnId:turn.id,messages:previewMessages(turn,input?.offset)}};
  if(run.steerTarget){
   if(!input||!Number.isFinite(input.offset))return {state:'unknown',reason:'steering-input-boundary-missing'};
-  if(run.steeringProvider==='claude'&&['completed','failed','interrupted'].includes(turn.state)&&(!Number.isFinite(turn.completionOffset)||turn.completionOffset<=input.offset))return {state:'unknown',reason:'steering-completion-before-input'};
+  if((run.conversationId||run.steeringProvider==='claude')&&['completed','failed','interrupted'].includes(turn.state)&&(!Number.isFinite(turn.completionOffset)||turn.completionOffset<=input.offset))return {state:'unknown',reason:'steering-completion-before-input'};
   result.output=outputBetween(turn,input.offset);
  }
  return result;

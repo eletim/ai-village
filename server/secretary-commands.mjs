@@ -45,10 +45,11 @@ export class SecretaryCommands {
  // The run, its conversation and the purposes visible to it.
  async context(run){
   if(typeof run!=='string'||!RUN.test(run))fail('--run に発言末尾の <village run="…"/> の値を指定してください。');
-  const r=this.d.flow.run(run);
+  let r=this.d.flow.run(run);
   if(!r?.conversationId)fail('この run は秘書の会話の回ではありません。--run には <village run="…"/> の値を渡してください。',404);
   const c=this.d.conversations.record(r.conversationId);
   if(r.runModel.state.kind==='sent'&&!r.acceptedAt)await this.d.conversations.read(c.id,run).catch(e=>{if(/この会話で受付照合済みのrun/.test(e.message))fail('受付をまだ確認できません。送信は繰り返さず、village status --run '+run+' で受付状態を確認してください。',409);throw e;});
+  r=this.d.conversations.currentActor(r);
   const purposes=this.d.data.requests.filter(q=>q.conversationId===c.id&&purposeId(q)===q.id&&this.d.data.runs.some(x=>x.id===q.requestedBy?.actorRunId&&x.conversationSequence<=r.conversationSequence));
   return {r,c,purposes};
  }
@@ -74,7 +75,8 @@ export class SecretaryCommands {
  }
  async order(run,instruction){
   const x=await this.context(run);
-  return this.d.conversations.job({conversationId:x.c.id,actorRunId:run,operationId:this.operationId(run,'order',[instruction]),instruction,authorization:this.authorization(x)}).catch(e=>guide(e,'order'));
+  const operationId=this.operationId(run,'order',[instruction]),old=x.c.operations.find(o=>o.id===operationId);
+  return this.d.conversations.job(old?JSON.parse(old.payload).input:{conversationId:x.c.id,actorRunId:run,operationId,instruction,authorization:this.authorization(x)}).catch(e=>guide(e,'order'));
  }
  async followup(run,purpose,instruction){
   const x=await this.context(run),id=this.purpose(x,purpose,{optional:true});
@@ -92,7 +94,7 @@ export class SecretaryCommands {
  }
  async decide(run,value,reason,action){
   const x=await this.context(run),target=this.decisionTarget(x,value);
-  const operationId=this.operationId(run,action,target.current?[reason]:[target.id,reason]);
+  const operationId=this.operationId(run,action,deliveryOf(x.c,this.d.flow.run(run))?[reason]:[target.id,reason]);
   // Reuse the saved input verbatim: the first decision itself increments purpose.version.
   const old=x.c.operations.find(o=>o.id===operationId);
   if(old)return this.d.conversations.decide(JSON.parse(old.payload).input).catch(e=>guide(e,action));
@@ -110,11 +112,12 @@ export class SecretaryCommands {
  async ask(run,question,purpose){return this.decide(run,purpose,question,'ask');}
  async withdraw(run,purpose,reason){
   const x=await this.context(run),id=this.purpose(x,purpose),q=purposeLeaf(this.d.data,this.d.flow.root(id));
-  return this.d.conversations.withdraw({conversationId:x.c.id,actorRunId:run,operationId:this.operationId(run,'withdraw',[id,reason]),humanRequestId:q.id,instruction:reason,authorization:this.authorization(x)}).catch(e=>guide(e,'withdraw'));
+  const operationId=this.operationId(run,'withdraw',[id,reason]),old=x.c.operations.find(o=>o.id===operationId);
+  return this.d.conversations.withdraw(old?JSON.parse(old.payload).input:{conversationId:x.c.id,actorRunId:run,operationId,humanRequestId:q.id,instruction:reason,authorization:this.authorization(x)}).catch(e=>guide(e,'withdraw'));
  }
  // Read only: the purposes of this conversation and what was delivered in this run.
  async status(run){
   const x=await this.context(run),view=await this.d.conversations.read(x.c.id,run).catch(e=>guide(e,'status'));
-  return {run,conversationId:x.c.id,purposes:view.purposes.map(p=>({id:p.id,state:p.state?.label||null,reason:p.state?.reason||undefined,question:p.state?.question||undefined,decision:p.decision?{kind:p.decision.kind,state:p.decision.state}:null,objective:String(this.d.flow.root(p.id).instruction).slice(0,200),readPurpose:['conversations','read',x.c.id,run,JSON.stringify({kind:'purpose',id:p.id})],deliveries:x.c.deliveries.filter(e=>purposeId(this.d.flow.root(e.humanRequestId))===p.id&&(()=>{const source=this.d.flow.run(e.runId);return source&&accepted(source)&&source.conversationSequence<=x.r.conversationSequence;})()).map(e=>({id:e.id,kind:e.kind,read:['conversations','read',x.c.id,run,JSON.stringify({kind:'delivery',id:e.id})]}))})),delivered:view.currentDeliveries.map(e=>({kind:e.kind,purpose:purposeId(this.d.flow.root(e.humanRequestId))}))};
+  run=x.r.id;return {run,conversationId:x.c.id,purposes:view.purposes.map(p=>({id:p.id,state:p.state?.label||null,reason:p.state?.reason||undefined,question:p.state?.question||undefined,decision:p.decision?{kind:p.decision.kind,state:p.decision.state}:null,objective:String(this.d.flow.root(p.id).instruction).slice(0,200),readPurpose:['conversations','read',x.c.id,run,JSON.stringify({kind:'purpose',id:p.id})],deliveries:x.c.deliveries.filter(e=>purposeId(this.d.flow.root(e.humanRequestId))===p.id&&(()=>{const source=this.d.flow.run(e.runId);return source&&accepted(source)&&source.conversationSequence<=x.r.conversationSequence;})()).map(e=>({id:e.id,kind:e.kind,read:['conversations','read',x.c.id,run,JSON.stringify({kind:'delivery',id:e.id})]}))})),delivered:view.currentDeliveries.map(e=>({kind:e.kind,purpose:purposeId(this.d.flow.root(e.humanRequestId))}))};
  }
 }

@@ -68,15 +68,15 @@ export class Conversations {
   // An Agent can call get before the event monitor has observed its first input.
   // Refresh only a dispatched, still-unbound run; never reopen terminal unknowns.
   if(r&&r.runModel.state.kind==='sent'&&!accepted(r))await this.d.locked(c.agentId,()=>this.d.observe(this.d.agent(c.agentId)));
-  const view=this.get(id,actorRunId);return actorRunId?conversationContext(view,actorRunId):view;
+  const current=this.currentActor(r);const view=this.get(id,current?.id||actorRunId);return actorRunId?conversationContext(view,current?.id||actorRunId):view;
  }
  async material(id,actorRunId,selector){
   if(!actorRunId)fail('現在の会話runを指定してください',403);
-  await this.read(id,actorRunId);return conversationMaterial(this.get(id,actorRunId),actorRunId,selector);
+  await this.read(id,actorRunId);const current=this.currentActor(this.d.flow.run(actorRunId));return conversationMaterial(this.get(id,current.id),current.id,selector);
  }
  get(id,actorRunId){
   const c=this.record(id),all=this.d.data.runs.filter(r=>r.conversationId===id);
-  const actor=actorRunId?all.find(r=>r.id===actorRunId&&accepted(r)):null;
+  const actor=actorRunId?this.currentActor(all.find(r=>r.id===actorRunId&&accepted(r))):null;
   if(actorRunId&&!actor)fail('この会話で受付照合済みのrunを指定してください',403);
   const runs=actor?all.filter(r=>r.conversationSequence<=actor.conversationSequence):all;
   const deliveries=c.deliveries.filter(e=>runs.some(r=>r.id===e.runId));
@@ -97,7 +97,7 @@ export class Conversations {
  }
  async start(agentId,x,origin='human'){
   if(origin!=='human')fail('会話の人間発言は人間用送信口から作成してください',403);
-  if(x.steerTarget)fail('会話は実行中ターンへ割り込まず順番に配送します',400);
+  if(x.steerTarget)fail('会話の追記先は送信直前に基盤が照合します。steerTargetは指定できません',400);
   key(x.requestId);text(x.instruction);
   if(x.attachments!==undefined&&(!Array.isArray(x.attachments)||x.attachments.length>4))fail('添付は4件までです',400);
   const attachments=x.attachments?.length?await this.d.attachments?.select(x.attachments):[];
@@ -122,8 +122,19 @@ export class Conversations {
   }));
   await this.d.flow.dispatchReady(undefined,true);return r;
  }
+ // Only accepted successors in the exact native turn extend an actor's authority.
+ // A saved, sent-but-unaccepted or adjacent-turn input cannot grant permissions.
+ currentActor(r){
+  const seen=new Set();
+  while(r?.conversationId&&r.runModel.supersededBy&&!seen.has(r.id)){
+   seen.add(r.id);const next=this.d.flow.run(r.runModel.supersededBy);
+   if(!next||next.steerTarget?.runId!==r.id||next.conversationId!==r.conversationId||next.agentId!==r.agentId||!accepted(next)||next.sessionId!==r.sessionId||next.turnId!==r.turnId)break;
+   r=next;
+  }
+  return r;
+ }
  actor(c,id){
-  const r=this.d.flow.run(id),a=this.d.writableAgent(this.d.agent(c.agentId));
+  const r=this.currentActor(this.d.flow.run(id)),a=this.d.writableAgent(this.d.agent(c.agentId));
   if(a.location!=='mayor'||a.projectId!==c.projectId||!r||r.agentId!==a.id||r.conversationId!==c.id||!accepted(r)||!r.inputId||!r.turnId||!r.sessionId||runState(r)!=='running')fail('受付照合済みの実行中秘書会話runだけが操作できます',403);
   return r;
  }
@@ -241,7 +252,7 @@ export class Conversations {
     const r=this.d.flow.enqueue(q,w,x.instruction,'conversation-job','agent');q.initialRunId=r.id;
     w.inbox[0].source={actor:'agent'};
     if(previous)this.recordPurpose(c,actor,x,previous,'continue',q);
-    receipt={humanRequestId:q.id,workId:w.id,runId:r.id,leaderAgentId:a.id,conversationId:c.id,purposeId:q.purposeId};
+    receipt={humanRequestId:q.id,workId:w.id,runId:r.id,actorRunId:actor.id,leaderAgentId:a.id,conversationId:c.id,purposeId:q.purposeId};
    }else{
     const q=this.d.flow.root(x.humanRequestId),w=rootNode(q);
     if(q.conversationId!==c.id)fail('この会話が依頼した仕事ではありません',403);

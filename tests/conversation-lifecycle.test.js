@@ -91,7 +91,8 @@ test('failed or unknown leader return is not success; later human input remains 
 });
 test('human can cancel only an unsent conversation, preserving running turn, graph and internal return',async t=>{
  const f=await setup(t),r=await send(f);await f.submit(r);
- const next=await send(f,'不要な追加指示');assert.equal(runState(next),'queued');
+ // Unavailable transport preserves an unsent queue; confirmed busy now steers.
+ f.offline(true);const next=await send(f,'不要な追加指示');f.offline(false);assert.equal(runState(next),'queued');
  const args={agentId:next.agentId,runId:next.id};
  await f.service.flow.cancelQueued(args);assert.equal(runState(next),'terminated');assert(next.queueCancelledAt);
  assert.deepEqual(await f.service.flow.cancelQueued(args),next);

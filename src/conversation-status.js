@@ -40,7 +40,7 @@ export function conversationTurnHTML(r){
  const error=r.attachmentError||r.error||r.errorCode||c?.reason;
  if(!c||c.code==='answered'&&!error)return notificationNoteHTML(r);
  const failed=!!error||['failed','interrupted','unconfirmed'].includes(c.code);
- const label=({queued:'送信待ち','receipt-pending':'送信を確認中',responding:'応答中',cancelled:'送信取消済み',failed:'返答に失敗しました',interrupted:'返答が中断されました',unconfirmed:'送信結果を確認できません'})[c.code]||(error?'処理中にエラーが発生しました':c.label);
+ const label=({steered:'追加入力へ継続（未確定）','steering-accepted':c.label,queued:'送信待ち','receipt-pending':'送信を確認中',responding:'応答中',cancelled:'送信取消済み',failed:'返答に失敗しました',interrupted:'返答が中断されました',unconfirmed:'送信結果を確認できません'})[c.code]||(error?'処理中にエラーが発生しました':c.label);
  return '<p class="run-status">'+esc(label)+'</p>'+(failed&&error?'<details class="conversation-error"><summary>エラー詳細</summary><p>'+esc(error)+'</p></details>':'');
 }
 

@@ -9,11 +9,14 @@ export const HUMAN_PRESENT_WINDOW_MS=3*60*1000;
 export const HUMAN_PRESENCE_TTL_MS=40*1000;
 // Operations that only hand work to the leader or correct it; they are not a human-facing outcome.
 export const WORK_DISPATCH_ACTIONS=['job','followup','amend','withdraw'];
-const operationsOf=(c,r)=>(c?.operations||[]).flatMap(o=>{try{const p=JSON.parse(o.payload);return p.input?.actorRunId===r.id?[p.action]:[];}catch{return [];}});
+const operationsOf=(c,r)=>(c?.operations||[]).flatMap(o=>{try{const p=JSON.parse(o.payload);return (o.receipt?.actorRunId||p.input?.actorRunId)===r.id?[p.action]:[];}catch{return [];}});
 const completedAt=r=>r.runModel?.facts?.findLast(f=>f.type==='terminal')?.at??Date.parse(r.completedAt||'');
 // presentAt: last time the human UI reported viewing r.agentId (in memory; unknown after restart).
 export function conversationNotification(data,r,{presentAt,now=Date.now()}={}){
  const c=data.conversations?.find(c=>c.id===r.conversationId);
+ // A human input saved before this terminal makes this notification stale.
+ // Already completed-before-input answers and already attempted notifications stand.
+ if(data.runs?.some(x=>x.conversationId===r.conversationId&&x.conversationSource?.kind==='human'&&!x.queueCancelledAt&&x.conversationSequence>r.conversationSequence&&Date.parse(x.createdAt)<=completedAt(r)))return {notify:false,reason:'human-input-before-answer-ended'};
  const watching=Number.isFinite(presentAt)&&now-presentAt>=0&&now-presentAt<=HUMAN_PRESENCE_TTL_MS;
  const quickAfter=at=>{const elapsed=completedAt(r)-at;return Number.isFinite(elapsed)&&elapsed>=0&&elapsed<=HUMAN_PRESENT_WINDOW_MS;};
  if(conversationDisplayMode(data,r)==='progress')return {notify:false,reason:purposeDecisionRequired(data,r)?'purpose-decision-progress':r.conversationDisplay?.mode==='progress'?'explicit-conversation-progress':'purpose-continuation-progress'};

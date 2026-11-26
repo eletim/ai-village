@@ -35,11 +35,11 @@ export async function fixture(t,{reportMode=false,protocol=1,commonRequests=fals
  await service.save();await service.tick();
  const submit=async(r,transform=x=>x)=>{
   const native=runtimes.get(service.agent(r.agentId).workspaceId.replace(/^ws-/,'')),text=sent.findLast(s=>s.agentId===r.agentId)?.text;
-  assert(text.includes(r.id));assert.equal(r.inputMarker,undefined);const tid=randomUUID();native.cursor+=10;
-  native.inputs.push({id:'input-'+tid,turnId:tid,hash:inputHash(transform(text)),offset:native.cursor,source:service.agent(r.agentId).provider==='claude'?'claude-user':'response',text:transform(text)});
-  native.turns.push({id:tid,state:'running',output:''});await service.tick();assert.equal(receipt(r).acceptance,'accepted');return tid;
+  assert(text.includes(r.id));assert.equal(r.inputMarker,undefined);const tid=r.conversationId&&r.steerTarget?r.steerTarget.turnId:randomUUID();native.cursor+=10;
+  native.inputs.push({id:'input-'+(r.steerTarget?randomUUID():tid),turnId:tid,hash:inputHash(transform(text)),offset:native.cursor,explicitTurn:true,source:service.agent(r.agentId).provider==='claude'?'claude-user':'response',text:transform(text)});
+  if(!native.turns.some(t=>t.id===tid))native.turns.push({id:tid,state:'running',output:''});await service.tick();assert.equal(receipt(r).acceptance,'accepted');return tid;
  };
- const complete=async(r,outcome='completed')=>{const native=runtimes.get(service.agent(r.agentId).workspaceId.replace(/^ws-/,''));Object.assign(native.turns.find(t=>t.id===r.turnId),{state:outcome,output:'Output '+r.id,finalOutput:'Final '+r.id,completionEvent:'event-'+r.id});await service.tick();};
+ const complete=async(r,outcome='completed')=>{const native=runtimes.get(service.agent(r.agentId).workspaceId.replace(/^ws-/,''));Object.assign(native.turns.find(t=>t.id===r.turnId),{state:outcome,output:'Output '+r.id,finalOutput:'Final '+r.id,completionOffset:++native.cursor,completionEvent:'event-'+r.id});await service.tick();};
  const finish=async(r,op=randomUUID())=>service.flow.finish({results:JSON.parse(service.flow.root(r.humanRequestId).requestGraph.operations.find(o=>o.id===op)?.payload||'null')?.results||service.flow.results(r.humanRequestId,r.workId).filter(e=>!e.handled&&!e.superseded&&e.outcome==='completed'&&!e.claims.some(c=>c.actorRunId===r.id&&!c.invalidated)).map(e=>({requestId:e.requestId,resultId:e.id,version:e.version,decision:'accept'})),humanRequestId:r.humanRequestId,workId:r.workId,runId:r.id,revision:service.flow.root(r.humanRequestId).revision,operationId:op});
  const delegate=async(r,target,op=randomUUID())=>service.flow.delegate({humanRequestId:r.humanRequestId,parentWorkId:r.workId,actorRunId:r.id,agentId:target.id,instruction:'Child work '+op,operationId:op});
  const restart=async()=>{service.close();service=new DirectAgents(options);await service.init({watch:false});service.flow.protocol=protocol;service.flow.commonRequests=commonRequests;return service;};
