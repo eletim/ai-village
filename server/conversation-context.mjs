@@ -24,7 +24,7 @@ export function conversationContext(view,actorRunId){
  const groups=purposeGroups(view);
  return structuredClone({
   id:view.id,agentId:view.agentId,projectId:view.projectId,sequence:view.sequence,control:view.control,
-  projection:'agent-context-v1',current:actor,currentDeliveries,
+  projection:'agent-context-v1',current:actor,currentDeliveries,relaySent:view.relaySent||[],relays:(view.relayInbox||[]).map(e=>({id:e.id,runId:e.runId,target:e.target,sourceConversationId:e.sourceConversationId,material:ref('relay',e.id)})),relayReturns:view.relayReturns||[],
   purposes:groups.map(({id,root,last,jobs})=>({id,currentRequestId:last.id,assigneeAgentId:last.assigneeAgentId||last.leaderAgentId,state:lifecycle(last.lifecycle),decision:decision(last.purpose?.decision),
    requestIds:jobs.map(j=>j.id),material:ref('purpose',id),
    ...(jobs.some(j=>currentRequests.has(j.id))?{objective:root.instruction,authorization:root.authorization}:{}),
@@ -35,19 +35,20 @@ export function conversationContext(view,actorRunId){
   deliveries:(view.deliveries||[]).map(d=>({id:d.id,humanRequestId:d.humanRequestId,kind:d.kind,material:ref('delivery',d.id)})),
   omittedContent:{historyText:true,pastDeliveryMaterials:true,otherPurposeObjectives:true,semanticSummary:false,
    instruction:'索引は要約ではありません。過去の合意・制約は省略されています。目的を判断・変更する前に関係するturn/purpose/deliveryをreadで取得してください。対象が特定できない場合は全humanInputsを取得してください。取得不能を許可や制約なしとみなさないでください。',
-   read:{conversationId:view.id,actorRunId,kind:'turn|purpose|delivery',id:'索引のID'}}
+   read:{conversationId:view.id,actorRunId,kind:'turn|purpose|delivery|relay',id:'索引のID'}}
  });
 }
 export function conversationMaterial(view,actorRunId,{kind,id}={}){
  boundary(view,actorRunId);
  if(typeof id!=='string'||!id)fail('取得する資料のIDが必要です',400);
  let value;
- if(kind==='turn')value=view.runs.find(r=>r.id===id);
+ if(kind==='relay')value=(view.relayInbox||[]).find(e=>e.id===id);
+ else if(kind==='turn')value=view.runs.find(r=>r.id===id);
  else if(kind==='delivery')value=(view.deliveries||[]).find(d=>d.id===id);
  else if(kind==='purpose'){
   const group=purposeGroups(view).find(p=>p.id===id);
   if(group)value={id,objective:group.root.instruction,authorization:group.root.authorization,jobs:group.jobs,decisions:(view.purposeDecisions||[]).filter(d=>d.purposeId===id)};
- }else fail('kindはturn|purpose|deliveryです',400);
+ }else fail('kindはturn|purpose|delivery|relayです',400);
  if(!value)fail('今回の配送境界内に資料がありません',404);
  return structuredClone({conversationId:view.id,actorRunId,kind,id,content:value,complete:true});
 }

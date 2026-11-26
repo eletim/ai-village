@@ -1,7 +1,7 @@
 import {matchesRunInput} from './input-envelope.mjs';
 import {runView} from './state/projection.ts';
 // Model transitions only. Display labels are generated separately, never saved.
-import {transitionRun,newRun,retryRun,supplementRun,resumeRun} from './state/run.ts';
+import {transitionRun,newRun,retryRun,supplementRun,resumeRun,secretaryResumeRun} from './state/run.ts';
 import {resolveInputPosition} from './runtime-events.mjs';
 
 function commit(r,model){r.runModel=model;return r;}
@@ -41,3 +41,5 @@ export function initializeRetry(r,previous,{actor,at=Date.now(),leafRoot=false,b
 }
 
 export function initializeSupplement(r,previous){const result=supplementRun(modelOf(previous),r.id,'human');if(!result.ok)throw Error(result.reason);return commit(r,result.value.requestId===r.humanRequestId?result.value:{...result.value,requestId:r.humanRequestId,parentRunId:null,retryOf:null,phase:'work'});}
+
+export function initializeSecretaryResume(r,previous){const result=secretaryResumeRun(modelOf(previous),r.id);if(!result.ok)throw Error(result.reason);return commit(r,result.value);}
