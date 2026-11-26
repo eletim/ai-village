@@ -8,7 +8,7 @@ const fail=()=>{throw Object.assign(Error('native混入入力と正常終端の�
 export function recoveryEvidence(old,s,status,x){
  const base=old.baselineRuntime;
  if(typeof old.instruction!=='string'||!old.instruction||old.runModel.facts.filter(f=>f.type==='dispatch').length!==1||old.runModel.facts.filter(f=>f.type==='transport-ack').length!==1)fail();
- if(!base?.fileIdentity||!base.sessionId||!s.available||s.more||s.incompleteTail||!status.alive||status.cliState!=='idle'||s.sessionId!==status.agentSessionId||s.sessionId!==base.sessionId||s.fileIdentity!==base.fileIdentity||s.cursor<base.cursor)fail();
+ if(!base?.fileIdentity||!base.sessionId||!s.available||s.more||s.incompleteTail||!status.alive||(!['idle','ready-for-review'].includes(status.cliState)||status.permissionRequest)||s.sessionId!==status.agentSessionId||s.sessionId!==base.sessionId||s.fileIdentity!==base.fileIdentity||s.cursor<base.cursor)fail();
  const inputs=s.inputs.filter(i=>i.offset>base.cursor);
  if(inputs.length!==1||inputs.some(i=>(i.aliases||[]).some(a=>a.offset<=base.cursor)))fail();
  const i=inputs[0],t=s.turns.find(t=>t.id===i.turnId);
