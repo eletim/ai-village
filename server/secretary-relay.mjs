@@ -1,4 +1,5 @@
 import {randomUUID,createHash} from 'node:crypto';
+import {checkRelayRecheck} from './secretary-relay-recheck.mjs';
 import {recoveryEvidence} from './secretary-relay-recovery.mjs';
 import {accepted,runState} from './run-lifecycle.mjs';
 import {confirmedInterruption} from './state/run.ts';
@@ -51,9 +52,9 @@ export class SecretaryRelay {
   }
  }
  // Bind the one historical recovery subject, not IDs invented in a new message.
- evidence(c,actor,x){
+ evidence(c,actor,x,recheck){
   const d=this.d,authorization=d.conversations.authorize(c,actor,x.authorization),human=d.flow.run(authorization.runId);
-  if(humanSequence(d,c)!==human.conversationSequence)fail('後着の人間入力があります。許可を再照合してください');
+  if(!recheck&&humanSequence(d,c)!==human.conversationSequence)fail('後着の人間入力があります。許可を再照合してください');
   const event=c.deliveries.find(e=>e.id===x.evidenceDeliveryId),review=event&&d.flow.run(event.runId);
   if(!review||review.conversationId!==c.id||review.conversationSource?.deliveryId!==event.id||review.conversationSource?.humanRequestId!==event.humanRequestId||event.decisionRecovery||review.conversationSequence+1!==human.conversationSequence||!accepted(review)||runState(review)!=='completed'||!['question','result'].includes(event.kind))fail('直前に正式配送・正常返答された復旧資料が必要です',403);
   const recovery=d.flow.root(event.humanRequestId),rw=rootNode(recovery),reportRun=d.flow.run(event.material.actorRunId||event.material.runId);
@@ -109,7 +110,7 @@ export class SecretaryRelay {
   if(!e)fail('今回の正式中継だけを操作できます',403);return e;
  }
  async recover(x){
-  fields(x,['conversationId','actorRunId','operationId','deliveryId','nativeInputHash','nativeTurnId']);key(x.operationId);
+  fields(x,['conversationId','actorRunId','operationId','deliveryId','nativeInputHash','nativeTurnId','recheck']);key(x.operationId);
   if(!/^[a-f0-9]{64}$/.test(x.nativeInputHash||'')||typeof x.nativeTurnId!=='string')fail('保存nativeのinput hashとturn IDが必要です',400);
   const d=this.d,source=d.conversations.record(x.conversationId),sent=source.relaySent?.find(s=>s.receipt.deliveryId===x.deliveryId);
   if(!sent)fail('送信元本人の配送だけ回復できます',403);
@@ -122,12 +123,13 @@ export class SecretaryRelay {
     const actor=d.conversations.actor(c,x.actorRunId);
     if(!e||c.agentId!==e.sourceSecretaryId||actor.agentId!==e.sourceSecretaryId||actor.conversationSource?.kind==='secretary')fail('送信元本人の正式runが必要です',403);
     if(e.actionReceipt||e.target.mode!=='resume-interrupted'||humanSequence(d,recipient)!==e.targetHumanSequence)fail('適用済み・後着入力・回復対象外です');
-    const b=target(d,e.target),proof=this.evidence(c,actor,{authorization:e.authorization,evidenceDeliveryId:e.evidenceDeliveryId,target:e.target});
+    const recheck=x.recheck?checkRelayRecheck(d,c,e,x.recheck,actor):null;
+    const b=target(d,e.target),proof=this.evidence(c,actor,{authorization:e.authorization,evidenceDeliveryId:e.evidenceDeliveryId,target:e.target},recheck);
     if(proof.evidenceDigest!==e.evidenceDigest||!c.relaySent.some(s=>s.receipt.deliveryId===e.id&&s.receipt.runId===e.runId&&s.actorRunId===e.sourceRunId))fail('保存許可が一致しません',403);
     const old=d.flow.run(e.runId);
     if(old?.runModel?.state.kind!=='ended'||old.runModel.state.outcome!=='unconfirmed'||old.runModel.state.reason!=='turn-ended-without-marker'||old.error!=='competing-or-unmatched-input'||accepted(old)||old.runModel.facts.some(f=>f.type==='input')||old.conversationSource?.relayId!==e.id)fail('対象は未受付の混入入力だけです');
     if(d.data.runs.some(r=>r.agentId===b.a.id&&['queued','sent','running'].includes(r.runModel?.state.kind))||d.data.runs.some(r=>r.secretaryRecovery?.previousRunId===e.target.currentRunId))fail('別の未終了runまたは既存の再開があります');
-    return {e,b,old};
+    return {e,b,old,recheck};
    };
    const first=check();if(first.saved)return d.persist(async()=>structuredClone(first.e.recovery.receipt));
    const oldDigest=hash(first.old);
@@ -144,10 +146,19 @@ export class SecretaryRelay {
     const e=current.e,r=d.conversations.enqueue(recipient,{requestId:'secretary-relay-recovery:'+e.id,source:{kind:'secretary',relayId:e.id},instruction:current.old.instruction});
     r.relayRecoveryOf=e.runId;r.relayRecoveryBoundary={sessionId:snapshot.sessionId,fileIdentity:snapshot.fileIdentity,cursor:snapshot.cursor};
     const receipt={deliveryId:e.id,conversationId:recipient.id,runId:r.id,previousRunId:e.runId,purposeId:e.target.purposeId};
-    e.recovery={operationId:x.operationId,payload,actorRunId:x.actorRunId,previousRunId:e.runId,proof,receipt,createdAt:new Date().toISOString()};
+    e.recovery={...(current.recheck?{recheck:current.recheck}:{}),operationId:x.operationId,payload,actorRunId:x.actorRunId,previousRunId:e.runId,proof,receipt,createdAt:new Date().toISOString()};
     await d.save();return structuredClone(receipt);
    });
   }));
+ }
+ dispatchBoundary(r){
+  const d=this.d,c=d.conversations.record(r.conversationId),e=c.relayInbox?.find(e=>e.recovery?.receipt.runId===r.id);
+  if(!e||e.actionReceipt||humanSequence(d,c)!==e.targetHumanSequence)fail('中継回復の配送境界が変わりました');
+  const source=d.conversations.record(e.sourceConversationId);
+  const recheck=e.recovery.recheck?checkRelayRecheck(d,source,e,e.recovery.recheck,d.flow.run(e.recovery.actorRunId)):null;
+  const proof=this.evidence(source,d.flow.run(e.sourceRunId),{authorization:e.authorization,evidenceDeliveryId:e.evidenceDeliveryId,target:e.target},recheck);
+  if(proof.evidenceDigest!==e.evidenceDigest)fail('保存許可が変わりました');
+  if(d.data.runs.some(x=>x.secretaryRecovery?.previousRunId===e.target.currentRunId))fail('既に再開されています');
  }
  async apply(x){
   fields(x,['conversationId','actorRunId','operationId','deliveryId']);key(x.operationId);
@@ -159,7 +170,8 @@ export class SecretaryRelay {
    if((c.relayInbox||[]).some(y=>y!==e&&y.actionOperationId===x.operationId))fail('operationIdの再利用です');
    if(humanSequence(d,c)!==e.targetHumanSequence)fail('後着の人間入力があります。自動継続しません');
    const b=target(d,e.target),source=d.conversations.record(e.sourceConversationId),sourceRun=d.flow.run(e.sourceRunId);
-   const proof=this.evidence(source,sourceRun,{authorization:e.authorization,evidenceDeliveryId:e.evidenceDeliveryId,target:e.target});
+   const recheck=e.recovery?.recheck?checkRelayRecheck(d,source,e,e.recovery.recheck,d.flow.run(e.recovery.actorRunId)):null;
+   const proof=this.evidence(source,sourceRun,{authorization:e.authorization,evidenceDeliveryId:e.evidenceDeliveryId,target:e.target},recheck);
    if(source.agentId!==e.sourceSecretaryId||proof.evidenceDigest!==e.evidenceDigest||!(source.relaySent||[]).some(s=>s.receipt.deliveryId===e.id&&s.receipt.runId===e.runId&&s.actorRunId===e.sourceRunId))fail('保存された中継許可が一致しません',403);
    d.conversations.authorize(c,actor,b.original.requestedBy.authorization);
    let receipt;

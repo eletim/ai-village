@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
+import {laterHumanReferences} from '../server/secretary-relay-recheck.mjs';
 import {inputHash} from './model-fixtures.mjs';
 import {fixture} from './inbox-fixture.js';
 const id=()=>randomUUID();
@@ -198,6 +199,56 @@ test('human input racing recovery is serialized and prevents apply when it arriv
  const x=await contaminated(t),runtime=x.d.runtime.bind(x.d);let human;
  x.d.runtime=async(a,s)=>{const snapshot=await runtime(a,s);human ||= x.d.send(x.sender.agentId,{mode:'conversation',requestId:id(),instruction:'復旧を保留して'});return snapshot;};
  const recovered=await x.d.conversations.relayRecover(x.recover);await human;
- await x.d.tick();const r=x.d.flow.run(recovered.runId);await x.f.submit(r);
- await assert.rejects(x.d.conversations.relayApply({conversationId:r.conversationId,actorRunId:r.id,operationId:id(),deliveryId:recovered.deliveryId}),/後着/);assert.equal(x.d.data.runs.filter(r=>r.secretaryRecovery).length,0);
+ const before=x.f.sent.length;await x.d.tick();assert.equal(x.f.sent.length,before);assert.equal(x.d.data.runs.filter(r=>r.secretaryRecovery).length,0);
+});
+
+async function rechecked(t){
+ const x=await contaminated(t),{d,f}=x;await f.complete(x.sender);
+ // Drain the saved return before the new human (no production sends).
+ await d.tick();for(const r of d.data.runs.filter(r=>r.agentId===x.sender.agentId&&r.runModel.state.kind==='sent')){await f.submit(r);await f.complete(r);}
+ const human=await d.send(x.sender.agentId,{mode:'conversation',requestId:id(),instruction:'別件の表示を改善して'});await f.submit(human);
+ const source=d.conversations.record(human.conversationId),entry=d.conversations.record(x.r.conversationId).relayInbox[0];
+ const recheck={decision:'within-original-scope',reason:'後着の全文を確認し、元の対象と復旧範囲を変更しないと判断した（fixtureの秘書判断）。',inputs:laterHumanReferences(d,source,entry)};
+ return {...x,human,entry,source,recover:{...x.recover,actorRunId:human.id,recheck}};
+}
+test('recheck binds every later human without rewriting original permission; recovery and apply once',async t=>{
+ const x=await rechecked(t),{d,f}=x,auth=structuredClone(x.entry.authorization),old=structuredClone(x.r);
+ const receipt=await d.conversations.relayRecover(x.recover);assert.deepEqual(x.entry.authorization,auth);assert.deepEqual(x.r,old);
+ assert.deepEqual(x.entry.recovery.recheck,x.recover.recheck);
+ await d.tick();const r=d.flow.run(receipt.runId);await f.submit(r);
+ const result=await d.conversations.relayApply({conversationId:r.conversationId,actorRunId:r.id,operationId:id(),deliveryId:receipt.deliveryId});
+ assert.equal(result.previousRunId,x.old.id);assert.equal(d.data.runs.filter(r=>r.secretaryRecovery).length,1);
+ await assert.rejects(d.conversations.relayRecover({...x.recover,operationId:id()}),/一度/);
+ await f.restart();assert.deepEqual(await f.service.conversations.relayRecover(x.recover),receipt);
+});
+test('recheck rejects omission, tamper, missing decision, changed permission and unread human',async t=>{
+ for(const variant of ['omit','digest','decision','reason','unread','authority']){
+  const x=await rechecked(t),arg=structuredClone(x.recover);
+  if(variant==='omit')arg.recheck.inputs=[];
+  if(variant==='digest')arg.recheck.inputs[0].digest='0'.repeat(64);
+  if(variant==='decision')arg.recheck.decision='withdrawn';
+  if(variant==='reason')arg.recheck.reason='';
+  if(variant==='unread')arg.actorRunId=x.sender.id;
+  if(variant==='authority')x.entry.authorization.quote='架空の許可';
+  await assert.rejects(x.d.conversations.relayRecover(arg));assert.equal(x.d.data.runs.filter(r=>r.relayRecoveryOf).length,0);
+ }
+});
+test('recheck blocks later changes before save, dispatch and apply and rolls back uncertainty',async t=>{
+ for(const stage of ['save','dispatch','apply','rollback','uncertain']){
+  const x=await rechecked(t),{d,f}=x;
+  if(stage==='save'){const runtime=d.runtime.bind(d);let n=0;d.runtime=async(a,s)=>{const v=await runtime(a,s);if(++n===1)x.human.instruction+='変更';return v;};await assert.rejects(d.conversations.relayRecover(x.recover),/再照合/);continue;}
+  if(stage==='rollback'||stage==='uncertain'){
+   const before=JSON.stringify(d.data);d.store.write=()=>{throw Object.assign(Error(stage),stage==='uncertain'?{persistenceUncertain:true}:{});};
+   await assert.rejects(d.conversations.relayRecover(x.recover),new RegExp(stage));
+   if(stage==='rollback')assert.equal(JSON.stringify(d.data),before);
+   else await assert.rejects(d.conversations.relayRecover(x.recover),/uncertain/);
+   continue;
+  }
+  const receipt=await d.conversations.relayRecover(x.recover),r=d.flow.run(receipt.runId);
+  if(stage==='apply'){await d.tick();await f.submit(r);}
+  await d.send(x.sender.agentId,{mode:'conversation',requestId:id(),instruction:'復旧を中止して'});
+  if(stage==='dispatch'){const before=f.sent.length;await d.tick();assert.equal(f.sent.length,before);}
+  else await assert.rejects(d.conversations.relayApply({conversationId:r.conversationId,actorRunId:r.id,operationId:id(),deliveryId:receipt.deliveryId}),/再照合/);
+  assert.equal(d.data.runs.filter(r=>r.secretaryRecovery).length,0);
+ }
 });

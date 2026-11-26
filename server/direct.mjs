@@ -549,6 +549,7 @@ export class DirectAgents {
       if(!allowed(confirmed))return r;
     }
     if(r.relayRecoveryOf){
+      try{this.conversations.relayService.dispatchBoundary(r);}catch{return blocked('relay-recovery-context-changed','回復確認後に入力・対象・許可が変化しました。自動送信しません。');}
       const boundary=r.relayRecoveryBoundary;
       if(!boundary||!confirmed.available||confirmed.incompleteTail||confirmed.more||confirmed.sessionId!==boundary.sessionId||confirmed.fileIdentity!==boundary.fileIdentity||confirmed.cursor!==boundary.cursor)return blocked('relay-recovery-native-changed','回復確認後にnativeが変化しました。自動送信しません。');
       let cap;try{cap=await this.pmux(a,'tab','capabilities');}catch{}
@@ -562,6 +563,7 @@ export class DirectAgents {
     const guide=plain&&a.projectId?await this.projectGuides.get(a.projectId,'secretary').catch(()=>null):null;
     const deliveredInstruction=await this.persist(async()=>{
       if(retireDecisionReminder(this.data,r)){await this.save();return null;}
+      if(r.relayRecoveryOf)this.conversations.relayService.dispatchBoundary(r);
       if(this.agentDeleting(a)||runState(r)!=='queued'||r.phase==='report'&&!this.flow.reportCurrent(r))return null;
       if(!retirementIntact(this.data,a)||!retirementRunAllowed(this.data,a,r))return null;
       const compatibility=legacyAllowed(a);if(a.inputEnvelope?.mode!=='startup-v2'&&!compatibility)return null;
