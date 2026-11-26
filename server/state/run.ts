@@ -108,3 +108,14 @@ export function supplementRun(r:Run,id:string,actor:Actor):Result<Run>{
  const {supersededBy,...base}=r;
  return accept({...base,id,createdBy:'human',retryOf:r.id,state:{kind:'queued'},facts:[],decisions:[{actor:'human',reason:'supplement'}]});
 }
+
+/** Receipt and terminal must prove the same native turn; no inference from unknown/lost. */
+export function confirmedInterruption(r:Run):boolean {
+ const input=[...r.facts].reverse().find(f=>f.type==='input'),terminal=[...r.facts].reverse().find(f=>f.type==='terminal');
+ return r.state.kind==='ended'&&r.state.outcome==='interrupted'&&r.state.reason==='native-terminal'&&r.phase==='work'&&!r.supersededBy&&!!input&&!!terminal&&terminal.outcome==='interrupted'&&!!input.sessionId&&!!input.turnId&&input.sessionId===terminal.sessionId&&input.turnId===terminal.turnId&&terminal.at>=input.at;
+}
+/** Called only after a persisted recovery graph and subsequent human permission is validated. */
+export function secretaryResumeRun(r:Run,id:string):Result<Run> {
+ if(!confirmedInterruption(r)||!id||id===r.id)return reject('secretary-resume-not-confirmed');
+ return accept({...r,id,createdBy:'agent',retryOf:r.id,state:{kind:'queued'},facts:[],decisions:[{actor:'agent',reason:'secretary-relay-resume'}],retryBudget:{count:0,firstFailureAt:null}});
+}

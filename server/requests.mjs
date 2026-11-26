@@ -1,3 +1,4 @@
+import {initializeSecretaryResume} from './run-lifecycle.mjs';
 import {reconcileObservation} from './request-observation-reconcile.mjs';
 import {retirementRunAllowed} from './legacy-retirement.mjs';
 import {updateProcedureGuidance,operationGuidance} from './procedure-guidance.mjs';
@@ -63,13 +64,14 @@ export class RequestFlow {
   const r={id:randomUUID(),requestId:runKey(q.id,op),agentId:w.assignee,humanRequestId:q.id,workId:w.id,origin,instruction:text,travelContexts:structuredClone(previous?.contextTravelContexts||previous?.travelContexts||q.travelContexts||[]),attachments:structuredClone(previous?.contextAttachments||previous?.attachments||q.attachments||[]),createdAt:now(),achievement:'unverified',recoveryPolicy:1,...extra};
   if(origin==='inbox')initializeResume(r,previous);
   else if(extra.steerTarget)initializeSupplement(r,this.run(extra.steerTarget.runId));
+  else if(extra.secretaryRecovery)initializeSecretaryResume(r,previous);
   else if(extra.retryFrom)initializeRetry(r,this.run(extra.retryFrom),{actor:extra.autoRecoveryFrom?'program':extra.legacyAgentRunId?'agent':'human',legacyAgentRunId:extra.legacyAgentRunId,leafRoot:!w.parentId&&!q.requestGraph.nodes.some(c=>c.parentId===w.id),boundaryConfirmed:!!extra.autoRecoveryFrom,agentIdle:!!extra.autoRecoveryFrom});
   else initializeRun(r,{actor:r.phase==='report'||origin==='result'?'program':origin==='delegation'||origin==='agent'||extra.legacyAgentRunId||extra.childContinuation?'agent':'human',parentRunId:w.parentId?this.work(q,w.parentId).currentRunId:null,resultOf:extra.resultId||null,recipientRunId:previous?.id||null});
   if(previous&&previous.workId===w.id&&r.phase!=='report'&&!r.runModel.retryOf)r.runModel={...r.runModel,retryOf:previous.id};
   this.d.data.runs.push(r);
   if(w.inbox&&['human','agent','delegation'].includes(origin)&&!w.inbox.length)w.inbox.push({id:randomUUID(),kind:'request',text,createdAt:r.createdAt,attempts:[r.id]});
   if(!node(q.requestGraph,w.id)){w.runIds.push(r.id);w.currentRunId=r.id;w.runAgents[r.id]=w.assignee;applyGraph(this.d.data,q,{type:'add',actor:w.createdBy||(w.parentId?'agent':'human'),request:w});}
-  else applyGraph(this.d.data,q,{type:'attempt',actor:r.runModel.createdBy,requestId:w.id,runId:r.id,report:r.phase==='report',resolveReview:r.runModel.createdBy==='human'&&['retry','continuation'].includes(origin)});
+  else applyGraph(this.d.data,q,{type:'attempt',actor:r.runModel.createdBy,requestId:w.id,runId:r.id,report:r.phase==='report',resolveReview:r.runModel.createdBy==='human'&&['retry','continuation'].includes(origin),...(extra.secretaryRecovery?{resolveInterruptedRunId:extra.secretaryRecovery.previousRunId}:{})});
   if(w.inbox&&['retry','continuation'].includes(origin)){for(const i of w.inbox.filter(i=>!i.handledBy&&!i.retiredBy))i.attempts.push(r.id);}
   return r;
  }
@@ -272,7 +274,7 @@ export class RequestFlow {
   });
  });}
  async continue(x,retry=false){return this.d.locked('request-graph',()=>this.continueLocked(x,retry,{},'human'));}
- async continueLocked(x,retry,extra,actor){return this.d.persist(async()=>{
+ async continueLocked(x,retry,extra,actor,{deferSave=false}={}){return this.d.persist(async()=>{
   const q=this.root(x.humanRequestId),w=this.work(q,x.workId);operation(x.operationId);instruction(x.instruction);
   const key=runKey(q.id,(retry?'retry:':'resume:')+x.operationId),old=this.d.data.runs.find(r=>r.requestId===key);
   if(old){if(old.workId!==w.id||(old.retryInstruction||old.instruction)!==x.instruction)fail('operationIdの再利用です');return old;}
@@ -284,9 +286,9 @@ export class RequestFlow {
   if(x.agentId&&x.agentId!==w.assignee){for(let ancestor=w.parentId?this.work(q,w.parentId):null;ancestor;ancestor=ancestor.parentId?this.work(q,ancestor.parentId):null)if(ancestor.assignee===x.agentId)fail('祖先Agentへの担当交代はできません');for(const candidate of q.requestGraph.nodes.filter(c=>c.assignee===x.agentId)){let descendant=candidate;while(descendant.parentId&&descendant.parentId!==w.id)descendant=this.work(q,descendant.parentId);if(descendant.parentId===w.id)fail('子孫Agentへの担当交代はできません');}const target=this.d.writableAgent(this.d.agent(x.agentId));if(!target.tabId||['terminated','stopping'].includes(agentControls(target).state))fail('交代先Agentを利用できません');applyGraph(this.d.data,q,{type:'assign',actor:'human',requestId:w.id,agentId:x.agentId});if(!w.parentId)q.finalAgentId=x.agentId;}
   this.d.writableAgent(this.d.agent(w.assignee));
   delete w.metadata.latestResultId;
-  const r=this.enqueue(q,w,q.report&&!w.parentId?this.reportPrompt(q):x.instruction,(retry?'retry:':'resume:')+x.operationId,retry?'retry':'continuation',{...extra,instructionSource:{actor},...(retry?{retryFrom:last.id}:{}),...(q.report&&!w.parentId?{phase:'report',retryInstruction:x.instruction}:{} )});
+  const r=this.enqueue(q,w,q.report&&!w.parentId?this.reportPrompt(q):x.instruction,(retry?'retry:':'resume:')+x.operationId,retry?'retry':'continuation',{...extra,instructionSource:{actor,...(extra.secretaryRecovery?{actorRunId:extra.secretaryRecovery.actorRunId,relayId:extra.secretaryRecovery.deliveryId}:{})},...(retry?{retryFrom:last.id}:{}),...(q.report&&!w.parentId?{phase:'report',retryInstruction:x.instruction}:{} )});
   // Include this newly accepted correction before the report can be dispatched.
-  if(r.phase==='report')r.instruction=this.reportPrompt(q);q.revision++;await this.d.save();return r;
+  if(r.phase==='report')r.instruction=this.reportPrompt(q);q.revision++;if(!deferSave)await this.d.save();return r;
  });}
  async cancelQueued(x){return this.d.locked('request-graph',async()=>{
   const r=this.run(x.runId);if(!r||r.agentId!==x.agentId||r.humanRequestId!==x.humanRequestId)fail('対象Agent・依頼・runが一致しません',404);

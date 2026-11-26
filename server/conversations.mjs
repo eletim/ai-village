@@ -1,3 +1,4 @@
+import {SecretaryRelay} from './secretary-relay.mjs';
 import {recoverMissingDecision,resultSourceEvent,retireDecisionReminder} from './conversation-decision-recovery.mjs';
 import {resolveFollowup} from './conversation-followup.mjs';
 import {conversationContext,conversationMaterial} from './conversation-context.mjs';
@@ -38,16 +39,17 @@ function plainDelivery(data,c,q,kind,material,id){
  return '人間がこの仕事を'+(material.state?.kind==='withdrawn'?'取り下げ':'終了し')+'ました（'+label+'）。';
 }
 export class Conversations {
- constructor(d){this.d=d;}
+ constructor(d){this.d=d;this.relayService=new SecretaryRelay(d);}
  init(){for(const r of this.d.data.runs.filter(r=>r.conversationId&&r.notification?.status==='attempting'))r.notification=transitionDelivery(r.notification,{type:'unknown',reason:'restart-during-delivery'});this.validate();}
  validate(){
   const ids=new Set();
   for(const c of this.d.data.conversations){
    if(!c.id||ids.has(c.id)||!Number.isSafeInteger(c.sequence)||!Array.isArray(c.operations)||!Array.isArray(c.deliveries))throw Error('Invalid conversation record');ids.add(c.id);
    const runs=this.d.data.runs.filter(r=>r.conversationId===c.id),sequences=new Set(runs.map(r=>r.conversationSequence));
-   if(sequences.size!==runs.length||runs.some(r=>!conversationRunOwner(this.d.data,c,r)||r.humanRequestId||r.runModel.phase!=='conversation'||!Number.isSafeInteger(r.conversationSequence)||r.conversationSequence<1||r.conversationSequence>c.sequence||!['human','leader','program'].includes(r.conversationSource?.kind)||r.runModel.createdBy!==(r.conversationSource.kind==='human'?'human':'program')))throw Error('Invalid conversation run');
+   if(sequences.size!==runs.length||runs.some(r=>!conversationRunOwner(this.d.data,c,r)||r.humanRequestId||r.runModel.phase!=='conversation'||!Number.isSafeInteger(r.conversationSequence)||r.conversationSequence<1||r.conversationSequence>c.sequence||!['human','leader','program','secretary'].includes(r.conversationSource?.kind)||r.runModel.createdBy!==(r.conversationSource.kind==='human'?'human':'program')))throw Error('Invalid conversation run');
    if(runs.some(r=>r.conversationDisplay&&(!['reply','progress'].includes(r.conversationDisplay.mode)||!Number.isSafeInteger(r.conversationDisplay.version)||r.conversationDisplay.version<1)))throw Error('Invalid conversation display');
    if(new Set(c.deliveries.map(e=>e.id)).size!==c.deliveries.length||c.deliveries.some(e=>!runs.some(r=>r.id===e.runId&&r.conversationSource.deliveryId===e.id)||!this.d.flow.requests.some(q=>q.id===e.humanRequestId&&q.conversationId===c.id)))throw Error('Invalid conversation delivery');
+   for(const r of runs.filter(r=>r.conversationSource?.kind==='secretary'))if(!(c.relayInbox||[]).some(e=>e.id===r.conversationSource.relayId&&e.runId===r.id&&e.target.conversationId===c.id))throw Error('Invalid secretary relay run');
    for(const e of c.deliveries.filter(e=>e.decisionRecovery))if(!resultSourceEvent(c,e))throw Error('Invalid decision recovery delivery');
    for(const d of c.purposeDecisions||[]){
     if(!['accept','continue','resume','question'].includes(d.kind)||!runs.some(r=>r.id===d.actorRunId)||!c.deliveries.some(e=>e.id===d.deliveryId&&e.humanRequestId===d.humanRequestId)||!this.d.flow.requests.some(q=>q.id===d.purposeId&&q.conversationId===c.id)||!Number.isSafeInteger(d.humanSequence))throw Error('Invalid purpose decision');
@@ -61,6 +63,7 @@ export class Conversations {
    if(!root||q.id!==q.purposeId&&!previous||this.d.flow.requests.filter(x=>x.continuesRequestId===q.id).length>1)throw Error('Invalid purpose lineage');
   }
   if(this.d.data.runs.some(r=>(r.conversationId||r.runModel.phase==='conversation')&&!ids.has(r.conversationId)))throw Error('Conversation run owner missing');
+  this.relayService.validate();
  }
  pendingForAgent(id){const ids=new Set((this.d.data.conversations||[]).filter(c=>c.agentId===id).map(c=>c.id));return this.d.flow.requests.some(q=>ids.has(q.conversationId)&&(q.integrity||['active','submitted'].includes(rootNode(q).state.kind)||q.purposeId&&!SETTLED_JOB_CODES.includes(conversationJob(this.d.data,q).code)))||this.d.data.runs.some(r=>ids.has(r.conversationId)&&['queued','sent','running'].includes(r.runModel.state.kind));}
  async read(id,actorRunId){
@@ -88,7 +91,7 @@ export class Conversations {
    // Status is available immediately; materials for a later turn are not injected here.
    return {id:q.id,purpose:purposeView(visibleData,q),authorization:q.requestedBy?.authorization,lifecycle,status:full.status,instruction:q.instruction,assigneeAgentId:q.integrity?null:rootNode(q).assignee,leaderAgentId:q.integrity?null:rootNode(q).assignee,returnPending:c.deliveries.some(e=>e.humanRequestId===q.id&&!deliveries.includes(e)),availableDeliveries:deliveries.filter(e=>e.humanRequestId===q.id).map(e=>e.id),materials:'後続の正式配送ターンで確認してください'};
   });
-  return structuredClone({id:c.id,agentId:c.agentId,projectId:c.projectId,createdAt:c.createdAt,sequence:actor?.conversationSequence??c.sequence,operations:actor?c.operations.filter(o=>runs.some(r=>r.id===JSON.parse(o.payload).input.actorRunId)).map(o=>({id:o.id,receipt:o.receipt})):c.operations,deliveries,purposeDecisions:(c.purposeDecisions||[]).filter(d=>!actor||runs.some(r=>r.id===d.actorRunId)),control:conversationControl(this.d.data.agents.find(a=>a.id===c.agentId)),runs:runs.map(r=>({...actor?{id:r.id,conversationSequence:r.conversationSequence,conversationSource:r.conversationSource,instruction:r.conversationSource.kind==='human'?r.instruction:undefined,attachments:r.attachments,travelContexts:r.travelContexts,createdAt:r.createdAt}:{...r},lifecycle:conversationTurn(r),state:runState(r),displayMode:conversationDisplayMode(this.d.data,r),displayVersion:r.conversationDisplay?.version||0,humanAnswer:accepted(r)&&runState(r)==='completed'&&conversationDisplayMode(this.d.data,r)!=='progress'?responseText(r).answer:null,progressText:accepted(r)&&runState(r)==='completed'&&conversationDisplayMode(this.d.data,r)==='progress'?responseText(r).answer:null})),jobs});
+  return structuredClone({id:c.id,agentId:c.agentId,projectId:c.projectId,createdAt:c.createdAt,sequence:actor?.conversationSequence??c.sequence,relaySent:(c.relaySent||[]).filter(s=>!actor||runs.some(r=>r.id===s.actorRunId)).map(s=>s.receipt),relayInbox:(c.relayInbox||[]).filter(e=>runs.some(r=>r.id===e.runId)),relayReturns:(c.relayReturns||[]).filter(e=>runs.some(r=>r.id===e.runId)),operations:actor?c.operations.filter(o=>runs.some(r=>r.id===JSON.parse(o.payload).input.actorRunId)).map(o=>({id:o.id,receipt:o.receipt})):c.operations,deliveries,purposeDecisions:(c.purposeDecisions||[]).filter(d=>!actor||runs.some(r=>r.id===d.actorRunId)),control:conversationControl(this.d.data.agents.find(a=>a.id===c.agentId)),runs:runs.map(r=>({...actor?{id:r.id,conversationSequence:r.conversationSequence,conversationSource:r.conversationSource,instruction:r.conversationSource.kind==='human'?r.instruction:undefined,attachments:r.attachments,travelContexts:r.travelContexts,createdAt:r.createdAt}:{...r},lifecycle:conversationTurn(r),state:runState(r),displayMode:conversationDisplayMode(this.d.data,r),displayVersion:r.conversationDisplay?.version||0,humanAnswer:accepted(r)&&runState(r)==='completed'&&conversationDisplayMode(this.d.data,r)!=='progress'?responseText(r).answer:null,progressText:accepted(r)&&runState(r)==='completed'&&conversationDisplayMode(this.d.data,r)==='progress'?responseText(r).answer:null})),jobs});
  }
  record(id){return this.d.data.conversations.find(c=>c.id===id)||fail('会話がありません',404);}
  enqueue(c,{requestId,instruction,source,attachments=[],travelContexts=[]}){
@@ -201,7 +204,7 @@ export class Conversations {
   return this.d.locked('request-graph',()=>this.d.persist(async()=>{
    const c=this.record(x.conversationId),payload=JSON.stringify({action:'decide',input:x}),old=c.operations.find(o=>o.id===x.operationId);
    if(old){if(old.payload!==payload)fail('operationIdの再利用です');return structuredClone(old.receipt);}
-   const actor=this.actor(c,x.actorRunId);x=this.currentPurposeInput(c,actor,x);const b=this.purposeBoundary(c,actor,x);
+   const actor=this.actor(c,x.actorRunId);if(actor.conversationSource?.kind==='secretary')fail('中継runは指定目的のrelayApplyだけを実行できます',403);x=this.currentPurposeInput(c,actor,x);const b=this.purposeBoundary(c,actor,x);
    const d=this.recordPurpose(c,actor,x,b,x.decision);
    const receipt={...d,version:b.view.version+1};
    c.operations.push({id:x.operationId,payload,receipt,at:now()});await this.d.save();return structuredClone(receipt);
@@ -214,6 +217,7 @@ export class Conversations {
    const old=c.operations.find(o=>o.id===x.operationId);
    if(old){if(old.payload!==payload)fail('operationIdの再利用です');return structuredClone(old.receipt);}
    const actor=this.actor(c,x.actorRunId);
+   if(actor.conversationSource?.kind==='secretary')fail('中継runは指定目的のrelayApplyだけを実行できます',403);
    if(x.assigneeAgentId!==undefined&&(action!=='job'||x.continue===true||['continuesRequestId','humanRequestId','purposeId','deliveryId','expectedPurposeVersion','reopenRunId'].some(k=>x[k]!==undefined)))fail('担当指定は新規依頼だけで使えます。継続の担当は既存依頼から照合します',400);
    if(action==='followup'){
     if(Object.keys(x).some(k=>!['conversationId','actorRunId','operationId','purposeId','instruction'].includes(k)))fail('追加指示は目的IDと残作業を指定してください。追加権限は新規依頼で扱います');
@@ -280,6 +284,8 @@ export class Conversations {
    c.operations.push({id:x.operationId,payload,receipt,at:now()});await this.d.save();return structuredClone(receipt);
   }));
  }
+ relay(x){return this.relayService.send(x);}
+ relayApply(x){return this.relayService.apply(x);}
  followup(x){return this.mutate('followup',x);}
  job(x){return this.mutate('job',x);}
  amend(x){return this.mutate('amend',x);}

@@ -726,6 +726,7 @@ export class DirectAgents {
           if(q)await this.units.run(id,async()=>{await this.flow.pump(false,[q],false);await this.flow.notifications([q]);});
           this.store.acknowledge(id,version);
         }
+        await this.conversations.relayService?.returns();
         await this.conversations.recoverDecisions();
         await this.conversations.notifications();
         await this.flow.dispatchReady();
