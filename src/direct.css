@@ -185,3 +185,8 @@ footer{font-variant-numeric:tabular-nums}
 /* Folded body fetched on open (docs/lean-fetch.md). */
 .deferred-body{color:var(--muted,#888);font-size:.9em;margin:.4em 0}
 .deferred-body[data-failed]{color:var(--danger,#c55)}
+
+/* A secretary answer stays complete after read acknowledgement. Job attention is separate. */
+.agent-panel[data-state][data-answer-complete=true]{--state-color:#22c55e;box-shadow:0 0 0 3px #22c55e}
+.agent-panel[data-state][data-answer-complete=true] .panel-heading{background:#245b3a;color:#d8ffe4}
+.agent-dot[data-answer-complete=true]{--state-color:#22c55e;outline:2px solid #22c55e;outline-offset:2px}

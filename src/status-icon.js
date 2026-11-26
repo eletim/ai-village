@@ -25,9 +25,9 @@ export function iconLabel(agent,workshops,state,attention=false,unread=false){
  const place=agent.workshopId?(workshop?.name||agent.connection?.name||'工房名未登録'):'工房未登録';
  return [name,{secretary:'秘書',worker:'工房Agent',unknown:'役割不明'}[role],place,state||'状態不明',attention?'依頼完了・要確認':unread?'更新あり':''].filter(Boolean).join(' · ');
 }
-export function statusIcon(agent,{mode='dots',workshops=[],state='',stateLabel=state,attention=false,unread=false,sidebar=false,projects=[]}={}){
+export function statusIcon(agent,{mode='dots',workshops=[],state='',stateLabel=state,attention=false,unread=false,answerComplete=false,sidebar=false,projects=[]}={}){
  const leader=isProjectLeader(agent,projects);
- const label=escape(iconLabel(agent,workshops,stateLabel,attention,unread)+(leader?' · Projectリーダー（仕事の管理役）':''));
+ const label=escape(iconLabel(agent,workshops,stateLabel,attention,unread)+(answerComplete?' · 回答済み':'')+(leader?' · Projectリーダー（仕事の管理役）':''));
 
- return `<span class="dot ${sidebar?'agent-dot':'header-status'}${mode==='roles'?' status-icon':''}${leader?' has-leader':''}" ${sidebar?`data-agent-dot="${escape(agent.id)}"`:''} data-state="${escape(state)}" data-unread="${!!unread}" data-attention="${!!attention}" role="img" title="${label}" aria-label="${label}">${mode==='roles'||leader?roleSVG(agent,workshops,leader):''}</span>`;
+ return `<span class="dot ${sidebar?'agent-dot':'header-status'}${mode==='roles'?' status-icon':''}${leader?' has-leader':''}" ${sidebar?`data-agent-dot="${escape(agent.id)}"`:''} data-state="${escape(state)}" data-unread="${!!unread}" data-attention="${!!attention}" data-answer-complete="${!!answerComplete}" role="img" title="${label}" aria-label="${label}">${mode==='roles'||leader?roleSVG(agent,workshops,leader):''}</span>`;
 }

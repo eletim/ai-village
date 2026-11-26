@@ -48,3 +48,6 @@ html .markdown-report :is(th,td){border-color:var(--line)}html .markdown-report 
 html .report-lightbox{background:var(--surface);color:var(--ink)}
 
 html[data-theme=sepia] :is(.report-card pre,#todo-text){background:var(--field);color:var(--ink);border-color:var(--line)}
+
+html:not([data-theme=dark]) .agent-panel[data-state][data-answer-complete=true] .panel-heading{background:#245b3a;color:#d8ffe4}
+html:not([data-theme=dark]) .agent-panel[data-answer-complete=true] .panel-heading button{background:transparent;color:inherit}
