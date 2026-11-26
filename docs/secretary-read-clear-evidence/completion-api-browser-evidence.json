@@ -1,0 +1,1701 @@
+{
+  "fixture": "actual HTTP + fake native JSONL, notifications OFF",
+  "samples": [
+    {
+      "label": "running 1440dark",
+      "panel": {
+        "state": "busy",
+        "unread": "false",
+        "answerComplete": "false",
+        "attention": "false",
+        "selected": "true",
+        "active": "true"
+      },
+      "heading": "rgb(27, 58, 107)",
+      "headingText": "rgb(220, 228, 245)",
+      "headerIcon": "rgb(102, 158, 255)",
+      "shadow": "none",
+      "iconColor": "rgb(102, 158, 255)",
+      "outline": "none",
+      "api": {
+        "agentState": "busy",
+        "answerComplete": false,
+        "review": {
+          "revision": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "hasCompleted": false,
+          "unreviewed": false,
+          "attention": false,
+          "attentionRequestIds": []
+        },
+        "runId": "85661c4a-e60c-475a-8a11-4201119c6c18",
+        "state": "running",
+        "conversationAnswer": false,
+        "displayMode": "reply"
+      }
+    },
+    {
+      "label": "preview 1440dark",
+      "panel": {
+        "state": "busy",
+        "unread": "false",
+        "answerComplete": "false",
+        "attention": "false",
+        "selected": "true",
+        "active": "true"
+      },
+      "heading": "rgb(27, 58, 107)",
+      "headingText": "rgb(220, 228, 245)",
+      "headerIcon": "rgb(102, 158, 255)",
+      "shadow": "none",
+      "iconColor": "rgb(102, 158, 255)",
+      "outline": "none",
+      "api": {
+        "agentState": "busy",
+        "answerComplete": false,
+        "review": {
+          "revision": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "hasCompleted": false,
+          "unreviewed": false,
+          "attention": false,
+          "attentionRequestIds": []
+        },
+        "runId": "85661c4a-e60c-475a-8a11-4201119c6c18",
+        "state": "running",
+        "conversationAnswer": false,
+        "displayMode": "reply"
+      }
+    },
+    {
+      "label": "hidden unread 1440dark",
+      "panel": {
+        "state": "completed",
+        "unread": "true",
+        "answerComplete": "true",
+        "attention": "false",
+        "selected": "true",
+        "active": "false"
+      },
+      "heading": "rgb(36, 91, 58)",
+      "headingText": "rgb(216, 255, 228)",
+      "headerIcon": "rgb(34, 197, 94)",
+      "shadow": "rgb(34, 197, 94) 0px 0px 0px 3px",
+      "iconColor": "rgb(34, 197, 94)",
+      "outline": "solid",
+      "api": {
+        "agentState": "idle",
+        "answerComplete": true,
+        "review": {
+          "revision": "5381f9d9cc8c24f2f2c0d376e637196dffed005cd60b64b1dc8c73dc2d471827",
+          "hasCompleted": true,
+          "unreviewed": true,
+          "attention": false,
+          "attentionRequestIds": []
+        },
+        "runId": "85661c4a-e60c-475a-8a11-4201119c6c18",
+        "state": "completed",
+        "conversationAnswer": true,
+        "displayMode": "reply"
+      }
+    },
+    {
+      "label": "autoack 1440dark",
+      "panel": {
+        "state": "completed",
+        "unread": "false",
+        "answerComplete": "false",
+        "attention": "false",
+        "selected": "true",
+        "active": "true"
+      },
+      "heading": "rgb(29, 45, 71)",
+      "headingText": "rgb(220, 228, 245)",
+      "headerIcon": "rgb(139, 167, 152)",
+      "shadow": "none",
+      "iconColor": "rgb(119, 155, 136)",
+      "outline": "none",
+      "api": {
+        "agentState": "idle",
+        "answerComplete": false,
+        "review": {
+          "revision": "5381f9d9cc8c24f2f2c0d376e637196dffed005cd60b64b1dc8c73dc2d471827",
+          "hasCompleted": true,
+          "unreviewed": false,
+          "attention": false,
+          "attentionRequestIds": []
+        },
+        "runId": "85661c4a-e60c-475a-8a11-4201119c6c18",
+        "state": "completed",
+        "conversationAnswer": true,
+        "displayMode": "reply"
+      }
+    },
+    {
+      "label": "unmatched terminal 1440dark",
+      "panel": {
+        "state": "busy",
+        "unread": "false",
+        "answerComplete": "false",
+        "attention": "false",
+        "selected": "true",
+        "active": "false"
+      },
+      "heading": "rgb(27, 58, 107)",
+      "headingText": "rgb(220, 228, 245)",
+      "headerIcon": "rgb(102, 158, 255)",
+      "shadow": "none",
+      "iconColor": "rgb(102, 158, 255)",
+      "outline": "none",
+      "api": {
+        "agentState": "busy",
+        "answerComplete": false,
+        "review": {
+          "revision": "5381f9d9cc8c24f2f2c0d376e637196dffed005cd60b64b1dc8c73dc2d471827",
+          "hasCompleted": true,
+          "unreviewed": false,
+          "attention": false,
+          "attentionRequestIds": []
+        },
+        "runId": "dcfcb1e6-bf63-474a-89fd-a1c6f34fdc9f",
+        "state": "running",
+        "conversationAnswer": false,
+        "displayMode": "reply"
+      }
+    },
+    {
+      "label": "other session terminal 1440dark",
+      "panel": {
+        "state": "busy",
+        "unread": "false",
+        "answerComplete": "false",
+        "attention": "false",
+        "selected": "true",
+        "active": "false"
+      },
+      "heading": "rgb(27, 58, 107)",
+      "headingText": "rgb(220, 228, 245)",
+      "headerIcon": "rgb(102, 158, 255)",
+      "shadow": "none",
+      "iconColor": "rgb(102, 158, 255)",
+      "outline": "none",
+      "api": {
+        "agentState": "busy",
+        "answerComplete": false,
+        "review": {
+          "revision": "5381f9d9cc8c24f2f2c0d376e637196dffed005cd60b64b1dc8c73dc2d471827",
+          "hasCompleted": true,
+          "unreviewed": false,
+          "attention": false,
+          "attentionRequestIds": []
+        },
+        "runId": "dcfcb1e6-bf63-474a-89fd-a1c6f34fdc9f",
+        "state": "running",
+        "conversationAnswer": false,
+        "displayMode": "reply"
+      }
+    },
+    {
+      "label": "latest unread 1440dark",
+      "panel": {
+        "state": "completed",
+        "unread": "true",
+        "answerComplete": "true",
+        "attention": "false",
+        "selected": "true",
+        "active": "false"
+      },
+      "heading": "rgb(36, 91, 58)",
+      "headingText": "rgb(216, 255, 228)",
+      "headerIcon": "rgb(34, 197, 94)",
+      "shadow": "rgb(34, 197, 94) 0px 0px 0px 3px",
+      "iconColor": "rgb(34, 197, 94)",
+      "outline": "solid",
+      "api": {
+        "agentState": "idle",
+        "answerComplete": true,
+        "review": {
+          "revision": "941a64230aebfe586f2d730ec00e112275b4d66db4e7c0a9056927efd08c4df2",
+          "hasCompleted": true,
+          "unreviewed": true,
+          "attention": false,
+          "attentionRequestIds": []
+        },
+        "runId": "dcfcb1e6-bf63-474a-89fd-a1c6f34fdc9f",
+        "state": "completed",
+        "conversationAnswer": true,
+        "displayMode": "reply"
+      }
+    },
+    {
+      "label": "stale ack rejected 1440dark",
+      "panel": {
+        "state": "completed",
+        "unread": "true",
+        "answerComplete": "true",
+        "attention": "false",
+        "selected": "true",
+        "active": "false"
+      },
+      "heading": "rgb(36, 91, 58)",
+      "headingText": "rgb(216, 255, 228)",
+      "headerIcon": "rgb(34, 197, 94)",
+      "shadow": "rgb(34, 197, 94) 0px 0px 0px 3px",
+      "iconColor": "rgb(34, 197, 94)",
+      "outline": "solid",
+      "api": {
+        "agentState": "idle",
+        "answerComplete": true,
+        "review": {
+          "revision": "941a64230aebfe586f2d730ec00e112275b4d66db4e7c0a9056927efd08c4df2",
+          "hasCompleted": true,
+          "unreviewed": true,
+          "attention": false,
+          "attentionRequestIds": []
+        },
+        "runId": "dcfcb1e6-bf63-474a-89fd-a1c6f34fdc9f",
+        "state": "completed",
+        "conversationAnswer": true,
+        "displayMode": "reply"
+      }
+    },
+    {
+      "label": "latest autoack 1440dark",
+      "panel": {
+        "state": "completed",
+        "unread": "false",
+        "answerComplete": "false",
+        "attention": "false",
+        "selected": "true",
+        "active": "true"
+      },
+      "heading": "rgb(29, 45, 71)",
+      "headingText": "rgb(220, 228, 245)",
+      "headerIcon": "rgb(139, 167, 152)",
+      "shadow": "none",
+      "iconColor": "rgb(119, 155, 136)",
+      "outline": "none",
+      "api": {
+        "agentState": "idle",
+        "answerComplete": false,
+        "review": {
+          "revision": "941a64230aebfe586f2d730ec00e112275b4d66db4e7c0a9056927efd08c4df2",
+          "hasCompleted": true,
+          "unreviewed": false,
+          "attention": false,
+          "attentionRequestIds": []
+        },
+        "runId": "dcfcb1e6-bf63-474a-89fd-a1c6f34fdc9f",
+        "state": "completed",
+        "conversationAnswer": true,
+        "displayMode": "reply"
+      }
+    },
+    {
+      "label": "read reconnect 1440dark",
+      "panel": {
+        "state": "completed",
+        "unread": "false",
+        "answerComplete": "false",
+        "attention": "false",
+        "selected": "false",
+        "active": "false"
+      },
+      "heading": "rgb(29, 45, 71)",
+      "headingText": "rgb(220, 228, 245)",
+      "headerIcon": "rgb(139, 167, 152)",
+      "shadow": "none",
+      "iconColor": "rgb(119, 155, 136)",
+      "outline": "none",
+      "api": {
+        "agentState": "idle",
+        "answerComplete": false,
+        "review": {
+          "revision": "941a64230aebfe586f2d730ec00e112275b4d66db4e7c0a9056927efd08c4df2",
+          "hasCompleted": true,
+          "unreviewed": false,
+          "attention": false,
+          "attentionRequestIds": []
+        },
+        "runId": "dcfcb1e6-bf63-474a-89fd-a1c6f34fdc9f",
+        "state": "completed",
+        "conversationAnswer": true,
+        "displayMode": "reply"
+      }
+    },
+    {
+      "label": "running 1440light",
+      "panel": {
+        "state": "busy",
+        "unread": "false",
+        "answerComplete": "false",
+        "attention": "false",
+        "selected": "true",
+        "active": "true"
+      },
+      "heading": "color(srgb 0.868 0.916314 1)",
+      "headingText": "rgb(36, 51, 72)",
+      "headerIcon": "rgb(102, 158, 255)",
+      "shadow": "none",
+      "iconColor": "rgb(102, 158, 255)",
+      "outline": "none",
+      "api": {
+        "agentState": "busy",
+        "answerComplete": false,
+        "review": {
+          "revision": "941a64230aebfe586f2d730ec00e112275b4d66db4e7c0a9056927efd08c4df2",
+          "hasCompleted": true,
+          "unreviewed": false,
+          "attention": false,
+          "attentionRequestIds": []
+        },
+        "runId": "0bcf913e-9fdb-4f29-b349-888bb5047ad5",
+        "state": "running",
+        "conversationAnswer": false,
+        "displayMode": "reply"
+      }
+    },
+    {
+      "label": "preview 1440light",
+      "panel": {
+        "state": "busy",
+        "unread": "false",
+        "answerComplete": "false",
+        "attention": "false",
+        "selected": "true",
+        "active": "true"
+      },
+      "heading": "color(srgb 0.868 0.916314 1)",
+      "headingText": "rgb(36, 51, 72)",
+      "headerIcon": "rgb(102, 158, 255)",
+      "shadow": "none",
+      "iconColor": "rgb(102, 158, 255)",
+      "outline": "none",
+      "api": {
+        "agentState": "busy",
+        "answerComplete": false,
+        "review": {
+          "revision": "941a64230aebfe586f2d730ec00e112275b4d66db4e7c0a9056927efd08c4df2",
+          "hasCompleted": true,
+          "unreviewed": false,
+          "attention": false,
+          "attentionRequestIds": []
+        },
+        "runId": "0bcf913e-9fdb-4f29-b349-888bb5047ad5",
+        "state": "running",
+        "conversationAnswer": false,
+        "displayMode": "reply"
+      }
+    },
+    {
+      "label": "hidden unread 1440light",
+      "panel": {
+        "state": "completed",
+        "unread": "true",
+        "answerComplete": "true",
+        "attention": "false",
+        "selected": "true",
+        "active": "false"
+      },
+      "heading": "rgb(36, 91, 58)",
+      "headingText": "rgb(216, 255, 228)",
+      "headerIcon": "rgb(34, 197, 94)",
+      "shadow": "rgb(34, 197, 94) 0px 0px 0px 3px",
+      "iconColor": "rgb(34, 197, 94)",
+      "outline": "solid",
+      "api": {
+        "agentState": "idle",
+        "answerComplete": true,
+        "review": {
+          "revision": "348e919bee2f496215fbed0e38b5276161dbd7dbc891a0aeed74cab69304478e",
+          "hasCompleted": true,
+          "unreviewed": true,
+          "attention": false,
+          "attentionRequestIds": []
+        },
+        "runId": "0bcf913e-9fdb-4f29-b349-888bb5047ad5",
+        "state": "completed",
+        "conversationAnswer": true,
+        "displayMode": "reply"
+      }
+    },
+    {
+      "label": "autoack 1440light",
+      "panel": {
+        "state": "completed",
+        "unread": "false",
+        "answerComplete": "false",
+        "attention": "false",
+        "selected": "true",
+        "active": "true"
+      },
+      "heading": "rgb(232, 238, 245)",
+      "headingText": "rgb(36, 51, 72)",
+      "headerIcon": "rgb(139, 167, 152)",
+      "shadow": "none",
+      "iconColor": "rgb(119, 155, 136)",
+      "outline": "none",
+      "api": {
+        "agentState": "idle",
+        "answerComplete": false,
+        "review": {
+          "revision": "348e919bee2f496215fbed0e38b5276161dbd7dbc891a0aeed74cab69304478e",
+          "hasCompleted": true,
+          "unreviewed": false,
+          "attention": false,
+          "attentionRequestIds": []
+        },
+        "runId": "0bcf913e-9fdb-4f29-b349-888bb5047ad5",
+        "state": "completed",
+        "conversationAnswer": true,
+        "displayMode": "reply"
+      }
+    },
+    {
+      "label": "unmatched terminal 1440light",
+      "panel": {
+        "state": "busy",
+        "unread": "false",
+        "answerComplete": "false",
+        "attention": "false",
+        "selected": "true",
+        "active": "false"
+      },
+      "heading": "color(srgb 0.868 0.916314 1)",
+      "headingText": "rgb(36, 51, 72)",
+      "headerIcon": "rgb(102, 158, 255)",
+      "shadow": "none",
+      "iconColor": "rgb(102, 158, 255)",
+      "outline": "none",
+      "api": {
+        "agentState": "busy",
+        "answerComplete": false,
+        "review": {
+          "revision": "348e919bee2f496215fbed0e38b5276161dbd7dbc891a0aeed74cab69304478e",
+          "hasCompleted": true,
+          "unreviewed": false,
+          "attention": false,
+          "attentionRequestIds": []
+        },
+        "runId": "12acd624-e0d7-4496-8f06-b14a41c2d55c",
+        "state": "running",
+        "conversationAnswer": false,
+        "displayMode": "reply"
+      }
+    },
+    {
+      "label": "other session terminal 1440light",
+      "panel": {
+        "state": "busy",
+        "unread": "false",
+        "answerComplete": "false",
+        "attention": "false",
+        "selected": "true",
+        "active": "false"
+      },
+      "heading": "color(srgb 0.868 0.916314 1)",
+      "headingText": "rgb(36, 51, 72)",
+      "headerIcon": "rgb(102, 158, 255)",
+      "shadow": "none",
+      "iconColor": "rgb(102, 158, 255)",
+      "outline": "none",
+      "api": {
+        "agentState": "busy",
+        "answerComplete": false,
+        "review": {
+          "revision": "348e919bee2f496215fbed0e38b5276161dbd7dbc891a0aeed74cab69304478e",
+          "hasCompleted": true,
+          "unreviewed": false,
+          "attention": false,
+          "attentionRequestIds": []
+        },
+        "runId": "12acd624-e0d7-4496-8f06-b14a41c2d55c",
+        "state": "running",
+        "conversationAnswer": false,
+        "displayMode": "reply"
+      }
+    },
+    {
+      "label": "latest unread 1440light",
+      "panel": {
+        "state": "completed",
+        "unread": "true",
+        "answerComplete": "true",
+        "attention": "false",
+        "selected": "true",
+        "active": "false"
+      },
+      "heading": "rgb(36, 91, 58)",
+      "headingText": "rgb(216, 255, 228)",
+      "headerIcon": "rgb(34, 197, 94)",
+      "shadow": "rgb(34, 197, 94) 0px 0px 0px 3px",
+      "iconColor": "rgb(34, 197, 94)",
+      "outline": "solid",
+      "api": {
+        "agentState": "idle",
+        "answerComplete": true,
+        "review": {
+          "revision": "9adfe4b36cfe2a9ad9ba5b79fe3f445d1d2b26fab13e53c85a09f51ec127e994",
+          "hasCompleted": true,
+          "unreviewed": true,
+          "attention": false,
+          "attentionRequestIds": []
+        },
+        "runId": "12acd624-e0d7-4496-8f06-b14a41c2d55c",
+        "state": "completed",
+        "conversationAnswer": true,
+        "displayMode": "reply"
+      }
+    },
+    {
+      "label": "stale ack rejected 1440light",
+      "panel": {
+        "state": "completed",
+        "unread": "true",
+        "answerComplete": "true",
+        "attention": "false",
+        "selected": "true",
+        "active": "false"
+      },
+      "heading": "rgb(36, 91, 58)",
+      "headingText": "rgb(216, 255, 228)",
+      "headerIcon": "rgb(34, 197, 94)",
+      "shadow": "rgb(34, 197, 94) 0px 0px 0px 3px",
+      "iconColor": "rgb(34, 197, 94)",
+      "outline": "solid",
+      "api": {
+        "agentState": "idle",
+        "answerComplete": true,
+        "review": {
+          "revision": "9adfe4b36cfe2a9ad9ba5b79fe3f445d1d2b26fab13e53c85a09f51ec127e994",
+          "hasCompleted": true,
+          "unreviewed": true,
+          "attention": false,
+          "attentionRequestIds": []
+        },
+        "runId": "12acd624-e0d7-4496-8f06-b14a41c2d55c",
+        "state": "completed",
+        "conversationAnswer": true,
+        "displayMode": "reply"
+      }
+    },
+    {
+      "label": "latest autoack 1440light",
+      "panel": {
+        "state": "completed",
+        "unread": "false",
+        "answerComplete": "false",
+        "attention": "false",
+        "selected": "true",
+        "active": "true"
+      },
+      "heading": "rgb(232, 238, 245)",
+      "headingText": "rgb(36, 51, 72)",
+      "headerIcon": "rgb(139, 167, 152)",
+      "shadow": "none",
+      "iconColor": "rgb(119, 155, 136)",
+      "outline": "none",
+      "api": {
+        "agentState": "idle",
+        "answerComplete": false,
+        "review": {
+          "revision": "9adfe4b36cfe2a9ad9ba5b79fe3f445d1d2b26fab13e53c85a09f51ec127e994",
+          "hasCompleted": true,
+          "unreviewed": false,
+          "attention": false,
+          "attentionRequestIds": []
+        },
+        "runId": "12acd624-e0d7-4496-8f06-b14a41c2d55c",
+        "state": "completed",
+        "conversationAnswer": true,
+        "displayMode": "reply"
+      }
+    },
+    {
+      "label": "read reconnect 1440light",
+      "panel": {
+        "state": "completed",
+        "unread": "false",
+        "answerComplete": "false",
+        "attention": "false",
+        "selected": "false",
+        "active": "false"
+      },
+      "heading": "rgb(232, 238, 245)",
+      "headingText": "rgb(36, 51, 72)",
+      "headerIcon": "rgb(139, 167, 152)",
+      "shadow": "none",
+      "iconColor": "rgb(119, 155, 136)",
+      "outline": "none",
+      "api": {
+        "agentState": "idle",
+        "answerComplete": false,
+        "review": {
+          "revision": "9adfe4b36cfe2a9ad9ba5b79fe3f445d1d2b26fab13e53c85a09f51ec127e994",
+          "hasCompleted": true,
+          "unreviewed": false,
+          "attention": false,
+          "attentionRequestIds": []
+        },
+        "runId": "12acd624-e0d7-4496-8f06-b14a41c2d55c",
+        "state": "completed",
+        "conversationAnswer": true,
+        "displayMode": "reply"
+      }
+    },
+    {
+      "label": "running 390dark",
+      "panel": {
+        "state": "busy",
+        "unread": "false",
+        "answerComplete": "false",
+        "attention": "false",
+        "selected": "true",
+        "active": "true"
+      },
+      "heading": "rgb(27, 58, 107)",
+      "headingText": "rgb(220, 228, 245)",
+      "headerIcon": "rgb(102, 158, 255)",
+      "shadow": "none",
+      "iconColor": "rgb(102, 158, 255)",
+      "outline": "none",
+      "api": {
+        "agentState": "busy",
+        "answerComplete": false,
+        "review": {
+          "revision": "9adfe4b36cfe2a9ad9ba5b79fe3f445d1d2b26fab13e53c85a09f51ec127e994",
+          "hasCompleted": true,
+          "unreviewed": false,
+          "attention": false,
+          "attentionRequestIds": []
+        },
+        "runId": "f1b5174e-d773-4db2-aaa6-227c1589f883",
+        "state": "running",
+        "conversationAnswer": false,
+        "displayMode": "reply"
+      }
+    },
+    {
+      "label": "preview 390dark",
+      "panel": {
+        "state": "busy",
+        "unread": "false",
+        "answerComplete": "false",
+        "attention": "false",
+        "selected": "true",
+        "active": "true"
+      },
+      "heading": "rgb(27, 58, 107)",
+      "headingText": "rgb(220, 228, 245)",
+      "headerIcon": "rgb(102, 158, 255)",
+      "shadow": "none",
+      "iconColor": "rgb(102, 158, 255)",
+      "outline": "none",
+      "api": {
+        "agentState": "busy",
+        "answerComplete": false,
+        "review": {
+          "revision": "9adfe4b36cfe2a9ad9ba5b79fe3f445d1d2b26fab13e53c85a09f51ec127e994",
+          "hasCompleted": true,
+          "unreviewed": false,
+          "attention": false,
+          "attentionRequestIds": []
+        },
+        "runId": "f1b5174e-d773-4db2-aaa6-227c1589f883",
+        "state": "running",
+        "conversationAnswer": false,
+        "displayMode": "reply"
+      }
+    },
+    {
+      "label": "hidden unread 390dark",
+      "panel": {
+        "state": "completed",
+        "unread": "true",
+        "answerComplete": "true",
+        "attention": "false",
+        "selected": "true",
+        "active": "false"
+      },
+      "heading": "rgb(36, 91, 58)",
+      "headingText": "rgb(216, 255, 228)",
+      "headerIcon": "rgb(34, 197, 94)",
+      "shadow": "rgb(34, 197, 94) 0px 0px 0px 3px",
+      "iconColor": "rgb(34, 197, 94)",
+      "outline": "solid",
+      "api": {
+        "agentState": "idle",
+        "answerComplete": true,
+        "review": {
+          "revision": "65f7e40e8a08319d4f4428b06c4d4838f5cb995cdd5acb7f5fcc8e0b6eccec34",
+          "hasCompleted": true,
+          "unreviewed": true,
+          "attention": false,
+          "attentionRequestIds": []
+        },
+        "runId": "f1b5174e-d773-4db2-aaa6-227c1589f883",
+        "state": "completed",
+        "conversationAnswer": true,
+        "displayMode": "reply"
+      }
+    },
+    {
+      "label": "autoack 390dark",
+      "panel": {
+        "state": "completed",
+        "unread": "false",
+        "answerComplete": "false",
+        "attention": "false",
+        "selected": "true",
+        "active": "true"
+      },
+      "heading": "rgb(29, 45, 71)",
+      "headingText": "rgb(220, 228, 245)",
+      "headerIcon": "rgb(139, 167, 152)",
+      "shadow": "none",
+      "iconColor": "rgb(119, 155, 136)",
+      "outline": "none",
+      "api": {
+        "agentState": "idle",
+        "answerComplete": false,
+        "review": {
+          "revision": "65f7e40e8a08319d4f4428b06c4d4838f5cb995cdd5acb7f5fcc8e0b6eccec34",
+          "hasCompleted": true,
+          "unreviewed": false,
+          "attention": false,
+          "attentionRequestIds": []
+        },
+        "runId": "f1b5174e-d773-4db2-aaa6-227c1589f883",
+        "state": "completed",
+        "conversationAnswer": true,
+        "displayMode": "reply"
+      }
+    },
+    {
+      "label": "unmatched terminal 390dark",
+      "panel": {
+        "state": "busy",
+        "unread": "false",
+        "answerComplete": "false",
+        "attention": "false",
+        "selected": "true",
+        "active": "false"
+      },
+      "heading": "rgb(27, 58, 107)",
+      "headingText": "rgb(220, 228, 245)",
+      "headerIcon": "rgb(102, 158, 255)",
+      "shadow": "none",
+      "iconColor": "rgb(102, 158, 255)",
+      "outline": "none",
+      "api": {
+        "agentState": "busy",
+        "answerComplete": false,
+        "review": {
+          "revision": "65f7e40e8a08319d4f4428b06c4d4838f5cb995cdd5acb7f5fcc8e0b6eccec34",
+          "hasCompleted": true,
+          "unreviewed": false,
+          "attention": false,
+          "attentionRequestIds": []
+        },
+        "runId": "812ca502-70ec-41ab-8da7-0da46c65a5da",
+        "state": "running",
+        "conversationAnswer": false,
+        "displayMode": "reply"
+      }
+    },
+    {
+      "label": "other session terminal 390dark",
+      "panel": {
+        "state": "busy",
+        "unread": "false",
+        "answerComplete": "false",
+        "attention": "false",
+        "selected": "true",
+        "active": "false"
+      },
+      "heading": "rgb(27, 58, 107)",
+      "headingText": "rgb(220, 228, 245)",
+      "headerIcon": "rgb(102, 158, 255)",
+      "shadow": "none",
+      "iconColor": "rgb(102, 158, 255)",
+      "outline": "none",
+      "api": {
+        "agentState": "busy",
+        "answerComplete": false,
+        "review": {
+          "revision": "65f7e40e8a08319d4f4428b06c4d4838f5cb995cdd5acb7f5fcc8e0b6eccec34",
+          "hasCompleted": true,
+          "unreviewed": false,
+          "attention": false,
+          "attentionRequestIds": []
+        },
+        "runId": "812ca502-70ec-41ab-8da7-0da46c65a5da",
+        "state": "running",
+        "conversationAnswer": false,
+        "displayMode": "reply"
+      }
+    },
+    {
+      "label": "latest unread 390dark",
+      "panel": {
+        "state": "completed",
+        "unread": "true",
+        "answerComplete": "true",
+        "attention": "false",
+        "selected": "true",
+        "active": "false"
+      },
+      "heading": "rgb(36, 91, 58)",
+      "headingText": "rgb(216, 255, 228)",
+      "headerIcon": "rgb(34, 197, 94)",
+      "shadow": "rgb(34, 197, 94) 0px 0px 0px 3px",
+      "iconColor": "rgb(34, 197, 94)",
+      "outline": "solid",
+      "api": {
+        "agentState": "idle",
+        "answerComplete": true,
+        "review": {
+          "revision": "042dae430c98ac43f1c0521e0b2c1f187eb1b02cea081ba228517d0f161bfee0",
+          "hasCompleted": true,
+          "unreviewed": true,
+          "attention": false,
+          "attentionRequestIds": []
+        },
+        "runId": "812ca502-70ec-41ab-8da7-0da46c65a5da",
+        "state": "completed",
+        "conversationAnswer": true,
+        "displayMode": "reply"
+      }
+    },
+    {
+      "label": "stale ack rejected 390dark",
+      "panel": {
+        "state": "completed",
+        "unread": "true",
+        "answerComplete": "true",
+        "attention": "false",
+        "selected": "true",
+        "active": "false"
+      },
+      "heading": "rgb(36, 91, 58)",
+      "headingText": "rgb(216, 255, 228)",
+      "headerIcon": "rgb(34, 197, 94)",
+      "shadow": "rgb(34, 197, 94) 0px 0px 0px 3px",
+      "iconColor": "rgb(34, 197, 94)",
+      "outline": "solid",
+      "api": {
+        "agentState": "idle",
+        "answerComplete": true,
+        "review": {
+          "revision": "042dae430c98ac43f1c0521e0b2c1f187eb1b02cea081ba228517d0f161bfee0",
+          "hasCompleted": true,
+          "unreviewed": true,
+          "attention": false,
+          "attentionRequestIds": []
+        },
+        "runId": "812ca502-70ec-41ab-8da7-0da46c65a5da",
+        "state": "completed",
+        "conversationAnswer": true,
+        "displayMode": "reply"
+      }
+    },
+    {
+      "label": "latest autoack 390dark",
+      "panel": {
+        "state": "completed",
+        "unread": "false",
+        "answerComplete": "false",
+        "attention": "false",
+        "selected": "true",
+        "active": "true"
+      },
+      "heading": "rgb(29, 45, 71)",
+      "headingText": "rgb(220, 228, 245)",
+      "headerIcon": "rgb(139, 167, 152)",
+      "shadow": "none",
+      "iconColor": "rgb(119, 155, 136)",
+      "outline": "none",
+      "api": {
+        "agentState": "idle",
+        "answerComplete": false,
+        "review": {
+          "revision": "042dae430c98ac43f1c0521e0b2c1f187eb1b02cea081ba228517d0f161bfee0",
+          "hasCompleted": true,
+          "unreviewed": false,
+          "attention": false,
+          "attentionRequestIds": []
+        },
+        "runId": "812ca502-70ec-41ab-8da7-0da46c65a5da",
+        "state": "completed",
+        "conversationAnswer": true,
+        "displayMode": "reply"
+      }
+    },
+    {
+      "label": "read reconnect 390dark",
+      "panel": {
+        "state": "completed",
+        "unread": "false",
+        "answerComplete": "false",
+        "attention": "false",
+        "selected": "false",
+        "active": "false"
+      },
+      "heading": "rgb(29, 45, 71)",
+      "headingText": "rgb(220, 228, 245)",
+      "headerIcon": "rgb(139, 167, 152)",
+      "shadow": "none",
+      "iconColor": "rgb(119, 155, 136)",
+      "outline": "none",
+      "api": {
+        "agentState": "idle",
+        "answerComplete": false,
+        "review": {
+          "revision": "042dae430c98ac43f1c0521e0b2c1f187eb1b02cea081ba228517d0f161bfee0",
+          "hasCompleted": true,
+          "unreviewed": false,
+          "attention": false,
+          "attentionRequestIds": []
+        },
+        "runId": "812ca502-70ec-41ab-8da7-0da46c65a5da",
+        "state": "completed",
+        "conversationAnswer": true,
+        "displayMode": "reply"
+      }
+    },
+    {
+      "label": "running 390light",
+      "panel": {
+        "state": "busy",
+        "unread": "false",
+        "answerComplete": "false",
+        "attention": "false",
+        "selected": "true",
+        "active": "true"
+      },
+      "heading": "color(srgb 0.868 0.916314 1)",
+      "headingText": "rgb(36, 51, 72)",
+      "headerIcon": "rgb(102, 158, 255)",
+      "shadow": "none",
+      "iconColor": "rgb(102, 158, 255)",
+      "outline": "none",
+      "api": {
+        "agentState": "busy",
+        "answerComplete": false,
+        "review": {
+          "revision": "042dae430c98ac43f1c0521e0b2c1f187eb1b02cea081ba228517d0f161bfee0",
+          "hasCompleted": true,
+          "unreviewed": false,
+          "attention": false,
+          "attentionRequestIds": []
+        },
+        "runId": "81e7ebb6-c924-416c-95df-cd7c6a314d3f",
+        "state": "running",
+        "conversationAnswer": false,
+        "displayMode": "reply"
+      }
+    },
+    {
+      "label": "preview 390light",
+      "panel": {
+        "state": "busy",
+        "unread": "false",
+        "answerComplete": "false",
+        "attention": "false",
+        "selected": "true",
+        "active": "true"
+      },
+      "heading": "color(srgb 0.868 0.916314 1)",
+      "headingText": "rgb(36, 51, 72)",
+      "headerIcon": "rgb(102, 158, 255)",
+      "shadow": "none",
+      "iconColor": "rgb(102, 158, 255)",
+      "outline": "none",
+      "api": {
+        "agentState": "busy",
+        "answerComplete": false,
+        "review": {
+          "revision": "042dae430c98ac43f1c0521e0b2c1f187eb1b02cea081ba228517d0f161bfee0",
+          "hasCompleted": true,
+          "unreviewed": false,
+          "attention": false,
+          "attentionRequestIds": []
+        },
+        "runId": "81e7ebb6-c924-416c-95df-cd7c6a314d3f",
+        "state": "running",
+        "conversationAnswer": false,
+        "displayMode": "reply"
+      }
+    },
+    {
+      "label": "hidden unread 390light",
+      "panel": {
+        "state": "completed",
+        "unread": "true",
+        "answerComplete": "true",
+        "attention": "false",
+        "selected": "true",
+        "active": "false"
+      },
+      "heading": "rgb(36, 91, 58)",
+      "headingText": "rgb(216, 255, 228)",
+      "headerIcon": "rgb(34, 197, 94)",
+      "shadow": "rgb(34, 197, 94) 0px 0px 0px 3px",
+      "iconColor": "rgb(34, 197, 94)",
+      "outline": "solid",
+      "api": {
+        "agentState": "idle",
+        "answerComplete": true,
+        "review": {
+          "revision": "8eafe1f5beeb3a798b7b35aee463a02d36f21c4acf2ee9be8fdcc837fea71111",
+          "hasCompleted": true,
+          "unreviewed": true,
+          "attention": false,
+          "attentionRequestIds": []
+        },
+        "runId": "81e7ebb6-c924-416c-95df-cd7c6a314d3f",
+        "state": "completed",
+        "conversationAnswer": true,
+        "displayMode": "reply"
+      }
+    },
+    {
+      "label": "autoack 390light",
+      "panel": {
+        "state": "completed",
+        "unread": "false",
+        "answerComplete": "false",
+        "attention": "false",
+        "selected": "true",
+        "active": "true"
+      },
+      "heading": "rgb(232, 238, 245)",
+      "headingText": "rgb(36, 51, 72)",
+      "headerIcon": "rgb(139, 167, 152)",
+      "shadow": "none",
+      "iconColor": "rgb(119, 155, 136)",
+      "outline": "none",
+      "api": {
+        "agentState": "idle",
+        "answerComplete": false,
+        "review": {
+          "revision": "8eafe1f5beeb3a798b7b35aee463a02d36f21c4acf2ee9be8fdcc837fea71111",
+          "hasCompleted": true,
+          "unreviewed": false,
+          "attention": false,
+          "attentionRequestIds": []
+        },
+        "runId": "81e7ebb6-c924-416c-95df-cd7c6a314d3f",
+        "state": "completed",
+        "conversationAnswer": true,
+        "displayMode": "reply"
+      }
+    },
+    {
+      "label": "unmatched terminal 390light",
+      "panel": {
+        "state": "busy",
+        "unread": "false",
+        "answerComplete": "false",
+        "attention": "false",
+        "selected": "true",
+        "active": "false"
+      },
+      "heading": "color(srgb 0.868 0.916314 1)",
+      "headingText": "rgb(36, 51, 72)",
+      "headerIcon": "rgb(102, 158, 255)",
+      "shadow": "none",
+      "iconColor": "rgb(102, 158, 255)",
+      "outline": "none",
+      "api": {
+        "agentState": "busy",
+        "answerComplete": false,
+        "review": {
+          "revision": "8eafe1f5beeb3a798b7b35aee463a02d36f21c4acf2ee9be8fdcc837fea71111",
+          "hasCompleted": true,
+          "unreviewed": false,
+          "attention": false,
+          "attentionRequestIds": []
+        },
+        "runId": "2eaa655a-12aa-49df-a835-12dea4a07499",
+        "state": "running",
+        "conversationAnswer": false,
+        "displayMode": "reply"
+      }
+    },
+    {
+      "label": "other session terminal 390light",
+      "panel": {
+        "state": "busy",
+        "unread": "false",
+        "answerComplete": "false",
+        "attention": "false",
+        "selected": "true",
+        "active": "false"
+      },
+      "heading": "color(srgb 0.868 0.916314 1)",
+      "headingText": "rgb(36, 51, 72)",
+      "headerIcon": "rgb(102, 158, 255)",
+      "shadow": "none",
+      "iconColor": "rgb(102, 158, 255)",
+      "outline": "none",
+      "api": {
+        "agentState": "busy",
+        "answerComplete": false,
+        "review": {
+          "revision": "8eafe1f5beeb3a798b7b35aee463a02d36f21c4acf2ee9be8fdcc837fea71111",
+          "hasCompleted": true,
+          "unreviewed": false,
+          "attention": false,
+          "attentionRequestIds": []
+        },
+        "runId": "2eaa655a-12aa-49df-a835-12dea4a07499",
+        "state": "running",
+        "conversationAnswer": false,
+        "displayMode": "reply"
+      }
+    },
+    {
+      "label": "latest unread 390light",
+      "panel": {
+        "state": "completed",
+        "unread": "true",
+        "answerComplete": "true",
+        "attention": "false",
+        "selected": "true",
+        "active": "false"
+      },
+      "heading": "rgb(36, 91, 58)",
+      "headingText": "rgb(216, 255, 228)",
+      "headerIcon": "rgb(34, 197, 94)",
+      "shadow": "rgb(34, 197, 94) 0px 0px 0px 3px",
+      "iconColor": "rgb(34, 197, 94)",
+      "outline": "solid",
+      "api": {
+        "agentState": "idle",
+        "answerComplete": true,
+        "review": {
+          "revision": "f37d2b6bbcb28ad124494b6105df37d42d79027b2455debeaeaeebd046c46886",
+          "hasCompleted": true,
+          "unreviewed": true,
+          "attention": false,
+          "attentionRequestIds": []
+        },
+        "runId": "2eaa655a-12aa-49df-a835-12dea4a07499",
+        "state": "completed",
+        "conversationAnswer": true,
+        "displayMode": "reply"
+      }
+    },
+    {
+      "label": "stale ack rejected 390light",
+      "panel": {
+        "state": "completed",
+        "unread": "true",
+        "answerComplete": "true",
+        "attention": "false",
+        "selected": "true",
+        "active": "false"
+      },
+      "heading": "rgb(36, 91, 58)",
+      "headingText": "rgb(216, 255, 228)",
+      "headerIcon": "rgb(34, 197, 94)",
+      "shadow": "rgb(34, 197, 94) 0px 0px 0px 3px",
+      "iconColor": "rgb(34, 197, 94)",
+      "outline": "solid",
+      "api": {
+        "agentState": "idle",
+        "answerComplete": true,
+        "review": {
+          "revision": "f37d2b6bbcb28ad124494b6105df37d42d79027b2455debeaeaeebd046c46886",
+          "hasCompleted": true,
+          "unreviewed": true,
+          "attention": false,
+          "attentionRequestIds": []
+        },
+        "runId": "2eaa655a-12aa-49df-a835-12dea4a07499",
+        "state": "completed",
+        "conversationAnswer": true,
+        "displayMode": "reply"
+      }
+    },
+    {
+      "label": "latest autoack 390light",
+      "panel": {
+        "state": "completed",
+        "unread": "false",
+        "answerComplete": "false",
+        "attention": "false",
+        "selected": "true",
+        "active": "true"
+      },
+      "heading": "rgb(232, 238, 245)",
+      "headingText": "rgb(36, 51, 72)",
+      "headerIcon": "rgb(139, 167, 152)",
+      "shadow": "none",
+      "iconColor": "rgb(119, 155, 136)",
+      "outline": "none",
+      "api": {
+        "agentState": "idle",
+        "answerComplete": false,
+        "review": {
+          "revision": "f37d2b6bbcb28ad124494b6105df37d42d79027b2455debeaeaeebd046c46886",
+          "hasCompleted": true,
+          "unreviewed": false,
+          "attention": false,
+          "attentionRequestIds": []
+        },
+        "runId": "2eaa655a-12aa-49df-a835-12dea4a07499",
+        "state": "completed",
+        "conversationAnswer": true,
+        "displayMode": "reply"
+      }
+    },
+    {
+      "label": "read reconnect 390light",
+      "panel": {
+        "state": "completed",
+        "unread": "false",
+        "answerComplete": "false",
+        "attention": "false",
+        "selected": "false",
+        "active": "false"
+      },
+      "heading": "rgb(232, 238, 245)",
+      "headingText": "rgb(36, 51, 72)",
+      "headerIcon": "rgb(139, 167, 152)",
+      "shadow": "none",
+      "iconColor": "rgb(119, 155, 136)",
+      "outline": "none",
+      "api": {
+        "agentState": "idle",
+        "answerComplete": false,
+        "review": {
+          "revision": "f37d2b6bbcb28ad124494b6105df37d42d79027b2455debeaeaeebd046c46886",
+          "hasCompleted": true,
+          "unreviewed": false,
+          "attention": false,
+          "attentionRequestIds": []
+        },
+        "runId": "2eaa655a-12aa-49df-a835-12dea4a07499",
+        "state": "completed",
+        "conversationAnswer": true,
+        "displayMode": "reply"
+      }
+    },
+    {
+      "label": "unselected unread",
+      "panel": {
+        "state": "completed",
+        "unread": "true",
+        "answerComplete": "true",
+        "attention": "false",
+        "selected": "false",
+        "active": "false"
+      },
+      "heading": "rgb(36, 91, 58)",
+      "headingText": "rgb(216, 255, 228)",
+      "headerIcon": "rgb(34, 197, 94)",
+      "shadow": "rgb(34, 197, 94) 0px 0px 0px 3px",
+      "iconColor": "rgb(34, 197, 94)",
+      "outline": "solid",
+      "api": {
+        "agentState": "idle",
+        "answerComplete": true,
+        "review": {
+          "revision": "382df92924a33dc337cd4ce34b1609e28cbaf72004b36e5879eb58522204b5ba",
+          "hasCompleted": true,
+          "unreviewed": true,
+          "attention": false,
+          "attentionRequestIds": []
+        },
+        "runId": "b77ef456-dd29-4ba3-aae4-a8ab3a30cb12",
+        "state": "completed",
+        "conversationAnswer": true,
+        "displayMode": "reply"
+      }
+    },
+    {
+      "label": "selected read",
+      "panel": {
+        "state": "completed",
+        "unread": "false",
+        "answerComplete": "false",
+        "attention": "false",
+        "selected": "true",
+        "active": "true"
+      },
+      "heading": "rgb(29, 45, 71)",
+      "headingText": "rgb(220, 228, 245)",
+      "headerIcon": "rgb(139, 167, 152)",
+      "shadow": "none",
+      "iconColor": "rgb(119, 155, 136)",
+      "outline": "none",
+      "api": {
+        "agentState": "idle",
+        "answerComplete": false,
+        "review": {
+          "revision": "382df92924a33dc337cd4ce34b1609e28cbaf72004b36e5879eb58522204b5ba",
+          "hasCompleted": true,
+          "unreviewed": false,
+          "attention": false,
+          "attentionRequestIds": []
+        },
+        "runId": "b77ef456-dd29-4ba3-aae4-a8ab3a30cb12",
+        "state": "completed",
+        "conversationAnswer": true,
+        "displayMode": "reply"
+      }
+    },
+    {
+      "label": "result review running",
+      "panel": {
+        "state": "busy",
+        "unread": "true",
+        "answerComplete": "false",
+        "attention": "false",
+        "selected": "true",
+        "active": "false"
+      },
+      "heading": "rgb(27, 58, 107)",
+      "headingText": "rgb(220, 228, 245)",
+      "headerIcon": "rgb(102, 158, 255)",
+      "shadow": "none",
+      "iconColor": "rgb(102, 158, 255)",
+      "outline": "none",
+      "api": {
+        "agentState": "busy",
+        "answerComplete": false,
+        "review": {
+          "revision": "ee72d3ed7f91426ecd65cf8e0eb7f26cda9e5513850e2ff4d4a2fbb910685b5a",
+          "hasCompleted": true,
+          "unreviewed": true,
+          "attention": false,
+          "attentionRequestIds": []
+        },
+        "runId": "95611574-46aa-48bd-baa7-caceffaa650d",
+        "state": "running",
+        "conversationAnswer": false,
+        "displayMode": "reply"
+      }
+    },
+    {
+      "label": "internal progress only",
+      "panel": {
+        "state": "completed",
+        "unread": "true",
+        "answerComplete": "false",
+        "attention": "false",
+        "selected": "true",
+        "active": "false"
+      },
+      "heading": "rgb(29, 45, 71)",
+      "headingText": "rgb(220, 228, 245)",
+      "headerIcon": "rgb(139, 167, 152)",
+      "shadow": "none",
+      "iconColor": "rgb(119, 155, 136)",
+      "outline": "none",
+      "api": {
+        "agentState": "idle",
+        "answerComplete": false,
+        "review": {
+          "revision": "6a751e4d10905213707f55d888e9f660c6998af6b255f2d897742af9f58edfa7",
+          "hasCompleted": true,
+          "unreviewed": true,
+          "attention": false,
+          "attentionRequestIds": []
+        },
+        "runId": "95611574-46aa-48bd-baa7-caceffaa650d",
+        "state": "completed",
+        "conversationAnswer": true,
+        "displayMode": "progress"
+      }
+    },
+    {
+      "label": "accepted leader result",
+      "panel": {
+        "state": "completed",
+        "unread": "true",
+        "answerComplete": "true",
+        "attention": "false",
+        "selected": "true",
+        "active": "false"
+      },
+      "heading": "rgb(36, 91, 58)",
+      "headingText": "rgb(216, 255, 228)",
+      "headerIcon": "rgb(34, 197, 94)",
+      "shadow": "rgb(34, 197, 94) 0px 0px 0px 3px",
+      "iconColor": "rgb(34, 197, 94)",
+      "outline": "solid",
+      "api": {
+        "agentState": "idle",
+        "answerComplete": true,
+        "review": {
+          "revision": "27b3c56ba914378e3334995865204a6d45652f82d3c1c8967ef7b08bee7f1435",
+          "hasCompleted": true,
+          "unreviewed": true,
+          "attention": false,
+          "attentionRequestIds": []
+        },
+        "runId": "673803c8-adf6-4556-b6a0-73c24906bd6f",
+        "state": "completed",
+        "conversationAnswer": true,
+        "displayMode": "reply"
+      }
+    },
+    {
+      "label": "new send",
+      "panel": {
+        "state": "completed",
+        "unread": "true",
+        "answerComplete": "false",
+        "attention": "false",
+        "selected": "true",
+        "active": "false"
+      },
+      "heading": "rgb(29, 45, 71)",
+      "headingText": "rgb(220, 228, 245)",
+      "headerIcon": "rgb(139, 167, 152)",
+      "shadow": "none",
+      "iconColor": "rgb(119, 155, 136)",
+      "outline": "none",
+      "api": {
+        "agentState": "idle",
+        "answerComplete": false,
+        "review": {
+          "revision": "27b3c56ba914378e3334995865204a6d45652f82d3c1c8967ef7b08bee7f1435",
+          "hasCompleted": true,
+          "unreviewed": true,
+          "attention": false,
+          "attentionRequestIds": []
+        },
+        "runId": "6352dc13-1519-4204-9a4c-16a112e17057",
+        "state": "awaiting_input",
+        "conversationAnswer": false,
+        "displayMode": "reply"
+      }
+    },
+    {
+      "label": "queued",
+      "panel": {
+        "state": "busy",
+        "unread": "true",
+        "answerComplete": "false",
+        "attention": "false",
+        "selected": "true",
+        "active": "false"
+      },
+      "heading": "rgb(27, 58, 107)",
+      "headingText": "rgb(220, 228, 245)",
+      "headerIcon": "rgb(102, 158, 255)",
+      "shadow": "none",
+      "iconColor": "rgb(102, 158, 255)",
+      "outline": "none",
+      "api": {
+        "agentState": "busy",
+        "answerComplete": false,
+        "review": {
+          "revision": "27b3c56ba914378e3334995865204a6d45652f82d3c1c8967ef7b08bee7f1435",
+          "hasCompleted": true,
+          "unreviewed": true,
+          "attention": false,
+          "attentionRequestIds": []
+        },
+        "runId": "8d153195-ee7d-4519-92aa-c9ffe2823406",
+        "state": "queued",
+        "conversationAnswer": false,
+        "displayMode": "reply"
+      }
+    },
+    {
+      "label": "multiple queued",
+      "panel": {
+        "state": "busy",
+        "unread": "true",
+        "answerComplete": "false",
+        "attention": "false",
+        "selected": "true",
+        "active": "false"
+      },
+      "heading": "rgb(27, 58, 107)",
+      "headingText": "rgb(220, 228, 245)",
+      "headerIcon": "rgb(102, 158, 255)",
+      "shadow": "none",
+      "iconColor": "rgb(102, 158, 255)",
+      "outline": "none",
+      "api": {
+        "agentState": "busy",
+        "answerComplete": false,
+        "review": {
+          "revision": "27b3c56ba914378e3334995865204a6d45652f82d3c1c8967ef7b08bee7f1435",
+          "hasCompleted": true,
+          "unreviewed": true,
+          "attention": false,
+          "attentionRequestIds": []
+        },
+        "runId": "0d2eb652-61b9-41d9-8895-73df5708d524",
+        "state": "queued",
+        "conversationAnswer": false,
+        "displayMode": "reply"
+      }
+    },
+    {
+      "label": "older normal cannot override newer queue",
+      "panel": {
+        "state": "completed",
+        "unread": "true",
+        "answerComplete": "false",
+        "attention": "false",
+        "selected": "true",
+        "active": "false"
+      },
+      "heading": "rgb(29, 45, 71)",
+      "headingText": "rgb(220, 228, 245)",
+      "headerIcon": "rgb(139, 167, 152)",
+      "shadow": "none",
+      "iconColor": "rgb(119, 155, 136)",
+      "outline": "none",
+      "api": {
+        "agentState": "idle",
+        "answerComplete": false,
+        "review": {
+          "revision": "8fbc02775d047e682911ccec64965e140a836deebb870b53edf74b16090dbfc6",
+          "hasCompleted": true,
+          "unreviewed": true,
+          "attention": false,
+          "attentionRequestIds": []
+        },
+        "runId": "0d2eb652-61b9-41d9-8895-73df5708d524",
+        "state": "queued",
+        "conversationAnswer": false,
+        "displayMode": "reply"
+      }
+    },
+    {
+      "label": "interrupted",
+      "panel": {
+        "state": "idle",
+        "unread": "true",
+        "answerComplete": "false",
+        "attention": "false",
+        "selected": "true",
+        "active": "false"
+      },
+      "heading": "rgb(29, 45, 71)",
+      "headingText": "rgb(220, 228, 245)",
+      "headerIcon": "rgb(139, 155, 181)",
+      "shadow": "none",
+      "iconColor": "rgb(139, 155, 181)",
+      "outline": "none",
+      "api": {
+        "agentState": "idle",
+        "answerComplete": false,
+        "review": {
+          "revision": "8fbc02775d047e682911ccec64965e140a836deebb870b53edf74b16090dbfc6",
+          "hasCompleted": true,
+          "unreviewed": true,
+          "attention": false,
+          "attentionRequestIds": []
+        },
+        "runId": "0d2eb652-61b9-41d9-8895-73df5708d524",
+        "state": "awaiting_input",
+        "conversationAnswer": false,
+        "displayMode": "reply"
+      }
+    },
+    {
+      "label": "failed",
+      "panel": {
+        "state": "idle",
+        "unread": "true",
+        "answerComplete": "false",
+        "attention": "false",
+        "selected": "true",
+        "active": "false"
+      },
+      "heading": "rgb(29, 45, 71)",
+      "headingText": "rgb(220, 228, 245)",
+      "headerIcon": "rgb(139, 155, 181)",
+      "shadow": "none",
+      "iconColor": "rgb(139, 155, 181)",
+      "outline": "none",
+      "api": {
+        "agentState": "idle",
+        "answerComplete": false,
+        "review": {
+          "revision": "8fbc02775d047e682911ccec64965e140a836deebb870b53edf74b16090dbfc6",
+          "hasCompleted": true,
+          "unreviewed": true,
+          "attention": false,
+          "attentionRequestIds": []
+        },
+        "runId": "0d2eb652-61b9-41d9-8895-73df5708d524",
+        "state": "failed",
+        "conversationAnswer": false,
+        "displayMode": "reply"
+      }
+    },
+    {
+      "label": "send unknown",
+      "panel": {
+        "state": "idle",
+        "unread": "true",
+        "answerComplete": "false",
+        "attention": "false",
+        "selected": "true",
+        "active": "false"
+      },
+      "heading": "rgb(29, 45, 71)",
+      "headingText": "rgb(220, 228, 245)",
+      "headerIcon": "rgb(139, 155, 181)",
+      "shadow": "none",
+      "iconColor": "rgb(139, 155, 181)",
+      "outline": "none",
+      "api": {
+        "agentState": "idle",
+        "answerComplete": false,
+        "review": {
+          "revision": "8fbc02775d047e682911ccec64965e140a836deebb870b53edf74b16090dbfc6",
+          "hasCompleted": true,
+          "unreviewed": true,
+          "attention": false,
+          "attentionRequestIds": []
+        },
+        "runId": "8ceb757f-a9ed-4f0e-bf8e-aab6091670cc",
+        "state": "awaiting_input",
+        "conversationAnswer": false,
+        "displayMode": "reply"
+      }
+    },
+    {
+      "label": "reconnect still unknown",
+      "panel": {
+        "state": "idle",
+        "unread": "true",
+        "answerComplete": "false",
+        "attention": "false",
+        "selected": "false",
+        "active": "false"
+      },
+      "heading": "rgb(29, 45, 71)",
+      "headingText": "rgb(220, 228, 245)",
+      "headerIcon": "rgb(139, 155, 181)",
+      "shadow": "none",
+      "iconColor": "rgb(139, 155, 181)",
+      "outline": "none",
+      "api": {
+        "agentState": "idle",
+        "answerComplete": false,
+        "review": {
+          "revision": "8fbc02775d047e682911ccec64965e140a836deebb870b53edf74b16090dbfc6",
+          "hasCompleted": true,
+          "unreviewed": true,
+          "attention": false,
+          "attentionRequestIds": []
+        },
+        "runId": "8ceb757f-a9ed-4f0e-bf8e-aab6091670cc",
+        "state": "awaiting_input",
+        "conversationAnswer": false,
+        "displayMode": "reply"
+      }
+    }
+  ]
+}

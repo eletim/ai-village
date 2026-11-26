@@ -1,0 +1,52 @@
+TAP version 13
+# Subtest: notification delivery deduplicates before side effects and across restart
+ok 1 - notification delivery deduplicates before side effects and across restart
+  ---
+  duration_ms: 25.410202
+  type: 'test'
+  ...
+# Subtest: failed and slow notification transports preserve sanitized diagnostics
+ok 2 - failed and slow notification transports preserve sanitized diagnostics
+  ---
+  duration_ms: 173.798167
+  type: 'test'
+  ...
+# Subtest: unreadable deduplication journal prevents delivery
+ok 3 - unreadable deduplication journal prevents delivery
+  ---
+  duration_ms: 1.870946
+  type: 'test'
+  ...
+# Subtest: image-only result keeps image bytes out of notifications
+ok 4 - image-only result keeps image bytes out of notifications
+  ---
+  duration_ms: 1.308739
+  type: 'test'
+  ...
+# Subtest: direct response notification accepts agents page and uses an agent title
+ok 5 - direct response notification accepts agents page and uses an agent title
+  ---
+  duration_ms: 1.122953
+  type: 'test'
+  ...
+# Subtest: direct notification has a VPN Agent deep link and restart never replays it
+ok 6 - direct notification has a VPN Agent deep link and restart never replays it
+  ---
+  duration_ms: 1.34155
+  type: 'test'
+  ...
+# Subtest: configuration errors are recorded without exposing CLI output
+ok 7 - configuration errors are recorded without exposing CLI output
+  ---
+  duration_ms: 3.242583
+  type: 'test'
+  ...
+1..7
+# tests 7
+# suites 0
+# pass 7
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 244.436573

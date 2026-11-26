@@ -1,0 +1,12 @@
+回答完了の枠/色 調査結果 2026-11-26
+対象 稼働f46ab2f/main f11c2dd、修正なし。
+結論: 村は正常終了completedへ遷移するが、緑枠/緑見出しは単なる正常終了/未読ではなくreviews.attentionが条件。普通の会話はattentionなし。未読trueでも緑枠なしをPC1440/スマホ390で再現。過去の外側WindowがPurpleMuxか村かは原画面履歴から特定不能、区別して報告する。
+対象run72ddaf1a-0352-4302-a710-175826da1d31: 人間入力「あー、聞こえますか」。受付12:32:22.383 JST。native completedAt12:32:23.927、completionEvent offset2017549。観測terminal fact12:32:27.952、normal/native-terminal。村projection state completed、conversationAnswer true、返答「はい、届いています。」。終了取得/確定回答漏れではない。現在review unreviewed=false/attention=false。閲覧時刻そのものの履歴はなく、当時の既読タイミングは断定しない。通知記録はsentであり閲覧中抑制とは記録されていない。
+原因: src/direct.css48〜54は普通のcompleted+unreadをbox-shadow:noneにし、attention時のみ3px緑枠/緑見出し。アイコンもattention時だけoutline。server/direct.mjs reviewStatesは!q.conversationIdかつrequestStatus completedだけattention候補にする。よって秘書会話の普通返答のみならず、その会話からの仕事完了報告もこの旧attention対象にならない（他に対象依頼がなければ）。
+既読: src/direct.js acknowledgeSelectionはvisible/focused/選択中、render revisionに対してview送信。server viewAgentがunreviewed/attentionを消す。attentionがある対象でも閲覧中はack後すぐ枠が消える。非選択/hiddenでは保持、復帰選択後ackで解除。
+以前との差: quiet ordinary completion色は2dcb653(2026-11-06)。会話連動依頼をattentionから除外したのはd8cae57(2026-11-25)。直近preview/画像PR164はdirect.css/themes/completionsを変更せず、direct.mjsはrollback resetだけ。focus復元は閲覧に戻るため既読処理が動く可能性はあるが、今回普通会話には初めからattentionなし。
+既存sidebar-live-completion.spec.jsはstate completedとattention:trueを直接与えて、未選択状態で属性更新を確認するfixture。普通会話のattention生成/背景色/閲覧中ackを検査していなかった。自動更新成功と「毎回返答後緑になる」は別。
+独自隔離検証: /tmp/village-fixes-review-a371536b/tests/browser/completion-color-investigation.spec.js、専用15582/temp state/通知OFF。12/12成功。PC/スマホ、通常(attention false)/要確認(true)、閲覧中/未選択、非表示/復帰を確認。POST/viewは偽routeのみ、本番既読変更なし。全時系列 /tmp/completion-color-timeline.jsonl、ログ /tmp/completion-color-browser.log。dark CSSでbusy見出しrgb(27,58,107)、通常completed未読rgb(29,45,71)、shadow/outline none。attention trueで3px緑shadowとoutline、ack後none。非表示ではack0、復帰1。仕事attentionはfixture入力であり、会話仕事が実際にattentionを生成する証明ではない。コード上は上述のとおり除外。
+PurpleMux候補: こちらは別状態。stop→ready-for-review、dismissTab→idle。globals.cssのdata-ui-pane-status ready-for-review/completedには緑inset線。村reviewsとは連動しない。読取tab status時点では現秘書tab--vkB2wはready-for-review。ただし後続の相談turnの状態であり対象の過去turnの画面を証明しない。PurpleMux画面の当時の描画は未検証。村への既読操作を代行せず閲覧者画面を操作しなかった。
+最小提案: 人間の期待が『普通の返答も終了したと分かる』なら、正常終了の表示を未読/要確認から分離。現在の会話の返答完了に専用枠/見出し状態を出し、既読ackで即消さず次の送信/実行開始で解除。通知・成果採否・仕事達成条件は変えない。過去completedが新しいbusy/failedを上書きしないようrun/session照合を維持。単に全会話をattentionへ戻すと達成/要確認意味を混ぜるため非推奨。
+修正/PR/本番反映/既読変更/本番テスト送信/runtime停止交換なし。実コードと読取記録＋隔離DOM/CSS確認による調査。物理スマホ/外側PurpleMux実画面履歴は未検証。

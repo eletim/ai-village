@@ -117,8 +117,10 @@ export class DirectAgents {
   close(){this.monitor?.close();this.flow.reporting.close();clearInterval(this.timer);this.owner?.close();this.store.close();}
   presentation(){
     if(!this.presentationCache){const view=humanProjection(this.data);this.presentationCache={...view,projects:view.projects.filter(p=>!p.deletedAt),capabilities:{secretaryConversations:true,presence:true,requestSplitting:true,requestInbox:true,steering:true,travelContexts:true,attachments:!!this.attachments},reviews:this.reviewStates(view)};}
+    // Completion emphasis follows the existing revision-bound read receipt.
+    // Keep normal-terminal/session checks in humanProjection; never use attention.
     const live=new Map(this.data.agents.map(a=>[a.id,a]));
-    return {...this.presentationCache,agents:this.presentationCache.agents.map(a=>({...a,lastCheckedAt:live.get(a.id)?.lastCheckedAt,runtime:live.get(a.id)?.runtime})),notification:this.notifier.status()};
+    return {...this.presentationCache,agents:this.presentationCache.agents.map(a=>({...a,answerComplete:a.answerComplete===true&&this.presentationCache.reviews[a.id]?.unreviewed===true,lastCheckedAt:live.get(a.id)?.lastCheckedAt,runtime:live.get(a.id)?.runtime})),notification:this.notifier.status()};
   }
   snapshot(){return structuredClone(this.presentation());}
   reviewStates(view=humanProjection(this.data)){

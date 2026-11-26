@@ -249,6 +249,7 @@ function renderBoard(){
   if(card.markerHTML!==marker){currentMarker.outerHTML=marker;card.markerHTML=marker;}
   card.dataset.state=visualState(a,agentEntries(state,a));
   card.dataset.unread=String(!!unread.get(a.id));
+  card.dataset.answerComplete=String(a.answerComplete===true);
   card.dataset.attention=String(!!state.reviews?.[a.id]?.attention);
   card.querySelector('.request-attention').textContent=state.reviews?.[a.id]?.attention?'依頼完了・要確認':'';
   card.querySelector('.unread-badge').textContent=unread.get(a.id)?'更新あり':'';
@@ -310,7 +311,7 @@ function placeTitle(id){if(isProject(id))return (state.projects||[]).find(p=>p.i
 function groupTitle(id,page){return placeTitle(id)+(id!=='all'&&page>0?` (${page+1})`:'');}
 function agentMarker(a,sidebar=true){
  const stateName=visualState(a,agentEntries(state,a));
- return statusIcon(a,{projects:state.projects||[],mode:displayPreferences().iconMode,workshops:state.workshops,state:stateName,stateLabel:labels[stateName]||stateName,attention:!!state.reviews?.[a.id]?.attention,unread:!!unread.get(a.id),sidebar});
+ return statusIcon(a,{projects:state.projects||[],mode:displayPreferences().iconMode,workshops:state.workshops,state:stateName,stateLabel:labels[stateName]||stateName,answerComplete:a.answerComplete===true,attention:!!state.reviews?.[a.id]?.attention,unread:!!unread.get(a.id),sidebar});
 }
 function agentDot(a){return agentMarker(a);}
 function renderPlaces(){
