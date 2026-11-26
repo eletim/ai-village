@@ -78,7 +78,8 @@ export class VillageOperations {
         if(action==='toggle'&&!['true','false'].includes(args[2]))throw new Error('完了状態はtrue/falseです');
         return todos.update({action,revision:Number(args[0]),id:action==='add'?undefined:args[1],text:action==='add'?args[1]:args[2],done:args[2]==='true'});
       }})),
-      { name:'images upload',usage:'node scripts/village.mjs images upload LOCAL_FILE (PNG/JPEG/WebP; uploads caller-local bytes)',run:()=>{throw Error('images uploadは呼び出し元のscripts/village.mjsで実行してください。HTTPはPOST /api/imagesへ画像本体を送信します。サーバーパスは受け付けません。');} },
+      { name:'images help',usage:'images help (read-only: upload and show images in replies)',run:()=>({text:'画像は images upload LOCAL_FILE（PNG/JPEG/WebP）で実行PC上のファイルを登録し、返された ![説明](village-image:UUID) を返信本文にそのまま記載します。複数枚は参照を並べます。images list で登録済み画像を確認できます。内部ファイルパスや外部画像URLでは表示されません。許可された画像だけを使用してください。途中発言と確定回答で同じ参照を使用できます。'}) },
+      { name:'images upload',usage:'node scripts/village.mjs images upload LOCAL_FILE (PNG/JPEG/WebP; reply with returned ![description](village-image:UUID); see images help)',run:()=>{throw Error('images uploadは呼び出し元のscripts/village.mjsで実行してください。HTTPはPOST /api/imagesへ画像本体を送信します。サーバーパスは受け付けません。');} },
       { name:'images list', usage:'images list', run:args=>{if(args.length)throw new Error('usage: images list');return images.list();} },
       { name:'help', usage:'help', run:args=>{if(args.length)throw new Error('usage: help');return this.commands.filter(c=>!c.hidden).map(({name,usage,mutation})=>({name,usage,mutation:!!mutation}));} },
       { name:'notifications status', usage:'notifications status', run:args=>{if(args.length)throw new Error('usage: notifications status');return notifier?.status() || {enabled:false,unavailable:true};} },

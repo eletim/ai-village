@@ -1,0 +1,52 @@
+PR160 追加差分・最終独立レビュー
+対象: 6442e6678ff688c38960ef18f9aff149da4a7b1b
+基準: 採用済み91d678c。前回レビューと失敗履歴は保持し、今回の検証で置換しない。
+clone: /tmp/secretary-preview-review-r2（実装者のcloneから--no-hardlinks、detached HEAD固定）
+対象差分: 259a2e4の未確定会話scope限定、6442e66の画像表示/拡大/切替/help、関連文書・テスト。
+
+結論: 追加実装は採用可能。高0・中0・低1・情報1。重要残数（中以上）0。
+コードの重要な不具合は今回の範囲では確認しなかった。文書の旧説明だけ修正を推奨する。これはマージ/反映の実施または許可ではない。
+
+低 L1: 表示方式の旧説明が現行実装と矛盾
+ファイル: docs/secretary-visible-preview.md:13
+根拠: 「表示はHTMLエスケープしたプレーンテキスト」とあるが、src/direct.js:180はreportHTML(m.text)を使用し、同文書:53も安全なMarkdown表示と説明している。
+再現: プレビュー本文に内部画像参照やMarkdownを入れると画像/書式が描画される（追加ブラウザと独立probeで確認）。プレーンテキスト固定ではない。
+影響: 安全境界と表示仕様を読む人に誤解を与える。実装の外部画像抑止・HTMLエスケープには問題を確認しなかった。
+修正案: 13行を「既存の安全なMarkdown描画（生HTMLはエスケープ、画像は登録済み内部参照のみ）」等へ更新する。49行の未修正記述も初期調査時の記録と明示すると経過が明瞭。
+
+情報 I1: 通知OFF実行の5失敗を全成功と合算しない
+全単体930件は924成功・5失敗・1skip。失敗はnotifier.test.jsの通知送信を期待する5件で、VILLAGE_NOTIFICATIONS=falseにより偽CLI呼出が抑止されたもの。ファイルを読み、送信先が一時ディレクトリ内の偽CLIまたはメモリstubであることを確認して、当該ファイルだけenv -u VILLAGE_NOTIFICATIONSで実行し7/7成功。外部通知なし。コードの修正要求なし。
+
+独立検証結果
+- npm run check / npm run typecheck / npm run build: 全成功。
+- VILLAGE_NOTIFICATIONS=false node --test --test-concurrency=4 tests/*.test.js: 924成功、5失敗、1skip（上記I1）。ログ /tmp/secretary-preview-r2-unit.log。
+- env -u VILLAGE_NOTIFICATIONS node --test tests/notifier.test.js: 7成功。ログ /tmp/secretary-preview-r2-notifier.log。
+- VILLAGE_TEST_PORT=15560 VILLAGE_NOTIFICATIONS=false npm run test:ui: 246/246成功、33.5秒。ログ /tmp/secretary-preview-r2-ui.log。build完了後に実行。
+- 独自追加ブラウザprobe: PC1440/スマホ390の2/2成功、1.2秒。/tmp/preview-r2-probes/images.spec.mjs、config.mjs。ログ /tmp/secretary-preview-r2-probes.log。
+- 追加probeは既存テストを変更せずclone外に作成。全検証は一時state、専用15560、通知OFF（上記偽CLI単独のみ例外）。tracked git statusはclean。
+
+追加差分の確認内容と根拠
+1. 未確定会話のみpreview購読
+src/direct.js:361以降は表示中/フォーカス/秘書の条件を保ち、conversationIdがあり未確定でrunning/failed/interrupted/superseded/terminatedの回がある場合だけ対象を返す。legacy/job-only・確定済みでは追加購読しない。failed等の未確定履歴は再訪復元対象として保持する。
+独立probeで確定済み2回答だけの秘書を開いてpreview要求なしを確認。そのままrunning未確定回に変えると購読開始、completed+conversationAnswerで空scopeへ解除。既存workspace同期/slow HTTP/backoffを含む全体ブラウザ成功。
+
+2. 画像経路と安全性
+server/operations.mjs:81付近はimages helpとupload usageの追加のみ。scripts/village.mjs:10-17は実行側のローカルファイルを読み/api/imagesへアップロードし、返却IDからvillage-image参照を出力する既存実装。案内はこの経路と整合。サーバーの任意パス読取を案内していない。
+src/report-content.jsの既存画像rendererはUUID v4形式のvillage-imageだけを/api/images/IDに変換し、外部画像/ローカルパスは表示文字列とする。生HTMLはエスケープ。src/report-visuals.js:61-66でも画像srcと正規化参照を照合。Mermaidの既存strict/sanitize処理も維持。
+独立probeでhttps://example.invalidのMarkdown画像、file:///tmpの画像、生imgタグ+onerrorをpreviewに挿入。画像要素は内部2枚だけ、外部リクエスト0、onerror実行なしを確認。これはモデルが人間向け文章に自ら記載した秘密の自動検出を保証するものではない。native parserや内部推論/ツール/端末の除外条件はこの差分で変更されていない。
+startup契約、毎回入力、runtime交換処理に差分なし。helpを必要時に取得する説明として妥当。
+
+3. ギャラリー/拡大/snapshot
+src/report-visuals.js:50-84。fit/2倍はviewportのクラスで切替、スクロール可能。前次は端で無効、枚数表示、非拡大時の左右キー、画像切替時にfitへ戻す。同回答の.message.assistant等をグループにし、開いた時の検証済imgをcloneして保持。
+既存追加ブラウザでPC1440/スマホ390それぞれ、2枚の切替・2倍bbox・scrollWidth・端無効・左右キー・確定中snapshot・close/reopen・単一画像の両端無効・横はみ出しなしを確認。390幅の /tmp/secretary-images-390.png を目視し、コントロールと画像が画面内に収まることも確認。
+独立probeでは前の回答1枚＋現在回答の別発言2枚を用意し、現在回答は1/2→2/2で止まり前回答へ越境しないことを確認。確定回答が画像なしへ変更されても開いたsnapshotを維持。閉じて前回答を開くと1/1になり前回答だけのグループであることを確認。
+previewからfinalへ同参照を維持するかは最終本文にも参照があることが条件。コードがプレビュー画像を勝手に最終成果へ混ぜる仕様ではなく、helpは同参照を使用できると正確に案内している。
+
+4. 既存機能との分離
+通知・既読・成果採否・会話完了のサーバー判定に追加差分なし。画像クリックは表示操作であり、独立probeで追加API書込0を確認。既存の閲覧presence/既読機構自体は保持。全体ブラウザに工房/リーダー・sidebar・通知/既読表示・複数run/タブ・再試行の回帰を含む。
+
+未実施・境界
+- 実モデルへの新しい依頼送信や本番画像アップロードは行っていない。表示/攻撃入力/状態遷移は隔離fixtureで検証した。
+- 実装者の全体実行結果を自分の結果として使用していない。今回の独立実行ログを上記に保存した。
+- コード編集、commit/push、PR操作、マージ、本番反映、サービス/runtime操作、秘書停止/交換、Claude起動、旧操作再送は行っていない。
+- 追加レビュー依頼のみ正式finish対象。前回91d678cの採用済みレビューは保持。

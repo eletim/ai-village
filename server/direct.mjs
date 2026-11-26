@@ -1,3 +1,4 @@
+import {previewMessages} from './secretary-preview.mjs';
 import {retireDecisionReminder} from './conversation-decision-recovery.mjs';
 import {secretaryHandoverPlan,handoverSecretary} from './secretary-handover.mjs';
 import {retirementOption,retirementRecord,retirementIntact,retirementRunAllowed,latestRetirement} from './legacy-retirement.mjs';
@@ -611,6 +612,7 @@ export class DirectAgents {
       for(const r of this.data.runs.filter(r=>r.agentId===a.id&&active(r)&&!quarantinedRun(this.data,r))){
         const observation=correlate(r,snapshot);
         observeRun(r,observation,snapshot);
+        if(observation.turnId&&a.location==='mayor'&&r.conversationId)r.livePreview=observation.livePreview;else if(r.livePreview)delete r.livePreview;
         if(observation.turnId){r.acceptedAt ||= now();r.turnId=observation.turnId;r.sessionId=observation.sessionId;r.inputId ||= observation.inputId;if(typeof observation.output==='string')r.output=observation.output;if(typeof observation.finalOutput==='string')r.finalOutput=observation.finalOutput;}
         if(observation.turnId&&r.steerTarget){
           // Bring the superseded chain up to each confirmed input boundary.
@@ -630,6 +632,7 @@ export class DirectAgents {
             const end=resolveInputPosition(snapshot.inputs,next.inputId,r.turnId);
             if(!previous||runState(previous)!=='superseded'||previous.sessionId!==r.sessionId||!start||!end||start.offset>=end.offset)break;
             previous.output=outputBetween(turn,start.offset,end.offset);
+            if(previous.livePreview)previous.livePreview={runId:previous.id,sessionId:previous.sessionId,turnId:previous.turnId,messages:previewMessages(turn,start.offset,end.offset)};
             next=previous;
           }
         }

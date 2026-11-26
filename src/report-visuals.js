@@ -47,12 +47,39 @@ export function updateReportHTML(host,html){
  for(const n of template.content.querySelectorAll('[data-visual]')){const reuse=old.get(key(n))?.shift();if(reuse)n.replaceWith(reuse);}
  host.replaceChildren(template.content);host.querySelectorAll('[data-visual]').forEach(enhance);
 }
-let dialog,opener;
+let dialog,opener,images=[],index=0,zoomed=false;
+function showImage(){
+ const viewport=dialog.querySelector('.report-image-viewport');
+ viewport.replaceChildren(images[index].cloneNode());viewport.classList.toggle('zoomed',zoomed);
+ viewport.scrollTop=viewport.scrollLeft=0;
+ dialog.querySelector('[data-prev]').disabled=index===0;
+ dialog.querySelector('[data-next]').disabled=index===images.length-1;
+ dialog.querySelector('[data-count]').textContent=`${index+1} / ${images.length}`;
+ const zoom=dialog.querySelector('[data-zoom]');zoom.textContent=zoomed?'全体表示':'拡大';zoom.setAttribute('aria-pressed',String(zoomed));
+}
+function step(delta){const next=index+delta;if(next<0||next>=images.length)return;index=next;zoomed=false;showImage();}
+function validImage(button){
+ const img=button.querySelector('img'),figure=button.closest('[data-visual]');
+ if(!img||!figure)return null;
+ if(figure.dataset.visual==='image'&&img.getAttribute('src')!==reportImageURL(figure.dataset.source))return null;
+ if(figure.dataset.visual!=='image'&&figure.dataset.visual!=='mermaid')return null;
+ return img;
+}
 document.addEventListener('click',e=>{
- const button=e.target.closest('.report-zoom');if(!button)return;
- const img=button.querySelector('img');if(!img)return;
- const figure=button.closest('[data-visual]');if(!figure)return;
- if(figure.dataset.visual==='image'&&img.getAttribute('src')!==reportImageURL(figure.dataset.source))return;
- if(!dialog){dialog=document.createElement('dialog');dialog.className='report-lightbox';dialog.setAttribute('aria-label','図・画像の拡大表示');const close=document.createElement('button');close.type='button';close.textContent='閉じる';close.onclick=()=>dialog.close();dialog.append(close);dialog.addEventListener('close',()=>{dialog.querySelector('img')?.remove();if(opener?.isConnected)opener.focus({preventScroll:true});});document.body.append(dialog);}
- opener=button;dialog.querySelector('img')?.remove();dialog.append(img.cloneNode());dialog.showModal();dialog.querySelector('button').focus();
+ const button=e.target.closest('.report-zoom');if(!button||!validImage(button))return;
+ if(!dialog){
+  dialog=document.createElement('dialog');dialog.className='report-lightbox';dialog.setAttribute('aria-label','図・画像の拡大表示');
+  dialog.innerHTML='<div class="report-image-controls"><button type="button" data-prev aria-label="前の画像">←</button><span data-count aria-live="polite"></span><button type="button" data-next aria-label="次の画像">→</button><button type="button" data-zoom aria-pressed="false">拡大</button><button type="button" data-close>閉じる</button></div><div class="report-image-viewport"></div>';
+  dialog.querySelector('[data-close]').onclick=()=>dialog.close();
+  dialog.querySelector('[data-prev]').onclick=()=>step(-1);dialog.querySelector('[data-next]').onclick=()=>step(1);
+  dialog.querySelector('[data-zoom]').onclick=()=>{zoomed=!zoomed;showImage();};
+  dialog.addEventListener('keydown',e=>{if(!zoomed&&['ArrowLeft','ArrowRight'].includes(e.key)){e.preventDefault();step(e.key==='ArrowLeft'?-1:1);}});
+  dialog.addEventListener('close',()=>{dialog.querySelector('.report-image-viewport').replaceChildren();images=[];if(opener?.isConnected)opener.focus({preventScroll:true});});document.body.append(dialog);
+ }
+ // One reply is one group, including its preview messages. Snapshot the safe images so
+ // completion/re-render cannot change the open viewer's index or remove its image.
+ const group=button.closest('.message.assistant,.chat-message,.report-prose,.report-agent')||button.closest('[data-visual]');
+ const buttons=[...group.querySelectorAll('.report-zoom')].filter(validImage);
+ index=buttons.indexOf(button);images=buttons.map(b=>validImage(b).cloneNode());
+ opener=button;zoomed=false;showImage();dialog.showModal();dialog.querySelector('[data-close]').focus();
 });

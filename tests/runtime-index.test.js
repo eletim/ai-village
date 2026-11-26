@@ -139,6 +139,8 @@ test('incremental snapshots match the frozen pre-index parser for both providers
   const file=provider==='codex'?f.file:join(f.dir,'.claude','projects','fixture',sid+'.jsonl');await mkdir(join(file,'..'),{recursive:true});await writeFile(file,'');
   const env={...f.env,HOME:f.dir},execute=async(a,args)=>execFileSync(args[0],args.slice(1),{env,maxBuffer:15e6}).toString();
   for(const row of rows){await appendFile(file,lines([row]));const actual=await f.reader.read({...f.a,provider},f.status,execute),expected=JSON.parse(execFileSync('python3',[reference,provider,sid],{env}));if(provider==='claude'){actual.inputs=actual.inputs.map(({explicitTurn,source,...i})=>i);actual.turns=actual.turns.map(({completionOffset,...t})=>t);}
+   // New display metadata is tested separately; compare the legacy semantic projection.
+   actual.turns=actual.turns.map(t=>({...t,messages:t.messages.map(({phase,...m})=>m)}));
    for(const field of ['available','cursor','turns','inputs','modelInfo'])assert.deepEqual(field==='inputs'?actual[field].map(({aliases,...i})=>i):actual[field],expected[field],provider+' '+field);}
  }
 });

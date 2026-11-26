@@ -68,8 +68,8 @@ const handleRequest = async (req, res) => {
           if(params.get('view')==='workspace'){
             let ranges;try{ranges=JSON.parse(params.get('ranges')||'{}');}catch{return json(res,400,{error:'Invalid history ranges'});}
             let focus=null;if(params.has('focus')){try{focus=JSON.parse(params.get('focus'));}catch{return json(res,400,{error:'Invalid focus agents'});}}
-            const snapshot=workspaceSnapshot(direct.presentation(),ranges,focus,{lean:leanFetch,lazyBodies:leanFetch&&params.get('bodies')==='lazy'});
-            if(params.get('sync')==='1')return await syncResponse(req,res,workspaceSync.reply({client:params.get('client'),since:params.get('since'),scope:(params.get('ranges')||'{}')+'|'+(params.get('focus')||'')},snapshot));
+            const snapshot=workspaceSnapshot(direct.presentation(),ranges,focus,{lean:leanFetch,lazyBodies:leanFetch&&params.get('bodies')==='lazy',previewAgent:params.get('preview')});
+            if(params.get('sync')==='1')return await syncResponse(req,res,workspaceSync.reply({client:params.get('client'),since:params.get('since'),scope:(params.get('ranges')||'{}')+'|'+(params.get('focus')||'')+'|'+(params.get('preview')??'legacy')},snapshot));
             return json(res,200,snapshot);
           }
           if(params.get('view')==='map'&&leanFetch)return json(res,200,mapSnapshot(direct.presentation()));
