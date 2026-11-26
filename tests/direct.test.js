@@ -14,6 +14,7 @@ async function fixture(t){
  const data={available:true,sessionId:'session',cursor:0,inputs:[],turns:[]};const deliveredInputs=new Map();let sends=0,notices=0,disconnected=false,loseSend=false,present=true;
  const remote=async(args)=>{
   if(disconnected)throw Error('offline');
+  if(args[0]==='env')return JSON.stringify({ok:true,clientConnectionVersion:1,result:service.rules.specification('work')});
   if(args[0]==='python3'){
    if(args[2]===installInstructionsScript)return JSON.stringify({installed:true,hash:inputHash(args.at(-1))});
    if(args[2]===verifyInstructionsScript)return JSON.stringify({verified:true});
@@ -30,7 +31,7 @@ async function fixture(t){
  };
  const options={dir,remote,notifier:{status:()=>({}),enqueue:async()=>{notices++;return {status:'sent'};}}};
  const service=new DirectAgents(options);await service.init({watch:false});service.flow.protocol=0;await service.flow.configureReport(false);
- const w=await service.putWorkshop({name:'w',sshHost:'host',baseUrl:'http://host',workplaces:['/tmp']});
+ const w=await service.putWorkshop({name:'w',villageConnection:{url:'http://100.64.0.2:15680',cliPath:'/fixture/scripts/village.mjs'},sshHost:'host',baseUrl:'http://host',workplaces:['/tmp']});
  const a=await service.create({workshopId:w.id,cwd:'/tmp',requestId:'create-001'});await service.tick();
  const input=(instruction,id='turn-'+(data.turns.length+1))=>{data.cursor+=10;data.inputs.push({id:'input-'+id,turnId:id,text:deliveredInputs.get(instruction)||instruction,hash:service.data.runs.findLast(r=>r.instruction===instruction)?.inputHash||inputHash(instruction),offset:data.cursor});data.turns.push({id,state:'running',output:''});return data.turns.at(-1);};
  return {service,options,w,a,data,input,sends:()=>sends,notices:()=>notices,disconnect:v=>disconnected=v,lose:()=>loseSend=true};

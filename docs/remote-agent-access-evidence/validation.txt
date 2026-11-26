@@ -1,0 +1,19 @@
+実装担当検証。独立レビュー未実施。
+/tmp/remote-access-initial-tests.log: 8 pass /30 fail (remote設定なしの旧fixture)
+/tmp/remote-access-related.log: 38 pass
+/tmp/remote-access-full-unit.log: 843 pass /44 fail /1skip (vendor未生成・通知OFF)
+/tmp/remote-access-full-unit-final.log: 944 pass /0fail /1skip
+/tmp/remote-access-notifier.log: 7 pass (偽通知のみenv解除)
+/tmp/remote-access-final-related.log: 44 pass (最終追加後)
+/tmp/remote-access-browser.log: 256 pass (15682)
+/tmp/remote-access-build.log: build/typecheck成功
+/tmp/remote-access-check.log: syntax成功
+/tmp/remote-access-evidence/real-host.log: REAL_REMOTE_READ_OK 2 (15681)
+実機probeの絶対path/登録host/VPN addressは当該実験の値。製品の既定値ではない。
+probeは既存Agentを起動しない。再実行時は登録hostと空きport/一時dirを確認し、コピー先とimportパスを調整する。
+
+最新統合a0e267aへrebase後:
+/tmp/remote-access-rebase-unit.log: 958 pass /0fail /1skip
+/tmp/remote-access-rebase-browser.log: 257 pass
+/tmp/remote-access-rebase-build.log: build/typecheck/syntax成功
+/tmp/remote-access-last-boundary.log: localhost.を含む6境界成功

@@ -42,7 +42,7 @@ const travelRegistry=new TravelRegistry(dir);await travelRegistry.init();
 const notifier = new VillageNotifier({ dir: dir });
 await notifier.init();
 const attachments=new AttachmentStore(dir);await attachments.init();
-const direct = new DirectAgents({dir:dir,remote:remoteExecutor(dir),notifier,attachments,villageUrl:`http://127.0.0.1:${port}`});
+const direct = new DirectAgents({dir:dir,remote:remoteExecutor(dir),notifier,attachments,villageUrl:`http://127.0.0.1:${port}`,remoteVillageUrl:process.env.VILLAGE_PUBLIC_ORIGIN||(addresses[1]?`http://${addresses[1]}:${port}`:undefined)});
 await direct.init();
 const changeStream=new ChangeStream(direct.events);todos.events.on('change',()=>direct.events.emit('change'));
 const images = new ImageStore(dir);
@@ -58,7 +58,7 @@ const handleRequest = async (req, res) => {
     if(pathname.startsWith('/api/direct/human/')&&!humanIntent.allow(req))return json(res,403,{error:'人間専用の操作です。村の画面を再読み込みして操作してください。'});
     if (pathname.startsWith('/api/')) {
       if (pathname.startsWith('/api/direct')) {
-        if(req.method==='GET'&&pathname==='/api/direct/rules'){const params=new URL(req.url,'http://localhost').searchParams;return json(res,200,params.get('action')&&params.get('phase')==='work'?direct.rules.action(params.get('action')):direct.rules.specification(params.get('phase')||'work'));}
+        if(req.method==='GET'&&pathname==='/api/direct/rules'){const params=new URL(req.url,'http://localhost').searchParams;return json(res,200,params.get('action')&&params.get('phase')==='work'?direct.rulesFor(params.get('agentId')).action(params.get('action')):direct.rulesFor(params.get('agentId')).specification(params.get('phase')||'work'));}
         if(req.method==='GET'&&pathname==='/api/direct/events')return changeStream.connect(req,res);
         if(req.method==='GET' && pathname==='/api/direct/usage')return json(res,200,await weeklyUsage.get());
         if(req.method==='GET' && pathname==='/api/direct/requests')return json(res,200,{requests:direct.flow.list()});
