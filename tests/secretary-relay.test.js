@@ -166,6 +166,7 @@ test('recovery rejects changed proof, foreign source, later native, later human,
   if(variant==='source-human')await d.send(x.sender.agentId,{mode:'conversation',requestId:id(),instruction:'中止'});
   if(variant==='target-human')await d.send(r.agentId,{mode:'conversation',requestId:id(),instruction:'中止'});
   if(variant==='revision')d.flow.root(x.job.humanRequestId).revision++;
+  if(variant==='connection')d.agent(r.agentId).connection={connectionType:'local',name:'changed'};
   if(variant==='applied')d.conversations.record(r.conversationId).relayInbox[0].actionReceipt={action:'amend'};
   if(variant==='unclosed')native.turns.at(-1).state='running';
   if(variant==='session')native.sessionId=id();
@@ -325,13 +326,14 @@ test('fresh initial unknown launch is never repeated; uncertain save never launc
  }
 });
 test('fresh receipt rejects changed process, old native, later human and target revision before apply',async t=>{
- for(const variant of ['process','old-native','human','revision']){
+ for(const variant of ['process','old-native','human','revision','connection']){
   const x=await initialFixture(t),{d,f}=x,receipt=await d.conversations.relayRecover(x.recover),r=d.flow.run(receipt.runId);
   await f.submit(r);
   if(variant==='process')x.transport().receipt.startTicks='other';
   if(variant==='old-native')x.oldNative.cursor++;
   if(variant==='human')await d.send(x.sender.agentId,{mode:'conversation',requestId:id(),instruction:'再開を撤回'});
   if(variant==='revision')d.flow.root(x.job.humanRequestId).revision++;
+  if(variant==='connection')d.agent(r.agentId).connection={connectionType:'local',name:'changed'};
   await assert.rejects(d.conversations.relayApply({conversationId:r.conversationId,actorRunId:r.id,operationId:id(),deliveryId:receipt.deliveryId}));
   assert.equal(d.data.runs.filter(r=>r.secretaryRecovery).length,0);
  }

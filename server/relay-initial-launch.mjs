@@ -4,7 +4,7 @@ import {changeRun} from './run-lifecycle.mjs';
 import {recoveryEvidence} from './secretary-relay-recovery.mjs';
 const digest=s=>createHash('sha256').update(s).digest('hex');
 const fail=m=>{throw Object.assign(Error(m),{status:409});};
-const runtimeKeys=['workspaceId','tabId','initialTabId','sessionName','runtime','inputEnvelope','observedSessionId','contractVerifiedSessionId','ownedProcesses','processVerification','terminalUrl','modelInfo'];
+const runtimeKeys=['connection','workshopId','cwd','workspaceId','tabId','initialTabId','sessionName','runtime','inputEnvelope','observedSessionId','contractVerifiedSessionId','ownedProcesses','processVerification','terminalUrl','modelInfo'];
 export function reserveInitialRelay(d,a,r,e,handover){
  if(a.provider!=='codex'||a.connection?.connectionType!=='local'||a.launchProfile||a.runtimeRetiredTo||a.runtimeUpgrade?.state==='prepared'||a.inputEnvelope?.mode!=='startup-v2'||a.inputEnvelope.hash!==digest(d.startupInstructions(a)))fail('初回起動は現行契約のlocal Codexだけです');
  if(typeof handover!=='string'||!handover.trim()||handover.length>12000)fail('旧runtime・外部効果・draftの保全引継ぎが必要です');
@@ -50,7 +50,7 @@ export async function bindInitialRelayRuntime(service,a,r){
  const d=service.d,i=r.relayInitial,l=i.launch;
  if(!i.attemptedAt)return false;
  service.dispatchBoundary(r);
- if(a.tabId!==l.tabId||a.workspaceId!==l.workspaceId)fail('予約runtimeが変化しました');
+ if(JSON.stringify(a.connection)!==JSON.stringify(i.oldRuntime.connection)||a.workshopId!==i.oldRuntime.workshopId||a.tabId!==l.tabId||a.workspaceId!==l.workspaceId)fail('予約runtimeが変化しました');
  const evidence=await d.pmux(a,'tab','initial-status',l.operationId);
  if(evidence.state!=='started'||!evidence.processMatches||!evidence.receipt)return false;
  for(const k of ['operationId','workspaceId','tabId','runId','contractHash'])if(evidence[k]!==l[k])fail('初回receiptが一致しません');
@@ -67,7 +67,7 @@ export async function initialRelayObservation(service,a,r,snapshot,status){
  const d=service.d,i=r.relayInitial,l=i.launch;
  if(!i.attemptedAt)return false;
  service.dispatchBoundary(r);
- if(a.tabId!==l.tabId||a.workspaceId!==l.workspaceId)fail('予約runtimeが変化しました');
+ if(JSON.stringify(a.connection)!==JSON.stringify(i.oldRuntime.connection)||a.workshopId!==i.oldRuntime.workshopId||a.tabId!==l.tabId||a.workspaceId!==l.workspaceId)fail('予約runtimeが変化しました');
  const evidence=await d.pmux(a,'tab','initial-status',l.operationId);
  if(evidence.state!=='started'||!evidence.processMatches||!evidence.receipt)return false;
  for(const k of ['operationId','workspaceId','tabId','runId','contractHash'])if(evidence[k]!==l[k])fail('初回receiptが一致しません');
