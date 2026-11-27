@@ -299,7 +299,8 @@ function renderBoard(){
   travelEditors.get(a.id).lock(card.dataset.pending==='true'||pending.has(a.id));
   const supplement=!!choice.value;
   const conversationControl=!supplement&&state.capabilities?.secretaryConversations&&a.location==='mayor'&&a.projectId?a.conversationControl:null;
-  send.disabled=!!choice.selectedOptions[0]?.disabled||(!supplement&&!connected)||(!supplement&&(conversationControl?!conversationControl.canAccept:a.canSend!==true&&a.canSteer!==true&&a.canQueue!==true))||card.dataset.pending==='true'||pending.has(a.id);
+  send.disabled=navigator.onLine===false||!!choice.selectedOptions[0]?.disabled||(!supplement&&!connected)||(!supplement&&(conversationControl?!conversationControl.canAccept:a.canSend!==true&&a.canSteer!==true&&a.canQueue!==true))||card.dataset.pending==='true'||pending.has(a.id);
+  card.querySelector('[data-reconcile]').disabled=navigator.onLine===false;
   card.querySelector('[data-reconcile]').hidden=!pending.has(a.id)||card.dataset.pending==='true';
   const sendLabel=send.form.dataset.sending==='true'?'送信中…':pending.has(a.id)?'送信結果を確認中':supplement?'補足を送信':state.capabilities?.secretaryConversations&&a.location==='mayor'&&a.projectId?'会話を送信':!state.capabilities?.requestInbox&&a.canSteer?'実行中に補足':a.canQueue&&!a.canSend?'待機キューへ':'送信';
   send.innerHTML=sendLabel==='送信'?actionSVG('send'):esc(sendLabel);
@@ -619,7 +620,13 @@ function restartSync(){
  syncBase=null;retryAt=0;disarmSyncIndicator();
  void refresh(true);
 }
+function browserOffline(){
+ syncEpoch++;syncController?.abort();syncController=null;refreshTask=null;connected=false;retryAt=0;disarmSyncIndicator();
+ if(state)renderBoard();
+ connectionStatus($('#connection'),'このブラウザはオフラインです。表示は保存済みの情報です。接続が戻ると再確認します。');
+}
 async function refresh(force=false){
+ if(navigator.onLine===false){browserOffline();return false;}
  const epoch=syncEpoch;
  if(refreshTask){const result=await refreshTask;if(epoch!==syncEpoch)return false;if(force&&result)return refresh(true);return result;}
  if(Date.now()<retryAt)return false;
@@ -643,7 +650,7 @@ $('#reset-workshop').onclick=()=>{if(secretarySetup)prepareSecretaryForm();else{
 $('#workshops').onclick=e=>{const id=e.target.dataset.edit;if(!id)return;const w=state.workshops.find(w=>w.id===id);for(const key of ['id','name','connectionType','sshHost','baseUrl','workplaces'])$('#workshop-form').elements[key].value=key==='workplaces'?w[key].join('\n'):(w[key]??(key==='connectionType'?'ssh':''));patternEditor.set(w);connectionFields();$('#workshop-title').textContent='工房を編集';};
 $('#agent-form').onsubmit=e=>{e.preventDefault();const f=e.currentTarget;f.dataset.requestId ||= newRequestId();action(f,async()=>{let a;try{a=await api('/agents',{...Object.fromEntries(new FormData(f)),...(launcherProjectId?{projectId:launcherProjectId}:{}),requestId:f.dataset.requestId});}catch(error){if(error.status&&error.status<500)delete f.dataset.requestId;throw error;}delete f.dataset.requestId;$('#agent-dialog').close();await refresh(true);if(a.id){const scope=a.projectId?'project:'+a.projectId:placeId(a);choosePlace(scope,Math.floor(scopeAgents(scope).findIndex(x=>x.id===a.id)/PAGE_SIZE));void refresh(true);cards.get(a.id)?.scrollIntoView({block:'nearest'});}});};
 $('#agents').onsubmit=async e=>{
- e.preventDefault();const f=e.target,id=f.dataset.send;if(!id||pending.has(id)||f.querySelector('button').disabled||(!f.elements.instruction.value.trim()&&!fileEditors.get(id).count))return;
+ e.preventDefault();if(navigator.onLine===false){browserOffline();return;}const f=e.target,id=f.dataset.send;if(!id||pending.has(id)||f.querySelector('button').disabled||(!f.elements.instruction.value.trim()&&!fileEditors.get(id).count))return;
  if(travelEditors.get(id).value.length&&!state.capabilities?.travelContexts){$('#error').textContent='出張先の送信にはサーバー更新の反映が必要です。下書きは保持しています。';return;}
  const requestTarget=f.elements.requestTarget?.value;
  const conversation=!requestTarget&&state.capabilities?.secretaryConversations&&state.agents.some(a=>a.id===id&&a.location==='mayor'&&a.projectId);
@@ -655,6 +662,7 @@ $('#agents').onsubmit=async e=>{
   fileEditors.get(id).lock(true);travelEditors.get(id).lock(true);refreshMessageLog(id);
   try{
    receipt.attachments=await fileEditors.get(id).upload();
+   if(navigator.onLine===false){browserOffline();throw Error('オフラインのため入力は送信していません。下書きは保持しています。');}
   }catch(error){message.stage='failed';message.error=error.message;storeDrafts();throw error;}
   pending.set(id,receipt);message.stage='posting';storeDrafts();refreshMessageLog(id);
   try{
@@ -692,10 +700,11 @@ $('#agents').onclick=e=>{
    else {const full=await api('/requests/get',{humanRequestId:q.id});await api(r.state==='completed'?'/human/requests/resume':'/human/requests/retry',{humanRequestId:q.id,workId:r.workId,revision:full.revision,operationId:newRequestId(),instruction:'失敗・中断からの復旧です。既存変更・PR・外部操作・requests get/resultsの子作業を確認し、未完了部分だけ進めてください。子作業の再委任や二重操作を避け、モデルは変更しないでください。委任ありのまとめ役だけfinishで申告してください。\n元の指示（全文はrequests getで確認）:\n'+(full.instruction||'').slice(0,12000)});}
   });return;
  }
- const reconcile=e.target.closest('[data-reconcile]');if(reconcile){const id=reconcile.dataset.reconcile,receipt=pending.get(id);if(receipt)action(reconcile.closest('article'),async()=>{if(receipt.requestTarget){const [humanRequestId,workId]=receipt.requestTarget.split(':');await api('/human/requests/supplement',{humanRequestId,workId,operationId:receipt.requestId,instruction:receipt.instruction,attachments:receipt.attachments,travelContexts:receipt.travelContexts});}else await api('/agents/'+id+'/runs',receipt);await refresh();});return;}const manage=e.target.closest('[data-manage-agent]'),zoom=e.target.closest('[data-zoom]');if(manage)openMetadata(manage.dataset.manageAgent);if(zoom){toggleZoom(zoom.dataset.zoom);void refresh(true);}};
-void refresh();subscribeChanges(()=>refresh(true),{onDisconnect:()=>{connected=false;connectionStatus($('#connection'),'変更通知に再接続しています');if(state)renderBoard();}});
+ const reconcile=e.target.closest('[data-reconcile]');if(reconcile){if(navigator.onLine===false){browserOffline();return;}const id=reconcile.dataset.reconcile,receipt=pending.get(id);if(receipt)action(reconcile.closest('article'),async()=>{if(receipt.requestTarget){const [humanRequestId,workId]=receipt.requestTarget.split(':');await api('/human/requests/supplement',{humanRequestId,workId,operationId:receipt.requestId,instruction:receipt.instruction,attachments:receipt.attachments,travelContexts:receipt.travelContexts});}else await api('/agents/'+id+'/runs',receipt);await refresh();});return;}const manage=e.target.closest('[data-manage-agent]'),zoom=e.target.closest('[data-zoom]');if(manage)openMetadata(manage.dataset.manageAgent);if(zoom){toggleZoom(zoom.dataset.zoom);void refresh(true);}};
+void refresh();subscribeChanges(()=>refresh(true),{onDisconnect:()=>{if(navigator.onLine===false){browserOffline();return;}connected=false;connectionStatus($('#connection'),'変更通知に再接続しています');if(state)renderBoard();}});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)restartSync();});
 window.addEventListener('pageshow',e=>{if(e.persisted)restartSync();});
+window.addEventListener('offline',browserOffline);
 window.addEventListener('online',()=>{if(!document.hidden)restartSync();});
 
 function refreshMessageLog(id){
