@@ -31,14 +31,22 @@ export function matchesRunInput(run,input){
 // into -c developer_instructions. Never write instructions in the user's cwd.
 export const installInstructionsScript=`import os,sys,json,re,hashlib
 from pathlib import Path
-ws,provider,body=sys.argv[1:]
+ws,provider,*tail=sys.argv[1:]
+body=tail[-1]
+if tail[:-1] not in ([],['repair-unused']):raise ValueError('install mode')
+repair=tail[:-1]==['repair-unused']
 if not re.fullmatch(r'ws-[A-Za-z0-9_-]+',ws) or provider not in ('claude','codex'):raise ValueError('workspace/provider')
 root=Path.home()/'.purplemux'/'workspaces'/ws
 p=root/(provider+'-prompt.md')
 if root.is_symlink() or p.is_symlink() or not p.is_file():raise ValueError('workspace prompt missing')
 original=p.read_text()
 if '# purplemux context' not in original:raise ValueError('unsupported workspace prompt')
-if '<ai-village-instructions' in original:raise ValueError('existing startup contract: fresh workspace required')
+if '<ai-village-instructions' in original:
+ if not repair:raise ValueError('existing startup contract: fresh workspace required')
+ blocks=list(re.finditer(r'<ai-village-instructions version="[123]">.*?</ai-village-instructions>',original,re.S))
+ if len(blocks)!=1 or original.count('<ai-village-instructions')!=1:raise ValueError('ambiguous startup contract')
+ m=blocks[0]
+ original=original[:m.start()]+original[m.end():]
 p.write_text(original+'\\n\\n'+body)
 print(json.dumps({'installed':True,'hash':hashlib.sha256(body.encode()).hexdigest()}))
 `;

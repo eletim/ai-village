@@ -391,7 +391,7 @@ export class DirectAgents {
     let envelope={mode:'migration-required',reason:'startup-receipt-invalid'};
     try{
       const contract=installContract(a),rules=this.connectionRules(a),body=contract===3?rules.startup3():rules.startup();
-      const receipt=JSON.parse(await this.execute(a,['python3','-c',installInstructionsScript,a.workspaceId,a.provider,body]));
+      const receipt=JSON.parse(await this.execute(a,['python3','-c',installInstructionsScript,a.workspaceId,a.provider,...(a.tabId?['repair-unused']:[]),body]));
       if(receipt.installed===true&&receipt.hash===createHash('sha256').update(body).digest('hex'))envelope={mode:'startup-v2',hash:receipt.hash,installedAt:now(),...(contract===3?{contract:3}:{})};
     }catch{envelope={mode:'migration-required',reason:'startup-instructions-unavailable'};}
     await this.persist(async()=>{a.inputEnvelope=envelope;await this.save();});
