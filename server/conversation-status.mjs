@@ -23,7 +23,7 @@ export function conversationTurn(r){
  if(r.queueCancelledAt)return status('cancelled','未送信の会話を取消済み','','新しい会話入力を送れます。');
  if(s==='queued')return status('queued','会話を保存済み・配送待ち',r.error||r.queuedReason||'','');
  if(s==='awaiting_input')return status('receipt-pending','秘書への受付照合中',r.error||'','');
- if(s==='superseded')return status('steered','追加入力へ継続（この発言への回答は未確定）');
+ if(s==='superseded')return status('steered',r.runModel?.state.kind==='ended'&&r.runModel.state.outcome==='normal'?'追加入力へ継続（回答は後続の入力に表示）':'追加入力へ継続（この発言への回答は未確定）');
  if(s==='running'&&r.steerTarget)return status('steering-accepted',r.steerTarget.turnId===r.turnId?'実行中への追記を受付済み':'次の実行で追記を受付済み');
  if(s==='running')return status('responding','秘書が応答中','','');
  if(s==='completed'&&accepted(r))return status('answered','回答済み');
