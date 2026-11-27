@@ -503,9 +503,9 @@ export class DirectAgents {
         await this.installInstructions(a);
         let initial=false;
         if(provider==='codex'&&w.connectionType==='local'){try{const cap=await this.pmux(a,'tab','capabilities');initial=cap.initialCodexLaunch?.ownedInput===1&&cap.initialCodexLaunch?.client===1;}catch{}}
-        const tab=initial?ws.initialTab:await this.pmux(a,'tab','create','-w',a.workspaceId,'-n',name,'-t',provider==='claude'?'claude-code':'codex-cli',...(launchProfile?['--launch-profile',JSON.stringify(launchProfile)]:[]));
+        const tab=initial?(await this.pmux(a,'tab','list','-w',a.workspaceId)).tabs?.find(t=>t.tabId===ws.initialTab.tabId&&t.workspaceId===a.workspaceId&&!t.agentProviderId):await this.pmux(a,'tab','create','-w',a.workspaceId,'-n',name,'-t',provider==='claude'?'claude-code':'codex-cli',...(launchProfile?['--launch-profile',JSON.stringify(launchProfile)]:[]));
+        if(!tab?.tabId||!tab.sessionName)throw Error('tab応答の識別情報が不足しています');
         if(initial)a.initialInput={shellTabId:tab.tabId,sessionName:tab.sessionName};
-        if(!tab.tabId||!tab.sessionName)throw Error('tab応答の識別情報が不足しています');
         const url=new URL(w.baseUrl);url.searchParams.set('workspace',ws.id);url.searchParams.set('tab',tab.tabId);
         await this.persist(async()=>{Object.assign(a,{tabId:tab.tabId,sessionName:tab.sessionName,terminalUrl:url.href,...(launchProfile?{launchEvidence:tab.launchEvidence}: {})});await this.save();});
         if(launchProfile&&!launchReceiptMatches(a,tab.launchEvidence))throw Error('launchProfileの引数適用受付を照合できません');

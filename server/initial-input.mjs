@@ -21,7 +21,7 @@ export async function initialInputObservation(d,a){
   }
  }
  const rejected=evidence?.state==='failed-before-launch'&&!evidence.receipt&&!evidence.stages?.['runtime-intent']&&!evidence.stages?.['spawn-intent'];
- const ready=(!evidence||rejected)&&!tabs.some(t=>['codex-cli','claude-code'].includes(t.type||t.panelType));
+ const ready=(!evidence||rejected)&&!tabs.some(t=>t.agentProviderId||['codex-cli','claude-code'].includes(t.type||t.panelType));
  return {evidence,r,status:{alive:true,cliState:ready?'idle':'unknown',agentSessionId:null},snapshot:{available:ready,initialInputReady:ready,unrecorded:true,sessionId:null,fileIdentity:null,cursor:0,inputs:[],turns:[]}};
 }
 export function applyInitialObservation(a,observation){
