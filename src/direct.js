@@ -292,7 +292,7 @@ function renderBoard(){
   scopeBox.hidden=!(a.location==='mayor'&&a.projectId);
   if(!scopeBox.hidden){
    const selected=scopeDrafts.get(a.id)?.workId||scopeChoice.value;
-   const targets=(state.requests||[]).filter(q=>q.conversationId&&q.projectId!==a.projectId&&!q.integrity).flatMap(q=>(q.requestGraph?.nodes||[]).filter(w=>w.id===q.rootWorkId&&w.state.kind!=='withdrawn').map(w=>({value:w.id,label:(state.projects.find(p=>p.id===q.projectId)?.name||'Project')+' / '+String(q.instruction||'仕事').slice(0,70)+' / '+(state.agents.find(a=>a.id===w.assignee)?.name||'担当')+' / '+new Date(q.createdAt).toLocaleString()})));
+   const targets=(state.inputTargets||[]).filter(t=>t.projectId!==a.projectId).map(t=>({value:t.workId,label:(state.projects.find(p=>p.id===t.projectId)?.name||'Project')+' / '+t.instruction+' / '+(state.agents.find(a=>a.id===t.assignee)?.name||'担当')+' / '+new Date(t.createdAt).toLocaleString()}));
    const options='<option value="">指定なし（通常の会話）</option>'+(selected&&!targets.some(t=>t.value===selected)?'<option value="'+esc(selected)+'" disabled>対象を確認できません。選び直してください</option>':'')+targets.map(t=>'<option value="'+esc(t.value)+'">'+esc(t.label)+'</option>').join('');
    if(scopeChoice.innerHTML!==options){scopeChoice.innerHTML=options;scopeChoice.value=selected;}
    card.querySelectorAll('[name=scopeAction]').forEach(x=>x.checked=!!scopeDrafts.get(a.id)?.actions.includes(x.value));
@@ -671,7 +671,7 @@ $('#agents').onsubmit=async e=>{
  const target=state.agents.find(a=>a.id===id),steerTarget=!state.capabilities?.requestInbox&&target?.canSteer?structuredClone(target.steerTarget):null;
  const selectedWork=f.elements.scopeWork?.value;
  let scope;
- if(selectedWork){const q=state.requests.find(q=>q.requestGraph?.nodes.some(w=>w.id===selectedWork)),actions=[...f.querySelectorAll('[name=scopeAction]:checked')].map(x=>x.value);if(!conversation||!q||!actions.length){$('#error').textContent='別Projectの仕事と許可する操作を確認してください。送信していません。';return;}scope={projectId:q.projectId,workId:selectedWork,actions};}
+ if(selectedWork){const q=(state.inputTargets||[]).find(q=>q.workId===selectedWork),actions=[...f.querySelectorAll('[name=scopeAction]:checked')].map(x=>x.value);if(!conversation||!q||!actions.length){$('#error').textContent='別Projectの仕事と許可する操作を確認してください。送信していません。';return;}scope={projectId:q.projectId,workId:selectedWork,actions};}
  const receipt={...(scope?{scope}:{}),...(conversation?{mode:'conversation'}:{}),...(requestTarget?{requestTarget}:{}),...(steerTarget?{steerTarget}:{}),instruction:f.elements.instruction.value,attachments:[],travelContexts:structuredClone(travelEditors.get(id).value),requestId:newRequestId()};
  const message={...receipt,createdAt:new Date().toISOString(),draftVersion:draftVersions.get(id)||0,files:fileEditors.get(id).summaries,mode:requestTarget||steerTarget?'steering':!target?.canSend?'queue':'direct',stage:fileEditors.get(id).count?'uploading':'preparing'};
  outbox.set(id,message);storeDrafts();scrolls.get(id).latest();
