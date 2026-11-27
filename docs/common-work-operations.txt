@@ -1,0 +1,94 @@
+共通仕事操作：固定差分レビュー用設計（2026-11-27、11b75d16反映）
+基点 Village 80feb255c050c2eacbe3853ff4eccccc580ee2e1
+Pmux ab90fb953b1e567dd18f2a55b99d23fffb46250f（変更なし）
+隔離 worktree /home/eletim/DevEnv/ai-village-common-work / feat/common-work-operations
+本番変更・既存Agent操作・一律移行・main mergeなし。固定レビュー後の専用実村検証は未完了。
+
+1. 現行→今回
+会話: conversations / 発言・添付・source。宛先は人間入力source.scopeに保存。
+仕事: requestGraph.nodesが担当/親/入力/成果採否の正本。requestは既存の目的容器として維持。
+実行: runs.runModel.factsが受付/終端の正本。runModel.stateや画面はその投影で、受付≠成果・達成。
+Agent: agentsの登録先/metadataRevisionとPmuxの所有launch receipt。runtime交換でもAgent IDは不変。
+物理schema全刷新ではない。既存graphの宣言/採否/履歴構造と報告・期限は維持する。
+
+通常状態遷移:
+同じ仕事 → queued（未送信）→ sent（配送結果不明を含む）→ native input（受付）→ native terminal。
+設定拒否は送信前事実。修復後followupが同じ仕事の次実行を作る。
+確認済正常/中断/失敗は現在所有を再観測し、元許可内のfollowupで同仕事を継続。
+sent/受付不明/終端不明は時間経過で未実行にせず、再送しない。
+継続の前後で親入力・許可・currentRun/revision・所有境界を再照合する。
+
+2. 削除・統合した実行責務
+- conversations jobのcontinue/continuesRequestId/reopenRunIdによる後継request/node生成を廃止。
+- 子continueChildと人間retry/resumeと会話followupの実行作成をcontinueLocked/continuationBoundaryへ集約。
+- 新規依頼と委任はcreateWorkへ。役割差は許可・親子境界・既定担当だけ。
+- relay send/apply/returnのwriter、旧recover/succeed操作を撤去。古いCLIは明示拒否。
+- 新規rework申告とreplacesRequestIdによる子仕事置換writerとgraph replace eventを撤去。同仕事followupへ。
+- 継続時の担当付替えwriterを撤去。今回のruntime交換は同Agentであり、担当交代ではない。
+- legacy bootstrap本文送信/旧contract enrollment、autoRecovery writer、inboxなし旧成果配送writerを撤去。
+- donor Agentを作って付替えるruntime交換UI/APIを廃止。所有確認済み停止Agent自身にfresh workspaceを準備。
+- statusの必要観測/説明を秘書・仕事担当で同じworkObservations/workStatusへ。対象の直接子だけ、共有monitor/2秒上限。
+- 旧decode/履歴検証/送信済みobserverは残すが、旧queuedを新規送信する権限は持たない。
+通常の未処理inbox一回再通知は残す。正常終端後の対応漏れ通知であり、失敗/unknownの自動復旧ではない。
+
+3. 操作例（内部台帳は村が解決）
+通常会話: 「画面の不具合を直して」→秘書 village order --run 今回run "画面の不具合を修正"。
+成果が届いた回: village followup --run 今回run "この表示だけ修正" →同仕事・同担当。
+確認後: village accept --run 今回run "操作と成果を確認"。
+仕事担当も同じorder --assignee 担当 / followup / withdraw / acceptを使う。
+対象が一つなら仕事指定を省略。複数ならstatusに出た仕事IDの短い参照を指定する。
+runは届いた封筒から与えられる値。hash/PID/runtime世代/旧事故op/revisionを手で組み立てない。
+
+別Project: 人間が入力欄の「別の仕事への指示」でProject名/仕事/担当の表示を確認し対象を選び、許可操作と文章をまとめて送信する。選択だけでは送信しない。
+送信秘書: village order --run 今回run "元許可内の未完了分を確認し継続"。
+受信秘書: 通常入力として取得し village followup --run 今回run "残りだけ継続"。
+継続scopeだけなら中止/採用/新仕事作成を拒否する。一般会話で毎回対象を選び直す必要はない。
+同名・名称変更でも選択したworkIdが固定。下書きと対象は一緒に保持し、旧送信応答は次の下書きを消さない。
+返答は送信側status.addressedInputsが受信runから読取投影。専用返却run/自動転送/無限relayは作らない。
+返答が来たことは目的達成や追加操作許可とは別。送信側を返答だけで自動再開する機構は今回設けない。
+
+4. 権限
+scope={projectId,workId,actions}は安定した対象・操作許可。run/revision/runtime世代は含めない。
+送信元の保存済み人間入力、正式受付、元目的authorization、村の配送receiptから受信側で照合。
+受信者の自己申告scopeは使わない。source/receiver双方の後着人間入力で旧指示を停止する。
+targetDecisionIdは人間が指定した時点の意味判断参照。実行の世代ではない。後の達成判断を古い許可で再開できない。
+過去自由文から任意scopeへ昇格しない。別Project新規仕事の包括許可は今回追加しない。
+子操作は直接の親actorだけ。withdrawも同じ親子境界で、dispatch済み事実や外部効果を消さない。
+
+5. 同Agent runtime交換とPmux境界
+local Codexの管理対象runtimeが停止済みで、送信中/不明runがなく、旧tab/session/所有process閉鎖を再確認できる場合だけ。
+Agentプロフィールで引継ぎ内容を指定→既存adopt-runtime操作が同Agentに新workspaceを一回予約。
+意図先行保存→workspace create→正式tab list→実installer/契約照合→旧所有再照合→同Agent登録先更新。
+応答不明の作成はcandidateを保存し再createしない。旧runtime履歴とwork/currentRunを保持。
+閉鎖時点の対象実行facts digestを保存し、新しいruntimeでのfollowup照合に使う。facts全文を別台帳へ複製しない。
+成果Web/学習等の独立process不在は条件にしない。止めるのは管理対象Agentだけであり、効果照合は依頼者の意味判断。
+Pmuxは既存owned-input capability、initial-launchの一回receiptとnative入力/終端照会を利用。新バックドア/API/schemaは追加しない。
+
+6. 移行・互換限界
+migration-inventory-final.jsonはSQLite読取transactionのみ。84Agent/599request/2125run。
+読取時activeは担当の現在run1件で旧送信経路の該当なし。履歴unknown115件は保持。停止証明ではない。
+旧inboxなし仕事/旧report専用実行/旧queued relay・recovery・childContinuationは明示保留。自動変換・一律stopなし。
+旧sent/runningは観測だけ継続。既存の後継チェーン/置換予約は閲覧・重複防止照合にだけ使い、新規writerなし。
+不十分な旧unknown、所有閉鎖不能、remote/非Codex runtimeのfresh交換は今回未対応。既存通常動作は維持。
+新しいsame-Agent交換候補自体がunknownになった場合も自動再作成しない。候補の調査・解消は別判断が必要。
+旧仕事を新形式へ一律に書き換える移行は今回行わない。既存仕事ごとの意味判断が必要。
+
+7. 検証とテスト整理
+protocol1の通常/補足/中断/同仕事継続/成果採用、親子越境、重複/後着/受付不明、sameAgent交換後継続を限定検証。
+実Python installer/契約verifyを隔離workspaceで通し、交換後初回initial-launch一回・応答喪失時再送0を独立probeで確認。実モデルではない。
+隔離ブラウザ: 同名対象/下書き/応答喪失、送信中の次下書き、停止履歴からプロフィール、交換の確定拒否/不明を確認。
+旧protocol0強制のdirect/requests試験は元文をtests/legacy-fixtures/*.txtへ保管。旧方式の新規送信成功を維持するテストとしては実行しない。全旧試験の一対一代替を主張しない。
+旧relay/bootstrap/donor試験は新しい拒否・読取互換テストへ置換。大量suite成功を成果としない。
+
+8. 読む量
+固定startup/通常53byteタグは変更なし。実生成UTF-8 bytes（tokenではない）:
+秘書rules work 3105→3063、担当leader 2958→2562、判断詳細1712→668。
+重複した旧後継作成手順を削除。毎回資料全体を再要約した量ではない。新sessionに必要原文は省略しない。
+
+9. 反映・戻し方・必須残件
+固定差分を秘書レビュー→最新integrationとの合成照合→整合DB/コードbackup→開発統合/村反映。
+HTTP/配信一致・既存履歴とAgent/runtime/pane識別保持を確認。既存Agentは停止/交換しない。
+専用Projectで同じ操作経路の通常→補足→専用中断→同仕事継続→採用、同Agent交換後継続、宛先付き通常入力を実Pmux/実モデル/通常クリックUIで確認。
+送信喪失/旧unknown等を共有環境へ危険注入しない。隔離確認と実村未検証を分離。証拠後にmanifest所有専用資源だけ停止。
+新source.kind=agentとsame-Agent交換記録を旧コードが安全に扱えるとは仮定しない。新入力開始前なら整合backupへ戻せる。開始後は新履歴を保存し、差分修正を優先。DBを旧backupへ単独巻戻して再送しない。
+本資料は隔離実装の固定レビュー提出であり、実村達成報告ではない。

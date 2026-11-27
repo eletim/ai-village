@@ -127,7 +127,7 @@ export function continuationBasis(r:Run):'before-dispatch'|'native-terminal'|nul
  return null;
 }
 /** Explicit purpose continuation. The caller also verifies current runtime ownership. */
-export function continuePurposeRun(r:Run,id:string):Result<Run> {
- if(!continuationBasis(r)||!id||id===r.id)return reject('continuation-execution-unresolved');
- return accept({...r,id,createdBy:'agent',retryOf:r.id,state:{kind:'queued'},facts:[],decisions:[{actor:'agent',reason:'purpose-continuation'}],retryBudget:{count:0,firstFailureAt:null}});
+export function continuePurposeRun(r:Run,id:string,actor:Actor='agent'):Result<Run> {
+ if(!['human','agent'].includes(actor)||!continuationBasis(r)||!id||id===r.id)return reject('continuation-execution-unresolved');
+ return accept({...r,id,createdBy:actor,retryOf:r.id,state:{kind:'queued'},facts:[],decisions:[{actor,reason:'purpose-continuation'}],retryBudget:{count:0,firstFailureAt:null}});
 }

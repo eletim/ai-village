@@ -1,3 +1,4 @@
+import {addressedScope} from './conversation-input-scope.mjs';
 import {continuationBasis} from './state/run.ts';
 import {purposeId,purposeView,purposeLeaf} from './conversation-purpose.mjs';
 import {rootNode} from './unified-requests.mjs';
@@ -18,7 +19,8 @@ export function resolveFollowup(conversations,c,actor,x){
  const stopped=current&&['failed','interrupted','terminated'].includes(runState(current));
  if(stopped&&!continuationBasis(current.runModel))fail('実行権限の閉鎖が未確認です。村のstatusで未解決項目と接続再観測の案内を確認してください。入力は再送しません');
  if(decision?.state==='pending')fail('前の秘書判断の正常終了を待ってください');
- const humanAfter=decision&&data.runs.findLast(r=>r.conversationId===c.id&&r.conversationSource?.kind==='human'&&!r.queueCancelledAt&&accepted(r)&&r.conversationSequence<=actor.conversationSequence&&r.conversationSequence>(data.runs.find(r=>r.id===decision.actorRunId)?.conversationSequence??Infinity));
+ let humanAfter=decision&&data.runs.findLast(r=>r.conversationId===c.id&&r.conversationSource?.kind==='human'&&!r.queueCancelledAt&&accepted(r)&&r.conversationSequence<=actor.conversationSequence&&r.conversationSequence>(data.runs.find(r=>r.id===decision.actorRunId)?.conversationSequence??Infinity));
+ if(decision&&actor.conversationSource?.kind==='agent'){const bound=addressedScope(conversations.d,actor,'continue',w.id);if(bound.human.conversationSource.targetDecisionId===decision.id)humanAfter=bound.human;}
  if(decision?.kind==='question'&&decision.state==='committed'&&!humanAfter)fail('具体的な人間の回答を待っています');
  const base={conversationId:c.id,actorRunId:actor.id,operationId:x.operationId,instruction:x.instruction,authorization:original.requestedBy.authorization};
  if(stopped)return {action:'continue-purpose',input:{...base,humanRequestId:q.id,workId:w.id,previousRunId:current.id,revision:q.revision}};

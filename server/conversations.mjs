@@ -1,3 +1,4 @@
+import {inputScope,addressedScope} from './conversation-input-scope.mjs';
 import {initialInputObservation} from './initial-input.mjs';
 import {continuationBoundary} from './purpose-continuation.mjs';
 import {SecretaryRelay} from './secretary-relay.mjs';
@@ -14,7 +15,7 @@ import {transitionDelivery} from './state/auxiliary.ts';
 import {randomUUID} from 'node:crypto';
 import {initializeRun,runState,accepted,changeRun} from './run-lifecycle.mjs';
 import {agentControls} from './agent-lifecycle.mjs';
-import {newNode,rootNode,applyGraph} from './unified-requests.mjs';
+import {rootNode,applyGraph} from './unified-requests.mjs';
 import {latest} from './state/requests.ts';
 import {initialDeadlines} from './request-reports.mjs';
 import {normalizeTravelContexts} from '../src/travel-context.js';
@@ -48,7 +49,7 @@ export class Conversations {
   for(const c of this.d.data.conversations){
    if(!c.id||ids.has(c.id)||!Number.isSafeInteger(c.sequence)||!Array.isArray(c.operations)||!Array.isArray(c.deliveries))throw Error('Invalid conversation record');ids.add(c.id);
    const runs=this.d.data.runs.filter(r=>r.conversationId===c.id),sequences=new Set(runs.map(r=>r.conversationSequence));
-   if(sequences.size!==runs.length||runs.some(r=>!conversationRunOwner(this.d.data,c,r)||r.humanRequestId||r.runModel.phase!=='conversation'||!Number.isSafeInteger(r.conversationSequence)||r.conversationSequence<1||r.conversationSequence>c.sequence||!['human','leader','program','secretary'].includes(r.conversationSource?.kind)||r.runModel.createdBy!==(r.conversationSource.kind==='human'?'human':'program')))throw Error('Invalid conversation run');
+   if(sequences.size!==runs.length||runs.some(r=>!conversationRunOwner(this.d.data,c,r)||r.humanRequestId||r.runModel.phase!=='conversation'||!Number.isSafeInteger(r.conversationSequence)||r.conversationSequence<1||r.conversationSequence>c.sequence||!['human','leader','program','secretary','agent'].includes(r.conversationSource?.kind)||r.runModel.createdBy!==(r.conversationSource.kind==='human'?'human':'program')))throw Error('Invalid conversation run');
    if(runs.some(r=>r.conversationDisplay&&(!['reply','progress'].includes(r.conversationDisplay.mode)||!Number.isSafeInteger(r.conversationDisplay.version)||r.conversationDisplay.version<1)))throw Error('Invalid conversation display');
    if(new Set(c.deliveries.map(e=>e.id)).size!==c.deliveries.length||c.deliveries.some(e=>!runs.some(r=>r.id===e.runId&&r.conversationSource.deliveryId===e.id)||!this.d.flow.requests.some(q=>q.id===e.humanRequestId&&q.conversationId===c.id)))throw Error('Invalid conversation delivery');
    for(const r of runs.filter(r=>r.conversationSource?.kind==='secretary'))if(!(c.relayInbox||[]).some(e=>e.id===r.conversationSource.relayId&&(e.runId===r.id||e.recovery?.receipt.runId===r.id||e.recoveryHistory?.some(h=>h.receipt.runId===r.id))&&e.target.conversationId===c.id))throw Error('Invalid secretary relay run');
@@ -93,7 +94,12 @@ export class Conversations {
    // Status is available immediately; materials for a later turn are not injected here.
    return {id:q.id,purpose:purposeView(visibleData,q),authorization:q.requestedBy?.authorization,lifecycle,status:full.status,instruction:q.instruction,assigneeAgentId:q.integrity?null:rootNode(q).assignee,leaderAgentId:q.integrity?null:rootNode(q).assignee,returnPending:c.deliveries.some(e=>e.humanRequestId===q.id&&!deliveries.includes(e)),availableDeliveries:deliveries.filter(e=>e.humanRequestId===q.id).map(e=>e.id),materials:'後続の正式配送ターンで確認してください'};
   });
-  return structuredClone({id:c.id,agentId:c.agentId,projectId:c.projectId,createdAt:c.createdAt,sequence:actor?.conversationSequence??c.sequence,relaySent:(c.relaySent||[]).filter(s=>!actor||runs.some(r=>r.id===s.actorRunId)).map(s=>s.receipt),relayInbox:(c.relayInbox||[]).filter(e=>runs.some(r=>r.id===e.runId)),relayReturns:(c.relayReturns||[]).filter(e=>runs.some(r=>r.id===e.runId)),operations:actor?c.operations.filter(o=>runs.some(r=>r.id===JSON.parse(o.payload).input.actorRunId)).map(o=>({id:o.id,receipt:o.receipt})):c.operations,deliveries,purposeDecisions:(c.purposeDecisions||[]).filter(d=>!actor||runs.some(r=>r.id===d.actorRunId)),control:conversationControl(this.d.data.agents.find(a=>a.id===c.agentId)),runs:runs.map(r=>({...actor?{id:r.id,conversationSequence:r.conversationSequence,conversationSource:r.conversationSource,instruction:r.conversationSource.kind==='human'?r.instruction:undefined,attachments:r.attachments,travelContexts:r.travelContexts,createdAt:r.createdAt}:{...r},lifecycle:conversationTurn(r,this.d.data.agents.find(a=>a.id===r.agentId)),state:runState(r),displayMode:conversationDisplayMode(this.d.data,r),displayVersion:r.conversationDisplay?.version||0,humanAnswer:accepted(r)&&runState(r)==='completed'&&conversationDisplayMode(this.d.data,r)!=='progress'?responseText(r).answer:null,progressText:accepted(r)&&runState(r)==='completed'&&conversationDisplayMode(this.d.data,r)==='progress'?responseText(r).answer:null})),jobs});
+  // Replies are projections of the received normal input, not another relay job.
+  const addressedInputs=c.operations.filter(o=>o.receipt?.sourceRunId&&runs.some(r=>r.id===o.receipt.sourceRunId)).flatMap(o=>{
+   const r=this.d.flow.run(o.receipt.runId);if(r?.conversationSource?.kind!=='agent'||r.conversationSource.runId!==o.receipt.sourceRunId||r.conversationSource.conversationId!==c.id)return [];
+   return [{...o.receipt,state:runState(r),accepted:accepted(r),answer:accepted(r)&&runState(r)==='completed'?responseText(r).answer:null,meaning:'受信先の入力受付・返答です。対象仕事の達成や追加の操作許可とは別です。'}];
+  });
+  return structuredClone({addressedInputs,id:c.id,agentId:c.agentId,projectId:c.projectId,createdAt:c.createdAt,sequence:actor?.conversationSequence??c.sequence,relaySent:(c.relaySent||[]).filter(s=>!actor||runs.some(r=>r.id===s.actorRunId)).map(s=>s.receipt),relayInbox:(c.relayInbox||[]).filter(e=>runs.some(r=>r.id===e.runId)),relayReturns:(c.relayReturns||[]).filter(e=>runs.some(r=>r.id===e.runId)),operations:actor?c.operations.filter(o=>runs.some(r=>r.id===JSON.parse(o.payload).input.actorRunId)).map(o=>({id:o.id,receipt:o.receipt})):c.operations,deliveries,purposeDecisions:(c.purposeDecisions||[]).filter(d=>!actor||runs.some(r=>r.id===d.actorRunId)),control:conversationControl(this.d.data.agents.find(a=>a.id===c.agentId)),runs:runs.map(r=>({...actor?{id:r.id,conversationSequence:r.conversationSequence,conversationSource:r.conversationSource,instruction:['human','agent'].includes(r.conversationSource.kind)?r.instruction:undefined,attachments:r.attachments,travelContexts:r.travelContexts,createdAt:r.createdAt}:{...r},lifecycle:conversationTurn(r,this.d.data.agents.find(a=>a.id===r.agentId)),state:runState(r),displayMode:conversationDisplayMode(this.d.data,r),displayVersion:r.conversationDisplay?.version||0,humanAnswer:accepted(r)&&runState(r)==='completed'&&conversationDisplayMode(this.d.data,r)!=='progress'?responseText(r).answer:null,progressText:accepted(r)&&runState(r)==='completed'&&conversationDisplayMode(this.d.data,r)==='progress'?responseText(r).answer:null})),jobs});
  }
  record(id){return this.d.data.conversations.find(c=>c.id===id)||fail('会話がありません',404);}
  enqueue(c,{requestId,instruction,source,attachments=[],travelContexts=[]}){
@@ -108,7 +114,7 @@ export class Conversations {
   const attachments=x.attachments?.length?await this.d.attachments?.select(x.attachments):[];
   if(!attachments)fail('添付機能がありません');
   const travelContexts=normalizeTravelContexts(x.travelContexts);
-  const payload=JSON.stringify({agentId,conversationId:x.conversationId||null,instruction:x.instruction,attachments,travelContexts});
+  const payload=JSON.stringify({agentId,conversationId:x.conversationId||null,instruction:x.instruction,attachments,travelContexts,...(x.scope?{scope:x.scope}:{})});
   const r=await this.d.locked('request-graph',()=>this.d.persist(async()=>{
    const old=this.d.data.runs.find(r=>r.requestId===x.requestId);
    if(old){if(old.conversationPayload!==payload)fail('requestIdの再利用です');return old;}
@@ -122,10 +128,33 @@ export class Conversations {
    let c=x.conversationId?this.record(x.conversationId):this.d.data.conversations.filter(c=>c.agentId===a.id&&c.projectId===a.projectId).reduce((latest,c)=>!latest||Date.parse(c.createdAt)>=Date.parse(latest.createdAt)?c:latest,null);
    if(c&&(c.agentId!==a.id||c.projectId!==a.projectId))fail('会話の所属が一致しません',403);
    if(!c){c={id:randomUUID(),agentId:a.id,projectId:a.projectId,createdAt:now(),sequence:0,operations:[],deliveries:[]};this.d.data.conversations.push(c);}
-   const r=this.enqueue(c,{requestId:x.requestId,instruction:x.instruction,source:{kind:'human'},attachments,travelContexts});r.conversationPayload=payload;
+   const scoped=x.scope?inputScope(this.d,x.scope):null;
+   if(scoped?.c.id===c.id)fail('同じ会話の仕事は通常の補足・継続を使用してください');
+   const r=this.enqueue(c,{requestId:x.requestId,instruction:x.instruction,source:{kind:'human',...(scoped?{scope:scoped.scope,targetPermission:structuredClone(scoped.q.requestedBy.authorization),targetDecisionId:purposeView(this.d.data,scoped.q).decision?.id||null}:{})},attachments,travelContexts});r.conversationPayload=payload;
    await this.d.save();return r;
   }));
   await this.d.flow.dispatchReady(undefined,true);return r;
+ }
+ // Addressed input uses the same conversation queue. Its scope comes only from
+ // the saved human input; the sender cannot supply or enlarge a received scope.
+ async input(x){
+  if(Object.keys(x).some(k=>!['conversationId','actorRunId','operationId','instruction'].includes(k)))fail('宛先は保存済みの人間入力から決まります',403);
+  key(x.operationId);text(x.instruction);
+  return this.d.locked('request-graph',()=>this.d.persist(async()=>{
+   const c=this.record(x.conversationId),payload=JSON.stringify({action:'input',input:x}),old=c.operations.find(o=>o.id===x.operationId);
+   if(old){if(old.payload!==payload)fail('operationIdの再利用です');return structuredClone(old.receipt);}
+   const actor=this.actor(c,x.actorRunId);
+   if(actor.conversationSource?.kind!=='human')fail('宛先を指定した人間入力の回で送信してください。自動転送はしません',403);
+   const b=inputScope(this.d,actor.conversationSource.scope);
+   if(b.c.id===c.id||b.c.agentId===c.agentId)fail('別の会話の対象を選択してください');
+   if(JSON.stringify(b.q.requestedBy.authorization)!==JSON.stringify(actor.conversationSource.targetPermission))fail('対象仕事の元許可が変わりました');
+   if(this.d.data.runs.some(r=>r.conversationId===c.id&&r.conversationSource?.kind==='human'&&!r.queueCancelledAt&&r.conversationSequence>actor.conversationSequence))fail('後着の人間入力があります。新しい入力を確認してください');
+   const duplicate=c.operations.find(o=>o.receipt?.sourceRunId===actor.id);
+   if(duplicate){if(JSON.parse(duplicate.payload).input.instruction!==x.instruction)fail('この入力は配送済みです。変更した内容を再送しません');return structuredClone(duplicate.receipt);}
+   const r=this.enqueue(b.c,{requestId:'conversation-input:'+actor.id,source:{kind:'agent',agentId:c.agentId,conversationId:c.id,runId:actor.id,humanRunId:actor.id},instruction:'別のAgentからの入力です。人間の元指示: '+actor.instruction+'\n対象の目的: '+b.q.instruction+'\n許可された操作: '+b.scope.actions.join(', ')+'。範囲外の操作と自動転送はできません。通常のfollowup/withdraw/acceptで対象仕事を扱ってください。\n'+x.instruction});
+   const receipt={conversationId:b.c.id,runId:r.id,sourceRunId:actor.id,workId:b.w.id,purposeId:purposeId(b.q)};
+   c.operations.push({id:x.operationId,payload,receipt,at:now()});await this.d.save();return structuredClone(receipt);
+  }));
  }
  // Only accepted successors in the exact native turn extend an actor's authority.
  // A saved, sent-but-unaccepted or adjacent-turn input cannot grant permissions.
@@ -207,7 +236,7 @@ export class Conversations {
   return this.d.locked('request-graph',()=>this.d.persist(async()=>{
    const c=this.record(x.conversationId),payload=JSON.stringify({action:'decide',input:x}),old=c.operations.find(o=>o.id===x.operationId);
    if(old){if(old.payload!==payload)fail('operationIdの再利用です');return structuredClone(old.receipt);}
-   const actor=this.actor(c,x.actorRunId);if(actor.conversationSource?.kind==='secretary')fail('中継runは指定目的のrelayApplyだけを実行できます',403);x=this.currentPurposeInput(c,actor,x);const b=this.purposeBoundary(c,actor,x);
+   const actor=this.actor(c,x.actorRunId);if(actor.conversationSource?.kind==='secretary')fail('旧中継入力は履歴閲覧専用です。新しい対象付き入力が必要です',403);x=this.currentPurposeInput(c,actor,x);const b=this.purposeBoundary(c,actor,x);if(actor.conversationSource?.kind==='agent')addressedScope(this.d,actor,x.decision,b.q.rootWorkId);
    const d=this.recordPurpose(c,actor,x,b,x.decision);
    const receipt={...d,version:b.view.version+1};
    c.operations.push({id:x.operationId,payload,receipt,at:now()});await this.d.save();return structuredClone(receipt);
@@ -220,7 +249,7 @@ export class Conversations {
    const old=c.operations.find(o=>o.id===x.operationId);
    if(old){if(old.payload!==payload)fail('operationIdの再利用です');return structuredClone(old.receipt);}
    const actor=this.actor(c,x.actorRunId);
-   if(actor.conversationSource?.kind==='secretary')fail('中継runは指定目的のrelayApplyだけを実行できます',403);
+   if(actor.conversationSource?.kind==='secretary')fail('旧中継入力は履歴閲覧専用です。新しい対象付き入力が必要です',403);
    if(x.assigneeAgentId!==undefined&&(action!=='job'||x.continue===true||['continuesRequestId','humanRequestId','purposeId','deliveryId','expectedPurposeVersion','reopenRunId'].some(k=>x[k]!==undefined)))fail('担当指定は新規依頼だけで使えます。継続の担当は既存依頼から照合します',400);
    if(action==='followup'){
     if(Object.keys(x).some(k=>!['conversationId','actorRunId','operationId','purposeId','instruction'].includes(k)))fail('追加指示は目的IDと残作業を指定してください。追加権限は新規依頼で扱います');
@@ -229,6 +258,10 @@ export class Conversations {
     const resolved=resolveFollowup(this,c,actor,x);action=resolved.action;x=resolved.input;
    }
    if(x.continue!==undefined||x.continuesRequestId!==undefined)fail('旧後継作成は廃止しました。同じ目的へのfollowupを使用してください',410);
+   if(actor.conversationSource?.kind==='agent'){
+    if(action==='job')fail('宛先付き入力は新規の仕事を作成できません',403);
+    addressedScope(this.d,actor,action==='amend'?'supplement':action==='continue-purpose'?'continue':action==='withdraw'?'cancel':action,rootNode(this.d.flow.root(x.humanRequestId)).id);
+   }
    const authorization=this.authorize(c,actor,x.authorization);
    text(x.instruction);
    let receipt;
@@ -244,10 +277,8 @@ export class Conversations {
     if(a.id===c.agentId||a.projectId!==p.id||a.location!=='workshop'||!a.tabId||a.runtimeUpgrade?.state==='prepared'||a.agentModel?.intent==='stop'||['terminated','stopping','unknown'].includes(agentControls(a).state))fail('指定された担当を利用できません。担当と稼働状態を確認してください');
     const q={id:randomUUID(),commonRequests:true,inputProtocol:1,projectId:c.projectId,conversationId:c.id,requestedBy:{kind:'agent',agentId:c.agentId,actorRunId:actor.id,authorization},reportMode:false,clientRequestId:'conversation:'+c.id+':'+x.operationId,instruction:x.instruction,travelContexts:[],attachments:[],originAgentId:a.id,finalAgentId:a.id,revision:0,createdAt:now(),requestGraph:{version:3,nodes:[],operations:[]}};
     q.purposeId=q.id;
-    const w=newNode(q,{id:randomUUID(),assignee:a.id,createdBy:'agent',metadata:{reporting:initialDeadlines({})}});
-    w.recipient={kind:'conversation',conversationId:c.id};w.requester={kind:'conversation',conversationId:c.id,agentId:c.agentId};q.rootWorkId=w.id;q.requestGraph.rootId=w.id;
     this.d.data.requests.push(q);
-    const r=this.d.flow.enqueue(q,w,x.instruction,'conversation-job','agent');q.initialRunId=r.id;
+    const {work:w,run:r}=this.d.flow.createWork(q,{assignee:a.id,createdBy:'agent',metadata:{reporting:initialDeadlines({})},recipient:{kind:'conversation',conversationId:c.id},requester:{kind:'conversation',conversationId:c.id,agentId:c.agentId}},x.instruction,'conversation-job','agent');q.initialRunId=r.id;
     w.inbox[0].source={actor:'agent'};
     receipt={humanRequestId:q.id,workId:w.id,runId:r.id,actorRunId:actor.id,assigneeAgentId:a.id,leaderAgentId:a.id,conversationId:c.id,purposeId:q.purposeId};
    }else{
@@ -260,13 +291,13 @@ export class Conversations {
      // have changed even though the API caller supplied no internal version.
      this.actor(c,actor.id);
      const fresh=resolveFollowup(this,c,actor,JSON.parse(payload).input);
-     if(fresh.action!=='continue-purpose'||fresh.input.previousRunId!==previous.id||fresh.input.revision!==x.revision||!continuationBoundary(previous,snapshot,status))fail('現在の実行境界を確認できません。接続とnative終端を再観測してください。再送はしていません');
+     if(fresh.action!=='continue-purpose'||fresh.input.previousRunId!==previous.id||fresh.input.revision!==x.revision||!continuationBoundary(previous,snapshot,status,a))fail('現在の実行境界を確認できません。接続とnative終端を再観測してください。再送はしていません');
      const r=await this.d.flow.continueLocked({humanRequestId:q.id,workId:w.id,revision:x.revision,operationId:x.operationId,instruction:x.instruction},runState(previous)!=='completed',{purposeContinuation:{previousRunId:previous.id,actorRunId:actor.id,conversationId:c.id,humanSequence:actor.conversationSequence,authorization:JSON.stringify(q.requestedBy.authorization),revision:q.revision+1}},'agent',{deferSave:true});
      if(x.deliveryId)this.recordPurpose(c,actor,{...x,reason:x.instruction},{q,event:{id:x.deliveryId}},'resume');
      receipt={humanRequestId:q.id,workId:w.id,runId:r.id,previousRunId:previous.id,purposeId:purposeId(q),action:'continue-purpose'};
     }else if(action==='amend'){
      const id=randomUUID();
-     applyGraph(this.d.data,q,{type:'supplement',actor:'agent',requestId:w.id,input:{id,kind:'supplement',text:x.instruction,createdAt:now(),attempts:[]}});
+     applyGraph(this.d.data,q,{type:'supplement',actor:'agent',requestId:w.id,input:{id,kind:'supplement',text:x.instruction,createdAt:now(),attempts:[],source:{actor:'agent',actorRunId:actor.id,operation:'supplement'}}});
      const current=rootNode(q);if(current.conversationWait)current.conversationWait.answerInputId=id;
      const pv=purposeView(this.d.data,q),previous=pv.decision;
      if(previous?.kind==='question'&&previous.humanRequestId===q.id){
@@ -274,19 +305,17 @@ export class Conversations {
      }
     }
     else if(action==='withdraw'){
-     applyGraph(this.d.data,q,{type:'withdraw-conversation',actor:'agent',conversationId:c.id,requestId:w.id,reason:x.instruction});
-     // Withdrawal prevents queued effects. Already dispatched work is NOT stopped or replayed.
-     for(const r of this.d.data.runs.filter(r=>r.humanRequestId===q.id&&runState(r)==='queued'))changeRun(r,{type:'cancel-conversation-job',actor:'agent',requestId:q.id});
+     this.d.flow.withdrawLocked(q,w,{actor:'agent',conversationId:c.id,reason:x.instruction});
     }else fail('未知の会話操作',400);
     if(action!=='continue-purpose'){q.revision++;receipt={humanRequestId:q.id,workId:w.id,action,actor:'agent',actorRunId:actor.id,authorization};}
    }
    c.operations.push({id:x.operationId,payload,receipt,at:now()});await this.d.save();return structuredClone(receipt);
   }));
  }
- relay(x){return this.relayService.send(x);}
+ relay(){fail('旧relay送信は廃止しました。宛先付き通常入力を使用してください',410);}
  relaySucceed(){fail('relaySucceedは廃止しました。旧配送履歴はconversations readで確認できます。通常followupで目的の継続を判断してください',410);}
  relayRecover(){fail('relayRecoverは廃止しました。旧配送履歴はconversations readで確認できます。通常followupで目的の継続を判断してください',410);}
- relayApply(x){return this.relayService.apply(x);}
+ relayApply(){fail('旧relay適用は廃止しました。通常followupを使用してください',410);}
  followup(x){return this.mutate('followup',x);}
  job(x){return this.mutate('job',x);}
  amend(x){return this.mutate('amend',x);}
