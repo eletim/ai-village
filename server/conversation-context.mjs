@@ -47,7 +47,14 @@ export function conversationMaterial(view,actorRunId,{kind,id}={}){
  else if(kind==='delivery')value=(view.deliveries||[]).find(d=>d.id===id);
  else if(kind==='purpose'){
   const group=purposeGroups(view).find(p=>p.id===id);
-  if(group)value={id,objective:group.root.instruction,authorization:group.root.authorization,jobs:group.jobs,decisions:(view.purposeDecisions||[]).filter(d=>d.purposeId===id)};
+  if(group)value={id,objective:group.root.instruction,authorization:group.root.authorization,
+   // Exact duplicate bodies are represented once in this response, never omitted
+   // because another session or earlier turn is presumed to have read them.
+   jobs:group.jobs.map(({instruction,authorization,purpose,...job})=>({...job,
+    ...(instruction===group.root.instruction?{instructionRef:'objective'}:{instruction}),
+    ...(JSON.stringify(authorization)===JSON.stringify(group.root.authorization)?{authorizationRef:'authorization'}:{authorization}),
+    purposeId:purpose?.id||id})),
+   decisions:(view.purposeDecisions||[]).filter(d=>d.purposeId===id)};
  }else fail('kindはturn|purpose|delivery|relayです',400);
  if(!value)fail('今回の配送境界内に資料がありません',404);
  return structuredClone({conversationId:view.id,actorRunId,kind,id,content:value,complete:true});

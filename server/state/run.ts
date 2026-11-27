@@ -18,6 +18,7 @@ export type RunEvent =
  | Command<'input','program',{at:number; sessionId:string; turnId:string; inputId:string; text:string; matchedRunId?:string; competing:boolean}>
  | Command<'terminal','program',{at:number; sessionId:string; turnId:string; outcome:'normal'|'failed'|'interrupted'; errorCode?:string}>
  | Command<'lost','program',{at:number; reason:'session-changed'|'turn-ended-without-marker'|'timeout'|'agent-stopped'}>
+ | Command<'prelaunch-rejected','program',{at:number;operationId:string}>
  | Command<'dispatch-blocked','program',{at:number; reason:string}>
  | Command<'supersede','human',{successorId:string}> | Command<'restore','human',{successorId:string}>
  | Command<'cancel-result-reservation','program',{resultId:string;reason:'handled'|'superseded'}>
@@ -26,7 +27,7 @@ export type RunEvent =
  | Command<'cancel-inbox-reservation','program'>
  | Command<'cancel-report-reservation','program'>
  | Command<'cancel','human'> | Command<'close-tracking','human',{reason:string}>;
-export const runAuthorities = {'reconcile-observation':['program'],dispatch:['program'],'transport-ack':['program'],input:['program'],terminal:['program'],lost:['program'],'dispatch-blocked':['program'],supersede:['human'],restore:['human'],cancel:['human'],'cancel-conversation-job':['agent'],'cancel-decision-reminder':['program'],'cancel-inbox-reservation':['program'],'cancel-report-reservation':['program'],'cancel-result-reservation':['program'],'close-tracking':['human']} as const;
+export const runAuthorities = {'reconcile-observation':['program'],dispatch:['program'],'transport-ack':['program'],input:['program'],terminal:['program'],lost:['program'],'prelaunch-rejected':['program'],'dispatch-blocked':['program'],supersede:['human'],restore:['human'],cancel:['human'],'cancel-conversation-job':['agent'],'cancel-decision-reminder':['program'],'cancel-inbox-reservation':['program'],'cancel-report-reservation':['program'],'cancel-result-reservation':['program'],'close-tracking':['human']} as const;
 export type RunKind = {phase:'conversation'} | {phase:'work'} | {phase:'report'} | {phase:'result'; resultOf:string; recipientRunId:string};
 export const creationAuthorities = {conversation:['human','program'],work:['human','agent'],report:['program'],result:['program']} as const;
 export function newRun(id:string, requestId:string, actor:Actor, parentRunId:string|null=null, kind:RunKind={phase:'work'}, compatibility:{allowAgentRoot?:boolean}={}): Result<Run> {
@@ -49,7 +50,7 @@ export function transitionRun(r:Run,e:RunEvent):Result<Run> {
   return accept({...r,state:{kind:'running',sessionId:e.sessionId,turnId:e.turnId,inputId:e.inputId},facts:[...r.facts,{type:e.type,at:e.at,operationId:e.operationId,sessionId:e.sessionId,turnId:e.turnId,inputId:e.inputId}]});
  }
  if (isTerminal(r)) return reject('run-terminal');
- const record=(state:RunState):Result<Run>=>accept({...r,state,facts:[...r.facts,{type:e.type,at:'at' in e?e.at:0,...('sessionId' in e&&e.sessionId?{sessionId:e.sessionId}:{}),...('turnId' in e?{turnId:e.turnId}:{}),...('inputId' in e?{inputId:e.inputId}:{}),...('outcome' in e?{outcome:e.outcome}:{}),...('errorCode' in e?{errorCode:e.errorCode}:{})}]});
+ const record=(state:RunState):Result<Run>=>accept({...r,state,facts:[...r.facts,{type:e.type,at:'at' in e?e.at:0,...('sessionId' in e&&e.sessionId?{sessionId:e.sessionId}:{}),...('turnId' in e?{turnId:e.turnId}:{}),...('inputId' in e?{inputId:e.inputId}:{}),...('operationId' in e?{operationId:e.operationId}:{}),...('outcome' in e?{outcome:e.outcome}:{}),...('errorCode' in e?{errorCode:e.errorCode}:{})}]});
  switch(e.type) {
   case 'dispatch': return r.state.kind==='queued'&&e.agentIdle&&Number.isFinite(e.at)
    ? record({kind:'sent',sessionId:e.sessionId,sentAt:e.at}) : reject('dispatch-requires-idle-and-queued');
@@ -70,6 +71,7 @@ export function transitionRun(r:Run,e:RunEvent):Result<Run> {
   }
   case 'lost': return r.state.kind==='sent'||r.state.kind==='running'
    ? record({kind:'ended',outcome:'unconfirmed',reason:e.reason}) : reject('not-dispatched');
+  case 'prelaunch-rejected': return r.state.kind==='sent'&&e.operationId===r.id&&!r.facts.some(f=>f.type==='input')?record({kind:'ended',outcome:'failed',reason:'prelaunch-rejected'}):reject('not-unaccepted-launch');
   case 'dispatch-blocked': return r.state.kind==='queued'?record({kind:'ended',outcome:e.reason==='dispatch-boundary-changed'?'interrupted':'unconfirmed',reason:e.reason}):reject('already-dispatched');
   case 'supersede': return r.state.kind==='running'&&!r.supersededBy&&e.successorId?accept({...r,supersededBy:e.successorId}):reject('not-running-owner');
   case 'restore': {
@@ -114,8 +116,18 @@ export function confirmedInterruption(r:Run):boolean {
  const input=[...r.facts].reverse().find(f=>f.type==='input'),terminal=[...r.facts].reverse().find(f=>f.type==='terminal');
  return r.state.kind==='ended'&&r.state.outcome==='interrupted'&&r.state.reason==='native-terminal'&&r.phase==='work'&&!r.supersededBy&&!!input&&!!terminal&&terminal.outcome==='interrupted'&&!!input.sessionId&&!!input.turnId&&input.sessionId===terminal.sessionId&&input.turnId===terminal.turnId&&terminal.at>=input.at;
 }
-/** Called only after a persisted recovery graph and subsequent human permission is validated. */
-export function secretaryResumeRun(r:Run,id:string):Result<Run> {
- if(!confirmedInterruption(r)||!id||id===r.id)return reject('secretary-resume-not-confirmed');
- return accept({...r,id,createdBy:'agent',retryOf:r.id,state:{kind:'queued'},facts:[],decisions:[{actor:'agent',reason:'secretary-relay-resume'}],retryBudget:{count:0,firstFailureAt:null}});
+/** Classify only persisted execution facts. Remaining artifact processes are not executors. */
+export function continuationBasis(r:Run):'before-dispatch'|'native-terminal'|null {
+ if(r.phase!=='work'||r.supersededBy||r.state.kind!=='ended')return null;
+ const input=[...r.facts].reverse().find(f=>f.type==='input');
+ const terminal=[...r.facts].reverse().find(f=>f.type==='terminal');
+ if(r.state.reason==='prelaunch-rejected'&&r.facts.at(-1)?.type==='prelaunch-rejected'&&!input)return 'before-dispatch';
+ if(r.facts.at(-1)?.type==='dispatch-blocked'&&!r.facts.some(f=>['dispatch','input','terminal'].includes(f.type)))return 'before-dispatch';
+ if(r.state.reason==='native-terminal'&&['failed','interrupted'].includes(r.state.outcome)&&input&&terminal&&terminal.outcome===r.state.outcome&&input.sessionId&&input.turnId&&terminal.sessionId===input.sessionId&&terminal.turnId===input.turnId&&terminal.at>=input.at)return 'native-terminal';
+ return null;
+}
+/** Explicit purpose continuation. The caller also verifies current runtime ownership. */
+export function continuePurposeRun(r:Run,id:string):Result<Run> {
+ if(!continuationBasis(r)||!id||id===r.id)return reject('continuation-execution-unresolved');
+ return accept({...r,id,createdBy:'agent',retryOf:r.id,state:{kind:'queued'},facts:[],decisions:[{actor:'agent',reason:'purpose-continuation'}],retryBudget:{count:0,firstFailureAt:null}});
 }

@@ -1,8 +1,9 @@
+import {continuationBasis} from './run.ts';
 import {closeSelfResume,consumeSelfResume} from './self-resume.ts';
 import type {SelfResume} from './self-resume.ts';
 import {accept,reject} from './common.ts';
 import type {Actor,Result} from './common.ts';
-import {isTerminal,confirmedInterruption} from './run.ts';
+import {isTerminal} from './run.ts';
 import type {Run,Outcome} from './run.ts';
 export type RequestState={kind:'active';review:string[]}|{kind:'submitted';resultId:string}|{kind:'completed';by:'program'|'human'|'agent';reason:string}|{kind:'withdrawn';reason:string};
 export type Submission={observationRetraction?:string;id:string;version:number;runId:string;outcome:Outcome|'cancelled';requestId:string};
@@ -138,7 +139,7 @@ export type Event=
  | {type:'withdraw-conversation';actor:'agent';requestId:string;conversationId:string;reason:string}
  | {type:'plan-assign';actor:'human'|'agent';requestId:string;agentId:string}
  | {type:'discard-plan';actor:'human'|'agent';requestId:string}
- | {type:'attempt';actor:Actor;requestId:string;runId:string;report:boolean;resolveReview?:boolean;resolveInterruptedRunId?:string}
+ | {type:'attempt';actor:Actor;requestId:string;runId:string;report:boolean;resolveReview?:boolean;resolveContinuationRunId?:string}
  | {type:'respond'|'finish';actor:'agent';requestId:string;runId:string;operationId:string;results:Response[];inputs?:string[];at:number}
  | {type:'replace';actor:'agent';requestId:string;childId:string;replacementId:string}
  | {type:'supplement';actor:Actor;requestId:string;input:InboxItem}
@@ -229,7 +230,7 @@ export function transitionGraph(source:Graph,e:Event,runs:Evidence):Result<Graph
     if(n.state.kind!=='submitted'||n.recipient.kind!=='human')return reject('report-not-ready');
     n.runAgents[r.id]=n.assignee;n.runIds.push(r.id);n.reportRunId=r.id;return accept(g);
    }
-   if(e.resolveInterruptedRunId){const old=current(n,runs);if(e.actor!=='agent'||!old||old.id!==e.resolveInterruptedRunId||r.retryOf!==old.id||!confirmedInterruption(old)||!r.decisions.some(d=>d.actor==='agent'&&d.reason==='secretary-relay-resume'))return reject('invalid-secretary-resume');}
+   if(e.resolveContinuationRunId){const old=current(n,runs);if(e.actor!=='agent'||!old||old.id!==e.resolveContinuationRunId||r.retryOf!==old.id||!continuationBasis(old)||!r.decisions.some(d=>d.actor==='agent'&&d.reason==='purpose-continuation'))return reject('invalid-purpose-continuation');}
    if(e.resolveReview&&(e.actor!=='human'||!r.retryOf))return reject('invalid-review-resolution');
    if(r.retryOf&&!n.runIds.includes(r.retryOf))return reject('foreign-predecessor');
    if(r.phase==='result'){
@@ -248,7 +249,7 @@ export function transitionGraph(source:Graph,e:Event,runs:Evidence):Result<Graph
    }
    n.planned=false;n.runAgents[r.id]=n.assignee;
    n.runIds.push(r.id);n.currentRunId=r.id;if(e.report)n.reportRunId=r.id;
-   n.state={kind:'active',review:e.resolveReview?[]:n.state.kind==='active'?n.state.review.filter(x=>x!=='run-needs-review:'+e.resolveInterruptedRunId&&!['needs-decision','dependencies-unresolved','progress-stalled','child-needs-review'].includes(x)):[]};
+   n.state={kind:'active',review:e.resolveReview?[]:n.state.kind==='active'?n.state.review.filter(x=>x!=='run-needs-review:'+e.resolveContinuationRunId&&!['needs-decision','dependencies-unresolved','progress-stalled','child-needs-review'].includes(x)):[]};
    return accept(reconcileGraph(g,runs));
   }
   case 'review':if(n.state.kind==='active')n.state.review=[...new Set([...n.state.review,e.reason])];return accept(g);

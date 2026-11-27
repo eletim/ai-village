@@ -134,11 +134,11 @@ for(const action of ['ask','followup'])test('real consultation allows '+action,a
  const bad=await v('accept','--run',r.id,'採用');assert.equal(bad.ok,false);assert.match(bad.error,/相談への回答はfollowup/);
  const out=await v(action,'--run',r.id,action==='ask'?'いつ公開しますか？':'12月1日に公開してください');assert.equal(out.ok,true,out.error);
 });
-test('failed leader guidance cannot be followed via followup',async t=>{
+test('confirmed failed leader can continue via ordinary followup but cannot be accepted',async t=>{
  const {f,human,first}=await purposeFixture(t),v=cli(f);await f.service.tick();const leader=f.service.flow.run(first.runId);await f.submit(leader);await f.complete(leader,'failed');
  const c=f.service.conversations.record(human.conversationId),e=c.deliveries.at(-1),r=f.service.flow.run(e.runId);await f.submit(r);
  const bad=await v('accept','--run',r.id,'採用');assert.equal(bad.ok,false);assert.match(bad.error,/village status.*保存記録.*人間/);assert.doesNotMatch(bad.error,/followup/);
- const out=await v('followup','--run',r.id,'修正してください');assert.equal(out.ok,false);assert.match(out.error,/失敗・受付不明/);t.diagnostic(JSON.stringify({kind:e.kind,accept:bad.error,followup:out.error}));
+ const out=await v('followup','--run',r.id,'修正してください');assert.equal(out.ok,true,out.error);assert.equal(out.result.action,'continue-purpose');
 });
 
 // Keep the adapter's guidance aligned with the actual refusal text in the core,
@@ -147,7 +147,7 @@ test('each documented refusal has guidance, preserving the original core reason'
  const {readFile}=await import('node:fs/promises');
  const sources=await Promise.all(['conversations.mjs','conversation-followup.mjs'].map(name=>readFile(new URL('../server/'+name,import.meta.url),'utf8')));
  const reasons=sources.flatMap(source=>[...source.matchAll(/fail\('([^']+)'/g)].map(m=>m[1]));
- const cases=[['今回の正式配送資料','この回には届いた結果'],['現在の正常な提出結果','最新ではない'],['後着の人間入力','新しい発言'],['前の判断の正常終了','まだ確定'],['前の秘書判断の正常終了','まだ確定'],['受付照合済みの実行中','今答えている回'],['具体的な人間の回答','答えを待っています'],['達成報告後の追加指示','続きは'],['旧実行が失敗','自動では再送しません'],['取り下げ・人間による終了','新しい仕事なら'],['保存成果の正式配送','まだ届いていません'],['Projectのリーダーが未設定','設定を頼んで'],['指定された担当を利用','仕事を受けられません'],['担当の起動契約','仕事を受けられません']];
+ const cases=[['今回の正式配送資料','この回には届いた結果'],['現在の正常な提出結果','最新ではない'],['後着の人間入力','新しい発言'],['前の判断の正常終了','まだ確定'],['前の秘書判断の正常終了','まだ確定'],['受付照合済みの実行中','今答えている回'],['具体的な人間の回答','答えを待っています'],['達成報告後の追加指示','続きは'],['実行権限の閉鎖が未確認','元の入力を再送しません'],['取り下げ・人間による終了','新しい仕事なら'],['保存成果の正式配送','まだ届いていません'],['Projectのリーダーが未設定','設定を頼んで'],['指定された担当を利用','仕事を受けられません'],['担当の起動契約','仕事を受けられません']];
  const {f}=await purposeFixture(t),human=await turn(f,'進めてください'),village=cli(f);
  for(const [prefix,hint] of cases){
   const reason=reasons.find(s=>s.startsWith(prefix));assert(reason,prefix);

@@ -45,3 +45,33 @@ test('new auto recovery delivers saved result only and accepts through simple de
  await Promise.all([f.service.tick(),f.service.tick()]);const c=f.service.conversations.record(human.conversationId),events=c.deliveries.filter(e=>e.decisionRecovery);assert.equal(events.length,1);
  const recovery=f.service.flow.run(events[0].runId);await f.submit(recovery);await f.service.conversations.decide({conversationId:c.id,actorRunId:recovery.id,operationId:randomUUID(),decision:'accept',reason:'保存成果で目的達成を確認'});await f.complete(recovery);await f.restart();await f.service.tick();assert.equal(view().decision.state,'committed');assert.equal(f.service.data.requests.length,1);assert.equal(f.service.data.runs.filter(r=>r.humanRequestId===first.humanRequestId).length,1);
 });
+test('ordinary followup resumes confirmed interrupted work once, preserving artifacts and input history',async t=>{
+ const {f,human,first}=await purposeFixture(t),r=f.service.flow.run(first.runId);
+ await f.submit(r);await f.complete(r,'interrupted');
+ const c=f.service.conversations.record(human.conversationId),e=c.deliveries.find(e=>e.kind==='attention'),actor=f.service.flow.run(e.runId);await f.submit(actor);
+ const old=structuredClone(r.runModel),x=input(human,first.humanRequestId,actor.id,'既存Webは維持し、未完了部分だけ継続');
+ const receipt=await invoke(f,x);assert.equal(receipt.previousRunId,r.id);assert.equal(receipt.humanRequestId,first.humanRequestId);
+ assert.deepEqual(await invoke(f,x),receipt);assert.deepEqual(r.runModel,old);
+ assert.equal(f.service.flow.run(receipt.runId).runModel.createdBy,'agent');
+ await f.service.tick();await f.submit(f.service.flow.run(receipt.runId));
+ assert.equal(f.service.flow.inputs(first.humanRequestId,first.workId)[0].text,'目的の成果を作る');
+});
+test('late native input prevents continuation reservation, not just its send',async t=>{
+ const {f,human,first}=await purposeFixture(t),r=f.service.flow.run(first.runId);
+ await f.submit(r);await f.complete(r,'interrupted');
+ const c=f.service.conversations.record(human.conversationId),actor=f.service.flow.run(c.deliveries.find(e=>e.kind==='attention').runId);await f.submit(actor);
+ const native=f.runtimes.get(r.agentId);native.inputs.push({id:'late',turnId:'late',offset:++native.cursor});
+ const before=f.service.data.runs.length;
+ await assert.rejects(invoke(f,input(human,first.humanRequestId,actor.id)),/実行境界/);assert.equal(f.service.data.runs.length,before);
+});
+test('native input arriving during contract verification prevents a reserved continuation send',async t=>{
+ const {f,human,first}=await purposeFixture(t),r=f.service.flow.run(first.runId);
+ await f.submit(r);await f.complete(r,'interrupted');
+ const c=f.service.conversations.record(human.conversationId),actor=f.service.flow.run(c.deliveries.find(e=>e.kind==='attention').runId);await f.submit(actor);
+ const receipt=await invoke(f,input(human,first.humanRequestId,actor.id)),verify=f.service.verifyInstructions.bind(f.service);
+ let injected=false;
+ f.service.verifyInstructions=async a=>{await verify(a);if(a.id===r.agentId&&!injected){injected=true;const native=f.runtimes.get(r.agentId);native.inputs.push({id:'after-verify',turnId:'after-verify',offset:++native.cursor});}};
+ const before=f.sent.filter(s=>s.agentId===r.agentId).length;
+ await f.service.tick();assert.equal(injected,true);assert.equal(f.sent.filter(s=>s.agentId===r.agentId).length,before);
+ assert.equal(f.service.flow.run(receipt.runId).runModel.state.reason,'dispatch-boundary-changed');
+});

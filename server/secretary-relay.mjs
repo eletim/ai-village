@@ -1,7 +1,7 @@
-import {reserveInitialRelay,launchInitialRelay,initialRelayObservation} from './relay-initial-launch.mjs';
+import {continuationBoundary} from './purpose-continuation.mjs';
+import {initialRelayObservation} from './relay-initial-launch.mjs';
 import {randomUUID,createHash} from 'node:crypto';
 import {checkRelayRecheck} from './secretary-relay-recheck.mjs';
-import {recoveryEvidence} from './secretary-relay-recovery.mjs';
 import {accepted,runState} from './run-lifecycle.mjs';
 import {confirmedInterruption} from './state/run.ts';
 import {resolveFollowup} from './conversation-followup.mjs';
@@ -49,7 +49,7 @@ export class SecretaryRelay {
     }else if(e.recoveryHistory?.length)fail('Orphan recovery history');
     if(e.actionReceipt?.action==='resume-interrupted'){
      const resumed=d.flow.run(e.actionReceipt.runId);
-     if(resumed?.secretaryRecovery?.deliveryId!==e.id||resumed.secretaryRecovery.previousRunId!==e.target.currentRunId||resumed.humanRequestId!==e.target.requestId||resumed.workId!==e.target.workId||resumed.runModel.createdBy!=='agent')fail('Invalid secretary resume receipt');
+     if((resumed?.purposeContinuation?.deliveryId||resumed?.secretaryRecovery?.deliveryId)!==e.id||(resumed.purposeContinuation||resumed.secretaryRecovery).previousRunId!==e.target.currentRunId||resumed.humanRequestId!==e.target.requestId||resumed.workId!==e.target.workId||resumed.runModel.createdBy!=='agent')fail('Invalid secretary resume receipt');
     }
     for(const recovery of [...(e.recoveryHistory||[]),...(e.recovery?[e.recovery]:[])].filter(h=>h.returnRunId)){const rr=d.flow.run(recovery.returnRunId);if(rr?.conversationId!==source.id||rr.conversationSource?.relayReturnId!==e.id)fail('Invalid recovery return receipt');}
     if(e.returnRunId){const r=d.flow.run(e.returnRunId);if(r?.conversationId!==source.id||r.conversationSource?.relayReturnId!==e.id)fail('Invalid secretary return receipt');}
@@ -58,11 +58,11 @@ export class SecretaryRelay {
   }
  }
  // Bind the one historical recovery subject, not IDs invented in a new message.
- evidence(c,actor,x,recheck){
+ evidence(c,actor,x,recheck,{compact=false,frozen=false}={}){
   const d=this.d,authorization=d.conversations.authorize(c,actor,x.authorization),human=d.flow.run(authorization.runId);
   if(!recheck&&humanSequence(d,c)!==human.conversationSequence)fail('後着の人間入力があります。許可を再照合してください');
   const event=c.deliveries.find(e=>e.id===x.evidenceDeliveryId),review=event&&d.flow.run(event.runId);
-  if(!review||review.conversationId!==c.id||review.conversationSource?.deliveryId!==event.id||review.conversationSource?.humanRequestId!==event.humanRequestId||event.decisionRecovery||review.conversationSequence+1!==human.conversationSequence||!accepted(review)||runState(review)!=='completed'||!['question','result'].includes(event.kind))fail('直前に正式配送・正常返答された復旧資料が必要です',403);
+  if(!review||review.conversationId!==c.id||review.conversationSource?.deliveryId!==event.id||review.conversationSource?.humanRequestId!==event.humanRequestId||event.decisionRecovery||(compact?review.conversationSequence>=human.conversationSequence:review.conversationSequence+1!==human.conversationSequence)||!accepted(review)||runState(review)!=='completed'||!['question','result'].includes(event.kind))fail('直前に正式配送・正常返答された復旧資料が必要です',403);
   const recovery=d.flow.root(event.humanRequestId),rw=rootNode(recovery),reportRun=d.flow.run(event.material.actorRunId||event.material.runId);
   if(recovery.integrity||recovery.conversationId!==c.id||rw.state.kind==='withdrawn'||!reportRun||reportRun.humanRequestId!==recovery.id||reportRun.workId!==rw.id||!accepted(reportRun)||runState(reportRun)!=='completed')fail('復旧依頼と報告runを照合できません',403);
   if(!rw.runIds.includes(reportRun.id)||rw.runAgents[reportRun.id]!==reportRun.agentId)fail('報告の担当関係が一致しません',403);
@@ -86,14 +86,30 @@ export class SecretaryRelay {
   if(candidates.length!==1)fail('保存済み復旧依頼の対象が一意ではありません',403);
   const q=candidates[0];if(q.integrity||!q.conversationId||q.conversationId===c.id)fail('復旧対象の参照を検証できません',403);
   const w=rootNode(q),recipient=d.conversations.record(q.conversationId);
-  if(![q.projectId,w.id,w.currentRunId].every(id=>ids.has(id)))fail('対象Project・仕事・旧実行の完全IDが必要です',403);
+  if(![q.projectId,w.id,frozen?x.target.currentRunId:w.currentRunId].every(id=>ids.has(id)))fail('対象Project・仕事・旧実行の完全IDが必要です',403);
   if(d.data.conversations.some(other=>other.id!==recipient.id&&(event.material.text||event.material.output||'').includes(other.id)))fail('報告に別の会話参照があります',403);
   if(!(event.material.text||event.material.output||'').includes(recipient.id))fail('正式報告に返却先会話の根拠がありません',403);
   fields(x.target,['secretaryId','projectId','conversationId','purposeId','requestId','workId','currentRunId','revision','mode']);
-  const t={secretaryId:recipient.agentId,projectId:q.projectId,conversationId:q.conversationId,purposeId:purposeId(q),requestId:q.id,workId:w.id,currentRunId:w.currentRunId,revision:q.revision,mode:x.target.mode};
-  if(Object.keys(t).some(k=>x.target[k]!==t[k]))fail('指定対象と保存された復旧対象が一致しません',403);
-  target(d,t);
+  const t={secretaryId:recipient.agentId,projectId:q.projectId,conversationId:q.conversationId,purposeId:purposeId(q),requestId:q.id,workId:w.id,currentRunId:frozen?x.target.currentRunId:w.currentRunId,revision:frozen?x.target.revision:q.revision,mode:x.target.mode};
+  if((compact?Object.keys(x.target):Object.keys(t)).some(k=>x.target[k]!==t[k]))fail('指定対象と保存された復旧対象が一致しません',403);
+  if(!frozen)target(d,t);
   return {authorization,humanText:human.instruction,recoveryRequestId:recovery.id,evidenceDeliveryId:event.id,evidence:{recoveryInstruction:recovery.instruction,recoveryAuthorization:recovery.requestedBy.authorization,report:structuredClone(event.material),deliveredRunId:review.id},evidenceDigest:hash([recovery.instruction,original,event.material,review.id,review.conversationSequence,human.instruction]),target:t};
+ }
+ // The existing authorized recovery evidence remains the cross-Project bound.
+ // New clients omit run/revision hashes: these are derived here, not guessed by
+ // the secretary. A target plus arbitrary human quote is NOT sufficient.
+ scopedEvidence(c,actor,x){
+  const d=this.d,recipient=d.data.conversations.find(c=>c.id===x.target?.conversationId),original=d.data.requests.find(q=>q.id===x.target?.purposeId);
+  if(!recipient||!original||original.conversationId!==recipient.id)fail('配送先会話・目的が一致しません',403);
+  const q=purposeLeaf(d.data,original),w=rootNode(q),r=d.flow.run(w.currentRunId);
+  const t={secretaryId:recipient.agentId,projectId:q.projectId,conversationId:recipient.id,purposeId:purposeId(q),requestId:q.id,workId:w.id,currentRunId:r?.id,revision:q.revision,mode:stopped(r)?'resume-interrupted':'followup'};
+  if(Object.keys(x.target).some(k=>!(k in t)||x.target[k]!==t[k]))fail('指定対象と現在の目的が一致しません',403);
+  const proof=this.evidence(c,actor,{...x,target:t},null,{compact:true});
+  return {...proof,scopeVersion:2};
+ }
+ recheckEvidence(source,e){
+  const recheck=e.recovery?.recheck?checkRelayRecheck(this.d,source,e,e.recovery.recheck,this.d.flow.run(e.recovery.actorRunId)):null;
+  return this.evidence(source,this.d.flow.run(e.sourceRunId),{authorization:e.authorization,evidenceDeliveryId:e.evidenceDeliveryId,target:e.target},recheck,{compact:e.scopeVersion===2,frozen:e.scopeVersion===2});
  }
  async send(x){
   fields(x,['conversationId','actorRunId','operationId','authorization','evidenceDeliveryId','target','instruction']);key(x.operationId);text(x.instruction);
@@ -102,7 +118,7 @@ export class SecretaryRelay {
    if(saved){if(saved.payload!==payload)fail('operationIdの再利用です');return structuredClone(saved.receipt);}
    const actor=d.conversations.actor(c,x.actorRunId);
    if(actor.conversationSource?.kind==='secretary'||actor.conversationSource?.relayReturnId)fail('中継の再転送は禁止です',403);
-   const proof=this.evidence(c,actor,x),b=target(d,proof.target);
+   const proof=this.scopedEvidence(c,actor,x),b=target(d,proof.target);
    if(b.c.id===c.id||b.c.agentId===c.agentId)fail('別の秘書を指定してください');
    if((b.c.relayInbox||[]).some(e=>e.target.requestId===proof.target.requestId&&e.target.currentRunId===proof.target.currentRunId))fail('同じ実行への中継が既にあります。照合してください');
    const id=randomUUID(),e={id,sourceConversationId:c.id,sourceSecretaryId:c.agentId,sourceRunId:actor.id,...proof,targetHumanSequence:humanSequence(d,b.c),message:x.instruction,createdAt:new Date().toISOString()};
@@ -115,103 +131,6 @@ export class SecretaryRelay {
   const e=(c.relayInbox||[]).find(e=>e.id===id&&relayRunId(e)===actor.id&&actor.conversationSource?.relayId===e.id);
   if(!e)fail('今回の正式中継だけを操作できます',403);return e;
  }
- async recover(x){
-  fields(x,['conversationId','actorRunId','operationId','deliveryId','nativeInputHash','nativeTurnId','recheck','freshTui']);key(x.operationId);
-  if(!/^[a-f0-9]{64}$/.test(x.nativeInputHash||'')||typeof x.nativeTurnId!=='string')fail('保存nativeのinput hashとturn IDが必要です',400);
-  const d=this.d,source=d.conversations.record(x.conversationId),sent=source.relaySent?.find(s=>s.receipt.deliveryId===x.deliveryId);
-  if(!sent)fail('送信元本人の配送だけ回復できます',403);
-  const recipient=d.conversations.record(sent.receipt.conversationId);
-  return d.locked('request-graph',()=>d.locked(recipient.agentId,async()=>{
-   const payload=JSON.stringify(x);
-   if(x.freshTui!==undefined)fields(x.freshTui,['handover']);
-   const check=()=>{
-    const c=d.conversations.record(x.conversationId),e=d.conversations.record(recipient.id).relayInbox.find(e=>e.id===x.deliveryId);
-    if(e?.recovery){if(e.recovery.payload!==payload)fail('この配送の回復は一度だけです');return {e,saved:true};}
-    const actor=d.conversations.actor(c,x.actorRunId);
-    if(!e||c.agentId!==e.sourceSecretaryId||actor.agentId!==e.sourceSecretaryId||actor.conversationSource?.kind==='secretary')fail('送信元本人の正式runが必要です',403);
-    if(e.actionReceipt||e.target.mode!=='resume-interrupted'||humanSequence(d,recipient)!==e.targetHumanSequence)fail('適用済み・後着入力・回復対象外です');
-    const recheck=x.recheck?checkRelayRecheck(d,c,e,x.recheck,actor):null;
-    const b=target(d,e.target),proof=this.evidence(c,actor,{authorization:e.authorization,evidenceDeliveryId:e.evidenceDeliveryId,target:e.target},recheck);
-    if(proof.evidenceDigest!==e.evidenceDigest||!c.relaySent.some(s=>s.receipt.deliveryId===e.id&&s.receipt.runId===e.runId&&s.actorRunId===e.sourceRunId))fail('保存許可が一致しません',403);
-    const old=d.flow.run(e.runId);
-    if(old?.runModel?.state.kind!=='ended'||old.runModel.state.outcome!=='unconfirmed'||old.runModel.state.reason!=='turn-ended-without-marker'||old.error!=='competing-or-unmatched-input'||accepted(old)||old.runModel.facts.some(f=>f.type==='input')||old.conversationSource?.relayId!==e.id)fail('対象は未受付の混入入力だけです');
-    if(d.data.runs.some(r=>r.agentId===b.a.id&&['queued','sent','running'].includes(r.runModel?.state.kind))||d.data.runs.some(r=>r.secretaryRecovery?.previousRunId===e.target.currentRunId))fail('別の未終了runまたは既存の再開があります');
-    return {e,b,old,recheck,actorRunId:actor.id};
-   };
-   const first=check();if(first.saved)return d.persist(async()=>structuredClone(first.e.recovery.receipt));
-   const oldDigest=hash(first.old);
-   const cap=await d.pmux(first.b.a,'tab','capabilities');
-   if(x.freshTui ? cap?.initialCodexLaunch?.version!==1||cap.initialCodexLaunch.client!==1 : cap?.guardedCodexInput?.version!==1||cap.guardedCodexInput.client!==1)fail(x.freshTui?'回復前にPurpleMux initialCodexLaunch server/CLIが必要です':'回復前にPurpleMux guardedCodexInput server/CLIが必要です');
-   const status=await d.pmux(first.b.a,'tab','status','-w',first.b.a.workspaceId,first.b.a.tabId),snapshot=await d.runtime(first.b.a,status);
-   const proof=recoveryEvidence(first.old,snapshot,status,x);
-   const result=await d.persist(async()=>{
-    const beforeSaveStatus=await d.pmux(first.b.a,'tab','status','-w',first.b.a.workspaceId,first.b.a.tabId);
-    const beforeSave=await d.runtime(first.b.a,beforeSaveStatus);
-    if(hash(recoveryEvidence(first.old,beforeSave,beforeSaveStatus,x))!==hash(proof))fail('証拠読取後にnativeが変化しました');
-    const current=check();if(current.saved)return structuredClone(current.e.recovery.receipt);
-    if(hash(current.old)!==oldDigest)fail('旧配送が変化しました');
-    const e=current.e,r=d.conversations.enqueue(recipient,{requestId:'secretary-relay-recovery:'+e.id,source:{kind:'secretary',relayId:e.id},instruction:current.old.instruction});
-    r.relayRecoveryOf=e.runId;r.relayRecoveryBoundary={sessionId:snapshot.sessionId,fileIdentity:snapshot.fileIdentity,cursor:snapshot.cursor};
-    const receipt={deliveryId:e.id,conversationId:recipient.id,runId:r.id,previousRunId:e.runId,purposeId:e.target.purposeId};
-    e.recovery={...(current.recheck?{recheck:current.recheck}:{}),operationId:x.operationId,payload,actorRunId:current.actorRunId,previousRunId:e.runId,proof,receipt,createdAt:new Date().toISOString()};
-    if(x.freshTui)reserveInitialRelay(d,current.b.a,r,e,x.freshTui.handover);
-    await d.save();return structuredClone(receipt);
-   });
-   if(x.freshTui)await launchInitialRelay(this,d.flow.run(result.runId));
-   return result;
-  }));
- }
- async succeed(x){
-  fields(x,['conversationId','actorRunId','operationId','deliveryId','previousRunId','previousOperationId','recheck','assessment','handover']);key(x.operationId);
-  fields(x.assessment,['summary','potentialDuplicates','uncertainties']);
-  for(const k of ['summary','potentialDuplicates','uncertainties'])text(x.assessment?.[k]);text(x.handover);
-  const d=this.d,source=d.conversations.record(x.conversationId),sent=source.relaySent?.find(s=>s.receipt.deliveryId===x.deliveryId);
-  if(!sent)fail('送信元本人の配送だけ後継回復できます',403);
-  const recipient=d.conversations.record(sent.receipt.conversationId),payload=JSON.stringify(x);
-  return d.locked('request-graph',()=>d.locked(recipient.agentId,async()=>{
-   const check=()=>{
-    const c=d.conversations.record(source.id),e=d.conversations.record(recipient.id).relayInbox.find(e=>e.id===x.deliveryId);
-    if(e?.recovery?.supersedes){if(e.recovery.payload!==payload)fail('後継回復は一度だけです');return {e,saved:true};}
-    const actor=d.conversations.actor(c,x.actorRunId),prior=e?.recovery,old=d.flow.run(prior?.receipt.runId);
-    if(!e||c.agentId!==e.sourceSecretaryId||actor.agentId!==e.sourceSecretaryId||actor.conversationSource?.kind==='secretary')fail('送信元本人の正式runが必要です',403);
-    if(!old?.relayInitial||old.id!==x.previousRunId||old.relayInitial.launch.operationId!==x.previousOperationId||old.relaySuperseded||prior.initialLaunchId!==x.previousOperationId||e.recoveryHistory?.length)fail('保存済み初回起動の後継対象が一致しません');
-    if(old.runModel.state.kind!=='ended'||old.runModel.state.outcome!=='unconfirmed'||old.runModel.state.reason!=='timeout'||accepted(old)||old.acceptedAt||old.relayInitial.receipt||old.runModel.facts.some(f=>f.type==='input'))fail('対象は未受付timeoutだけです');
-    if(e.actionReceipt||e.target.mode!=='resume-interrupted'||humanSequence(d,recipient)!==e.targetHumanSequence)fail('適用済みまたは後着入力です');
-    const recheck=x.recheck?checkRelayRecheck(d,c,e,x.recheck,actor):null,b=target(d,e.target);
-    const proof=this.evidence(c,actor,{authorization:e.authorization,evidenceDeliveryId:e.evidenceDeliveryId,target:e.target},recheck);
-    if(proof.evidenceDigest!==e.evidenceDigest)fail('元許可が一致しません');
-    if(b.a.tabId!==old.relayInitial.launch.tabId||b.a.workspaceId!==old.relayInitial.launch.workspaceId||hash(b.a.connection)!==hash(old.relayInitial.oldRuntime.connection))fail('旧予約runtimeが変化しました');
-    if(d.data.runs.some(r=>r.agentId===b.a.id&&['queued','sent','running'].includes(r.runModel?.state.kind))||d.data.runs.some(r=>r.secretaryRecovery?.previousRunId===e.target.currentRunId))fail('別runまたは既存再開があります');
-    return {e,old,b,recheck,actorRunId:actor.id};
-   };
-   const first=check();if(first.saved)return d.persist(async()=>structuredClone(first.e.recovery.receipt));
-   const oldDigest=hash(first.old);
-   const observe=async current=>{
-    const cap=await d.pmux(current.b.a,'tab','capabilities');if(cap?.initialCodexLaunch?.version!==1||cap.initialCodexLaunch.client!==1)fail('initialCodexLaunchが必要です');
-    const observation=await d.pmux(current.b.a,'tab','initial-status',x.previousOperationId);
-    if(observation.state!=='unknown'||observation.receipt||observation.processMatches||observation.operationId!==x.previousOperationId||observation.runId!==x.previousRunId||observation.bodyHash!==current.old.inputCorrelation.digest)fail('旧起動のunknown記録が変化しました');
-    const a={...current.b.a,...current.old.relayInitial.oldRuntime},status=await d.pmux(a,'tab','status','-w',a.workspaceId,a.tabId),snapshot=await d.runtime(a,status);
-    const proof=recoveryEvidence(d.flow.run(current.e.runId),snapshot,status,{nativeInputHash:current.e.recovery.proof.inputHash,nativeTurnId:current.e.recovery.proof.turnId});
-    if(hash(proof)!==hash(current.e.recovery.proof))fail('旧native証拠が変化しました');
-    return {observation,proof};
-   };
-   const seen=await observe(first);
-   const receipt=await d.persist(async()=>{
-    const current=check();if(current.saved)return structuredClone(current.e.recovery.receipt);
-    if(hash(await observe(current))!==hash(seen)||hash(current.old)!==oldDigest)fail('保存直前の旧証拠が変化しました');
-    const final=check(),e=final.e,old=final.old,prior=structuredClone(e.recovery);
-    const r=d.conversations.enqueue(recipient,{requestId:'secretary-relay-successor:'+e.id,source:{kind:'secretary',relayId:e.id},instruction:'これは未受付unknownを保持した明示後継です。最初に conversations read でrelay資料と元目的・成果・未処理入力を取得し、repo/稼働process/公開先/既実行操作を照合してください。未知の操作を自動再実行せず未完了分だけ継続。relayApplyには reconciliation:{decision:"continue-unfinished-only",summary:"実際の照合結果と重複回避方針"} が必要です。\n'+old.instruction});
-    r.relayRecoveryOf=e.runId;r.relayRecoveryBoundary=structuredClone(old.relayRecoveryBoundary);
-    const result={deliveryId:e.id,conversationId:recipient.id,runId:r.id,previousRunId:old.id,purposeId:e.target.purposeId};
-    e.recoveryHistory=[prior];e.recovery={operationId:x.operationId,payload,actorRunId:final.actorRunId,previousRunId:e.runId,proof:prior.proof,...(final.recheck?{recheck:final.recheck}:{}),supersedes:{runId:old.id,operationId:x.previousOperationId,assessment:structuredClone(x.assessment),observation:seen.observation},receipt:result,createdAt:new Date().toISOString()};
-    old.relaySuperseded={operationId:x.operationId,successorRunId:r.id,at:e.recovery.createdAt};
-    reserveInitialRelay(d,final.b.a,r,e,x.handover);
-    r.relayInitial.proofRuntime=structuredClone(old.relayInitial.oldRuntime);
-    await d.save();return structuredClone(result);
-   });
-   await launchInitialRelay(this,d.flow.run(receipt.runId));return receipt;
-  }));
- }
  dispatchBoundary(r){
   const d=this.d,c=d.conversations.record(r.conversationId),e=c.relayInbox?.find(e=>e.recovery?.receipt.runId===r.id);
   if(!e||e.actionReceipt||humanSequence(d,c)!==e.targetHumanSequence)fail('中継回復の配送境界が変わりました');
@@ -219,7 +138,7 @@ export class SecretaryRelay {
   const recheck=e.recovery.recheck?checkRelayRecheck(d,source,e,e.recovery.recheck,d.flow.run(e.recovery.actorRunId)):null;
   const proof=this.evidence(source,d.flow.run(e.sourceRunId),{authorization:e.authorization,evidenceDeliveryId:e.evidenceDeliveryId,target:e.target},recheck);
   if(proof.evidenceDigest!==e.evidenceDigest)fail('保存許可が変わりました');
-  if(d.data.runs.some(x=>x.secretaryRecovery?.previousRunId===e.target.currentRunId))fail('既に再開されています');
+  if(d.data.runs.some(x=>(x.purposeContinuation||x.secretaryRecovery)?.previousRunId===e.target.currentRunId))fail('既に再開されています');
  }
  async apply(x){
   fields(x,['conversationId','actorRunId','operationId','deliveryId','reconciliation']);key(x.operationId);
@@ -232,8 +151,7 @@ export class SecretaryRelay {
    if((c.relayInbox||[]).some(y=>y!==e&&y.actionOperationId===x.operationId))fail('operationIdの再利用です');
    if(humanSequence(d,c)!==e.targetHumanSequence)fail('後着の人間入力があります。自動継続しません');
    const b=target(d,e.target),source=d.conversations.record(e.sourceConversationId),sourceRun=d.flow.run(e.sourceRunId);
-   const recheck=e.recovery?.recheck?checkRelayRecheck(d,source,e,e.recovery.recheck,d.flow.run(e.recovery.actorRunId)):null;
-   const proof=this.evidence(source,sourceRun,{authorization:e.authorization,evidenceDeliveryId:e.evidenceDeliveryId,target:e.target},recheck);
+   const proof=this.recheckEvidence(source,e);
    if(source.agentId!==e.sourceSecretaryId||proof.evidenceDigest!==e.evidenceDigest||!(source.relaySent||[]).some(s=>s.receipt.deliveryId===e.id&&s.receipt.runId===e.runId&&s.actorRunId===e.sourceRunId))fail('保存された中継許可が一致しません',403);
    if(e.recovery?.supersedes){
     fields(x.reconciliation,['decision','summary']);
@@ -242,8 +160,10 @@ export class SecretaryRelay {
    d.conversations.authorize(c,actor,b.original.requestedBy.authorization);
    let receipt;
    if(e.target.mode==='resume-interrupted'){
-    if(d.data.runs.some(r=>r.secretaryRecovery?.previousRunId===b.r.id))fail('同じ中断の再開は一度だけです');
-    const r=await d.flow.continueLocked({humanRequestId:b.q.id,workId:b.w.id,revision:e.target.revision,operationId:'relay-'+e.id,instruction:'照合済み中断からの再開です。実施済み外部操作を確認し未完了部分だけ続行してください。元依頼・許可範囲・未処理入力を requests get '+b.q.id+' と requests inputs '+b.q.id+' '+b.w.id+' で全文確認してから続行してください。外部操作の重複や範囲拡大は禁止です。'},true,{secretaryRecovery:{deliveryId:e.id,actorRunId:actor.id,previousRunId:b.r.id}},'agent',{deferSave:true});
+    if(d.data.runs.some(r=>(r.purposeContinuation||r.secretaryRecovery)?.previousRunId===b.r.id))fail('同じ中断の再開は一度だけです');
+    const a=d.agent(b.w.assignee),status=await d.pmux(a,'tab','status','-w',a.workspaceId,a.tabId),snapshot=await d.runtime(a,status);
+    if(!continuationBoundary(b.r,snapshot,status)||target(d,e.target).r.id!==b.r.id||humanSequence(d,c)!==e.targetHumanSequence||this.recheckEvidence(source,e).evidenceDigest!==e.evidenceDigest)fail('継続元の現在の所有・入力境界を確認できません');
+    const r=await d.flow.continueLocked({humanRequestId:b.q.id,workId:b.w.id,revision:e.target.revision,operationId:'relay-'+e.id,instruction:'照合済み中断からの再開です。実施済み外部操作を確認し未完了部分だけ続行してください。元依頼・許可範囲・未処理入力を requests get '+b.q.id+' と requests inputs '+b.q.id+' '+b.w.id+' で全文確認してから続行してください。外部操作の重複や範囲拡大は禁止です。'},true,{purposeContinuation:{deliveryId:e.id,actorRunId:actor.id,previousRunId:b.r.id,conversationId:c.id,humanSequence:e.targetHumanSequence,authorization:JSON.stringify(b.q.requestedBy.authorization),revision:b.q.revision+1}},'agent',{deferSave:true});
     receipt={action:'resume-interrupted',humanRequestId:b.q.id,workId:b.w.id,runId:r.id,previousRunId:b.r.id,purposeId:e.target.purposeId};
    }else{
     // Reuse the normal resolver, but never substitute another purpose or permission.

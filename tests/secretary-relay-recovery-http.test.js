@@ -12,7 +12,7 @@ import {spawn} from 'node:child_process';
 import {createServer} from 'node:net';
 import {once} from 'node:events';
 
-test('contaminated relay HTTP/native/SQLite recovery: preserve unknown and resume once',async()=>{
+test('removed recovery HTTP endpoints preserve unknown and never replay after restart',async()=>{
  const dir=await mkdtemp(join(tmpdir(),'requests-http-')),capture=join(dir,'sent.jsonl'),notices=join(dir,'notify-calls.jsonl');let child;
  const fixtureProcess=spawn('bash',['-c','exec -a codex sleep 120']);
  const bin=join(dir,'bin');await mkdir(bin);await writeFile(join(bin,'tmux'),'#!/bin/sh\necho '+fixtureProcess.pid+'\n',{mode:0o700});
@@ -66,24 +66,12 @@ test('contaminated relay HTTP/native/SQLite recovery: preserve unknown and resum
   const unknown=await until(async()=>{const r=await run(receipt.runId);return r.state==='terminated'&&r;});
   assert.equal(unknown.runModel.state.outcome,'unconfirmed');assert.equal(unknown.error,'competing-or-unmatched-input');
   const recoveryInput={conversationId:sender.conversationId,actorRunId:sender.id,operationId:randomUUID(),deliveryId:receipt.deliveryId,nativeInputHash:inputHash(mixedText),nativeTurnId:mixedTurn};
-  assert.equal((await post('/conversations/relayRecover',{...recoveryInput,nativeInputHash:'0'.repeat(64)})).status,409);
-  const recovered=await ok('/conversations/relayRecover',recoveryInput);assert.deepEqual(await ok('/conversations/relayRecover',recoveryInput),recovered);
-  const receiver=await submit(await run(recovered.runId));assert.equal(receiver.conversationSource.kind,'secretary');
-  const material=await ok('/conversations/read',{conversationId:receiver.conversationId,actorRunId:receiver.id,selector:{kind:'relay',id:receipt.deliveryId}});assert.equal(material.content.humanText,sender.instruction);
-  const apply={conversationId:receiver.conversationId,actorRunId:receiver.id,operationId:randomUUID(),deliveryId:receipt.deliveryId};
-  const result=await ok('/conversations/relayApply',apply);assert.equal(result.previousRunId,old.id);assert.equal(result.humanRequestId,q.id);
-  const cli=await fetch(base+'/api/village',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({argv:['conversations','relayApply',JSON.stringify(apply)]})});assert.deepEqual((await cli.json()).result,result);
-  await complete(receiver,'元仕事の再開を受付しました。仕事完了とは異なります。');await complete(sender,'連絡を届けました');
-  const returned=await until(async()=>(await get()).runs.find(r=>r.conversationSource?.relayReturnId===receipt.deliveryId));assert.equal(returned.conversationId,sender.conversationId);
-  const resumed=await submit(await run(result.runId));assert.equal(resumed.runModel.createdBy,'agent');await finish(resumed,'relay-http-work-finish');await complete(resumed,'元目的の成果を提出しました');
-  await complete(await submit(returned),'担当秘書が元の仕事を再開しました');
-  const outcome=await until(async()=>{const c=await conv(human.conversationId);const e=c.deliveries.find(e=>e.kind==='result'&&e.humanRequestId===q.id);return e&&c.runs.find(r=>r.id===e.runId);});
-  assert.equal(outcome.agentId,agents[1].id);await complete(await submit(outcome),'元目的の成果を確認しました');
-  await stop();await start();assert.deepEqual(await ok('/conversations/relay',input),receipt);assert.deepEqual(await ok('/conversations/relayApply',apply),result);
-  const stored=await request(q.id);assert.equal(stored.runs.find(r=>r.id===old.id).state,'interrupted');
-  assert.equal((await lines(capture)).filter(e=>e.agentId===agents[2].id&&e.text.includes('"runId":"'+result.runId+'"')).length,1);assert.equal((await lines(notices)).length,0);
-  assert.equal((await get()).runs.filter(r=>r.conversationSource?.relayReturnId===receipt.deliveryId).length,2);
-  assert.equal((await run(receipt.runId)).runModel.state.outcome,'unconfirmed');assert.deepEqual(await ok('/conversations/relayRecover',recoveryInput),recovered);
-  if(process.env.VILLAGE_RELAY_EVIDENCE)await writeFile(process.env.VILLAGE_RELAY_EVIDENCE,JSON.stringify({isolatedPort:port,fakeNative:true,notifications:false,receipt,recovered,oldReceiverOutcome:unknown.runModel.state,nativeInputHash:inputHash(mixedText),result,sourceHuman:sender.id,recovery:recovery.humanRequestId,material:material.content,oldState:stored.runs.find(r=>r.id===old.id).runModel.state,sendCount:(await lines(capture)).filter(e=>e.agentId===agents[2].id&&e.text.includes(result.runId)).length,returnCount:2,restartVerified:true},null,2));
+
+  const before=await run(receipt.runId),count=(await lines(capture)).length;
+  for(const action of ['relayRecover','relaySucceed'])assert.equal((await post('/conversations/'+action,recoveryInput)).status,410);
+  await stop();await start();
+  assert.deepEqual((await run(receipt.runId)).runModel,before.runModel);
+  assert.equal((await lines(capture)).length,count);
+  assert.equal((await lines(notices)).length,0);
  }finally{await stop();fixtureProcess.kill();await rm(dir,{recursive:true,force:true});}
 });

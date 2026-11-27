@@ -1,3 +1,6 @@
+import {initialInputObservation,applyInitialObservation,reserveInitialInput} from './initial-input.mjs';
+import {settleSupersededConversation} from './conversation-turn-observation.mjs';
+import {continuationBoundary,continuationScopeIntact} from './purpose-continuation.mjs';
 import {initialRelayObservation,bindInitialRelayRuntime} from './relay-initial-launch.mjs';
 import {previewMessages} from './secretary-preview.mjs';
 import {retireDecisionReminder} from './conversation-decision-recovery.mjs';
@@ -272,6 +275,7 @@ export class DirectAgents {
     }
     return {agentId:id,...(connectionAccess?{connectionAccess}:{}),envelope:structuredClone(a.inputEnvelope||{mode:'migration-required'}),requiredContract:a.inputEnvelope?.contract===3?3:2,newSessionContract:installContract(a),
       requiresFreshSession:a.inputEnvelope?.mode!=='startup-v2',tracking:tracking.map(r=>({runId:r.id,state:modelOf(r).state.kind,requestId:r.humanRequestId})),
+      initialInput:a.initialInput?{state:'awaiting-first-input',repair:{operation:'agents prepare-runtime',agentId:id,revision:a.metadataRevision||0},note:'未起動を照合できる場合だけ契約を再配置します。起動不明には適用しません。'}:null,
       legacyRetirement:a.runtimeMigrations?.at(-1)?.legacyRetirement||null,
       retirementHolds:runs.filter(r=>r.queuedReason==='legacy-retirement-held').map(r=>({runId:r.id,workId:r.workId,humanRequestId:r.humanRequestId,reason:r.error})),
       queued:runs.filter(r=>modelOf(r).state.kind==='queued').map(r=>r.id),
@@ -286,6 +290,14 @@ export class DirectAgents {
       const a=this.writableAgent(this.agent(id));
       if(a.runtimeUpgrade?.operationId===x.operationId){if(a.runtimeUpgrade.revision!==x.revision)fail('operationIdの再利用です');return structuredClone(a.runtimeUpgrade);}
       if((a.metadataRevision||0)!==x.revision)fail('Agentが更新されています。再読込してください');
+      if(a.initialInput){
+       const observed=await initialInputObservation(this,a);
+       if(!observed?.snapshot?.initialInputReady||this.data.runs.some(r=>r.agentId===id&&['sent','running'].includes(modelOf(r).state.kind)))fail('初回起動の未実施を確認できません。statusで再観測してください');
+       await this.installInstructions(a);
+       if(a.inputEnvelope.mode!=='startup-v2')fail('未起動workspaceの契約を配置できません。接続・書込権限を確認してください');
+       a.runtimeUpgrade={state:'initial-ready',operationId:x.operationId,revision:x.revision,at:now()};
+       a.metadataRevision=(a.metadataRevision||0)+1;await this.save();return structuredClone(a.runtimeUpgrade);
+      }
       a.runtimeUpgrade={state:'prepared',operationId:x.operationId,revision:x.revision,at:now()};a.metadataRevision=(a.metadataRevision||0)+1;await this.save();return structuredClone(a.runtimeUpgrade);
     }));
   }
@@ -372,7 +384,10 @@ export class DirectAgents {
   // The fixed contract text an Agent was (or is to be) started with: version 3 or 2.
   startupInstructions(a){const rules=this.connectionRules(a);return a?.inputEnvelope?.contract===3?rules.startup3():rules.startup();}
   async installInstructions(a){
-    if(a.tabId)throw Error('既存セッションへ起動契約を再インストールできません。新しいAgentを作成してください。');
+    if(a.tabId){
+     const observed=await initialInputObservation(this,a);
+     if(!observed?.snapshot?.initialInputReady||this.data.runs.some(r=>r.agentId===a.id&&['sent','running'].includes(modelOf(r).state.kind)))throw Error('実行済みまたは不明なセッションへ起動契約を再インストールできません');
+    }
     let envelope={mode:'migration-required',reason:'startup-receipt-invalid'};
     try{
       const contract=installContract(a),rules=this.connectionRules(a),body=contract===3?rules.startup3():rules.startup();
@@ -486,7 +501,10 @@ export class DirectAgents {
         if(!ws.id||!ws.initialTab?.tabId)throw Error('workspace応答の識別情報が不足しています');
         await this.persist(async()=>{Object.assign(a,{workspaceId:ws.id,initialTabId:ws.initialTab.tabId});await this.save();});
         await this.installInstructions(a);
-        const tab=await this.pmux(a,'tab','create','-w',a.workspaceId,'-n',name,'-t',provider==='claude'?'claude-code':'codex-cli',...(launchProfile?['--launch-profile',JSON.stringify(launchProfile)]:[]));
+        let initial=false;
+        if(provider==='codex'&&w.connectionType==='local'){try{const cap=await this.pmux(a,'tab','capabilities');initial=cap.initialCodexLaunch?.ownedInput===1&&cap.initialCodexLaunch?.client===1;}catch{}}
+        const tab=initial?ws.initialTab:await this.pmux(a,'tab','create','-w',a.workspaceId,'-n',name,'-t',provider==='claude'?'claude-code':'codex-cli',...(launchProfile?['--launch-profile',JSON.stringify(launchProfile)]:[]));
+        if(initial)a.initialInput={shellTabId:tab.tabId,sessionName:tab.sessionName};
         if(!tab.tabId||!tab.sessionName)throw Error('tab応答の識別情報が不足しています');
         const url=new URL(w.baseUrl);url.searchParams.set('workspace',ws.id);url.searchParams.set('tab',tab.tabId);
         await this.persist(async()=>{Object.assign(a,{tabId:tab.tabId,sessionName:tab.sessionName,terminalUrl:url.href,...(launchProfile?{launchEvidence:tab.launchEvidence}: {})});await this.save();});
@@ -508,6 +526,7 @@ export class DirectAgents {
     const baseline=await this.observe(a);
     if(!retirementIntact(this.data,a))return retirementHold();
     if(this.agentDeleting(a))return blocked('project-deletion-before-dispatch');
+    if(r.purposeContinuation&&(!continuationScopeIntact(this,r)||!continuationBoundary(this.flow.run(r.runModel.retryOf),baseline,a.runtime)))return blocked('dispatch-boundary-changed','継続元の実行境界が変わりました。現在の入力・終端を再観測してください。');
     if(r.childContinuation&&!this.flow.childContinuationBoundary(this.flow.run(r.runModel.retryOf),baseline,a.runtime))return blocked('dispatch-boundary-changed','継続元の終了境界が変わりました。自動送信せず状況確認が必要です。');
     // Resolve at dispatch, under the agent lock. Earlier queued input and every
     // unacknowledged send retain their place; another conversation never steers.
@@ -535,6 +554,7 @@ export class DirectAgents {
     if(r.childContinuation&&!this.flow.childContinuationBoundary(this.flow.run(r.runModel.retryOf),confirmed,a.runtime))return blocked('dispatch-boundary-changed','添付転送中に継続元の終了境界が変わりました。自動送信しません。');
     if(r.autoRecoveryFrom&&(Date.now()>r.recoveryDeadline||!this.flow.recoveryBoundary(this.flow.run(r.autoRecoveryFrom),confirmed,a.runtime)))return blocked('dispatch-boundary-changed','自動再試行前に新しい入力または状態変化を検出しました。requests getで確認し手動で復旧してください。');
     await this.verifyInstructions(a);
+    if(a.initialInput&&confirmed.initialInputReady&&a.inputEnvelope?.mode!=='startup-v2')return blocked('startup-contract-rejected','未起動workspaceの契約を確認できません。agents prepare-runtimeで契約を再配置後、通常followupを使用してください。');
     if(a.runtimeUpgrade?.state==='prepared'||a.runtimeRetiredTo||(a.inputEnvelope?.mode!=='startup-v2'&&!legacyAllowed(a))){
       if(r.queuedReason==='startup-contract-migration-required')return r;
       return this.persist(async()=>{r.queuedReason='startup-contract-migration-required';r.error='起動契約の更新待ち。未送信のまま保留しています。runtime adoption後に同じrunを送信します。';await this.save();return r;});
@@ -549,26 +569,25 @@ export class DirectAgents {
       confirmed=await this.observe(a);chooseConversationTarget(confirmed);
       if(!allowed(confirmed))return r;
     }
-    if(r.relayRecoveryOf){
-      try{this.conversations.relayService.dispatchBoundary(r);}catch{return blocked('relay-recovery-context-changed','回復確認後に入力・対象・許可が変化しました。自動送信しません。');}
-      const boundary=r.relayRecoveryBoundary;
-      if(!boundary||!confirmed.available||confirmed.incompleteTail||confirmed.more||confirmed.sessionId!==boundary.sessionId||confirmed.fileIdentity!==boundary.fileIdentity||confirmed.cursor!==boundary.cursor)return blocked('relay-recovery-native-changed','回復確認後にnativeが変化しました。自動送信しません。');
-      let cap;try{cap=await this.pmux(a,'tab','capabilities');}catch{}
-      if(cap?.guardedCodexInput?.version!==1||cap.guardedCodexInput.client!==1)return blocked('relay-recovery-guard-unavailable','入力欄を保護するPurpleMux server/CLIが必要です。未送信です。');
-    }
+    if(r.relayRecoveryOf)return blocked('legacy-recovery-read-only','旧回復形式は履歴・進行中の観測専用です。未送信の旧入力は自動送信しません。');
+    if(r.purposeContinuation&&(!continuationScopeIntact(this,r)||!continuationBoundary(this.flow.run(r.runModel.retryOf),confirmed,a.runtime)))return blocked('dispatch-boundary-changed','送信前に継続元の実行境界が変わりました。自動送信しません。');
     const status=a.runtime;
     if(runState(r)!=='queued'||r.phase==='report'&&!this.flow.reportCurrent(r))return r;
     // Contract 3 secretary turn (4.1, 4.4): only the tag; the Project policy is mentioned once when
     // the secretary has not seen its current version.
     const plain=startupContract(a)===3&&!!r.conversationId;
     const guide=plain&&a.projectId?await this.projectGuides.get(a.projectId,'secretary').catch(()=>null):null;
+    if(r.purposeContinuation){
+      confirmed=await this.observe(a);
+      if(!continuationScopeIntact(this,r)||!continuationBoundary(this.flow.run(r.runModel.retryOf),confirmed,a.runtime))return blocked('dispatch-boundary-changed','照会待ち中に継続元の状態が変わりました。現在の入力・終端を再観測してください。');
+    }
     const deliveredInstruction=await this.persist(async()=>{
       if(retireDecisionReminder(this.data,r)){await this.save();return null;}
-      if(r.relayRecoveryOf)this.conversations.relayService.dispatchBoundary(r);
+      if(r.purposeContinuation&&!continuationScopeIntact(this,r)){changeRun(r,{type:'dispatch-blocked',actor:'program',at:Date.now(),reason:'dispatch-boundary-changed'});r.error='後着入力または目的が変わりました。現在の指示を確認してください。';await this.save();return null;}
       if(this.agentDeleting(a)||runState(r)!=='queued'||r.phase==='report'&&!this.flow.reportCurrent(r))return null;
       if(!retirementIntact(this.data,a)||!retirementRunAllowed(this.data,a,r))return null;
       const compatibility=legacyAllowed(a);if(a.inputEnvelope?.mode!=='startup-v2'&&!compatibility)return null;
-      if(confirmed.unrecorded===true&&!noCurrentRuntimeSends(a,this.data.runs,a.runtime,confirmed,createHash('sha256').update(this.startupInstructions(a)).digest('hex')))return null;
+      if(confirmed.unrecorded===true&&!confirmed.initialInputReady&&!noCurrentRuntimeSends(a,this.data.runs,a.runtime,confirmed,createHash('sha256').update(this.startupInstructions(a)).digest('hex')))return null;
       const instruction=r.phase==='report'?this.flow.reportPrompt(this.flow.root(r.humanRequestId)):r.instruction;
       r.instruction=instruction;r.attachmentFiles=files;r.attachmentError=null;delete r.queuedReason;delete r.error;
       const migration=a.runtimeMigrations?.at(-1);
@@ -582,15 +601,16 @@ export class DirectAgents {
       if(policy)a.secretaryGuideSeen=a.projectId+':'+guide.hash;
       const body=policy+instruction+(plain?'':this.secretaryContext(a))+this.flow.context(r)+(compatibility?legacyContext(this.rules,r,a):'');
       const text=a.provider==='codex'?body.trim():body;
-      if(r.steerTarget){const previous=this.flow.run(r.steerTarget.runId);if(r.conversationId)changeRun(previous,{type:'supersede',actor:'human',successorId:r.id});changeRun(previous,{type:'close-tracking',actor:'human',reason:'steering-successor-dispatched'});}
+      if(r.steerTarget){const previous=this.flow.run(r.steerTarget.runId);if(r.conversationId)changeRun(previous,{type:'supersede',actor:'human',successorId:r.id});else changeRun(previous,{type:'close-tracking',actor:'human',reason:'steering-successor-dispatched'});}
       changeRun(r,{type:'dispatch',actor:'program',at:Date.now(),sessionId:confirmed.sessionId||null,agentIdle:true});
       Object.assign(r,{inputCorrelation:inputCorrelation(text,a.provider),inputEnvelopeMode:compatibility?'legacy-compat':'startup-v2',dispatchAttemptedAt:now(),baselineRuntime:{sessionId:confirmed.sessionId,cursor:confirmed.cursor,fileIdentity:confirmed.fileIdentity},agentSessionId:status.agentSessionId||null});
+      reserveInitialInput(a,r,text);
       await this.save();return text;
     });
     if(deliveredInstruction===null)return r;
     if(this.agentDeleting(a))return blocked('project-deletion-before-dispatch');
     let sent=false;
-    try{await this.pmux(a,'tab','send','-w',a.workspaceId,...(r.relayRecoveryOf?['--require-empty-codex']:[]),a.tabId,deliveredInstruction);sent=true;}catch{/* An uncertain transport is never replayed. */}
+    try{if(r.initialLaunch)await this.pmux(a,'tab','initial-launch',JSON.stringify(r.initialLaunch));else await this.pmux(a,'tab','send','-w',a.workspaceId,a.tabId,deliveredInstruction);sent=true;}catch{/* An uncertain transport is never replayed. */}
     await this.persist(async()=>{
       if(sent)changeRun(r,{type:'transport-ack',actor:'program',at:Date.now()});
       else{r.unknownSince ||= now();r.error='送信結果不明。native入力を照合します。自動再送しません。';}
@@ -631,6 +651,21 @@ export class DirectAgents {
     if(!this.units.context.getStore()?.agentIds?.has(a.id))return this.units.agent(a.id,()=>this.observe(a));
     if(this.agentDeleting(a))return this.persist(async()=>{this.releaseStuckRuns(a);this.updateAvailability(a);await this.save();return {available:false,turns:[],inputs:[]};});
     try{
+      if(a.initialInput){
+       const initial=await initialInputObservation(this,a);
+       const changed=await this.persist(async()=>{
+        const before=this.observationKey(a,this.data.runs.filter(r=>r.agentId===a.id));
+        applyInitialObservation(a,initial);
+        if(a.initialInput){
+         a.runtime=initial.status;
+         agentChange(a,{type:'observe',actor:'program',observation:{connected:true,process:'alive',activity:initial.snapshot.available?'idle':'unknown',canSteer:false}});
+         this.updateAvailability(a);
+        }
+        const changed=before!==this.observationKey(a,this.data.runs.filter(r=>r.agentId===a.id));
+        if(changed)await this.save();return changed;
+       });
+       if(a.initialInput)return {...initial.snapshot,changed};
+      }
       const initial=this.data.runs.find(r=>r.agentId===a.id&&r.relayInitial&&active(r)&&!r.turnId);
       if(initial&&!a.sessionName)await bindInitialRelayRuntime(this.conversations.relayService,a,initial);
       let s;
@@ -714,6 +749,7 @@ export class DirectAgents {
           if(observation.state==='unknown'&&snapshot.available&&((oldSession&&snapshot.sessionId&&oldSession!==snapshot.sessionId)||observation.reason==='session-changed'||(boundary&&agentControls(a).activityState==='idle'))){changeRun(r,{type:'lost',actor:'program',at:Date.now(),reason:oldSession&&snapshot.sessionId&&oldSession!==snapshot.sessionId?'session-changed':'turn-ended-without-marker'});r.inputReleasedAt ||= now();}
         }
       }
+      for(const row of this.data.runs.filter(r=>r.agentId===a.id))settleSupersededConversation(row,snapshot,this.data.runs);
       this.releaseStuckRuns(a);this.updateAvailability(a);const changed=before!==this.observationKey(a,roots.runs);if(changed)await this.save();return {...snapshot,changed};
       },roots);
     }catch(error){
@@ -761,7 +797,7 @@ export class DirectAgents {
       const clear=()=>this.monitors.delete(a.id);task.then(clear,clear);tasks.push(task);
     }
     const orphaned=this.data.runs.filter(r=>!quarantinedRun(this.data,r)&&(
-      r.runModel?.supersededBy&&r.runModel.state.kind==='running'&&this.flow.run(r.runModel.supersededBy)?.runModel.state.kind!=='queued'||
+      !r.conversationId&&r.runModel?.supersededBy&&r.runModel.state.kind==='running'&&this.flow.run(r.runModel.supersededBy)?.runModel.state.kind!=='queued'||
       active(r)&&!this.data.agents.some(a=>a.id===r.agentId&&a.tabId&&!['terminated','stopping'].includes(agentControls(a).state))));
     if(orphaned.length)await this.persist(async()=>{
       const before=JSON.stringify(orphaned);
