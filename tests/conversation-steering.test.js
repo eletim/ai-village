@@ -17,7 +17,7 @@ test('serial additions: saved is not authority; accepted same-turn aliases updat
  const view=await s.conversations.read(r.conversationId,r.id);assert.equal(view.current.id,b.id);assert.equal(view.humanInputs.length,3);
  const args={conversationId:r.conversationId,actorRunId:r.id,operationId:randomUUID(),instruction:'job',authorization:{runId:b.id,quote:'change B'}};
  const q=await s.conversations.job(args);assert.equal(s.flow.root(q.humanRequestId).requestedBy.actorRunId,b.id);
- await f.complete(b);assert.equal(runState(b),'completed');assert.equal(runState(r),'superseded');assert.equal(runState(a),'superseded');assert.equal(f.notifications.length,0);
+ await f.complete(b);assert.equal(runState(b),'completed');assert.equal(runState(r),'superseded');assert.equal(runState(a),'superseded');assert.equal(r.runModel.state.outcome,'normal');assert.equal(a.runModel.state.outcome,'normal');assert(!r.runModel.decisions.some(d=>d.reason==='steering-successor-dispatched'));assert.equal(f.notifications.length,0);
  const before=f.sent.length;await f.restart();await f.service.tick();assert.equal(f.sent.length,before);assert.equal(f.service.conversations.get(r.conversationId).runs.length,3);
 });
 test('transport unknown survives restart without replay or later input authority',async t=>{

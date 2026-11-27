@@ -1,3 +1,4 @@
+import {continuationBasis} from './state/run.ts';
 import {purposeId,purposeView,purposeLeaf} from './conversation-purpose.mjs';
 import {rootNode} from './unified-requests.mjs';
 import {accepted,runState} from './run-lifecycle.mjs';
@@ -14,11 +15,13 @@ export function resolveFollowup(conversations,c,actor,x){
  if(q.integrity||original.integrity)fail('目的の参照を検証できません');
  const w=rootNode(q),view=purposeView(data,q),decision=view.decision,current=data.runs.find(r=>r.id===w.currentRunId);
  if(w.state.kind==='withdrawn'||w.state.kind==='completed'&&w.state.by==='human')fail('取り下げ・人間による終了済みの目的は自動再開できません');
- if(current&&['failed','interrupted','terminated'].includes(runState(current)))fail('旧実行が失敗・受付不明です。再送せず保存記録の照合が必要です');
+ const stopped=current&&['failed','interrupted','terminated'].includes(runState(current));
+ if(stopped&&!continuationBasis(current.runModel))fail('実行権限の閉鎖が未確認です。村のstatusで未解決項目と接続再観測の案内を確認してください。入力は再送しません');
  if(decision?.state==='pending')fail('前の秘書判断の正常終了を待ってください');
  const humanAfter=decision&&data.runs.findLast(r=>r.conversationId===c.id&&r.conversationSource?.kind==='human'&&!r.queueCancelledAt&&accepted(r)&&r.conversationSequence<=actor.conversationSequence&&r.conversationSequence>(data.runs.find(r=>r.id===decision.actorRunId)?.conversationSequence??Infinity));
  if(decision?.kind==='question'&&decision.state==='committed'&&!humanAfter)fail('具体的な人間の回答を待っています');
  const base={conversationId:c.id,actorRunId:actor.id,operationId:x.operationId,instruction:x.instruction,authorization:original.requestedBy.authorization};
+ if(stopped)return {action:'continue-purpose',input:{...base,humanRequestId:q.id,workId:w.id,previousRunId:current.id,revision:q.revision}};
  if(['active','submitted'].includes(w.state.kind))return {action:'amend',input:{...base,humanRequestId:q.id}};
  const event=c.deliveries.findLast(e=>e.humanRequestId===q.id&&e.kind==='result'&&data.runs.some(r=>r.id===e.runId&&accepted(r)&&r.conversationSequence<=actor.conversationSequence));
  if(!event)fail('保存成果の正式配送を待っています。配送後に同じ目的へ追加指示してください');

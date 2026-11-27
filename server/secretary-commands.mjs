@@ -1,3 +1,5 @@
+import {continuationStatus} from './purpose-continuation.mjs';
+import {rootNode} from './unified-requests.mjs';
 import {accepted} from './run-lifecycle.mjs';
 import {resultSourceEvent} from './conversation-decision-recovery.mjs';
 import {createHash} from 'node:crypto';
@@ -29,7 +31,7 @@ const GUIDANCE=[
  [/受付照合済みの実行中秘書会話run/,'--run には、今答えている回の <village run="…"/> の値を渡してください。終わった回や別の秘書の回は使えません。'],
  [/具体的な人間の回答を待っています/,'人間への質問の答えを待っています。人間が答えた回で followup してください。'],
  [/達成報告後の追加指示/,'達成を報告した目的です。続きは、人間の新しい発言が届いた回で followup してください。'],
- [/旧実行が失敗・受付不明/,'前回の仕事が失敗または受付不明で止まっています。自動では再送しません。人間に状況を伝えてください。'],
+ [/実行権限の閉鎖が未確認/,'village status で未解決の受付・終端と担当の接続状態を再観測してください。元の入力を再送しません。'],
  [/取り下げ・人間による終了済み/,'取り下げ済み、または人間が終了した目的です。新しい仕事なら order を使ってください。'],
  [/保存成果の正式配送を待って/,'担当の結果がまだ届いていません。届いた回で followup してください。'],
  [/Projectのリーダーが未設定/,'Projectにリーダーがいません。適格な工房担当を --assignee で指定するか、人間にリーダーの設定を頼んでください。'],
@@ -115,9 +117,34 @@ export class SecretaryCommands {
   const operationId=this.operationId(run,'withdraw',[id,reason]),old=x.c.operations.find(o=>o.id===operationId);
   return this.d.conversations.withdraw(old?JSON.parse(old.payload).input:{conversationId:x.c.id,actorRunId:run,operationId,humanRequestId:q.id,instruction:reason,authorization:this.authorization(x)}).catch(e=>guide(e,'withdraw'));
  }
+ // Share the existing per-Agent monitor; never queue another poll behind a slow
+ // connection. The response deadline does not cancel or replay the native read.
+ async statusObservation(id){
+  let timer;
+  try{
+   let task=this.d.monitors.get(id);
+   if(!task){
+    const a=this.d.agent(id);
+    if(this.d.locks.has(id)||!a.tabId||a.agentModel?.intent==='stop')return {state:'unavailable',error:'担当は停止済み、または操作中です。保存状態を表示しています。'};
+    task=this.d.poll(a);this.d.monitors.set(id,task);
+    const clear=()=>{if(this.d.monitors.get(id)===task)this.d.monitors.delete(id);};task.then(clear,clear);
+   }
+   const snapshot=await Promise.race([task,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('状態観測の応答期限（2秒）を超過しました。接続を再確認してください。')),2000);})]);
+   return snapshot?.available?{state:'observed',snapshot}:{state:'unavailable',error:'担当のnative状態を観測できません。保存状態を表示しています。'};
+  }catch(e){return {state:'unavailable',error:e.message};}finally{clearTimeout(timer);}
+ }
  // Read only: the purposes of this conversation and what was delivered in this run.
  async status(run){
-  const x=await this.context(run),view=await this.d.conversations.read(x.c.id,run).catch(e=>guide(e,'status'));
-  run=x.r.id;return {run,conversationId:x.c.id,purposes:view.purposes.map(p=>({id:p.id,assigneeAgentId:p.assigneeAgentId,state:p.state?.label||null,reason:p.state?.reason||undefined,question:p.state?.question||undefined,decision:p.decision?{kind:p.decision.kind,state:p.decision.state}:null,objective:String(this.d.flow.root(p.id).instruction).slice(0,200),readPurpose:['conversations','read',x.c.id,run,JSON.stringify({kind:'purpose',id:p.id})],deliveries:x.c.deliveries.filter(e=>purposeId(this.d.flow.root(e.humanRequestId))===p.id&&(()=>{const source=this.d.flow.run(e.runId);return source&&accepted(source)&&source.conversationSequence<=x.r.conversationSequence;})()).map(e=>({id:e.id,kind:e.kind,read:['conversations','read',x.c.id,run,JSON.stringify({kind:'delivery',id:e.id})]}))})),delivered:view.currentDeliveries.map(e=>({kind:e.kind,purpose:purposeId(this.d.flow.root(e.humanRequestId))}))};
+  const x=await this.context(run);
+  // History and ordinary active work use saved projections. Only unresolved
+  // execution boundaries need a fresh observation to offer continuation.
+  const needed=new Set(x.purposes.filter(q=>{
+   const w=rootNode(purposeLeaf(this.d.data,q)),r=this.d.flow.run(w.currentRunId),s=r?.runModel.state;
+   return w.state.kind==='active'&&s&&((s.kind==='ended'&&s.outcome!=='normal')||(s.kind==='sent'&&r.initialLaunch));
+  }).map(q=>q.id));
+  const targets=[...new Set(x.purposes.filter(q=>needed.has(q.id)).map(q=>rootNode(purposeLeaf(this.d.data,q)).assignee))];
+  const observations=new Map(await Promise.all(targets.map(async id=>[id,await this.statusObservation(id)])));
+  const view=await this.d.conversations.read(x.c.id,run).catch(e=>guide(e,'status'));
+  run=x.r.id;return {run,conversationId:x.c.id,purposes:view.purposes.map(p=>({id:p.id,assigneeAgentId:p.assigneeAgentId,state:p.state?.label||null,observation:needed.has(p.id)?observations.get(p.assigneeAgentId)?.state:'saved',continuation:needed.has(p.id)?continuationStatus(this.d.flow.run(rootNode(purposeLeaf(this.d.data,this.d.flow.root(p.id))).currentRunId),{run,agentId:p.assigneeAgentId,snapshot:observations.get(p.assigneeAgentId)?.snapshot,status:this.d.agent(p.assigneeAgentId).runtime,error:observations.get(p.assigneeAgentId)?.error||this.d.agent(p.assigneeAgentId).error,agent:this.d.agent(p.assigneeAgentId)}):null,reason:p.state?.reason||undefined,question:p.state?.question||undefined,decision:p.decision?{kind:p.decision.kind,state:p.decision.state}:null,objective:String(this.d.flow.root(p.id).instruction).slice(0,200),readPurpose:['conversations','read',x.c.id,run,JSON.stringify({kind:'purpose',id:p.id})],deliveries:x.c.deliveries.filter(e=>purposeId(this.d.flow.root(e.humanRequestId))===p.id&&(()=>{const source=this.d.flow.run(e.runId);return source&&accepted(source)&&source.conversationSequence<=x.r.conversationSequence;})()).map(e=>({id:e.id,kind:e.kind,read:['conversations','read',x.c.id,run,JSON.stringify({kind:'delivery',id:e.id})]}))})),delivered:view.currentDeliveries.map(e=>({kind:e.kind,purpose:purposeId(this.d.flow.root(e.humanRequestId))}))};
  }
 }

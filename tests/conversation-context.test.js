@@ -34,3 +34,17 @@ test('ordinary consultation has no synthetic purpose or decision and all older c
  const view=fixture();view.jobs=[];view.deliveries=[];view.runs[22].conversationSource={kind:'human'};
  const out=conversationContext(view,'run-22');assert.deepEqual(out.purposes,[]);assert.deepEqual(out.currentDeliveries,[]);assert.equal(out.humanInputs.length,23);
 });
+test('purpose material encodes exact duplicate bodies once; every session can reconstruct originals',()=>{
+ const view=fixture();view.jobs[4].instruction='後から変更された原文';
+ view.jobs[4].authorization={runId:'run-4',quote:'変更の許可'};
+ const before=JSON.stringify(view),material=conversationMaterial(view,'run-22',{kind:'purpose',id:'job-0'}).content;
+ for(let i=0;i<view.jobs.length;i++){
+  const job=material.jobs[i],original=view.jobs[i];
+  assert.equal(job.instructionRef?material[job.instructionRef]:job.instruction,original.instruction);
+  assert.deepEqual(job.authorizationRef?material[job.authorizationRef]:job.authorization,original.authorization);
+ }
+ const old={id:'job-0',objective:view.jobs[0].instruction,authorization:view.jobs[0].authorization,jobs:view.jobs,decisions:[]};
+ assert(Buffer.byteLength(JSON.stringify(material))<Buffer.byteLength(JSON.stringify(old))/2);
+ assert.deepEqual(conversationMaterial(view,'run-22',{kind:'purpose',id:'job-0'}).content,material);
+ assert.equal(JSON.stringify(view),before);
+});

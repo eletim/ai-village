@@ -1,3 +1,5 @@
+import {initialInputObservation} from './initial-input.mjs';
+import {continuationBoundary} from './purpose-continuation.mjs';
 import {SecretaryRelay} from './secretary-relay.mjs';
 import {recoverMissingDecision,resultSourceEvent,retireDecisionReminder} from './conversation-decision-recovery.mjs';
 import {resolveFollowup} from './conversation-followup.mjs';
@@ -266,7 +268,17 @@ export class Conversations {
    }else{
     const q=this.d.flow.root(x.humanRequestId),w=rootNode(q);
     if(q.conversationId!==c.id)fail('この会話が依頼した仕事ではありません',403);
-    if(action==='amend'){
+    if(action==='continue-purpose'){
+     const previous=this.d.flow.run(x.previousRunId),a=this.d.writableAgent(this.d.agent(w.assignee));
+     const initial=await initialInputObservation(this.d,a),status=initial?.status||await this.d.pmux(a,'tab','status','-w',a.workspaceId,a.tabId),snapshot=initial?.snapshot||await this.d.runtime(a,status);
+     // Re-resolve after asynchronous observation; graph and human permission may
+     // have changed even though the API caller supplied no internal version.
+     this.actor(c,actor.id);
+     const fresh=resolveFollowup(this,c,actor,JSON.parse(payload).input);
+     if(fresh.action!=='continue-purpose'||fresh.input.previousRunId!==previous.id||fresh.input.revision!==x.revision||!continuationBoundary(previous,snapshot,status))fail('現在の実行境界を確認できません。接続とnative終端を再観測してください。再送はしていません');
+     const r=await this.d.flow.continueLocked({humanRequestId:q.id,workId:w.id,revision:x.revision,operationId:x.operationId,instruction:x.instruction},true,{purposeContinuation:{previousRunId:previous.id,actorRunId:actor.id,conversationId:c.id,humanSequence:actor.conversationSequence,authorization:JSON.stringify(q.requestedBy.authorization),revision:q.revision+1}},'agent',{deferSave:true});
+     receipt={humanRequestId:q.id,workId:w.id,runId:r.id,previousRunId:previous.id,purposeId:purposeId(q),action:'continue-purpose'};
+    }else if(action==='amend'){
      const id=randomUUID();
      applyGraph(this.d.data,q,{type:'supplement',actor:'agent',requestId:w.id,input:{id,kind:'supplement',text:x.instruction,createdAt:now(),attempts:[]}});
      const current=rootNode(q);if(current.conversationWait)current.conversationWait.answerInputId=id;
@@ -280,14 +292,14 @@ export class Conversations {
      // Withdrawal prevents queued effects. Already dispatched work is NOT stopped or replayed.
      for(const r of this.d.data.runs.filter(r=>r.humanRequestId===q.id&&runState(r)==='queued'))changeRun(r,{type:'cancel-conversation-job',actor:'agent',requestId:q.id});
     }else fail('未知の会話操作',400);
-    q.revision++;receipt={humanRequestId:q.id,workId:w.id,action,actor:'agent',actorRunId:actor.id,authorization};
+    if(action!=='continue-purpose'){q.revision++;receipt={humanRequestId:q.id,workId:w.id,action,actor:'agent',actorRunId:actor.id,authorization};}
    }
    c.operations.push({id:x.operationId,payload,receipt,at:now()});await this.d.save();return structuredClone(receipt);
   }));
  }
  relay(x){return this.relayService.send(x);}
- relaySucceed(x){return this.relayService.succeed(x);}
- relayRecover(x){return this.relayService.recover(x);}
+ relaySucceed(){fail('relaySucceedは廃止しました。旧配送履歴はconversations readで確認できます。通常followupで目的の継続を判断してください',410);}
+ relayRecover(){fail('relayRecoverは廃止しました。旧配送履歴はconversations readで確認できます。通常followupで目的の継続を判断してください',410);}
  relayApply(x){return this.relayService.apply(x);}
  followup(x){return this.mutate('followup',x);}
  job(x){return this.mutate('job',x);}

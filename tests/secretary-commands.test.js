@@ -134,11 +134,11 @@ for(const action of ['ask','followup'])test('real consultation allows '+action,a
  const bad=await v('accept','--run',r.id,'採用');assert.equal(bad.ok,false);assert.match(bad.error,/相談への回答はfollowup/);
  const out=await v(action,'--run',r.id,action==='ask'?'いつ公開しますか？':'12月1日に公開してください');assert.equal(out.ok,true,out.error);
 });
-test('failed leader guidance cannot be followed via followup',async t=>{
+test('confirmed failed leader can continue via ordinary followup but cannot be accepted',async t=>{
  const {f,human,first}=await purposeFixture(t),v=cli(f);await f.service.tick();const leader=f.service.flow.run(first.runId);await f.submit(leader);await f.complete(leader,'failed');
  const c=f.service.conversations.record(human.conversationId),e=c.deliveries.at(-1),r=f.service.flow.run(e.runId);await f.submit(r);
  const bad=await v('accept','--run',r.id,'採用');assert.equal(bad.ok,false);assert.match(bad.error,/village status.*保存記録.*人間/);assert.doesNotMatch(bad.error,/followup/);
- const out=await v('followup','--run',r.id,'修正してください');assert.equal(out.ok,false);assert.match(out.error,/失敗・受付不明/);t.diagnostic(JSON.stringify({kind:e.kind,accept:bad.error,followup:out.error}));
+ const out=await v('followup','--run',r.id,'修正してください');assert.equal(out.ok,true,out.error);assert.equal(out.result.action,'continue-purpose');
 });
 
 // Keep the adapter's guidance aligned with the actual refusal text in the core,
@@ -147,7 +147,7 @@ test('each documented refusal has guidance, preserving the original core reason'
  const {readFile}=await import('node:fs/promises');
  const sources=await Promise.all(['conversations.mjs','conversation-followup.mjs'].map(name=>readFile(new URL('../server/'+name,import.meta.url),'utf8')));
  const reasons=sources.flatMap(source=>[...source.matchAll(/fail\('([^']+)'/g)].map(m=>m[1]));
- const cases=[['今回の正式配送資料','この回には届いた結果'],['現在の正常な提出結果','最新ではない'],['後着の人間入力','新しい発言'],['前の判断の正常終了','まだ確定'],['前の秘書判断の正常終了','まだ確定'],['受付照合済みの実行中','今答えている回'],['具体的な人間の回答','答えを待っています'],['達成報告後の追加指示','続きは'],['旧実行が失敗','自動では再送しません'],['取り下げ・人間による終了','新しい仕事なら'],['保存成果の正式配送','まだ届いていません'],['Projectのリーダーが未設定','設定を頼んで'],['指定された担当を利用','仕事を受けられません'],['担当の起動契約','仕事を受けられません']];
+ const cases=[['今回の正式配送資料','この回には届いた結果'],['現在の正常な提出結果','最新ではない'],['後着の人間入力','新しい発言'],['前の判断の正常終了','まだ確定'],['前の秘書判断の正常終了','まだ確定'],['受付照合済みの実行中','今答えている回'],['具体的な人間の回答','答えを待っています'],['達成報告後の追加指示','続きは'],['実行権限の閉鎖が未確認','元の入力を再送しません'],['取り下げ・人間による終了','新しい仕事なら'],['保存成果の正式配送','まだ届いていません'],['Projectのリーダーが未設定','設定を頼んで'],['指定された担当を利用','仕事を受けられません'],['担当の起動契約','仕事を受けられません']];
  const {f}=await purposeFixture(t),human=await turn(f,'進めてください'),village=cli(f);
  for(const [prefix,hint] of cases){
   const reason=reasons.find(s=>s.startsWith(prefix));assert(reason,prefix);
@@ -163,4 +163,42 @@ test('accept guidance distinguishes question/extension from stop/state reports w
   else {assert.match(out.error,/status.*保存記録.*人間/);assert.doesNotMatch(out.error,/followup/);}
  }
  assert.equal(f.service.data.conversations[0].purposeDecisions?.length||0,0);
+});
+
+test('status skips many closed purposes and bounds one offline observation without blocking useful results',async t=>{
+ const {f,human,first}=await purposeFixture(t),d=f.service,r=d.flow.run(first.runId);
+ await f.submit(r);await f.complete(r,'interrupted');
+ const c=d.conversations.record(human.conversationId),actor=d.flow.run(c.deliveries.find(e=>e.kind==='attention').runId);await f.submit(actor);
+ const source=d.flow.root(first.humanRequestId),{rootNode}=await import('../server/unified-requests.mjs');
+ for(let i=0;i<40;i++){
+  const q=structuredClone(source);q.id=randomUUID();q.purposeId=q.id;
+  rootNode(q).state={kind:i%2?'cancelled':'completed',by:'human',reason:'history'};
+  rootNode(q).assignee='historical-missing-agent';q.assigneeAgentId='historical-missing-agent';q.leaderAgentId='historical-missing-agent';d.data.requests.push(q);
+ }
+ const remote=structuredClone(source);remote.id=randomUUID();remote.purposeId=remote.id;
+ const remoteAgent=f.agents[1];rootNode(remote).assignee=remoteAgent.id;remote.assigneeAgentId=remoteAgent.id;remote.leaderAgentId=remoteAgent.id;d.data.requests.push(remote);
+ const calls=[],poll=d.poll.bind(d);let release;
+ const pending=new Promise(resolve=>{release=resolve;});
+ d.poll=a=>{calls.push(a.id);return a.id===remoteAgent.id?pending:poll(a);};
+ const start=Date.now();const out=await cli(f)('status','--run',actor.id);
+ assert.equal(out.ok,true,out.error);assert(Date.now()-start<3500);
+ assert.deepEqual(new Set(calls),new Set([r.agentId,remoteAgent.id]));
+ assert.equal(out.result.purposes.filter(p=>p.observation==='saved').length,40);
+ assert.equal(out.result.purposes.find(p=>p.id===source.id).continuation.available,'followup-after-observation');
+ const failed=out.result.purposes.find(p=>p.id===remote.id);assert.equal(failed.observation,'unavailable');assert.match(failed.continuation.cause,/2秒/);
+ assert.equal(d.monitors.get(remoteAgent.id),pending);release({available:false});
+});
+
+
+test('status shares an in-flight tick observation and retains its snapshot',async t=>{
+ const {f,human,first}=await purposeFixture(t),d=f.service,r=d.flow.run(first.runId);
+ await f.submit(r);await f.complete(r,'interrupted');
+ const c=d.conversations.record(human.conversationId),actor=d.flow.run(c.deliveries.find(e=>e.kind==='attention').runId);await f.submit(actor);
+ const poll=d.poll.bind(d);let release;const gate=new Promise(resolve=>{release=resolve;});let calls=0;
+ d.poll=async a=>{if(a.id===r.agentId){calls++;await gate;}return poll(a);};
+ const ticking=d.tick();assert(d.monitors.has(r.agentId));
+ const checking=cli(f)('status','--run',actor.id);release();
+ const [out]=await Promise.all([checking,ticking]);assert.equal(out.ok,true,out.error);
+ assert.equal(calls,1);const p=out.result.purposes.find(p=>p.id===first.humanRequestId);
+ assert.equal(p.observation,'observed');assert.equal(p.continuation.available,'followup-after-observation');
 });
