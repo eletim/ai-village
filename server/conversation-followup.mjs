@@ -26,5 +26,6 @@ export function resolveFollowup(conversations,c,actor,x){
  const event=c.deliveries.findLast(e=>e.humanRequestId===q.id&&e.kind==='result'&&data.runs.some(r=>r.id===e.runId&&accepted(r)&&r.conversationSequence<=actor.conversationSequence));
  if(!event)fail('保存成果の正式配送を待っています。配送後に同じ目的へ追加指示してください');
  if(decision?.kind==='accept'&&decision.state==='committed'&&!humanAfter)fail('達成報告後の追加指示には後続の人間入力が必要です');
- return {action:'job',input:{...base,continuesRequestId:q.id,humanRequestId:q.id,deliveryId:event.id,expectedPurposeVersion:view.version,reason:x.instruction,...(humanAfter?{reopenRunId:humanAfter.id}:{})}};
+ if(!current||!continuationBasis(current.runModel))fail('成果後の実行終端を確認できません。入力は再送しません');
+ return {action:'continue-purpose',input:{...base,humanRequestId:q.id,workId:w.id,previousRunId:current.id,revision:q.revision,deliveryId:event.id}};
 }

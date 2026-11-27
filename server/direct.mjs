@@ -12,7 +12,7 @@ import {stoppedRuntimeEvidence} from '../src/stopped-runtime.js';
 import {sameRuntimeAttributes,currentRuntimeWorkplaceAllowed} from '../src/runtime-connection-identity.js';
 import {SecretaryCommands} from './secretary-commands.mjs';
 import {Conversations} from './conversations.mjs';
-import {enrollLegacy,legacyAllowed,legacyContext,legacyReviewDue} from './legacy-contract.mjs';
+import {enrollLegacy,legacyAllowed,legacyReviewDue} from './legacy-contract.mjs';
 import {migrateCommonRequests} from './common-request-migration.mjs';
 import {PartitionStore} from './partition-store.mjs';
 import {RequestUnits} from './request-units.mjs';
@@ -522,12 +522,12 @@ export class DirectAgents {
     const blocked=(reason,message=reason)=>this.persist(async()=>{changeRun(r,{type:modelOf(r).state.kind==='queued'?'dispatch-blocked':'lost',actor:'program',at:Date.now(),reason});r.error=message;await this.save();return r;});
     const retirementHold=()=>this.holdRetiredRun(r);
     if(!retirementRunAllowed(this.data,a,r))return retirementHold();
+    if(r.childContinuation)return blocked('legacy-continuation-held','旧形式の未送信継続は保留しています。仕事の移行確認が必要です。再送はしていません。');
     if(this.agentDeleting(a)||(a.agentModel?.intent==='stop'||agentControls(a).state==='terminated')||!a.tabId)return blocked('target-unavailable-before-dispatch');
     const baseline=await this.observe(a);
     if(!retirementIntact(this.data,a))return retirementHold();
     if(this.agentDeleting(a))return blocked('project-deletion-before-dispatch');
     if(r.purposeContinuation&&(!continuationScopeIntact(this,r)||!continuationBoundary(this.flow.run(r.runModel.retryOf),baseline,a.runtime)))return blocked('dispatch-boundary-changed','継続元の実行境界が変わりました。現在の入力・終端を再観測してください。');
-    if(r.childContinuation&&!this.flow.childContinuationBoundary(this.flow.run(r.runModel.retryOf),baseline,a.runtime))return blocked('dispatch-boundary-changed','継続元の終了境界が変わりました。自動送信せず状況確認が必要です。');
     // Resolve at dispatch, under the agent lock. Earlier queued input and every
     // unacknowledged send retain their place; another conversation never steers.
     const chooseConversationTarget=snapshot=>{if(r.conversationId&&r.conversationSource?.kind==='human'&&!r.dispatchAttemptedAt){
@@ -551,11 +551,10 @@ export class DirectAgents {
     let confirmed=r.attachments?.length?await this.observe(a):baseline;
     chooseConversationTarget(confirmed);
     if(!allowed(confirmed)||this.agentDeleting(a)){if(r.steerTarget)return blocked('dispatch-boundary-changed','添付転送中に補足対象が変わりました。自動送信しません。');return r;}
-    if(r.childContinuation&&!this.flow.childContinuationBoundary(this.flow.run(r.runModel.retryOf),confirmed,a.runtime))return blocked('dispatch-boundary-changed','添付転送中に継続元の終了境界が変わりました。自動送信しません。');
     if(r.autoRecoveryFrom&&(Date.now()>r.recoveryDeadline||!this.flow.recoveryBoundary(this.flow.run(r.autoRecoveryFrom),confirmed,a.runtime)))return blocked('dispatch-boundary-changed','自動再試行前に新しい入力または状態変化を検出しました。requests getで確認し手動で復旧してください。');
     await this.verifyInstructions(a);
     if(a.initialInput&&confirmed.initialInputReady&&a.inputEnvelope?.mode!=='startup-v2')return blocked('startup-contract-rejected','未起動workspaceの契約を確認できません。agents prepare-runtimeで契約を再配置後、通常followupを使用してください。');
-    if(a.runtimeUpgrade?.state==='prepared'||a.runtimeRetiredTo||(a.inputEnvelope?.mode!=='startup-v2'&&!legacyAllowed(a))){
+    if(a.runtimeUpgrade?.state==='prepared'||a.runtimeRetiredTo||a.inputEnvelope?.mode!=='startup-v2'){
       if(r.queuedReason==='startup-contract-migration-required')return r;
       return this.persist(async()=>{r.queuedReason='startup-contract-migration-required';r.error='起動契約の更新待ち。未送信のまま保留しています。runtime adoption後に同じrunを送信します。';await this.save();return r;});
     }
@@ -586,7 +585,7 @@ export class DirectAgents {
       if(r.purposeContinuation&&!continuationScopeIntact(this,r)){changeRun(r,{type:'dispatch-blocked',actor:'program',at:Date.now(),reason:'dispatch-boundary-changed'});r.error='後着入力または目的が変わりました。現在の指示を確認してください。';await this.save();return null;}
       if(this.agentDeleting(a)||runState(r)!=='queued'||r.phase==='report'&&!this.flow.reportCurrent(r))return null;
       if(!retirementIntact(this.data,a)||!retirementRunAllowed(this.data,a,r))return null;
-      const compatibility=legacyAllowed(a);if(a.inputEnvelope?.mode!=='startup-v2'&&!compatibility)return null;
+      if(a.inputEnvelope?.mode!=='startup-v2')return null;
       if(confirmed.unrecorded===true&&!confirmed.initialInputReady&&!noCurrentRuntimeSends(a,this.data.runs,a.runtime,confirmed,createHash('sha256').update(this.startupInstructions(a)).digest('hex')))return null;
       const instruction=r.phase==='report'?this.flow.reportPrompt(this.flow.root(r.humanRequestId)):r.instruction;
       r.instruction=instruction;r.attachmentFiles=files;r.attachmentError=null;delete r.queuedReason;delete r.error;
@@ -599,11 +598,11 @@ export class DirectAgents {
       // fingerprint; never relax matching or reinterpret already-dispatched runs.
       const policy=guide?.available&&a.secretaryGuideSeen!==a.projectId+':'+guide.hash?'Projectの方針が更新されました（projects guide '+a.projectId+' secretary で読めます）。\n\n':'';
       if(policy)a.secretaryGuideSeen=a.projectId+':'+guide.hash;
-      const body=policy+instruction+(plain?'':this.secretaryContext(a))+this.flow.context(r)+(compatibility?legacyContext(this.rules,r,a):'');
+      const body=policy+instruction+(plain?'':this.secretaryContext(a))+this.flow.context(r);
       const text=a.provider==='codex'?body.trim():body;
       if(r.steerTarget){const previous=this.flow.run(r.steerTarget.runId);if(r.conversationId)changeRun(previous,{type:'supersede',actor:'human',successorId:r.id});else changeRun(previous,{type:'close-tracking',actor:'human',reason:'steering-successor-dispatched'});}
       changeRun(r,{type:'dispatch',actor:'program',at:Date.now(),sessionId:confirmed.sessionId||null,agentIdle:true});
-      Object.assign(r,{inputCorrelation:inputCorrelation(text,a.provider),inputEnvelopeMode:compatibility?'legacy-compat':'startup-v2',dispatchAttemptedAt:now(),baselineRuntime:{sessionId:confirmed.sessionId,cursor:confirmed.cursor,fileIdentity:confirmed.fileIdentity},agentSessionId:status.agentSessionId||null});
+      Object.assign(r,{inputCorrelation:inputCorrelation(text,a.provider),inputEnvelopeMode:'startup-v2',dispatchAttemptedAt:now(),baselineRuntime:{sessionId:confirmed.sessionId,cursor:confirmed.cursor,fileIdentity:confirmed.fileIdentity},agentSessionId:status.agentSessionId||null});
       reserveInitialInput(a,r,text);
       await this.save();return text;
     });

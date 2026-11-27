@@ -228,42 +228,27 @@ export class Conversations {
     if(duplicate){c.operations.push({id:x.operationId,payload,receipt:structuredClone(duplicate.receipt),at:now()});await this.d.save();return structuredClone(duplicate.receipt);}
     const resolved=resolveFollowup(this,c,actor,x);action=resolved.action;x=resolved.input;
    }
-   if(x.continue!==undefined&&x.continue!==true)fail('continueはtrueを指定してください',400);
-   if(x.continue===true){
-    if(action!=='job'||x.authorization!==undefined||x.continuesRequestId!==undefined||x.humanRequestId!==undefined||x.deliveryId!==undefined||x.expectedPurposeVersion!==undefined)fail('簡易継続に別の対象や許可は指定できません',400);
-    x=this.currentPurposeInput(c,actor,x);
-    const original=this.d.flow.root(purposeId(this.d.flow.root(x.humanRequestId)));
-    x={...x,continuesRequestId:x.humanRequestId,authorization:original.requestedBy.authorization,reason:x.instruction};
-   }
+   if(x.continue!==undefined||x.continuesRequestId!==undefined)fail('旧後継作成は廃止しました。同じ目的へのfollowupを使用してください',410);
    const authorization=this.authorize(c,actor,x.authorization);
    text(x.instruction);
    let receipt;
    if(action==='job'){
-    if(x.continuesRequestId!==undefined&&(typeof x.continuesRequestId!=='string'||!x.continuesRequestId))fail('継続元の依頼IDを指定してください',400);
-    const previous=x.continuesRequestId?this.purposeBoundary(c,actor,x,{continuation:true}):null;
-    if(previous){
-     text(x.reason);
-     const original=this.d.flow.root(purposeId(previous.q));
-     if(JSON.stringify(authorization)!==JSON.stringify(original.requestedBy.authorization))fail('継続は元の許可を参照してください。追加権限は新しい依頼で扱います',403);
-    }
     const p=this.d.writableProject(c.projectId);
     if(x.assigneeAgentId!==undefined&&(typeof x.assigneeAgentId!=='string'||!x.assigneeAgentId.trim()))fail('assigneeAgentIdに担当AgentのIDを指定してください',400);
     // Continue the root's current assignee, including a formal handover. Child
     // assignees and later Project leader edits never redirect this purpose.
-    const assignee=previous?rootNode(previous.q).assignee:x.assigneeAgentId??p.leaderAgentId;
-    if(!assignee){if(previous)fail('継続元の担当を確認できません');fail('Projectのリーダーが未設定です');}
+    const assignee=x.assigneeAgentId??p.leaderAgentId;
+    if(!assignee)fail('Projectのリーダーが未設定です');
     const a=this.d.writableAgent(this.d.agent(assignee));
     if(this.d.instructionStatus(a.id).requiresFreshSession)fail('担当の起動契約の移行が必要です。正式なstartup-v2セッションを採用してください');
     if(a.id===c.agentId||a.projectId!==p.id||a.location!=='workshop'||!a.tabId||a.runtimeUpgrade?.state==='prepared'||a.agentModel?.intent==='stop'||['terminated','stopping','unknown'].includes(agentControls(a).state))fail('指定された担当を利用できません。担当と稼働状態を確認してください');
     const q={id:randomUUID(),commonRequests:true,inputProtocol:1,projectId:c.projectId,conversationId:c.id,requestedBy:{kind:'agent',agentId:c.agentId,actorRunId:actor.id,authorization},reportMode:false,clientRequestId:'conversation:'+c.id+':'+x.operationId,instruction:x.instruction,travelContexts:[],attachments:[],originAgentId:a.id,finalAgentId:a.id,revision:0,createdAt:now(),requestGraph:{version:3,nodes:[],operations:[]}};
-    q.purposeId=previous?purposeId(previous.q):q.id;
-    if(previous)q.continuesRequestId=previous.q.id;
+    q.purposeId=q.id;
     const w=newNode(q,{id:randomUUID(),assignee:a.id,createdBy:'agent',metadata:{reporting:initialDeadlines({})}});
     w.recipient={kind:'conversation',conversationId:c.id};w.requester={kind:'conversation',conversationId:c.id,agentId:c.agentId};q.rootWorkId=w.id;q.requestGraph.rootId=w.id;
     this.d.data.requests.push(q);
     const r=this.d.flow.enqueue(q,w,x.instruction,'conversation-job','agent');q.initialRunId=r.id;
     w.inbox[0].source={actor:'agent'};
-    if(previous)this.recordPurpose(c,actor,x,previous,'continue',q);
     receipt={humanRequestId:q.id,workId:w.id,runId:r.id,actorRunId:actor.id,assigneeAgentId:a.id,leaderAgentId:a.id,conversationId:c.id,purposeId:q.purposeId};
    }else{
     const q=this.d.flow.root(x.humanRequestId),w=rootNode(q);
@@ -276,7 +261,8 @@ export class Conversations {
      this.actor(c,actor.id);
      const fresh=resolveFollowup(this,c,actor,JSON.parse(payload).input);
      if(fresh.action!=='continue-purpose'||fresh.input.previousRunId!==previous.id||fresh.input.revision!==x.revision||!continuationBoundary(previous,snapshot,status))fail('現在の実行境界を確認できません。接続とnative終端を再観測してください。再送はしていません');
-     const r=await this.d.flow.continueLocked({humanRequestId:q.id,workId:w.id,revision:x.revision,operationId:x.operationId,instruction:x.instruction},true,{purposeContinuation:{previousRunId:previous.id,actorRunId:actor.id,conversationId:c.id,humanSequence:actor.conversationSequence,authorization:JSON.stringify(q.requestedBy.authorization),revision:q.revision+1}},'agent',{deferSave:true});
+     const r=await this.d.flow.continueLocked({humanRequestId:q.id,workId:w.id,revision:x.revision,operationId:x.operationId,instruction:x.instruction},runState(previous)!=='completed',{purposeContinuation:{previousRunId:previous.id,actorRunId:actor.id,conversationId:c.id,humanSequence:actor.conversationSequence,authorization:JSON.stringify(q.requestedBy.authorization),revision:q.revision+1}},'agent',{deferSave:true});
+     if(x.deliveryId)this.recordPurpose(c,actor,{...x,reason:x.instruction},{q,event:{id:x.deliveryId}},'resume');
      receipt={humanRequestId:q.id,workId:w.id,runId:r.id,previousRunId:previous.id,purposeId:purposeId(q),action:'continue-purpose'};
     }else if(action==='amend'){
      const id=randomUUID();

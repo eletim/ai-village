@@ -123,7 +123,7 @@ export function continuationBasis(r:Run):'before-dispatch'|'native-terminal'|nul
  const terminal=[...r.facts].reverse().find(f=>f.type==='terminal');
  if(r.state.reason==='prelaunch-rejected'&&r.facts.at(-1)?.type==='prelaunch-rejected'&&!input)return 'before-dispatch';
  if(r.facts.at(-1)?.type==='dispatch-blocked'&&!r.facts.some(f=>['dispatch','input','terminal'].includes(f.type)))return 'before-dispatch';
- if(r.state.reason==='native-terminal'&&['failed','interrupted'].includes(r.state.outcome)&&input&&terminal&&terminal.outcome===r.state.outcome&&input.sessionId&&input.turnId&&terminal.sessionId===input.sessionId&&terminal.turnId===input.turnId&&terminal.at>=input.at)return 'native-terminal';
+ if(r.state.reason==='native-terminal'&&['normal','failed','interrupted'].includes(r.state.outcome)&&input&&terminal&&terminal.outcome===r.state.outcome&&input.sessionId&&input.turnId&&terminal.sessionId===input.sessionId&&terminal.turnId===input.turnId&&terminal.at>=input.at)return 'native-terminal';
  return null;
 }
 /** Explicit purpose continuation. The caller also verifies current runtime ownership. */

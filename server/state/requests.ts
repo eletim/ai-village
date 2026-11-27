@@ -213,7 +213,7 @@ export function transitionGraph(source:Graph,e:Event,runs:Evidence):Result<Graph
   if(e.type==='finish')n.declarations.push({id:e.operationId,runId:r.id,at:e.at,...(n.currentRunId!==r.id||r.supersededBy?{invalidated:'not-current-at-declaration'}:{})});
   g.operations.push({id:e.operationId,payload});return accept(reconcileGraph(g,runs));
  }
- if(n.state.kind!=='active'&&!(n.state.kind==='submitted'&&(e.type==='attempt'||e.type==='assign'||e.type==='handover'||e.type==='withdraw'||e.type==='complete')))return reject('request-terminal');
+ if(n.state.kind!=='active'&&!(n.state.kind==='completed'&&n.state.by!=='human'&&e.type==='attempt'&&e.resolveContinuationRunId)&&!(n.state.kind==='submitted'&&(e.type==='attempt'||e.type==='assign'||e.type==='handover'||e.type==='withdraw'||e.type==='complete')))return reject('request-terminal');
  switch(e.type){
   case 'replace':{
    const c=node(g,e.childId),replacement=node(g,e.replacementId),s=c&&latest(c),r=current(n,runs);

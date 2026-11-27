@@ -1,3 +1,4 @@
+import {continuationBoundary} from './purpose-continuation.mjs';
 import {initializePurposeContinuation} from './run-lifecycle.mjs';
 import {reconcileObservation} from './request-observation-reconcile.mjs';
 import {retirementRunAllowed} from './legacy-retirement.mjs';
@@ -233,11 +234,6 @@ export class RequestFlow {
   applyGraph(this.d.data,q,{type:'complete',actor:'human',requestId:q.rootWorkId,reason:x.reason||'人間が成果を確認して完了扱い'});
   q.revision++;await this.settle();await this.d.save();return this.get(q.id);
  }));}
- childContinuationBoundary(r,snapshot,status){
-  return !!r&&r.runModel.state.kind==='ended'&&['normal','failed','interrupted'].includes(r.runModel.state.outcome)&&
-   r.runModel.facts.some(f=>f.type==='terminal')&&terminalBoundary(snapshot,status)&&snapshot.sessionId===r.sessionId&&
-   snapshot.turns.at(-1)?.id===r.turnId&&correlate(r,snapshot).state===runState(r);
- }
  // This Agent boundary never exposes human retry/assignment privileges.
  async continueChild(x){return this.d.locked('request-graph',async()=>{
   const q=this.root(x.humanRequestId),w=this.work(q,x.workId);operation(x.operationId);instruction(x.instruction);
@@ -246,8 +242,9 @@ export class RequestFlow {
   const parent=this.work(q,w.parentId),actor=await this.actor(q,parent,x.actorRunId);
   if(actor.runModel.state.kind!=='running'||actor.phase==='report')fail('現在実行中の依頼元runが必要です');
   const payload=JSON.stringify({workId:w.id,actorRunId:actor.id,targetRunId:x.targetRunId,revision:x.revision,instruction:x.instruction});
-  const key=runKey(q.id,'child-continue:'+x.operationId),old=this.d.data.runs.find(r=>r.requestId===key);
-  if(old){if(old.childContinuation?.payload!==payload)fail('operationIdの再利用です');return structuredClone(old);}
+  const target=this.run(x.targetRunId);if(!target)fail('対象の最新runをrequests getで確認してください');
+  const key=runKey(q.id,(runState(target)==='completed'?'resume:':'retry:')+x.operationId),old=this.d.data.runs.find(r=>r.requestId===key);
+  if(old){if(old.purposeContinuation?.payload!==payload)fail('operationIdの再利用です');return structuredClone(old);}
   this.active(q);this.version(q,x.revision);
   if(q.report||!['active','submitted'].includes(w.state.kind)||w.replacementId)fail('継続可能な子依頼ではありません');
   const last=this.run(w.currentRunId);
@@ -262,15 +259,13 @@ export class RequestFlow {
    const replacement=w.replacements.some(c=>c.resultId===result.id&&(effective(c.actorRunId)||q.requestGraph.nodes.some(n=>n.id===c.replacementId&&n.state.kind!=='withdrawn')));
    if(handled||claimed||replacement)fail('結果への対応申告・置換予約と継続は併用できません');
   }
-  const a=this.d.writableAgent(this.d.agent(w.assignee));
+  const a=this.d.writableAgent(this.d.agent(w.assignee)),parentInputIds=(parent.inbox||[]).map(i=>i.id);
   return this.d.locked(a.id,async()=>{
    const snapshot=await this.d.observe(a);
-   if(!a.tabId||!agentControls(a).canSend||!this.childContinuationBoundary(last,snapshot,a.runtime))fail('担当の終了境界とidleを確認できません。再送せず状況を確認してください');
+   if(parent.currentRunId!==actor.id||actor.runModel.supersededBy||JSON.stringify((parent.inbox||[]).map(i=>i.id))!==JSON.stringify(parentInputIds))fail('照会中に親仕事の入力が変わりました。新しい入力を確認してください');
+   if(!a.tabId||!agentControls(a).canSend||!continuationBoundary(last,snapshot,a.runtime))fail('担当の終了境界とidleを確認できません。再送せず状況を確認してください');
    if(this.d.data.runs.some(r=>r.agentId===a.id&&r.id!==last.id&&['queued','sent','running'].includes(r.runModel?.state.kind)))fail('担当に別の未終了runがあります');
-   return this.d.persist(async()=>{
-    const r=this.enqueue(q,w,x.instruction,'child-continue:'+x.operationId,'continuation',{instructionSource:{actor:'agent',actorRunId:actor.id},childContinuation:{operationId:x.operationId,payload}});
-    q.revision++;await this.d.save();return structuredClone(r);
-   });
+   return this.continueLocked({...x,agentId:undefined},runState(last)!=='completed',{purposeContinuation:{previousRunId:last.id,actorRunId:actor.id,parentWorkId:parent.id,parentInputIds,revision:q.revision+1,payload}},'agent');
   });
  });}
  async continue(x,retry=false){return this.d.locked('request-graph',()=>this.continueLocked(x,retry,{},'human'));}
@@ -278,7 +273,8 @@ export class RequestFlow {
   const q=this.root(x.humanRequestId),w=this.work(q,x.workId);operation(x.operationId);instruction(x.instruction);
   const key=runKey(q.id,(retry?'retry:':'resume:')+x.operationId),old=this.d.data.runs.find(r=>r.requestId===key);
   if(old){if(old.workId!==w.id||(old.retryInstruction||old.instruction)!==x.instruction)fail('operationIdの再利用です');return old;}
-  this.active(q);this.version(q,x.revision);
+  if(!(extra.purposeContinuation&&w.state.kind==='completed'&&w.state.by!=='human'))this.active(q);
+  this.version(q,x.revision);
   if(q.report&&w.parentId)fail('報告工程では子作業を再開できません');
   const last=this.run(q.report?w.reportRunId:w.currentRunId);
   if(retry?!['failed','interrupted','terminated'].includes((last&&runState(last))):(last&&runState(last))!=='completed')fail('未受付・不明・実行中の入力は再送できません。resumeは途中応答完了後、retryは失敗/中断後です');
@@ -287,6 +283,7 @@ export class RequestFlow {
   this.d.writableAgent(this.d.agent(w.assignee));
   delete w.metadata.latestResultId;
   const r=this.enqueue(q,w,q.report&&!w.parentId?this.reportPrompt(q):x.instruction,(retry?'retry:':'resume:')+x.operationId,retry?'retry':'continuation',{...extra,instructionSource:{actor,...(extra.purposeContinuation?{actorRunId:extra.purposeContinuation.actorRunId,...(extra.purposeContinuation.deliveryId?{relayId:extra.purposeContinuation.deliveryId}:{})}:extra.secretaryRecovery?{actorRunId:extra.secretaryRecovery.actorRunId,relayId:extra.secretaryRecovery.deliveryId}:{})},...(retry?{retryFrom:last.id}:{}),...(q.report&&!w.parentId?{phase:'report',retryInstruction:x.instruction}:{} )});
+  if(w.inbox&&r.phase!=='report')applyGraph(this.d.data,q,{type:'supplement',actor,requestId:w.id,input:{id:randomUUID(),kind:'supplement',text:x.instruction,createdAt:r.createdAt,attempts:[r.id]}});
   // Include this newly accepted correction before the report can be dispatched.
   if(r.phase==='report')r.instruction=this.reportPrompt(q);q.revision++;if(!deferSave)await this.d.save();return r;
  });}

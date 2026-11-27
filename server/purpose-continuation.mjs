@@ -8,7 +8,7 @@ export function continuationBoundary(r,snapshot,status){
  if(snapshot.sessionId!==status.agentSessionId)return false;
  if(basis==='before-dispatch')return snapshot.turns.length===0||terminalBoundary(snapshot,status);
  const input=r.runModel.facts.findLast(f=>f.type==='input');
- return terminalBoundary(snapshot,status)&&snapshot.sessionId===input.sessionId&&correlate(r,snapshot).state===r.runModel.state.outcome;
+ return terminalBoundary(snapshot,status)&&snapshot.sessionId===input.sessionId&&correlate(r,snapshot).state===(r.runModel.state.outcome==='normal'?'completed':r.runModel.state.outcome);
 }
 // Read-only explanation shared by UI and secretary status. Saved facts establish
 // what was observed; only a fresh native boundary can offer an actual followup.
@@ -45,6 +45,10 @@ export function continuationStatus(r,options={}){
 
 export function continuationScopeIntact(d,r){
  const b=r.purposeContinuation,q=d.data.requests.find(q=>q.id===r.humanRequestId),w=q?.requestGraph.nodes.find(w=>w.id===r.workId),actor=d.flow.run(b?.actorRunId);
+ if(b?.parentWorkId){
+  const parent=q?.requestGraph.nodes.find(n=>n.id===b.parentWorkId);
+  return !!w&&w.parentId===parent?.id&&parent.currentRunId===actor?.id&&(actor?.runModel.state.kind==='running'||actor?.runModel.state.kind==='ended'&&actor.runModel.state.outcome==='normal')&&!actor.runModel.supersededBy&&!parent.invalidatedRuns.includes(actor.id)&&w.currentRunId===r.id&&w.assignee===r.agentId&&w.state.kind==='active'&&JSON.stringify((parent.inbox||[]).map(i=>i.id))===JSON.stringify(b.parentInputIds);
+ }
  if(b?.deliveryId){
   const receiver=d.data.conversations.find(c=>c.id===b.conversationId),e=receiver?.relayInbox?.find(e=>e.id===b.deliveryId);
   if(!e||e.actionReceipt?.runId!==r.id)return false;
