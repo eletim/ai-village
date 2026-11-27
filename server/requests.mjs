@@ -437,7 +437,7 @@ export class RequestFlow {
     if(!claimed)return;
     try{
      const r=this.run(q.finalRunId);
-     const result=await this.d.notifier.enqueue({id:'request:'+q.id,role:'assistant',kind:'request',agentId:q.finalAgentId,content:'依頼全体が完了しました。\n'+(r?.finalOutput||r?.output||'最終報告を村で確認してください。')});
+     const result=await this.d.notifier.enqueue({id:'request:'+q.id,role:'assistant',kind:'request',projectId:q.projectId,eventAt:Date.parse(q.completedAt||''),agentId:q.finalAgentId,content:'依頼全体が完了しました。\n'+(r?.finalOutput||r?.output||'最終報告を村で確認してください。')});
      await this.d.persist(async()=>{q.notification=transitionDelivery(q.notification,{type:'result',result});await this.d.save();});
     }catch(error){await this.d.persist(async()=>{q.notification=transitionDelivery(q.notification,{type:'unknown',reason:'notification-outcome-unknown'});await this.d.save();});}
    });

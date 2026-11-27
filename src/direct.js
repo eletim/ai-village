@@ -764,6 +764,7 @@ function openProjectActions(id){
  $('#project-actions-title').textContent=p.name+' の操作';
  $('#project-rename-form').elements.name.value=p.name;
  options($('#project-leader-form [name=leaderAgentId]'),[{id:'',name:'未設定'},...state.agents.filter(a=>a.projectId===p.id&&a.location==='workshop')]);$('#project-leader-form [name=leaderAgentId]').value=p.leaderAgentId||'';
+ $('#project-notifications-form').elements.enabled.checked=p.externalNotifications!==false;
  $('#project-suspension').textContent=p.suspended?'再開':'休止する';
  $('#project-suspension-help').textContent=p.name+'：表示整理のみです。Agent・所属・会話・依頼・通知はそのまま継続します。';
  $('#project-actions-dialog .dialog-error').textContent='';
@@ -777,6 +778,7 @@ function patchProject(patch){
   if(projectActionTarget===target)$('#project-actions-dialog').close();
  });
 }
+$('#project-notifications-form').onsubmit=e=>{e.preventDefault();patchProject({externalNotifications:e.currentTarget.elements.enabled.checked});};
 $('#project-leader-form').onsubmit=e=>{e.preventDefault();patchProject({leaderAgentId:e.currentTarget.elements.leaderAgentId.value||null});};
 $('#project-rename-form').onsubmit=e=>{e.preventDefault();patchProject({name:e.currentTarget.elements.name.value});};
 function projectMoveList(){

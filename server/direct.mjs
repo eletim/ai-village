@@ -74,6 +74,14 @@ export class DirectAgents {
     this.projectGuides=new ProjectGuides(undefined,this);
     this.flow=new RequestFlow(this);this.conversations=new Conversations(this);this.secretaryCommands=new SecretaryCommands(this);this.events=new EventEmitter();
     this.persistence=new PersistenceBoundary();
+    // Read committed Project settings at the final transport boundary. The gate
+    // starts transport synchronously; its network completion does not hold the writer barrier.
+    this.notifier.deliveryGate=(message,start)=>this.persistence.run(()=>{
+      const projectId=message.projectId||this.data.agents.find(a=>a.id===message.agentId)?.projectId;
+      const p=this.data.projects.find(p=>p.id===projectId);
+      const reason=p?.externalNotifications===false?'project-external-notifications-disabled':p?.externalNotificationsAfter&&!(Number(message.eventAt)>Date.parse(p.externalNotificationsAfter))?'project-notification-before-enable':null;
+      return reason?{reason,projectId}:{pending:start()};
+    });
     this.queue=Promise.resolve(); this.locks=new Map(); this.monitors=new Map();
     this.units=new RequestUnits(this);
     this.store=new PartitionStore({dir:this.dir,capture:()=>this.data,selection:()=>this.units.selection(),affected:c=>this.units.affected(c)});
@@ -170,7 +178,7 @@ export class DirectAgents {
     await this.save();
     return {...current,unreviewed:false,attention:false,attentionRequestIds:[]};
   }));}
-  discovery(){return {agents:this.data.agents.filter(a=>!a.deletedAt).map(a=>({...agentIdentity(a),leaderForProjects:this.data.projects.filter(p=>p.leaderAgentId===a.id&&!p.deletedAt).map(p=>p.id),projectId:a.projectId||null,projectName:this.data.projects.find(p=>p.id===a.projectId)?.name||null,metadataRevision:a.metadataRevision||0,displayOrder:a.displayOrder??null})),projects:structuredClone(this.data.projects.filter(p=>!p.deletedAt)),workshops:structuredClone(this.data.workshops),management:{workshopConnection:'PUT /api/direct/workshops/:id {villageConnection:{url?,cliPath,authFile?}|null}; SSH next-session connection only; never include credentials; existing runtimes unchanged',workshopPattern:'PUT /api/direct/workshops/:id {iconPattern:[none|line|diamond x8]}; null resets to stable default; omitted fields preserved',help:'node scripts/village.mjs help',agentUpdate:'PUT /api/direct/agents/:id {revision,name?,projectId?,displayOrder?:integer|null}',projects:'POST /api/direct/projects {requestId,name}; PUT /api/direct/projects/:id {revision,name?,suspended?:boolean,displayOrder?:integer|null (display only)}',projectDelete:'GET /api/direct/projects/:id/delete-plan; POST /api/direct/projects/:id/delete {operationId,revision,members}; deletes all member Agents, retry same operation on partial result',namePolicy:'村の表示名のみ変更。PurpleMuxのラベル、ID、セッション、接続先は維持。',requests:{help:'node scripts/village.mjs help',list:'GET /api/direct/requests',get:'POST /api/direct/requests/get {humanRequestId}',operations:'delegate / results / finish: POST /api/direct/requests/:operation',policy:'人間の依頼ごとに通知権1枚。正式delegateで親子を登録し、委任なしはnative正常終了、委任ありは子結果を確認後のfinishとnative正常終了で全体完了。生PurpleMux送信・旧runを自動関連付けしない。'}}};}
+  discovery(){return {agents:this.data.agents.filter(a=>!a.deletedAt).map(a=>({...agentIdentity(a),leaderForProjects:this.data.projects.filter(p=>p.leaderAgentId===a.id&&!p.deletedAt).map(p=>p.id),projectId:a.projectId||null,projectName:this.data.projects.find(p=>p.id===a.projectId)?.name||null,metadataRevision:a.metadataRevision||0,displayOrder:a.displayOrder??null})),projects:structuredClone(this.data.projects.filter(p=>!p.deletedAt)),workshops:structuredClone(this.data.workshops),management:{workshopConnection:'PUT /api/direct/workshops/:id {villageConnection:{url?,cliPath,authFile?}|null}; SSH next-session connection only; never include credentials; existing runtimes unchanged',workshopPattern:'PUT /api/direct/workshops/:id {iconPattern:[none|line|diamond x8]}; null resets to stable default; omitted fields preserved',help:'node scripts/village.mjs help',agentUpdate:'PUT /api/direct/agents/:id {revision,name?,projectId?,displayOrder?:integer|null}',projects:'POST /api/direct/projects {requestId,name}; PUT /api/direct/projects/:id {revision,name?,externalNotifications?:boolean (external delivery only; no replay),suspended?:boolean,displayOrder?:integer|null (display only)}',projectDelete:'GET /api/direct/projects/:id/delete-plan; POST /api/direct/projects/:id/delete {operationId,revision,members}; deletes all member Agents, retry same operation on partial result',namePolicy:'村の表示名のみ変更。PurpleMuxのラベル、ID、セッション、接続先は維持。',requests:{help:'node scripts/village.mjs help',list:'GET /api/direct/requests',get:'POST /api/direct/requests/get {humanRequestId}',operations:'delegate / results / finish: POST /api/direct/requests/:operation',policy:'人間の依頼ごとに通知権1枚。正式delegateで親子を登録し、委任なしはnative正常終了、委任ありは子結果を確認後のfinishとnative正常終了で全体完了。生PurpleMux送信・旧runを自動関連付けしない。'}}};}
   project(id){return this.data.projects.find(p=>p.id===id)||fail('Projectがありません',404);}
   projectDeletePlan(id){return deletionPlan(this,id);}
   deleteProject(id,input){return deleteProject(this,id,input);}
@@ -185,14 +193,16 @@ export class DirectAgents {
     if('pinned' in input)fail('先頭固定は廃止されました。表示順を指定してください',400);
     if(id){
       const p=this.writableProject(id);
-      if (!('name' in input)&&!('suspended' in input)&&!('displayOrder' in input)&&!('leaderAgentId' in input))fail('名前、suspendedまたはdisplayOrderを指定してください',400);
+      if (!('name' in input)&&!('suspended' in input)&&!('displayOrder' in input)&&!('leaderAgentId' in input)&&!('externalNotifications' in input))fail('名前、suspendedまたはdisplayOrderを指定してください',400);
+      if('externalNotifications' in input&&typeof input.externalNotifications!=='boolean')fail('externalNotificationsはbooleanです',400);
       if ('suspended' in input&&typeof input.suspended!=='boolean')fail('suspendedはbooleanです',400);
       if('displayOrder' in input&&input.displayOrder!==null&&!Number.isSafeInteger(input.displayOrder))fail('displayOrderは安全な整数またはnullです',400);
       if('leaderAgentId' in input&&input.leaderAgentId!==null){const leader=this.writableAgent(this.agent(input.leaderAgentId));if(leader.projectId!==id||leader.location!=='workshop')fail('同じProjectの工房Agentをリーダーに指定してください');}
       const name='name' in input?this.validName(input.name):p.name;
       if(!Number.isInteger(input.revision)||input.revision!==p.revision)fail('Projectが更新されています。再読込してください');
       if(this.data.projects.some(p=>!p.deletedAt&&p.id!==id&&p.name===name))fail('同名のProjectがあります');
-      Object.assign(p,{name,...('leaderAgentId' in input?{leaderAgentId:input.leaderAgentId}:{}),...('displayOrder' in input?{displayOrder:input.displayOrder}:{}),...('suspended' in input?{suspended:input.suspended}:{}),revision:p.revision+1,updatedAt:now()});
+      const enabledAfter=input.externalNotifications===true&&p.externalNotifications===false?{externalNotificationsAfter:now()}:{};
+      Object.assign(p,{name,...enabledAfter,...('externalNotifications' in input?{externalNotifications:input.externalNotifications}:{}),...('leaderAgentId' in input?{leaderAgentId:input.leaderAgentId}:{}),...('displayOrder' in input?{displayOrder:input.displayOrder}:{}),...('suspended' in input?{suspended:input.suspended}:{}),revision:p.revision+1,updatedAt:now()});
       await this.save();return {...p};
     }
     const name=this.validName(input.name);

@@ -6,7 +6,7 @@ async function fixture(page,mode){
   calls.push(r.postDataJSON());if(mode==='refuse'){mode='success';a.metadataRevision++;return route.fulfill({status:409,json:{error:'Agentが更新されています'}});}
   if(mode==='lost')return route.abort('connectionfailed');
   a.runtimeMigrations=[{operationId:calls.at(-1).operationId}];delete a.terminatedAt;delete a.ownedProcesses;delete a.processVerification;a.agentModel={intent:'run',observation:{connected:true,process:'absent',activity:'unknown'}};return route.fulfill({json:{agentId:'old'}});
- }return route.fulfill({json:state});});
+ }if(mode==='success-get-fails'&&calls.length)return route.abort('connectionfailed');return route.fulfill({json:state});});
  await page.goto('/agents');await page.getByRole('button',{name:'設定',exact:true}).click();await page.getByRole('button',{name:'終了Agent・担当不在の履歴',exact:true}).click();await page.locator('#history-content [data-profile-agent]').click();await page.locator('#agent-profile-dialog').getByRole('button',{name:'セッションの切替',exact:true}).click();const ui=page.locator('#runtime-migration-dialog');await expect(ui).toContainText('同じAgent');return {ui,calls,state};
 }
 test('same Agent preparation needs no donor, definitive refusal can be corrected after observation',async({page})=>{
@@ -17,3 +17,5 @@ test('unknown response retains draft and operation across reload without creatin
 });
 
 test('successful exchange discards the old stop snapshot and disables another exchange',async({page})=>{const {ui,calls}=await fixture(page,'success');await ui.getByLabel('引継ぎ内容').fill('残成果のみ継続');await ui.getByRole('button',{name:'このAgentのセッションを交換',exact:true}).click();await expect(ui).toContainText('セッション交換を確認しました');await expect(ui.getByRole('button',{name:'このAgentのセッションを交換',exact:true})).toBeDisabled();await expect(ui).not.toContainText('管理対象の停止記録があります');expect(calls).toHaveLength(1);});
+
+test('success followed by failed refresh never restores exchange permission',async({page})=>{const {ui,calls}=await fixture(page,'success-get-fails');await ui.getByLabel('引継ぎ内容').fill('保持');await ui.getByRole('button',{name:'このAgentのセッションを交換',exact:true}).click();await expect(ui).toContainText('セッション交換を確認しました');await expect(ui.getByRole('button',{name:'このAgentのセッションを交換',exact:true})).toHaveCount(0);await expect(ui).not.toContainText('管理対象の停止記録があります');expect(calls).toHaveLength(1);});
