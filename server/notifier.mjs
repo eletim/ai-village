@@ -79,7 +79,7 @@ export class VillageNotifier {
         if(!/^[0-9a-f-]{36}$/.test(message.agentId))throw new Error('Invalid Agent ID');
         if(clickUrl){const url=new URL(clickUrl);url.pathname='/agents';url.search='';url.hash=`agent-${message.agentId}`;clickUrl=url.href;}
       }
-      const base={messageId:message.id,kind:message.kind || 'reply',clickUrl};
+      const base={messageId:message.id,kind:message.kind || 'reply',clickUrl,...(message.projectId?{projectId:message.projectId}:{})};
       const skip=!this.enabled?'disabled':!this.officeUrl?'office_url_missing_or_invalid':null;
       if(skip){const result={...base,at:new Date().toISOString(),status:skip,delivered:false};await this.record(result);return result;}
       // Claim before the external side effect; neither restart nor UI restoration retries it.
@@ -87,7 +87,10 @@ export class VillageNotifier {
       const title=message.kind==='request'?'AI村 · 依頼全体の完了':message.kind==='test'?'AI村 · 通知テスト':'AI村 · Agentの応答完了';
       const prose=message.content || (message.attachments?.length ? `画像が${message.attachments.length}枚届きました。Agent Workspaceで確認できます。` : '');
       const content=Array.from(prose).slice(0,2000).join('')+(Array.from(prose).length>2000?'…':'');
-      const outcome=await this.send(title,content,clickUrl);
+      // Recheck after queueing and journaling, immediately before starting transport.
+      // An OFF committed before this gate suppresses even an already queued claim.
+      const gate=await (this.deliveryGate?.(message,()=>this.send(title,content,clickUrl))||{pending:this.send(title,content,clickUrl)});
+      const outcome=gate.reason?{status:'suppressed',reason:gate.reason,projectId:gate.projectId,delivered:false}:await gate.pending;
       const result={...base,at:new Date().toISOString(),...outcome};
       await this.record(result);return result;
     });

@@ -76,3 +76,5 @@ test('published report stays visible through compact paging when source work rem
  assert.equal(snapshot.requests[0].status,'completed');
  assert(snapshot.conversations.a.entries.some(r=>r.id==='r1'&&r.phase==='report'));
 });
+
+test('addressed targets survive focused history omission without exposing history bodies',()=>{const v=fixture(0);v.requests=[{id:'q',projectId:'p',conversationId:'c',rootWorkId:'w',status:'completed',createdAt:'2026-01-01',instruction:'target',requestGraph:{nodes:[{id:'w',assignee:'other',state:{kind:'completed'},inbox:[{text:'PRIVATE'}]}]}}];const x=workspaceSnapshot(v,{},['a']);assert.equal(x.requests.length,0);assert.deepEqual(x.inputTargets,[{workId:'w',projectId:'p',assignee:'other',instruction:'target',createdAt:'2026-01-01'}]);assert(!JSON.stringify(x).includes('PRIVATE'));v.requests[0].requestGraph.nodes[0].state.kind='withdrawn';assert.deepEqual(workspaceSnapshot(v).inputTargets,[]);});

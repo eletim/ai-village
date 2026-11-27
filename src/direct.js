@@ -38,7 +38,7 @@ const $=s=>document.querySelector(s);
 const migrationViewer=runtimeMigration({api,newId:newRequestId});
 const profileViewer=agentProfileViewer({onMigration:id=>migrationViewer.open(id),managementHTML:a=>agentRecoveryHTML(a.id)+requestSignalsHTML(a.id)});
 weeklyUsagePanel($('#weekly-usage'));
-$('#agents').addEventListener('click',e=>{const button=e.target.closest('[data-profile-agent]');if(button){const a=state.agents.find(a=>a.id===button.dataset.profileAgent);if(a)profileViewer.open(a,(state.projects||[]).find(p=>p.id===a.projectId)||null);}});
+for(const host of [$('#agents'),$('#history-content')])host.addEventListener('click',e=>{const button=e.target.closest('[data-profile-agent]');if(button){const a=state.agents.find(a=>a.id===button.dataset.profileAgent);if(a)profileViewer.open(a,(state.projects||[]).find(p=>p.id===a.projectId)||null);}});
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 // getRandomValues is available on VPN HTTP origins where randomUUID is not.
 function newRequestId(){const b=crypto.getRandomValues(new Uint8Array(16));b[6]=(b[6]&15)|64;b[8]=(b[8]&63)|128;const h=[...b].map(v=>v.toString(16).padStart(2,'0')).join('');return `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`;}
@@ -68,7 +68,7 @@ const pageKey=id=>sidebarMode+':'+id;
 const storageKey='ai-village-direct-drafts-v2';
 let saved={};try{saved=JSON.parse(sessionStorage.getItem(storageKey)||'{}');}catch{}
 const positions=new Map(Object.entries(saved.positions||{})),cards=new Map(),drafts=new Map(Object.entries(saved.drafts||{})),pending=new Map(Object.entries(saved.pending||{}));
-const inputTargets=new Map(Object.entries(saved.inputTargets||{}));
+const inputTargets=new Map(Object.entries(saved.inputTargets||{})),scopeDrafts=new Map(Object.entries(saved.scopeDrafts||{}));
 const draftVersions=new Map(Object.entries(saved.draftVersions||{})),outbox=new Map(Object.entries(saved.outbox||{}).map(([id,m])=>[id,restorePendingMessage(m)]));
 for(const [id,receipt] of pending)if(!outbox.has(id))outbox.set(id,{...receipt,stage:'unknown',draftVersion:draftVersions.get(id)||0});
 const fileEditors=new Map(),scrolls=new Map(),historyRanges={},historyLoading=new Set(),historyErrors=new Map();
@@ -82,7 +82,7 @@ function capHistoryRanges(){
  }
 }
 const travelDrafts=new Map(Object.entries(saved.travelDrafts||{})),travelEditors=new Map();
-function storeDrafts(){try{sessionStorage.setItem(storageKey,JSON.stringify({inputTargets:Object.fromEntries(inputTargets),travelDrafts:Object.fromEntries(travelDrafts),positions:Object.fromEntries(positions),drafts:Object.fromEntries(drafts),pending:Object.fromEntries(pending),outbox:Object.fromEntries(outbox),draftVersions:Object.fromEntries(draftVersions)}));}catch{}}
+function storeDrafts(){try{sessionStorage.setItem(storageKey,JSON.stringify({scopeDrafts:Object.fromEntries(scopeDrafts),inputTargets:Object.fromEntries(inputTargets),travelDrafts:Object.fromEntries(travelDrafts),positions:Object.fromEntries(positions),drafts:Object.fromEntries(drafts),pending:Object.fromEntries(pending),outbox:Object.fromEntries(outbox),draftVersions:Object.fromEntries(draftVersions)}));}catch{}}
 window.addEventListener('pagehide',()=>{capturePositions();storeDrafts();});
 
 const live=()=>orderedAgents(state.agents);
@@ -199,7 +199,10 @@ function localMessageHTML(id){
 }
 function clearSubmittedDraft(id,receipt,message){
  const input=cards.get(id)?.querySelector('textarea');
- if(input&&(message?unchangedDraft(message,input.value,draftVersions.get(id)||0):input.value===receipt.instruction)){input.value='';drafts.delete(id);}
+ const submittedDraftUnchanged=!!input&&(message?unchangedDraft(message,input.value,draftVersions.get(id)||0):input.value===receipt.instruction);
+ if(submittedDraftUnchanged){input.value='';drafts.delete(id);}
+ const selected=scopeDrafts.get(id);
+ if(submittedDraftUnchanged&&receipt.scope&&selected?.workId===receipt.scope.workId&&JSON.stringify(selected.actions)===JSON.stringify(receipt.scope.actions)){scopeDrafts.delete(id);const card=cards.get(id);if(card){card.querySelector('[name=scopeWork]').value='';card.querySelectorAll('[name=scopeAction]').forEach(x=>x.checked=false);}}
  if(sameTravelContexts(travelDrafts.get(id),receipt.travelContexts))travelEditors.get(id).set([]);
  fileEditors.get(id).clear();
 }
@@ -209,7 +212,7 @@ function renderHistory(){
  const a=state.agents.find(a=>a.id===$('#history-agent').value);
  // Terminated agents sit outside the board's focus set; viewing one in the dialog is its own focus.
  if($('#history-dialog').open&&a)focusIds.add(a.id);
- const html=$('#history-agent').value==='orphaned'?recoveryListHTML(orphaned):a?agentRecoveryHTML(a.id)+(runHTML(a)||'<p>会話履歴はありません。</p>'):'<p>終了したAgentはありません。</p>';
+ const html=$('#history-agent').value==='orphaned'?recoveryListHTML(orphaned):a?'<button type="button" data-profile-agent="'+esc(a.id)+'">プロフィール・セッションの切替</button>'+agentRecoveryHTML(a.id)+(runHTML(a)||'<p>会話履歴はありません。</p>'):'<p>終了したAgentはありません。</p>';
  const host=$('#history-content'),anchor=[...host.querySelectorAll('[data-entry]')].find(n=>n.getBoundingClientRect().bottom>host.getBoundingClientRect().top),offset=anchor?.getBoundingClientRect().top,key=anchor?.dataset.entry;
  updateReportHTML(host,html);loadOpenBodies(host);const next=key&&[...host.querySelectorAll('[data-entry]')].find(n=>n.dataset.entry===key);if(next)host.scrollTop+=next.getBoundingClientRect().top-offset;
 }
@@ -239,7 +242,7 @@ function renderBoard(){
   profileViewer.update(a,state.projects||[]);
   let card=cards.get(a.id);
   if(!card){card=document.createElement('article');card.className='agent-panel';card.id='agent-'+a.id;card.setAttribute('aria-labelledby','heading-'+a.id);card.tabIndex=0;card.hidden=true;
-   card.innerHTML=`<div class="panel-heading"><span class="dot"></span><h2></h2><span class="request-attention"></span><span class="unread-badge"></span><button data-zoom="${esc(a.id)}" title="このAgentを拡大" aria-label="このAgentを拡大">⤢</button><button data-manage-agent="${esc(a.id)}" title="Agentの操作" aria-label="Agentの操作">…</button></div><div class="panel-info"></div><p class="current-action"></p><div class="agent-recovery-host"></div><div class="runs" tabindex="0" aria-label="会話履歴"></div><form data-send="${esc(a.id)}"><select name="requestTarget" aria-label="依頼・補足先" hidden><option value="">新しい依頼</option></select><textarea name="instruction" aria-label="このAgentに直接指示" placeholder="" maxlength="16000" rows="1"></textarea><button type="submit">送信</button><button type="button" data-reconcile="${esc(a.id)}" hidden>送信結果を確認</button><div class="travel-slot"></div></form>`;
+   card.innerHTML=`<div class="panel-heading"><span class="dot"></span><h2></h2><span class="request-attention"></span><span class="unread-badge"></span><button data-zoom="${esc(a.id)}" title="このAgentを拡大" aria-label="このAgentを拡大">⤢</button><button data-manage-agent="${esc(a.id)}" title="Agentの操作" aria-label="Agentの操作">…</button></div><div class="panel-info"></div><p class="current-action"></p><div class="agent-recovery-host"></div><div class="runs" tabindex="0" aria-label="会話履歴"></div><form data-send="${esc(a.id)}"><select name="requestTarget" aria-label="依頼・補足先" hidden><option value="">新しい依頼</option></select><textarea name="instruction" aria-label="このAgentに直接指示" placeholder="" maxlength="16000" rows="1"></textarea><button type="submit">送信</button><button type="button" data-reconcile="${esc(a.id)}" hidden>送信結果を確認</button><details class="input-scope" hidden><summary>別Projectの仕事を指定</summary><label>対象の仕事<select name="scopeWork"><option value="">指定なし</option></select></label><span>この入力で許可する操作</span><label><input type="checkbox" name="scopeAction" value="supplement">補足</label><label><input type="checkbox" name="scopeAction" value="continue">継続</label><label><input type="checkbox" name="scopeAction" value="cancel">中止</label><label><input type="checkbox" name="scopeAction" value="accept">成果採用</label><small>対象の選択だけでは実行しません。指示文と一緒に送信して確定します。</small></details><div class="travel-slot"></div></form>`;
    const input=card.querySelector('textarea');input.value=drafts.get(a.id)||'';card.autogrow=autogrowInput(input,{panel:card});
    travelEditors.set(a.id,travelComposer(card.querySelector('.travel-slot'),travelDrafts.get(a.id)||[],value=>{travelDrafts.set(a.id,value);storeDrafts();}));
    fileEditors.set(a.id,attachmentComposer({host:card.querySelector('.travel-slot'),key:'agent:'+a.id,supported:()=>!!state?.capabilities?.attachments}));
@@ -285,6 +288,17 @@ function renderBoard(){
   prompt.placeholder=promptLabel;prompt.title=promptLabel+(mobilePromptUI()?'（Enterで改行、送信ボタン / Ctrl+Enterで送信）':'（Enter / Ctrl+Enterで送信、Shift+Enterで改行、変換中のEnterは確定）');prompt.setAttribute('aria-label',prompt.title);
   const send=card.querySelector('[data-send] button:not([data-reconcile])');
   const choice=card.querySelector('[name=requestTarget]');
+  const scopeBox=card.querySelector('.input-scope'),scopeChoice=card.querySelector('[name=scopeWork]');
+  scopeBox.hidden=!(a.location==='mayor'&&a.projectId);
+  if(!scopeBox.hidden){
+   const selected=scopeDrafts.get(a.id)?.workId||scopeChoice.value;
+   const targets=(state.inputTargets||[]).filter(t=>t.projectId!==a.projectId).map(t=>({value:t.workId,label:(state.projects.find(p=>p.id===t.projectId)?.name||'Project')+' / '+t.instruction+' / '+(state.agents.find(a=>a.id===t.assignee)?.name||'担当')+' / '+new Date(t.createdAt).toLocaleString()}));
+   const options='<option value="">指定なし（通常の会話）</option>'+(selected&&!targets.some(t=>t.value===selected)?'<option value="'+esc(selected)+'" disabled>対象を確認できません。選び直してください</option>':'')+targets.map(t=>'<option value="'+esc(t.value)+'">'+esc(t.label)+'</option>').join('');
+   if(scopeChoice.innerHTML!==options){scopeChoice.innerHTML=options;scopeChoice.value=selected;}
+   card.querySelectorAll('[name=scopeAction]').forEach(x=>x.checked=!!scopeDrafts.get(a.id)?.actions.includes(x.value));
+   scopeBox.onchange=()=>{scopeDrafts.set(a.id,{workId:scopeChoice.value,actions:[...card.querySelectorAll('[name=scopeAction]:checked')].map(x=>x.value)});draftVersions.set(a.id,(draftVersions.get(a.id)||0)+1);storeDrafts();};
+  }
+
   if(state.capabilities?.requestInbox){
    choice.hidden=false;const conversational=state.capabilities?.secretaryConversations&&a.location==='mayor'&&a.projectId;
    const selected=inputTargets.get(a.id)||choice.value||'';
@@ -299,7 +313,8 @@ function renderBoard(){
   travelEditors.get(a.id).lock(card.dataset.pending==='true'||pending.has(a.id));
   const supplement=!!choice.value;
   const conversationControl=!supplement&&state.capabilities?.secretaryConversations&&a.location==='mayor'&&a.projectId?a.conversationControl:null;
-  send.disabled=!!choice.selectedOptions[0]?.disabled||(!supplement&&!connected)||(!supplement&&(conversationControl?!conversationControl.canAccept:a.canSend!==true&&a.canSteer!==true&&a.canQueue!==true))||card.dataset.pending==='true'||pending.has(a.id);
+  send.disabled=navigator.onLine===false||!!choice.selectedOptions[0]?.disabled||(!supplement&&!connected)||(!supplement&&(conversationControl?!conversationControl.canAccept:a.canSend!==true&&a.canSteer!==true&&a.canQueue!==true))||card.dataset.pending==='true'||pending.has(a.id);
+  card.querySelector('[data-reconcile]').disabled=navigator.onLine===false;
   card.querySelector('[data-reconcile]').hidden=!pending.has(a.id)||card.dataset.pending==='true';
   const sendLabel=send.form.dataset.sending==='true'?'送信中…':pending.has(a.id)?'送信結果を確認中':supplement?'補足を送信':state.capabilities?.secretaryConversations&&a.location==='mayor'&&a.projectId?'会話を送信':!state.capabilities?.requestInbox&&a.canSteer?'実行中に補足':a.canQueue&&!a.canSend?'待機キューへ':'送信';
   send.innerHTML=sendLabel==='送信'?actionSVG('send'):esc(sendLabel);
@@ -619,7 +634,13 @@ function restartSync(){
  syncBase=null;retryAt=0;disarmSyncIndicator();
  void refresh(true);
 }
+function browserOffline(){
+ syncEpoch++;syncController?.abort();syncController=null;refreshTask=null;connected=false;retryAt=0;disarmSyncIndicator();
+ if(state)renderBoard();
+ connectionStatus($('#connection'),'このブラウザはオフラインです。表示は保存済みの情報です。接続が戻ると再確認します。');
+}
 async function refresh(force=false){
+ if(navigator.onLine===false){browserOffline();return false;}
  const epoch=syncEpoch;
  if(refreshTask){const result=await refreshTask;if(epoch!==syncEpoch)return false;if(force&&result)return refresh(true);return result;}
  if(Date.now()<retryAt)return false;
@@ -643,18 +664,22 @@ $('#reset-workshop').onclick=()=>{if(secretarySetup)prepareSecretaryForm();else{
 $('#workshops').onclick=e=>{const id=e.target.dataset.edit;if(!id)return;const w=state.workshops.find(w=>w.id===id);for(const key of ['id','name','connectionType','sshHost','baseUrl','workplaces'])$('#workshop-form').elements[key].value=key==='workplaces'?w[key].join('\n'):(w[key]??(key==='connectionType'?'ssh':''));patternEditor.set(w);connectionFields();$('#workshop-title').textContent='工房を編集';};
 $('#agent-form').onsubmit=e=>{e.preventDefault();const f=e.currentTarget;f.dataset.requestId ||= newRequestId();action(f,async()=>{let a;try{a=await api('/agents',{...Object.fromEntries(new FormData(f)),...(launcherProjectId?{projectId:launcherProjectId}:{}),requestId:f.dataset.requestId});}catch(error){if(error.status&&error.status<500)delete f.dataset.requestId;throw error;}delete f.dataset.requestId;$('#agent-dialog').close();await refresh(true);if(a.id){const scope=a.projectId?'project:'+a.projectId:placeId(a);choosePlace(scope,Math.floor(scopeAgents(scope).findIndex(x=>x.id===a.id)/PAGE_SIZE));void refresh(true);cards.get(a.id)?.scrollIntoView({block:'nearest'});}});};
 $('#agents').onsubmit=async e=>{
- e.preventDefault();const f=e.target,id=f.dataset.send;if(!id||pending.has(id)||f.querySelector('button').disabled||(!f.elements.instruction.value.trim()&&!fileEditors.get(id).count))return;
+ e.preventDefault();if(navigator.onLine===false){browserOffline();return;}const f=e.target,id=f.dataset.send;if(!id||pending.has(id)||f.querySelector('button').disabled||(!f.elements.instruction.value.trim()&&!fileEditors.get(id).count))return;
  if(travelEditors.get(id).value.length&&!state.capabilities?.travelContexts){$('#error').textContent='出張先の送信にはサーバー更新の反映が必要です。下書きは保持しています。';return;}
  const requestTarget=f.elements.requestTarget?.value;
  const conversation=!requestTarget&&state.capabilities?.secretaryConversations&&state.agents.some(a=>a.id===id&&a.location==='mayor'&&a.projectId);
  const target=state.agents.find(a=>a.id===id),steerTarget=!state.capabilities?.requestInbox&&target?.canSteer?structuredClone(target.steerTarget):null;
- const receipt={...(conversation?{mode:'conversation'}:{}),...(requestTarget?{requestTarget}:{}),...(steerTarget?{steerTarget}:{}),instruction:f.elements.instruction.value,attachments:[],travelContexts:structuredClone(travelEditors.get(id).value),requestId:newRequestId()};
+ const selectedWork=f.elements.scopeWork?.value;
+ let scope;
+ if(selectedWork){const q=(state.inputTargets||[]).find(q=>q.workId===selectedWork),actions=[...f.querySelectorAll('[name=scopeAction]:checked')].map(x=>x.value);if(!conversation||!q||!actions.length){$('#error').textContent='別Projectの仕事と許可する操作を確認してください。送信していません。';return;}scope={projectId:q.projectId,workId:selectedWork,actions};}
+ const receipt={...(scope?{scope}:{}),...(conversation?{mode:'conversation'}:{}),...(requestTarget?{requestTarget}:{}),...(steerTarget?{steerTarget}:{}),instruction:f.elements.instruction.value,attachments:[],travelContexts:structuredClone(travelEditors.get(id).value),requestId:newRequestId()};
  const message={...receipt,createdAt:new Date().toISOString(),draftVersion:draftVersions.get(id)||0,files:fileEditors.get(id).summaries,mode:requestTarget||steerTarget?'steering':!target?.canSend?'queue':'direct',stage:fileEditors.get(id).count?'uploading':'preparing'};
  outbox.set(id,message);storeDrafts();scrolls.get(id).latest();
  action(f,async()=>{
   fileEditors.get(id).lock(true);travelEditors.get(id).lock(true);refreshMessageLog(id);
   try{
    receipt.attachments=await fileEditors.get(id).upload();
+   if(navigator.onLine===false){browserOffline();throw Error('オフラインのため入力は送信していません。下書きは保持しています。');}
   }catch(error){message.stage='failed';message.error=error.message;storeDrafts();throw error;}
   pending.set(id,receipt);message.stage='posting';storeDrafts();refreshMessageLog(id);
   try{
@@ -692,10 +717,11 @@ $('#agents').onclick=e=>{
    else {const full=await api('/requests/get',{humanRequestId:q.id});await api(r.state==='completed'?'/human/requests/resume':'/human/requests/retry',{humanRequestId:q.id,workId:r.workId,revision:full.revision,operationId:newRequestId(),instruction:'失敗・中断からの復旧です。既存変更・PR・外部操作・requests get/resultsの子作業を確認し、未完了部分だけ進めてください。子作業の再委任や二重操作を避け、モデルは変更しないでください。委任ありのまとめ役だけfinishで申告してください。\n元の指示（全文はrequests getで確認）:\n'+(full.instruction||'').slice(0,12000)});}
   });return;
  }
- const reconcile=e.target.closest('[data-reconcile]');if(reconcile){const id=reconcile.dataset.reconcile,receipt=pending.get(id);if(receipt)action(reconcile.closest('article'),async()=>{if(receipt.requestTarget){const [humanRequestId,workId]=receipt.requestTarget.split(':');await api('/human/requests/supplement',{humanRequestId,workId,operationId:receipt.requestId,instruction:receipt.instruction,attachments:receipt.attachments,travelContexts:receipt.travelContexts});}else await api('/agents/'+id+'/runs',receipt);await refresh();});return;}const manage=e.target.closest('[data-manage-agent]'),zoom=e.target.closest('[data-zoom]');if(manage)openMetadata(manage.dataset.manageAgent);if(zoom){toggleZoom(zoom.dataset.zoom);void refresh(true);}};
-void refresh();subscribeChanges(()=>refresh(true),{onDisconnect:()=>{connected=false;connectionStatus($('#connection'),'変更通知に再接続しています');if(state)renderBoard();}});
+ const reconcile=e.target.closest('[data-reconcile]');if(reconcile){if(navigator.onLine===false){browserOffline();return;}const id=reconcile.dataset.reconcile,receipt=pending.get(id);if(receipt)action(reconcile.closest('article'),async()=>{if(receipt.requestTarget){const [humanRequestId,workId]=receipt.requestTarget.split(':');await api('/human/requests/supplement',{humanRequestId,workId,operationId:receipt.requestId,instruction:receipt.instruction,attachments:receipt.attachments,travelContexts:receipt.travelContexts});}else await api('/agents/'+id+'/runs',receipt);await refresh();});return;}const manage=e.target.closest('[data-manage-agent]'),zoom=e.target.closest('[data-zoom]');if(manage)openMetadata(manage.dataset.manageAgent);if(zoom){toggleZoom(zoom.dataset.zoom);void refresh(true);}};
+void refresh();subscribeChanges(()=>refresh(true),{onDisconnect:()=>{if(navigator.onLine===false){browserOffline();return;}connected=false;connectionStatus($('#connection'),'変更通知に再接続しています');if(state)renderBoard();}});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)restartSync();});
 window.addEventListener('pageshow',e=>{if(e.persisted)restartSync();});
+window.addEventListener('offline',browserOffline);
 window.addEventListener('online',()=>{if(!document.hidden)restartSync();});
 
 function refreshMessageLog(id){
@@ -738,6 +764,7 @@ function openProjectActions(id){
  $('#project-actions-title').textContent=p.name+' の操作';
  $('#project-rename-form').elements.name.value=p.name;
  options($('#project-leader-form [name=leaderAgentId]'),[{id:'',name:'未設定'},...state.agents.filter(a=>a.projectId===p.id&&a.location==='workshop')]);$('#project-leader-form [name=leaderAgentId]').value=p.leaderAgentId||'';
+ $('#project-notifications-form').elements.enabled.checked=p.externalNotifications!==false;
  $('#project-suspension').textContent=p.suspended?'再開':'休止する';
  $('#project-suspension-help').textContent=p.name+'：表示整理のみです。Agent・所属・会話・依頼・通知はそのまま継続します。';
  $('#project-actions-dialog .dialog-error').textContent='';
@@ -751,6 +778,7 @@ function patchProject(patch){
   if(projectActionTarget===target)$('#project-actions-dialog').close();
  });
 }
+$('#project-notifications-form').onsubmit=e=>{e.preventDefault();patchProject({externalNotifications:e.currentTarget.elements.enabled.checked});};
 $('#project-leader-form').onsubmit=e=>{e.preventDefault();patchProject({leaderAgentId:e.currentTarget.elements.leaderAgentId.value||null});};
 $('#project-rename-form').onsubmit=e=>{e.preventDefault();patchProject({name:e.currentTarget.elements.name.value});};
 function projectMoveList(){

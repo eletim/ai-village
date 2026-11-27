@@ -1,7 +1,7 @@
 import {matchesRunInput} from './input-envelope.mjs';
 import {runView} from './state/projection.ts';
 // Model transitions only. Display labels are generated separately, never saved.
-import {transitionRun,newRun,retryRun,supplementRun,resumeRun,continuePurposeRun} from './state/run.ts';
+import {transitionRun,newRun,resumeRun,continuePurposeRun} from './state/run.ts';
 import {resolveInputPosition} from './runtime-events.mjs';
 
 function commit(r,model){r.runModel=model;return r;}
@@ -34,13 +34,4 @@ export function observeRun(r,observation,snapshot){
 export const tracking=r=>['sent','running'].includes(modelOf(r).state.kind)&&!modelOf(r).supersededBy;
 export const unconfirmed=r=>r.runModel?.state.kind==='ended'&&r.runModel.state.outcome==='unconfirmed';
 
-export function initializeRetry(r,previous,{actor,at=Date.now(),leafRoot=false,boundaryConfirmed=false,agentIdle=false,legacyAgentRunId}){
- const result=retryRun(modelOf(previous),{type:'retry',actor,id:r.id,at,leafRoot,boundaryConfirmed,agentIdle},{legacyAgentRunId});
- if(!result.ok)throw Error('run retry rejected: '+result.reason);
- return commit(r,result.value);
-}
-
-export function initializeSupplement(r,previous){const result=supplementRun(modelOf(previous),r.id,'human');if(!result.ok)throw Error(result.reason);return commit(r,result.value.requestId===r.humanRequestId?result.value:{...result.value,requestId:r.humanRequestId,parentRunId:null,retryOf:null,phase:'work'});}
-
-
-export function initializePurposeContinuation(r,previous){const result=continuePurposeRun(modelOf(previous),r.id);if(!result.ok)throw Error(result.reason);return commit(r,result.value);}
+export function initializePurposeContinuation(r,previous,actor='agent'){const result=continuePurposeRun(modelOf(previous),r.id,actor);if(!result.ok)throw Error(result.reason);return commit(r,result.value);}

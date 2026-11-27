@@ -22,14 +22,14 @@ test('legacy mode stops new dispatch, diagnostics are read-only, and explicit tr
  const f=await fixture(t),s=f.service,a=f.agents[0],target=f.agents[1];a.inputEnvelope={mode:'legacy',reason:'request-rules-updated'};
  const r=await s.send(a.id,{instruction:'migrate this request',requestId:randomUUID()});assert.equal(f.sent.length,0);assert.equal(r.dispatchAttemptedAt,undefined);assert.equal(r.queuedReason,'startup-contract-migration-required');
  const before=JSON.stringify(s.data),diagnostic=s.instructionStatus(a.id);assert.equal(diagnostic.requiresFreshSession,true);assert.equal(diagnostic.tracking.length,0);assert.equal(JSON.stringify(s.data),before);
- await assert.rejects(s.installInstructions(a),/既存セッション/);
- assert.equal(r.runModel.state.kind,'queued');await assert.rejects(s.flow.continue({humanRequestId:r.humanRequestId,workId:r.workId,agentId:target.id,revision:s.flow.root(r.humanRequestId).revision,operationId:randomUUID(),instruction:'no replay'},true),/未受付・不明・実行中/);
+ await assert.rejects(s.installInstructions(a),/実行済みまたは不明/);
+ assert.equal(r.runModel.state.kind,'queued');await assert.rejects(s.flow.continue({humanRequestId:r.humanRequestId,workId:r.workId,agentId:target.id,revision:s.flow.root(r.humanRequestId).revision,operationId:randomUUID(),instruction:'no replay'},true),/継続は同じ仕事・担当/);
 });
 for(const state of ['sent','running'])test('migration keeps '+state+' native tracking and rejects premature transfer',async t=>{
  const f=await fixture(t),s=f.service,a=f.agents[0],r=await s.send(a.id,{instruction:'in-flight',requestId:randomUUID()});if(state==='running')await f.submit(r);
  const fingerprint=structuredClone(r.inputCorrelation),model=structuredClone(r.runModel);a.inputEnvelope={mode:'startup-v1',hash:'old-rules'};await s.save();const restarted=await f.restart();const retained=restarted.flow.run(r.id);
  assert.deepEqual(retained.inputCorrelation,fingerprint);assert.deepEqual(retained.runModel,model);assert.equal(f.sent.length,1);assert.equal(restarted.instructionStatus(a.id).tracking[0].runId,r.id);
- await assert.rejects(restarted.flow.continue({humanRequestId:r.humanRequestId,workId:r.workId,agentId:f.agents[1].id,revision:restarted.flow.root(r.humanRequestId).revision,operationId:randomUUID(),instruction:'must not replay'},true),/未受付・不明・実行中/);
+ await assert.rejects(restarted.flow.continue({humanRequestId:r.humanRequestId,workId:r.workId,agentId:f.agents[1].id,revision:restarted.flow.root(r.humanRequestId).revision,operationId:randomUUID(),instruction:'must not replay'},true),/継続は同じ仕事・担当/);
  if(state==='sent')await f.submit(retained);await finish(restarted,retained);await f.complete(retained);assert.equal(f.sent.length,1);
 });
 for(const origin of ['human','delegation','result','steering','report'])test(origin+' envelope has no repeated instruction or operation manual',()=>{
@@ -40,8 +40,8 @@ for(const origin of ['human','delegation','result','steering','report'])test(ori
  assert.equal(envelope.split(text).length,2);assert(!envelope.includes('requests finish'));assert.equal(meta.inputProtocol,1);assert.equal(meta.deadline.version,2);assert.equal(meta.contract,2);assert.equal(meta.rulesRevision,rules.specification(r.phase==='report'?'report':'work').revision);
  if(origin!=='report')assert.deepEqual(meta.inputs,[{id:'input',kind:'request',textInInstruction:true}]);
 });
-test('repair handover references the original request body instead of duplicating it',async t=>{
+test('normal terminal delivers unhandled inbox once without a separate recovery execution',async t=>{
  const f=await fixture(t),s=f.service,text='固有原依頼'.repeat(120),r=await s.send(f.agents[0].id,{instruction:text,requestId:randomUUID()});await f.submit(r);await f.complete(r);
- const next=s.flow.run(s.flow.work(s.flow.root(r.humanRequestId),r.workId).currentRunId);assert.notEqual(next.id,r.id);
- assert.equal(f.sent.at(-1).text.split(text).length,2);assert(s.flow.context(next).includes('textInInstruction'));
+ const next=s.flow.run(s.flow.work(s.flow.root(r.humanRequestId),r.workId).currentRunId);assert.notEqual(next.id,r.id);assert.equal(next.workId,r.workId);assert.equal(next.origin,'inbox');assert.equal(next.autoRecoveryFrom,undefined);assert.equal(next.recoveryPolicy,undefined);
+ await f.submit(next);await f.complete(next);await s.tick();assert.equal(s.flow.work(s.flow.root(r.humanRequestId),r.workId).currentRunId,next.id);assert.equal(f.sent.length,2);
 });
