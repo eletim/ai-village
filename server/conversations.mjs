@@ -381,7 +381,7 @@ export class Conversations {
     // Explainable afterwards: the journal records why nothing was sent (best effort, after the durable decision).
     if(suppressed)try{await this.d.notifier.suppress?.({id:'conversation-answer:'+r.id,kind:'conversation',agentId:r.agentId,reason:suppressed.reason});}catch{}
     if(!claimed)return;
-    try{const result=await this.d.notifier.enqueue({id:'conversation-answer:'+r.id,role:'assistant',kind:'conversation',agentId:r.agentId,content:'秘書からの返答\n'+(responseText(r).answer||'会話を村で確認してください。')});await this.d.persist(async()=>{r.notification=transitionDelivery(r.notification,{type:'result',result});await this.d.save();});}
+    try{const result=await this.d.notifier.enqueue({id:'conversation-answer:'+r.id,role:'assistant',kind:'conversation',projectId:this.record(r.conversationId).projectId,eventAt:r.runModel?.facts?.findLast(f=>f.type==='terminal')?.at??Date.parse(r.completedAt||''),agentId:r.agentId,content:'秘書からの返答\n'+(responseText(r).answer||'会話を村で確認してください。')});await this.d.persist(async()=>{r.notification=transitionDelivery(r.notification,{type:'result',result});await this.d.save();});}
     catch{await this.d.persist(async()=>{r.notification=transitionDelivery(r.notification,{type:'unknown',reason:'notification-outcome-unknown'});await this.d.save();});}
    });
   }

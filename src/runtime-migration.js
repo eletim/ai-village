@@ -17,7 +17,7 @@ export function runtimeMigration({api,newId}){
    if(!ready||busy||pending||!notes.trim())return;
    const receipt={path:'/human/agents/'+encodeURIComponent(id)+'/adopt-runtime',body:{operationId:newId(),revision:a.metadataRevision||0,handover:notes},label:'同Agentのセッション交換'};
    try{localStorage.setItem(key(),JSON.stringify(receipt));pending=receipt;}catch{message='操作記録を保存できないため送信しません';render();return;}
-   busy=true;render();try{const result=await api(receipt.path,receipt.body);if(result.state==='unknown'||result.candidate){message=result.error||'準備結果の確認が必要です';}else{localStorage.removeItem(key());pending=null;message='セッション交換を確認しました。仕事の継続は成果を確認した上で通常のfollowupを使います。';}}catch(e){if(e.status>=400&&e.status<500&&![408,429].includes(e.status)){localStorage.removeItem(key());pending=null;message='操作は拒否されました。状態を再確認してから修正できます。 '+e.message;}else message='受付を確定できません。状態を再確認してください。 '+e.message;}finally{busy=false;render();}
+   busy=true;render();try{const result=await api(receipt.path,receipt.body);if(result.state==='unknown'||result.candidate){message=result.error||'準備結果の確認が必要です';}else{localStorage.removeItem(key());pending=null;snapshot=null;try{snapshot=await api('',undefined,'GET');}catch{}message='セッション交換を確認しました。仕事の継続は成果を確認した上で通常のfollowupを使います。';}}catch(e){if(e.status>=400&&e.status<500&&![408,429].includes(e.status)){localStorage.removeItem(key());pending=null;message='操作は拒否されました。状態を再確認してから修正できます。 '+e.message;}else message='受付を確定できません。状態を再確認してください。 '+e.message;}finally{busy=false;render();}
   });
  }
  async function load(){
