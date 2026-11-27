@@ -15,7 +15,7 @@ test('one followup entry supplements active work and continues delivered result 
  await f.service.flow.respond({humanRequestId:first.humanRequestId,workId:first.workId,runId:leader.id,operationId:randomUUID(),inputs:f.service.flow.inputs(first.humanRequestId,first.workId).filter(i=>i.attempts.includes(leader.id)&&!i.handledBy).map(i=>i.id),results:[]});await f.complete(leader);await f.service.tick();
  const resumed=f.service.flow.work(f.service.flow.root(first.humanRequestId),first.workId).currentRunId;
  const one=await completeJob({...first,runId:resumed});
- const next=await invoke(f,input(human,first.humanRequestId,one.delivery.id));assert.notEqual(next.humanRequestId,first.humanRequestId);assert.equal(next.purposeId,first.humanRequestId);assert.deepEqual(f.service.flow.root(next.humanRequestId).requestedBy.authorization,auth);assert.equal(view().requestIds.length,2);
+ const next=await invoke(f,input(human,first.humanRequestId,one.delivery.id));assert.equal(next.humanRequestId,first.humanRequestId);assert.equal(next.workId,first.workId);assert.equal(next.purposeId,first.humanRequestId);assert.deepEqual(f.service.flow.root(next.humanRequestId).requestedBy.authorization,auth);assert.equal(view().requestIds.length,1);assert(f.service.flow.inputs(next.humanRequestId,next.workId).some(i=>i.text==='残作業だけを修正'&&i.attempts.includes(next.runId)));
  await f.complete(one.delivery);await f.restart();const two=await completeJob(next);await f.service.conversations.decide({conversationId:human.conversationId,actorRunId:two.delivery.id,operationId:randomUUID(),decision:'accept',reason:'具体的な不足点の修正を確認'});await f.complete(two.delivery);assert.equal(view().decision.state,'committed');
 });
 test('after adoption followup requires later human input and preserves purpose, no extra permission argument',async t=>{
@@ -23,7 +23,7 @@ test('after adoption followup requires later human input and preserves purpose, 
  await f.service.conversations.decide({conversationId:human.conversationId,actorRunId:one.delivery.id,operationId:randomUUID(),decision:'accept',reason:'達成'});await f.complete(one.delivery);
  const h=await f.service.send(human.agentId,{mode:'conversation',requestId:randomUUID(),instruction:'その目的の残りも修正して'});await f.submit(h);
  await assert.rejects(invoke(f,{...input(human,first.humanRequestId,h.id),authorization:{runId:h.id,quote:h.instruction}}),/追加権限/);
- const next=await invoke(f,input(human,first.humanRequestId,h.id));assert.equal(next.purposeId,first.humanRequestId);assert.equal(f.service.flow.root(next.humanRequestId).continuesRequestId,first.humanRequestId);
+ const next=await invoke(f,input(human,first.humanRequestId,h.id));assert.equal(next.purposeId,first.humanRequestId);assert.equal(f.service.flow.root(next.humanRequestId).continuesRequestId,undefined);assert.equal(next.workId,first.workId);
 });
 test('followup rejects withdrawal, unknown execution, foreign target and later human input without creating work',async t=>{
  for(const mode of ['withdrawn','unknown','foreign','later']){
@@ -36,8 +36,8 @@ test('followup rejects withdrawal, unknown execution, foreign target and later h
 });
 test('competing followups serialize and response replay never creates a second successor',async t=>{
  const {f,human,first,completeJob}=await purposeFixture(t),one=await completeJob(first),x=input(human,first.humanRequestId,one.delivery.id);
- const [a,b]=await Promise.all([invoke(f,x),invoke(f,x)]);assert.deepEqual(a,b);assert.equal(f.service.data.requests.length,2);
- assert.deepEqual(await invoke(f,{...x,operationId:randomUUID()}),a);assert.equal(f.service.data.requests.length,2);
+ const [a,b]=await Promise.all([invoke(f,x),invoke(f,x)]);assert.deepEqual(a,b);assert.equal(f.service.data.requests.length,1);
+ assert.deepEqual(await invoke(f,{...x,operationId:randomUUID()}),a);assert.equal(f.service.data.requests.length,1);
  await f.complete(one.delivery);await f.restart();assert.deepEqual(await invoke(f,x),a);
 });
 test('new auto recovery delivers saved result only and accepts through simple decide',async t=>{

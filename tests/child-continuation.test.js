@@ -45,7 +45,7 @@ test('reject foreign parent, root, stale revision/run, reassignment and unconfir
 });
 for(const decision of ['accept','rework'])test('provisional '+decision+' prevents conflicting continuation',async t=>{
  const {s,p,r,args}=await setup(t,'completed');const e=s.flow.results(p.humanRequestId,p.workId).find(e=>e.id===r.id);
- await handle(s,p,[{requestId:r.workId,resultId:r.id,version:e.version,decision}],false);
+ if(decision==='rework')s.flow.work(s.flow.root(p.humanRequestId),p.workId).claims.push({requestId:r.workId,resultId:r.id,version:e.version,decision,actor:'agent',actorRunId:p.id,operationId:'historical-claim'});else await handle(s,p,[{requestId:r.workId,resultId:r.id,version:e.version,decision}],false);
  const count=s.data.runs.length;await assert.rejects(s.flow.continueChild(args()),/対応申告/);assert.equal(s.data.runs.length,count);
 });
 test('revision concurrency, save rollback and restart replay create one run',async t=>{
@@ -116,8 +116,10 @@ test('nested child uses only its own current direct parent, not the root ancesto
 });
 test('replacement launched by a failed parent still prevents duplicate continuation of original',async t=>{
  const f=await setup(t,'completed'),{s,p,r}=f,q=s.flow.root(p.humanRequestId),e=s.flow.results(q.id,p.workId).find(e=>e.id===r.id);
- await handle(s,p,[{requestId:r.workId,resultId:r.id,version:e.version,decision:'rework'}],false);
- await s.flow.delegate({humanRequestId:q.id,parentWorkId:p.workId,actorRunId:p.id,agentId:f.agents[3].id,operationId:randomUUID(),instruction:'Replacement work',replacesRequestId:r.workId});
+ // Imported pre-upgrade claim, retained for history and duplicate prevention.
+ s.flow.work(q,p.workId).claims.push({requestId:r.workId,resultId:r.id,version:e.version,decision:'rework',actor:'agent',actorRunId:p.id,operationId:'historical-rework'});
+ // Saved pre-upgrade reservation; the old creation endpoint is no longer available.
+ const historical=await f.delegate(p,f.agents[3]);s.flow.work(q,r.workId).replacements.push({replacementId:historical.id,actorRunId:p.id,resultId:r.id,version:e.version});
  await f.complete(p,'failed');
  const raw=await s.flow.continue({humanRequestId:q.id,workId:p.workId,revision:q.revision,operationId:randomUUID(),instruction:'Review existing replacement'},true);await s.tick();const parent=s.flow.run(raw.id);await f.submit(parent);
  await assert.rejects(s.flow.continueChild({...f.args(),actorRunId:parent.id}),/置換予約/);
@@ -132,4 +134,68 @@ test('transport response loss keeps one sent continuation and never replays afte
  assert.equal(s.flow.run(created.id).runModel.state.kind,'sent');const count=f.sent.length;
  assert.equal((await s.flow.continueChild(payload)).id,created.id);await s.tick();assert.equal(f.sent.length,count);
  const restarted=await f.restart();await restarted.tick();assert.equal((await restarted.flow.continueChild(payload)).id,created.id);assert.equal(f.sent.length,count);
+});
+
+for(const outcome of ['interrupted','completed'])test('common followup resolves child execution and retries its recorded operation: '+outcome,async t=>{
+ const {s,p,c}=await setup(t,outcome);
+ const next=await s.secretaryCommands.followup(p.id,undefined,'残りだけ進める');
+ assert.equal(next.workId,c.id);
+ assert.equal((await s.secretaryCommands.followup(p.id,undefined,'残りだけ進める')).id,next.id);
+ assert.equal(s.flow.work(s.flow.root(p.humanRequestId),c.id).runIds.length,2);
+});
+test('common supplement retry after terminal does not create a continuation',async t=>{
+ const {s,p,r,f,...rest}=await setup(t,null);
+ const first=await s.secretaryCommands.followup(p.id,undefined,'補足');
+ await rest.complete(r,'interrupted');
+ const again=await s.secretaryCommands.followup(p.id,undefined,'補足');
+ assert.equal(again.id,first.id);assert.equal(s.flow.work(s.flow.root(p.humanRequestId),r.workId).runIds.length,1);
+});
+test('common accept reuses its saved payload after the parent ends',async t=>{
+ const f=await setup(t,'completed'),{s,p,r}=f;
+ await handle(s,p,[],false);await f.complete(p);
+ const parent=s.flow.run(s.flow.work(s.flow.root(p.humanRequestId),p.workId).currentRunId);await f.submit(parent);
+ const before=await s.secretaryCommands.accept(parent.id,'成果を確認');await f.complete(parent);
+ const again=await s.secretaryCommands.accept(parent.id,'成果を確認');assert.equal(again.id,before.id);
+});
+test('human continuation shares native ownership checks and preserves the work',async t=>{
+ const f=await setup(t,'interrupted'),{s,p,r}=f;
+ const q=s.flow.root(p.humanRequestId),args={humanRequestId:q.id,workId:r.workId,revision:q.revision,operationId:randomUUID(),instruction:'残りだけ継続'};
+ f.offline(true);await assert.rejects(s.flow.continue(args,true));f.offline(false);
+ const next=await s.flow.continue(args,true);assert.equal(next.workId,r.workId);assert.equal(next.runModel.createdBy,'human');assert.equal((await s.flow.continue(args,true)).id,next.id);
+});
+test('unknown cannot be continued by the human path and time does not schedule old auto recovery',async t=>{
+ const f=await setup(t,'failed'),{s,r,p}=f,q=s.flow.root(p.humanRequestId);
+ r.runModel.state={kind:'ended',outcome:'unconfirmed',reason:'tracking-closed'};
+ const count=s.data.runs.length;await assert.rejects(s.flow.continue({humanRequestId:q.id,workId:r.workId,revision:q.revision,operationId:randomUUID(),instruction:'再送'},true),/確認/);
+ await s.tick();assert.equal(s.data.runs.length,count);
+});
+test('new authorized parent execution can continue its accepted child as the same work',async t=>{
+ const f=await setup(t,'completed'),{s,p,r}=f,q=s.flow.root(p.humanRequestId);
+ await handle(s,p,[],false);await f.complete(p);
+ const receiver=s.flow.run(s.flow.work(q,p.workId).currentRunId);await f.submit(receiver);
+ const e=s.flow.results(q.id,p.workId).find(e=>e.id===r.id);
+ await handle(s,receiver,[{requestId:r.workId,resultId:r.id,version:e.version,decision:'accept'}]);await f.complete(receiver);
+ const parent=await s.flow.continue({humanRequestId:q.id,workId:p.workId,revision:q.revision,operationId:randomUUID(),instruction:'同じ担当へ追加修正を依頼'},false);await s.tick();await f.submit(parent);
+ const next=await s.secretaryCommands.followup(parent.id,undefined,'保存成果を追加修正');
+ assert.equal(next.workId,r.workId);assert.equal(q.requestGraph.nodes.length,2);
+});
+
+test('common withdraw targets only a directly owned work and preserves execution facts',async t=>{
+ const {s,p,r}=await setup(t,'interrupted'),q=s.flow.root(p.humanRequestId),facts=JSON.stringify(r.runModel.facts);
+ const first=await s.secretaryCommands.withdraw(p.id,undefined,'この子仕事は不要になった');assert.equal(first.workId,r.workId);assert.equal(s.flow.work(q,r.workId).state.kind,'withdrawn');assert.equal(s.flow.work(q,p.workId).state.kind,'active');assert.equal(JSON.stringify(r.runModel.facts),facts);
+ assert.deepEqual(await s.secretaryCommands.withdraw(p.id,undefined,'この子仕事は不要になった'),first);
+ await assert.rejects(s.secretaryCommands.withdraw(p.id,p.workId,'自分や別の仕事へ拡大'),/担当の仕事/);
+});
+
+test('worker status uses the common bounded facts projection for its interrupted child',async t=>{
+ const f=await setup(t,'interrupted'),{s,p,r}=f;
+ const status=await s.secretaryCommands.status(p.id),child=status.works.find(w=>w.id===r.workId);
+ assert.equal(child.observation,'observed');assert.equal(child.continuation.available,'followup-after-observation');assert.equal(child.execution.outcome,'interrupted');
+ f.offline(true);const offline=await s.secretaryCommands.status(p.id);assert.equal(offline.works[0].observation,'unavailable');assert.equal(offline.works[0].continuation.available,false);
+});
+
+test('rework rejection leaves the same actor free to use normal followup',async t=>{
+ const f=await setup(t,'completed'),{s,p,r}=f,e=s.flow.results(p.humanRequestId,p.workId).find(e=>e.id===r.id),count=s.data.runs.length;
+ await assert.rejects(handle(s,p,[{requestId:r.workId,resultId:r.id,version:e.version,decision:'rework'}],false),/followup/);assert.equal(s.data.runs.length,count);
+ const next=await s.secretaryCommands.followup(p.id,undefined,'成果を修正');assert.equal(next.workId,r.workId);
 });
