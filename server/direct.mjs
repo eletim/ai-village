@@ -792,7 +792,7 @@ export class DirectAgents {
     for(const a of this.data.agents){
       // A slow connection must not accumulate waiter cycles or block other connections.
       if(this.monitors.has(a.id))continue;
-      const task=this.poll(a).then(async observation=>{if(observation?.changed)await this.progress();});
+      const task=this.poll(a).then(async observation=>{if(observation?.changed)await this.progress();return observation;});
       this.monitors.set(a.id,task);
       const clear=()=>this.monitors.delete(a.id);task.then(clear,clear);tasks.push(task);
     }

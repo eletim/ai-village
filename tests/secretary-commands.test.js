@@ -164,3 +164,41 @@ test('accept guidance distinguishes question/extension from stop/state reports w
  }
  assert.equal(f.service.data.conversations[0].purposeDecisions?.length||0,0);
 });
+
+test('status skips many closed purposes and bounds one offline observation without blocking useful results',async t=>{
+ const {f,human,first}=await purposeFixture(t),d=f.service,r=d.flow.run(first.runId);
+ await f.submit(r);await f.complete(r,'interrupted');
+ const c=d.conversations.record(human.conversationId),actor=d.flow.run(c.deliveries.find(e=>e.kind==='attention').runId);await f.submit(actor);
+ const source=d.flow.root(first.humanRequestId),{rootNode}=await import('../server/unified-requests.mjs');
+ for(let i=0;i<40;i++){
+  const q=structuredClone(source);q.id=randomUUID();q.purposeId=q.id;
+  rootNode(q).state={kind:i%2?'cancelled':'completed',by:'human',reason:'history'};
+  rootNode(q).assignee='historical-missing-agent';q.assigneeAgentId='historical-missing-agent';q.leaderAgentId='historical-missing-agent';d.data.requests.push(q);
+ }
+ const remote=structuredClone(source);remote.id=randomUUID();remote.purposeId=remote.id;
+ const remoteAgent=f.agents[1];rootNode(remote).assignee=remoteAgent.id;remote.assigneeAgentId=remoteAgent.id;remote.leaderAgentId=remoteAgent.id;d.data.requests.push(remote);
+ const calls=[],poll=d.poll.bind(d);let release;
+ const pending=new Promise(resolve=>{release=resolve;});
+ d.poll=a=>{calls.push(a.id);return a.id===remoteAgent.id?pending:poll(a);};
+ const start=Date.now();const out=await cli(f)('status','--run',actor.id);
+ assert.equal(out.ok,true,out.error);assert(Date.now()-start<3500);
+ assert.deepEqual(new Set(calls),new Set([r.agentId,remoteAgent.id]));
+ assert.equal(out.result.purposes.filter(p=>p.observation==='saved').length,40);
+ assert.equal(out.result.purposes.find(p=>p.id===source.id).continuation.available,'followup-after-observation');
+ const failed=out.result.purposes.find(p=>p.id===remote.id);assert.equal(failed.observation,'unavailable');assert.match(failed.continuation.cause,/2秒/);
+ assert.equal(d.monitors.get(remoteAgent.id),pending);release({available:false});
+});
+
+
+test('status shares an in-flight tick observation and retains its snapshot',async t=>{
+ const {f,human,first}=await purposeFixture(t),d=f.service,r=d.flow.run(first.runId);
+ await f.submit(r);await f.complete(r,'interrupted');
+ const c=d.conversations.record(human.conversationId),actor=d.flow.run(c.deliveries.find(e=>e.kind==='attention').runId);await f.submit(actor);
+ const poll=d.poll.bind(d);let release;const gate=new Promise(resolve=>{release=resolve;});let calls=0;
+ d.poll=async a=>{if(a.id===r.agentId){calls++;await gate;}return poll(a);};
+ const ticking=d.tick();assert(d.monitors.has(r.agentId));
+ const checking=cli(f)('status','--run',actor.id);release();
+ const [out]=await Promise.all([checking,ticking]);assert.equal(out.ok,true,out.error);
+ assert.equal(calls,1);const p=out.result.purposes.find(p=>p.id===first.humanRequestId);
+ assert.equal(p.observation,'observed');assert.equal(p.continuation.available,'followup-after-observation');
+});
