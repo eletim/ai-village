@@ -66,3 +66,19 @@ test('ordinary pre-dispatch contract refusal repairs only an unused owned shell,
  const prior=d.pmux;d.pmux=async(agent,...args)=>args[1]==='initial-status'?{...r.initialLaunch,bodyHash:'fixture',state:'unknown',receipt:null,stages:{'runtime-intent':{}}}:prior(agent,...args);
  await assert.rejects(d.prepareRuntime(a.id,{operationId:randomUUID(),revision:a.metadataRevision}),/未実施/);
 });
+
+test('create resolves initial shell from actual CLI list DTO, never from workspace receipt',async t=>{
+ const f=await fixture(t),d=f.service,w={id:randomUUID(),name:'local',connectionType:'local',workplaces:['/tmp'],baseUrl:'http://localhost:8022'};d.data.workshops.push(w);
+ let creates=0;d.installInstructions=async a=>{a.inputEnvelope={mode:'startup-v2',hash:'fixture'};};
+ d.pmux=async(a,...args)=>{
+  if(args[0]==='workspace'){creates++;return {id:'ws-live',initialTab:{tabId:'tab-shell'}};}
+  if(args[1]==='capabilities')return {initialCodexLaunch:{ownedInput:1,client:1}};
+  if(args[1]==='list')return {tabs:[{tabId:'tab-shell',workspaceId:'ws-live',sessionName:'pt-live-shell',agentProviderId:null,agentSessionId:null}]};
+  throw Error('unexpected model spawn');
+ };
+ const a=await d.create({requestId:randomUUID(),workshopId:w.id,cwd:w.workplaces[0],name:'real DTO',provider:'codex',location:'workshop'});
+ assert.equal(creates,1);assert.equal(a.error,undefined);assert.equal(a.tabId,'tab-shell');assert.deepEqual(a.initialInput,{shellTabId:'tab-shell',sessionName:'pt-live-shell'});
+ const {initialInputObservation}=await import('../server/initial-input.mjs');
+ d.pmux=async()=>({tabs:[{tabId:'tab-shell',sessionName:'pt-live-shell'},{tabId:'model',agentProviderId:'codex'}]});
+ assert.equal((await initialInputObservation(d,a)).snapshot.initialInputReady,false);
+});
