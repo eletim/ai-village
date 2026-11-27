@@ -10,14 +10,24 @@ export function continuationBoundary(r,snapshot,status){
  const input=r.runModel.facts.findLast(f=>f.type==='input');
  return terminalBoundary(snapshot,status)&&snapshot.sessionId===input.sessionId&&correlate(r,snapshot).state===r.runModel.state.outcome;
 }
+// Read-only explanation shared by UI and secretary status. Saved facts establish
+// what was observed; only a fresh native boundary can offer an actual followup.
 export function continuationStatus(r,{run,agentId,snapshot,status,error,agent}={}){
- if(!r)return null;
- const basis=continuationBasis(r.runModel);
- if(basis==='before-dispatch'&&agent?.initialInput&&agent.inputEnvelope?.mode!=='startup-v2')return {available:false,observed:basis,cause:r.error||agent.inputEnvelope?.reason,known:'この入力は起動前に拒否されました',unresolved:'未起動workspaceの起動契約を修復する必要があります',next:{operation:'agents prepare-runtime',agentId,responsible:'authorized-runtime-operator',arguments:{revision:agent.metadataRevision||0},instruction:'このAgentに対する設定修正の許可内で実行してください。村が未起動・所有を再確認して契約を再配置します。完了後は通常followupで継続できます。'},unknown:[]};
- if(basis&&continuationBoundary(r,snapshot,status))return {available:'followup-after-observation',observed:basis,known:basis==='before-dispatch'?'この入力は送信前に拒否されました':'管理対象の同じ入力・turnの終端を確認済みです',unknown:basis==='before-dispatch'?[]:['途中までの外部操作と残存する成果プロセスは成果資料で照合してください'],next:{operation:'followup',responsible:'secretary',instruction:'元の許可範囲で未完了分を指定してください。現在の受付・所有境界は村が再照合します'}};
- if(!basis&&!r.initialLaunch&&(r.runModel.state.kind!=='ended'||r.runModel.state.outcome==='normal'))return null;
- if(r.runModel.state.kind==='ended'&&r.runModel.state.outcome==='normal')return null;
- return {available:false,observed:r.runModel.state.reason||'initial-receipt-pending',cause:error||r.error||null,unresolved:'管理対象Agentの入力受付または実行権限の閉鎖を確認できません',next:{operation:'status',command:['status','--run',run],contractDiagnosis:['agents','instructions',agentId],responsible:'village-runtime',instruction:'登録済み接続先のnative受付と終端を再観測します。接続不能なら担当の接続設定を権限内で修正し再観測してください。受付不明の入力は再送しません。'},unknown:['外部効果なしとは確定していません']};
+ if(!r?.runModel||!Array.isArray(r.runModel.facts))return null;
+ const model=r.runModel,s=model.state;
+ if(s.kind==='cancelled'||s.kind==='ended'&&s.outcome==='normal')return null;
+ const basis=continuationBasis(model),input=model.facts.findLast(f=>f.type==='input'),terminal=model.facts.findLast(f=>f.type==='terminal');
+ const ended=!!input&&s.kind==='ended'&&s.reason==='native-terminal'&&terminal?.sessionId===input.sessionId&&terminal?.turnId===input.turnId&&terminal?.outcome===s.outcome;
+ const disconnected=agent?.agentModel?.observation?.connected===false||agent?.runtime?.alive===false;
+ const cause=error||r.error||null;
+ const observe=agent&&model.phase==='work'&&s.kind!=='queued'?{operation:'status',...(run?{command:['status','--run',run]}:{}),responsible:'secretary',instruction:'秘書がstatusで登録先の受付・終端を再確認してください。接続設定の修正が必要なら、権限のある環境担当へ依頼してください。受付不明の入力は再送しません。'}:{operation:agent?'agents instructions':'agents list',...(agent?{agentId:agent.id}:{}),responsible:'authorized-runtime-operator',instruction:agent?'権限のある環境担当がAgentプロフィールとagents instructionsで登録・起動契約を確認し、登録先への接続を診断してください。この表示は保存記録で、statusによる秘書自身の再観測は行いません。再送・停止はしていません。':'秘書がagents listで担当の登録を確認してください。担当を確認できるまで送信しません。'};
+ const known=basis==='before-dispatch'?'この入力は送信前に拒否されました':ended?'保存記録では、この入力の終端を確認済みです':input?'入力受付を確認済みです。実作業の着手・成果・目的達成の証拠とは別です':'入力受付は確認できていません';
+ const unknown=basis==='before-dispatch'?[]:['外部操作の実施範囲は成果資料で照合が必要です'];
+ if(basis==='before-dispatch'&&agent?.initialInput&&agent.inputEnvelope?.mode!=='startup-v2'&&!agent.deletedAt&&!agent.deletion&&!agent.runtimeRetiredTo)return {available:false,observed:basis,cause: cause||agent.inputEnvelope?.reason,known,unresolved:'未起動workspaceの起動契約を修復する必要があります',next:{operation:'agents prepare-runtime',agentId,responsible:'authorized-runtime-operator',arguments:{revision:agent.metadataRevision||0},instruction:'このAgentの設定修正権限を持つ担当がprepare-runtimeを実行してください。村が未起動・所有を再確認します。修復後は秘書が通常followupで未完了分を継続できます。'},unknown};
+ if(basis&&continuationBoundary(r,snapshot,status))return {available:'followup-after-observation',observed:basis,cause,known:basis==='before-dispatch'?known:'管理対象の同じ入力・turnの終端と現在の所有境界を確認済みです',unresolved:basis==='before-dispatch'?'':'既存成果と残作業の意味判断は必要です',unknown,next:{operation:'followup',responsible:'secretary',instruction:'秘書が元の許可範囲で成果を照合し、未完了分を指定してください。実行時に村が受付・所有を再照合します。'}};
+ if(s.kind==='running'&&!disconnected&&!cause)return {available:false,observed:'input-accepted',known,unresolved:'実行結果はまだ確認できていません',unknown:[],next:null};
+ if(s.kind==='queued'&&!disconnected&&!cause)return null;
+ return {available:false,observed:basis||s.reason||s.kind,cause,known,unresolved:disconnected?'登録先への接続・現在の実行状態を確認できません。時間経過だけでは停止と判定しません。':ended||basis?'現在の実行権限・所有境界の再確認が必要です':input?'受付後の実行結果・終端を確認できません':'受付と実行権限の閉鎖を確認できません。未実行とは確定していません',next:observe,unknown};
 }
 
 export function continuationScopeIntact(d,r){

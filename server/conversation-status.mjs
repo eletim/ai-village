@@ -1,3 +1,4 @@
+import {continuationStatus} from './purpose-continuation.mjs';
 import {purposeId,purposeView,purposeLeaf} from './conversation-purpose.mjs';
 import {runState,accepted} from './run-lifecycle.mjs';
 import {agentControls} from './agent-lifecycle.mjs';
@@ -18,7 +19,7 @@ export function conversationControl(a){
  // A conversation is a durable mailbox, independent of its leader's graph.
  return {...gate,canAccept:['ready','unknown'].includes(gate.code),next:gate.code==='ready'?'':gate.next};
 }
-export function conversationTurn(r){
+function turnStatus(r){
  const s=state(r);
  if(r.queueCancelledAt)return status('cancelled','未送信の会話を取消済み','','新しい会話入力を送れます。');
  if(s==='queued')return status('queued','会話を保存済み・配送待ち',r.error||r.queuedReason||'','');
@@ -29,6 +30,10 @@ export function conversationTurn(r){
  if(s==='completed'&&accepted(r))return status('answered','回答済み');
  if(s==='failed'||s==='interrupted')return status(s,s==='failed'?'秘書の応答に失敗':'秘書の応答が中断',r.error||'','接続や担当の状態を確認してください。');
  return status('unconfirmed','秘書の受付・結果が未確認',r.error||r.runModel?.state.reason||'','送信結果の確認が必要です。');
+}
+export function conversationTurn(r,agent){
+ const value=turnStatus(r),explanation=continuationStatus(r,{agent,agentId:agent?.id,error:agent?.error});
+ return {...value,...(explanation?{explanation}:{})};
 }
 function executionJob(data,q){
  if(q.integrity)return {id:q.id,humanApproval:'not-inferred',...status('quarantined','依頼記録を隔離中','参照不整合のため処理を止めています。','記録の修復が必要です。')};
@@ -53,9 +58,9 @@ function executionJob(data,q){
  else if(state(r)==='queued'&&gate.code!=='ready')work=status('blocked','仕事の配送を保留',gate.label+(gate.reason?'：'+gate.reason:''),gate.next);
  else if(state(r)==='queued')work=status('queued','仕事を保存済み・配送待ち',r.error||r.queuedReason||'','');
  else if(state(r)==='awaiting_input')work=status('receipt-pending','担当の受付照合中',r.error||'','');
- else if(state(r)==='running')work=status('working','作業中','','');
+ else if(state(r)==='running')work=status('working','担当が入力を受付済み','','');
  else work=status('pending','作業中');
- return {id:q.id,workId:w.id,assigneeAgentId:w.assignee,assigneeName:leader?.name||'担当不明',leaderAgentId:w.assignee,leaderName:leader?.name||'担当不明',instruction:(q.instruction||'').slice(0,160),runId:r?.id,deliveryRunId:delivery?.id,humanApproval:'not-inferred',...work};
+ return {id:q.id,workId:w.id,assigneeAgentId:w.assignee,assigneeName:leader?.name||'担当不明',leaderAgentId:w.assignee,leaderName:leader?.name||'担当不明',instruction:(q.instruction||'').slice(0,160),runId:r?.id,deliveryRunId:delivery?.id,humanApproval:'not-inferred',...work,explanation:w.state.kind==='active'?continuationStatus(r,{agent:leader,agentId:leader?.id,error:leader?.error}):null};
 }
 export function conversationJob(data,q){
  const purpose=purposeView(data,q),leaf=purposeLeaf(data,q),execution=executionJob(data,leaf);
