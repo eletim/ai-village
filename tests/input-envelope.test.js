@@ -49,3 +49,15 @@ test('generated single-source startup policy passes the installed-block verifier
  const {AgentRules}=await import('../server/agent-rules.mjs');const home=await mkdtemp(join(tmpdir(),'generated-rules-'));t.after(()=>rm(home,{recursive:true,force:true}));const root=join(home,'.purplemux/workspaces/ws-test');await mkdir(root,{recursive:true});const body=new AgentRules('http://127.0.0.1:5394').startup();
  for(const provider of ['claude','codex']){await writeFile(join(root,provider+'-prompt.md'),'# purplemux context\n');execFileSync('python3',['-c',installInstructionsScript,'ws-test',provider,body],{env:{...process.env,HOME:home}});const r=JSON.parse(execFileSync('python3',['-c',verifyInstructionsScript,'ws-test',provider,inputHash(body)],{env:{...process.env,HOME:home}}));assert.equal(r.verified,true);}
 });
+
+test('unused-shell repair replaces one contract via the real installer and preserves surrounding prompt',async t=>{
+ const home=await mkdtemp(join(tmpdir(),'repair-contract-'));t.after(()=>rm(home,{recursive:true,force:true}));
+ const root=join(home,'.purplemux/workspaces/ws-repair');await mkdir(root,{recursive:true});const path=join(root,'codex-prompt.md');
+ const old='<ai-village-instructions version="2">mismatch</ai-village-instructions>',body='<ai-village-instructions version="2">current</ai-village-instructions>';
+ await writeFile(path,'# purplemux context\nbefore\n'+old+'\nafter');
+ const run=(...args)=>execFileSync('python3',['-c',installInstructionsScript,'ws-repair','codex',...args,body],{env:{...process.env,HOME:home},stdio:'pipe'});
+ assert.throws(()=>run());assert.equal(JSON.parse(run('repair-unused')).hash,inputHash(body));
+ const text=await readFile(path,'utf8');assert.equal(text.includes('mismatch'),false);assert(text.includes('before\n\nafter'));assert.equal(text.split('<ai-village-instructions').length,2);
+ assert.equal(JSON.parse(execFileSync('python3',['-c',verifyInstructionsScript,'ws-repair','codex',inputHash(body)],{env:{...process.env,HOME:home}})).verified,true);
+ for(const bad of [old+old,'<ai-village-instructions version="2">broken']){await writeFile(path,'# purplemux context\n'+bad);assert.throws(()=>run('repair-unused'));assert.equal(await readFile(path,'utf8'),'# purplemux context\n'+bad);}
+});

@@ -2,6 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID,createHash} from 'node:crypto';
 import {fixture} from './inbox-fixture.js';
+import {mkdtemp,mkdir,writeFile,readFile,rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {execFileSync} from 'node:child_process';
 import {runState} from '../server/run-lifecycle.mjs';
 const hash=s=>createHash('sha256').update(s).digest('hex');
 test('same ordinary purpose path: initial rejection, followup, receipt bind and native acceptance without composer replay',async t=>{
@@ -48,7 +52,10 @@ test('ordinary pre-dispatch contract refusal repairs only an unused owned shell,
  assert.equal(runState(old),'terminated');assert.equal(old.runModel.facts.at(-1).type,'dispatch-blocked');assert.equal(f.sent.filter(x=>x.agentId===a.id).length,0);
  const execute=d.execute.bind(d);
  const {installInstructionsScript}=await import('../server/input-envelope.mjs');
- d.execute=async(agent,args)=>agent.id===a.id&&args[2]===installInstructionsScript?JSON.stringify({installed:true,hash:hash(args.at(-1))}):execute(agent,args);
+ const home=await mkdtemp(join(tmpdir(),'initial-repair-real-'));t.after(()=>rm(home,{recursive:true,force:true}));
+ const root=join(home,'.purplemux/workspaces',a.workspaceId);await mkdir(root,{recursive:true});const prompt=join(root,'codex-prompt.md');
+ await writeFile(prompt,'# purplemux context\n<ai-village-instructions version="2">damaged</ai-village-instructions>');
+ d.execute=async(agent,args)=>agent.id===a.id&&args[2]===installInstructionsScript?execFileSync(args[0],args.slice(1),{env:{...process.env,HOME:home},encoding:'utf8'}):execute(agent,args);
  const input={operationId:randomUUID(),revision:a.metadataRevision||0};
  const {continuationStatus}=await import('../server/purpose-continuation.mjs');
  assert.equal(continuationStatus(old,{agent:a,agentId:a.id}).next.operation,'agents prepare-runtime');
@@ -57,7 +64,7 @@ test('ordinary pre-dispatch contract refusal repairs only an unused owned shell,
  let installed=0;const installer=d.execute;d.execute=(...args)=>{installed++;return installer(...args);};
  await assert.rejects(d.prepareRuntime(a.id,input),/未実施/);assert.equal(installed,0);
  d.pmux=normalPmux;d.execute=installer;
- const repaired=await d.prepareRuntime(a.id,input);assert.equal(repaired.state,'initial-ready');
+ const repaired=await d.prepareRuntime(a.id,input);assert.equal(repaired.state,'initial-ready');assert(!(await readFile(prompt,'utf8')).includes('damaged'));
  assert.deepEqual(await d.prepareRuntime(a.id,input),repaired);f.promptState('intact');
  const next=await d.conversations.followup({conversationId:human.conversationId,actorRunId:human.id,operationId:randomUUID(),purposeId:job.humanRequestId,instruction:'契約修復済み、元の未完了分だけ継続'});
  assert.equal(next.previousRunId,old.id);assert.equal(f.sent.filter(x=>x.agentId===a.id).length,0);
