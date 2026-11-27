@@ -12,7 +12,7 @@ export function continuationBoundary(r,snapshot,status){
 }
 // Read-only explanation shared by UI and secretary status. Saved facts establish
 // what was observed; only a fresh native boundary can offer an actual followup.
-export function continuationStatus(r,{run,agentId,snapshot,status,error,agent}={}){
+function continuationFacts(r,{run,agentId,snapshot,status,error,agent}={}){
  if(!r?.runModel||!Array.isArray(r.runModel.facts))return null;
  const model=r.runModel,s=model.state;
  if(s.kind==='cancelled'||s.kind==='ended'&&s.outcome==='normal')return null;
@@ -28,6 +28,19 @@ export function continuationStatus(r,{run,agentId,snapshot,status,error,agent}={
  if(s.kind==='running'&&!disconnected&&!cause)return {available:false,observed:'input-accepted',known,unresolved:'実行結果はまだ確認できていません',unknown:[],next:null};
  if(s.kind==='queued'&&!disconnected&&!cause)return null;
  return {available:false,observed:basis||s.reason||s.kind,cause,known,unresolved:disconnected?'登録先への接続・現在の実行状態を確認できません。時間経過だけでは停止と判定しません。':ended||basis?'現在の実行権限・所有境界の再確認が必要です':input?'受付後の実行結果・終端を確認できません':'受付と実行権限の閉鎖を確認できません。未実行とは確定していません',next:observe,unknown};
+}
+
+// Presentation is transient. The technical diagnosis and permitted operation stay
+// available to the secretary, while people do not receive CLI instructions.
+export function continuationStatus(r,options={}){
+ const e=continuationFacts(r,options);if(!e)return null;
+ const normal=e.observed==='input-accepted'&&!e.next;
+ const repair=e.next?.operation==='agents prepare-runtime';
+ const known=e.known.replace('保存記録では、この入力の終端を確認済みです','この入力への応答が終了した記録があります').replace('管理対象の同じ入力・turnの終端と現在の所有境界を確認済みです','この入力への応答終了と、再開前の安全確認ができました');
+ const unresolved=normal?'応答の結果はまだ届いていません':repair?'担当の起動設定の修復が必要です':e.available?'どこまでできたか、成果と残作業の確認が必要です':e.unresolved?.includes('接続')?'接続と現在の実行状況を確認できません':e.observed==='native-terminal'?'今、安全に再開できるかは未確認です':'受付または応答の結果を確認できません';
+ const continuation=normal?'応答中です。再開操作は不要です':repair?'設定の修復が必要です':e.available?'成果を確認してから、残りの作業を続けられます':'確認が済むまで、続けてよいか判断できません';
+ const next=normal?'':repair?'秘書に担当の起動設定の修復を依頼してください':e.available?'秘書が成果を確認し、残りの作業を担当へ依頼します':e.next?.operation==='agents list'?'秘書に担当の登録確認を依頼してください':e.unresolved?.includes('接続')?'秘書に接続確認を依頼してください':'秘書に受付・応答の確認を依頼してください';
+ return {...e,human:{compact:normal,known,unresolved,continuation,next}};
 }
 
 export function continuationScopeIntact(d,r){
