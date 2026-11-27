@@ -5,7 +5,7 @@ async function fixture(page,mode){
  await page.route('**/api/**',route=>{const r=route.request();if(r.url().endsWith('/api/village'))return route.fulfill({json:{ok:true,result:{available:false}}});if(r.method()==='POST'){
   calls.push(r.postDataJSON());if(mode==='refuse'){mode='success';a.metadataRevision++;return route.fulfill({status:409,json:{error:'Agentが更新されています'}});}
   if(mode==='lost')return route.abort('connectionfailed');
-  a.runtimeMigrations=[{operationId:calls.at(-1).operationId}];return route.fulfill({json:{agentId:'old'}});
+  a.runtimeMigrations=[{operationId:calls.at(-1).operationId}];delete a.terminatedAt;delete a.ownedProcesses;delete a.processVerification;a.agentModel={intent:'run',observation:{connected:true,process:'absent',activity:'unknown'}};return route.fulfill({json:{agentId:'old'}});
  }return route.fulfill({json:state});});
  await page.goto('/agents');await page.getByRole('button',{name:'設定',exact:true}).click();await page.getByRole('button',{name:'終了Agent・担当不在の履歴',exact:true}).click();await page.locator('#history-content [data-profile-agent]').click();await page.locator('#agent-profile-dialog').getByRole('button',{name:'セッションの切替',exact:true}).click();const ui=page.locator('#runtime-migration-dialog');await expect(ui).toContainText('同じAgent');return {ui,calls,state};
 }
@@ -15,3 +15,5 @@ test('same Agent preparation needs no donor, definitive refusal can be corrected
 test('unknown response retains draft and operation across reload without creating again',async({page})=>{
  const {ui,calls}=await fixture(page,'lost');await ui.getByLabel('引継ぎ内容').fill('結果不明は再作成しない');await ui.getByRole('button',{name:'このAgentのセッションを交換',exact:true}).click();await expect(ui).toContainText('受付を確定できません');await ui.getByRole('button',{name:'状態を再確認'}).click();expect(calls).toHaveLength(1);await expect(ui.getByRole('button',{name:'このAgentのセッションを交換',exact:true})).toBeDisabled();await page.reload();await page.getByRole('button',{name:'設定',exact:true}).click();await page.getByRole('button',{name:'終了Agent・担当不在の履歴',exact:true}).click();await page.locator('#history-content [data-profile-agent]').click();await page.locator('#agent-profile-dialog').getByRole('button',{name:'セッションの切替',exact:true}).click();await expect(ui.getByLabel('引継ぎ内容')).toHaveValue('結果不明は再作成しない');expect(calls).toHaveLength(1);
 });
+
+test('successful exchange discards the old stop snapshot and disables another exchange',async({page})=>{const {ui,calls}=await fixture(page,'success');await ui.getByLabel('引継ぎ内容').fill('残成果のみ継続');await ui.getByRole('button',{name:'このAgentのセッションを交換',exact:true}).click();await expect(ui).toContainText('セッション交換を確認しました');await expect(ui.getByRole('button',{name:'このAgentのセッションを交換',exact:true})).toBeDisabled();await expect(ui).not.toContainText('管理対象の停止記録があります');expect(calls).toHaveLength(1);});
