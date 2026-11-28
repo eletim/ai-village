@@ -82,6 +82,14 @@ function capHistoryRanges(){
  }
 }
 const travelDrafts=new Map(Object.entries(saved.travelDrafts||{})),travelEditors=new Map();
+function addressedHistory(scope){
+ if(!scope)return '';
+ const project=state.projects?.find(p=>p.id===scope.projectId),work=state.inputTargets?.find(w=>w.workId===scope.workId);
+ const label=[project?.name,work?.instruction].filter(Boolean).join(' / ')||'保存済みの宛先（現在の名前を確認できません）';
+ const actions=(scope.actions||[]).map(a=>({supplement:'補足',continue:'継続',cancel:'中止',accept:'成果採用'})[a]||'保存済みの操作').join('・');
+ return '<p class="addressed-history">以前の宛先付き依頼: '+esc(label)+' / '+esc(actions)+'</p>';
+}
+function legacyScope(id){return pending.get(id)?.scope||scopeDrafts.get(id)?.workId||outbox.get(id)?.scope;}
 function storeDrafts(){try{sessionStorage.setItem(storageKey,JSON.stringify({scopeDrafts:Object.fromEntries(scopeDrafts),inputTargets:Object.fromEntries(inputTargets),travelDrafts:Object.fromEntries(travelDrafts),positions:Object.fromEntries(positions),drafts:Object.fromEntries(drafts),pending:Object.fromEntries(pending),outbox:Object.fromEntries(outbox),draftVersions:Object.fromEntries(draftVersions)}));}catch{}}
 window.addEventListener('pagehide',()=>{capturePositions();storeDrafts();});
 
@@ -175,7 +183,7 @@ function entryHTML(a,source,divider){
  const human=isHumanInput(r),inputBody=(stubs.input||(r.instruction?'<pre>'+linkedText(r.instruction)+'</pre>':''))+travelSummary(r.travelContexts)+attachmentHTML(r.attachments);
  // A turn the Agent's own background task started (runtime-events.py) is not a human message.
  const input=r.trigger==='task-notification'?'<div class="message internal"><span class="chat-placeholder">…（裏実行タスクの完了通知）</span>'+timeHTML(r.createdAt)+'</div>':
-  human&&!r.suppressUser?bubble('user',r.instruction,r.createdAt,travelSummary(r.travelContexts)+attachmentHTML(r.attachments)):
+  human&&!r.suppressUser?bubble('user',r.instruction,r.createdAt,travelSummary(r.travelContexts)+attachmentHTML(r.attachments)+addressedHistory(r.conversationSource?.scope)):
   '<div class="message internal">'+chatBodyHTML(r,'input',inputBody,true,exchangeLabel(r,state))+timeHTML(r.createdAt)+'</div>';
  // Legacy completed replies have no finalOutput/origin metadata; retain their human-facing answer.
  const showAnswer=published||isVisibleAnswer(r);
@@ -195,14 +203,14 @@ function runHTML(a){
 function localMessageHTML(id){
  const m=outbox.get(id);if(!m||matchingRun(state,id,m.requestId))return '';
  const files=(m.files||[]).map(f=>`<span>${esc(f.name)} · ${Math.ceil((f.size||0)/1024)} KiB</span>`).join('<br>');
- return `<div class="run local-message" data-local-request="${esc(m.requestId)}">${bubble('user',m.instruction,m.createdAt,travelSummary(m.travelContexts)+(files?'<div class="file-previews">'+files+'</div>':'')+`<p class="send-progress ${['preparing','uploading','posting','syncing'].includes(m.stage)?'sending':''}" role="status">${esc(pendingMessageStatus(m))}</p>`)}</div>`;
+ return `<div class="run local-message" data-local-request="${esc(m.requestId)}">${bubble('user',m.instruction,m.createdAt,addressedHistory(m.scope)+travelSummary(m.travelContexts)+(files?'<div class="file-previews">'+files+'</div>':'')+`<p class="send-progress ${['preparing','uploading','posting','syncing'].includes(m.stage)?'sending':''}" role="status">${esc(pendingMessageStatus(m))}</p>`)}</div>`;
 }
 function clearSubmittedDraft(id,receipt,message){
  const input=cards.get(id)?.querySelector('textarea');
  const submittedDraftUnchanged=!!input&&(message?unchangedDraft(message,input.value,draftVersions.get(id)||0):input.value===receipt.instruction);
  if(submittedDraftUnchanged){input.value='';drafts.delete(id);}
  const selected=scopeDrafts.get(id);
- if(submittedDraftUnchanged&&receipt.scope&&selected?.workId===receipt.scope.workId&&JSON.stringify(selected.actions)===JSON.stringify(receipt.scope.actions)){scopeDrafts.delete(id);const card=cards.get(id);if(card){card.querySelector('[name=scopeWork]').value='';card.querySelectorAll('[name=scopeAction]').forEach(x=>x.checked=false);}}
+ if(submittedDraftUnchanged&&receipt.scope&&selected?.workId===receipt.scope.workId&&JSON.stringify(selected.actions)===JSON.stringify(receipt.scope.actions)){scopeDrafts.delete(id);const card=cards.get(id);if(card)card.querySelector('.legacy-addressed-input').hidden=true;}
  if(sameTravelContexts(travelDrafts.get(id),receipt.travelContexts))travelEditors.get(id).set([]);
  fileEditors.get(id).clear();
 }
@@ -242,7 +250,7 @@ function renderBoard(){
   profileViewer.update(a,state.projects||[]);
   let card=cards.get(a.id);
   if(!card){card=document.createElement('article');card.className='agent-panel';card.id='agent-'+a.id;card.setAttribute('aria-labelledby','heading-'+a.id);card.tabIndex=0;card.hidden=true;
-   card.innerHTML=`<div class="panel-heading"><span class="dot"></span><h2></h2><span class="request-attention"></span><span class="unread-badge"></span><button data-zoom="${esc(a.id)}" title="このAgentを拡大" aria-label="このAgentを拡大">⤢</button><button data-manage-agent="${esc(a.id)}" title="Agentの操作" aria-label="Agentの操作">…</button></div><div class="panel-info"></div><p class="current-action"></p><div class="agent-recovery-host"></div><div class="runs" tabindex="0" aria-label="会話履歴"></div><form data-send="${esc(a.id)}"><select name="requestTarget" aria-label="依頼・補足先" hidden><option value="">新しい依頼</option></select><textarea name="instruction" aria-label="このAgentに直接指示" placeholder="" maxlength="16000" rows="1"></textarea><button type="submit">送信</button><button type="button" data-reconcile="${esc(a.id)}" hidden>送信結果を確認</button><details class="input-scope" hidden><summary>別Projectの仕事を指定</summary><label>対象の仕事<select name="scopeWork"><option value="">指定なし</option></select></label><span>この入力で許可する操作</span><label><input type="checkbox" name="scopeAction" value="supplement">補足</label><label><input type="checkbox" name="scopeAction" value="continue">継続</label><label><input type="checkbox" name="scopeAction" value="cancel">中止</label><label><input type="checkbox" name="scopeAction" value="accept">成果採用</label><small>対象の選択だけでは実行しません。指示文と一緒に送信して確定します。</small></details><div class="travel-slot"></div></form>`;
+   card.innerHTML=`<div class="panel-heading"><span class="dot"></span><h2></h2><span class="request-attention"></span><span class="unread-badge"></span><button data-zoom="${esc(a.id)}" title="このAgentを拡大" aria-label="このAgentを拡大">⤢</button><button data-manage-agent="${esc(a.id)}" title="Agentの操作" aria-label="Agentの操作">…</button></div><div class="panel-info"></div><p class="current-action"></p><div class="agent-recovery-host"></div><div class="runs" tabindex="0" aria-label="会話履歴"></div><form data-send="${esc(a.id)}"><select name="requestTarget" aria-label="依頼・補足先" hidden><option value="">新しい依頼</option></select><textarea name="instruction" aria-label="このAgentに直接指示" placeholder="" maxlength="16000" rows="1"></textarea><button type="submit">送信</button><button type="button" data-reconcile="${esc(a.id)}" hidden>送信結果を確認</button><div class="legacy-addressed-input" hidden><p></p><button type="button" data-remove-scope>宛先指定を解除して本文を残す</button></div><div class="travel-slot"></div></form>`;
    const input=card.querySelector('textarea');input.value=drafts.get(a.id)||'';card.autogrow=autogrowInput(input,{panel:card});
    travelEditors.set(a.id,travelComposer(card.querySelector('.travel-slot'),travelDrafts.get(a.id)||[],value=>{travelDrafts.set(a.id,value);storeDrafts();}));
    fileEditors.set(a.id,attachmentComposer({host:card.querySelector('.travel-slot'),key:'agent:'+a.id,supported:()=>!!state?.capabilities?.attachments}));
@@ -288,16 +296,10 @@ function renderBoard(){
   prompt.placeholder=promptLabel;prompt.title=promptLabel+(mobilePromptUI()?'（Enterで改行、送信ボタン / Ctrl+Enterで送信）':'（Enter / Ctrl+Enterで送信、Shift+Enterで改行、変換中のEnterは確定）');prompt.setAttribute('aria-label',prompt.title);
   const send=card.querySelector('[data-send] button:not([data-reconcile])');
   const choice=card.querySelector('[name=requestTarget]');
-  const scopeBox=card.querySelector('.input-scope'),scopeChoice=card.querySelector('[name=scopeWork]');
-  scopeBox.hidden=!(a.location==='mayor'&&a.projectId);
-  if(!scopeBox.hidden){
-   const selected=scopeDrafts.get(a.id)?.workId||scopeChoice.value;
-   const targets=(state.inputTargets||[]).filter(t=>t.projectId!==a.projectId).map(t=>({value:t.workId,label:(state.projects.find(p=>p.id===t.projectId)?.name||'Project')+' / '+t.instruction+' / '+(state.agents.find(a=>a.id===t.assignee)?.name||'担当')+' / '+new Date(t.createdAt).toLocaleString()}));
-   const options='<option value="">指定なし（通常の会話）</option>'+(selected&&!targets.some(t=>t.value===selected)?'<option value="'+esc(selected)+'" disabled>対象を確認できません。選び直してください</option>':'')+targets.map(t=>'<option value="'+esc(t.value)+'">'+esc(t.label)+'</option>').join('');
-   if(scopeChoice.innerHTML!==options){scopeChoice.innerHTML=options;scopeChoice.value=selected;}
-   card.querySelectorAll('[name=scopeAction]').forEach(x=>x.checked=!!scopeDrafts.get(a.id)?.actions.includes(x.value));
-   scopeBox.onchange=()=>{scopeDrafts.set(a.id,{workId:scopeChoice.value,actions:[...card.querySelectorAll('[name=scopeAction]:checked')].map(x=>x.value)});draftVersions.set(a.id,(draftVersions.get(a.id)||0)+1);storeDrafts();};
-  }
+  const legacy=legacyScope(a.id),notice=card.querySelector('.legacy-addressed-input');
+  notice.hidden=!legacy;
+  if(legacy){notice.querySelector('p').textContent=pending.get(a.id)?.scope?'以前の宛先付き送信の結果を確認しています。再送せず、保存記録を確認します。':'以前の下書きに宛先指定が残っています。本文は保持しています。指定を解除してから秘書に文章で依頼してください。';notice.querySelector('[data-remove-scope]').hidden=!!pending.get(a.id)?.scope;}
+
 
   if(state.capabilities?.requestInbox){
    choice.hidden=false;const conversational=state.capabilities?.secretaryConversations&&a.location==='mayor'&&a.projectId;
@@ -313,7 +315,7 @@ function renderBoard(){
   travelEditors.get(a.id).lock(card.dataset.pending==='true'||pending.has(a.id));
   const supplement=!!choice.value;
   const conversationControl=!supplement&&state.capabilities?.secretaryConversations&&a.location==='mayor'&&a.projectId?a.conversationControl:null;
-  send.disabled=navigator.onLine===false||!!choice.selectedOptions[0]?.disabled||(!supplement&&!connected)||(!supplement&&(conversationControl?!conversationControl.canAccept:a.canSend!==true&&a.canSteer!==true&&a.canQueue!==true))||card.dataset.pending==='true'||pending.has(a.id);
+  send.disabled=!!legacyScope(a.id)||navigator.onLine===false||!!choice.selectedOptions[0]?.disabled||(!supplement&&!connected)||(!supplement&&(conversationControl?!conversationControl.canAccept:a.canSend!==true&&a.canSteer!==true&&a.canQueue!==true))||card.dataset.pending==='true'||pending.has(a.id);
   card.querySelector('[data-reconcile]').disabled=navigator.onLine===false;
   card.querySelector('[data-reconcile]').hidden=!pending.has(a.id)||card.dataset.pending==='true';
   const sendLabel=send.form.dataset.sending==='true'?'送信中…':pending.has(a.id)?'送信結果を確認中':supplement?'補足を送信':state.capabilities?.secretaryConversations&&a.location==='mayor'&&a.projectId?'会話を送信':!state.capabilities?.requestInbox&&a.canSteer?'実行中に補足':a.canQueue&&!a.canSend?'待機キューへ':'送信';
@@ -669,10 +671,8 @@ $('#agents').onsubmit=async e=>{
  const requestTarget=f.elements.requestTarget?.value;
  const conversation=!requestTarget&&state.capabilities?.secretaryConversations&&state.agents.some(a=>a.id===id&&a.location==='mayor'&&a.projectId);
  const target=state.agents.find(a=>a.id===id),steerTarget=!state.capabilities?.requestInbox&&target?.canSteer?structuredClone(target.steerTarget):null;
- const selectedWork=f.elements.scopeWork?.value;
- let scope;
- if(selectedWork){const q=(state.inputTargets||[]).find(q=>q.workId===selectedWork),actions=[...f.querySelectorAll('[name=scopeAction]:checked')].map(x=>x.value);if(!conversation||!q||!actions.length){$('#error').textContent='別Projectの仕事と許可する操作を確認してください。送信していません。';return;}scope={projectId:q.projectId,workId:selectedWork,actions};}
- const receipt={...(scope?{scope}:{}),...(conversation?{mode:'conversation'}:{}),...(requestTarget?{requestTarget}:{}),...(steerTarget?{steerTarget}:{}),instruction:f.elements.instruction.value,attachments:[],travelContexts:structuredClone(travelEditors.get(id).value),requestId:newRequestId()};
+ if(legacyScope(id)){$('#error').textContent='以前の宛先指定を確認してください。送信していません。';return;}
+ const receipt={...(conversation?{mode:'conversation'}:{}),...(requestTarget?{requestTarget}:{}),...(steerTarget?{steerTarget}:{}),instruction:f.elements.instruction.value,attachments:[],travelContexts:structuredClone(travelEditors.get(id).value),requestId:newRequestId()};
  const message={...receipt,createdAt:new Date().toISOString(),draftVersion:draftVersions.get(id)||0,files:fileEditors.get(id).summaries,mode:requestTarget||steerTarget?'steering':!target?.canSend?'queue':'direct',stage:fileEditors.get(id).count?'uploading':'preparing'};
  outbox.set(id,message);storeDrafts();scrolls.get(id).latest();
  action(f,async()=>{
@@ -717,7 +717,7 @@ $('#agents').onclick=e=>{
    else {const full=await api('/requests/get',{humanRequestId:q.id});await api(r.state==='completed'?'/human/requests/resume':'/human/requests/retry',{humanRequestId:q.id,workId:r.workId,revision:full.revision,operationId:newRequestId(),instruction:'失敗・中断からの復旧です。既存変更・PR・外部操作・requests get/resultsの子作業を確認し、未完了部分だけ進めてください。子作業の再委任や二重操作を避け、モデルは変更しないでください。委任ありのまとめ役だけfinishで申告してください。\n元の指示（全文はrequests getで確認）:\n'+(full.instruction||'').slice(0,12000)});}
   });return;
  }
- const reconcile=e.target.closest('[data-reconcile]');if(reconcile){if(navigator.onLine===false){browserOffline();return;}const id=reconcile.dataset.reconcile,receipt=pending.get(id);if(receipt)action(reconcile.closest('article'),async()=>{if(receipt.requestTarget){const [humanRequestId,workId]=receipt.requestTarget.split(':');await api('/human/requests/supplement',{humanRequestId,workId,operationId:receipt.requestId,instruction:receipt.instruction,attachments:receipt.attachments,travelContexts:receipt.travelContexts});}else await api('/agents/'+id+'/runs',receipt);await refresh();});return;}const manage=e.target.closest('[data-manage-agent]'),zoom=e.target.closest('[data-zoom]');if(manage)openMetadata(manage.dataset.manageAgent);if(zoom){toggleZoom(zoom.dataset.zoom);void refresh(true);}};
+ const reconcile=e.target.closest('[data-reconcile]');if(reconcile){if(navigator.onLine===false){browserOffline();return;}const id=reconcile.dataset.reconcile,receipt=pending.get(id);if(receipt?.scope){void refresh(true);return;}if(receipt)action(reconcile.closest('article'),async()=>{if(receipt.requestTarget){const [humanRequestId,workId]=receipt.requestTarget.split(':');await api('/human/requests/supplement',{humanRequestId,workId,operationId:receipt.requestId,instruction:receipt.instruction,attachments:receipt.attachments,travelContexts:receipt.travelContexts});}else await api('/agents/'+id+'/runs',receipt);await refresh();});return;}const remove=e.target.closest('[data-remove-scope]');if(remove){const id=remove.closest('form').dataset.send;if(pending.get(id)?.scope)return;scopeDrafts.delete(id);const m=outbox.get(id);if(m?.scope)outbox.delete(id);draftVersions.set(id,(draftVersions.get(id)||0)+1);storeDrafts();renderBoard();return;}const manage=e.target.closest('[data-manage-agent]'),zoom=e.target.closest('[data-zoom]');if(manage)openMetadata(manage.dataset.manageAgent);if(zoom){toggleZoom(zoom.dataset.zoom);void refresh(true);}};
 void refresh();subscribeChanges(()=>refresh(true),{onDisconnect:()=>{if(navigator.onLine===false){browserOffline();return;}connected=false;connectionStatus($('#connection'),'変更通知に再接続しています');if(state)renderBoard();}});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)restartSync();});
 window.addEventListener('pageshow',e=>{if(e.persisted)restartSync();});
