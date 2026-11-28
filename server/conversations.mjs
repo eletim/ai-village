@@ -8,7 +8,7 @@ import {conversationContext,conversationMaterial} from './conversation-context.m
 import {conversationRunOwner} from './conversation-request-owner.mjs';
 import {purposeId,purposeView,conversationDisplayMode,REPORT_DELIVERY_KINDS} from './conversation-purpose.mjs';
 import {startupContract} from './input-envelope.mjs';
-import {conversationNotification} from './conversation-notification.mjs';
+import {conversationNotification,conversationNotificationReady} from './conversation-notification.mjs';
 import {conversationJob,conversationTurn,conversationControl,SETTLED_JOB_CODES} from './conversation-status.mjs';
 import {responseText} from '../src/response-text.js';
 import {transitionDelivery} from './state/auxiliary.ts';
@@ -356,7 +356,7 @@ export class Conversations {
   }));
  }
  async notifications(){
-  for(const r of this.d.data.runs.filter(r=>r.conversationId&&r.notificationPolicy==='conversation'&&accepted(r)&&runState(r)==='completed')){
+  for(const r of this.d.data.runs.filter(conversationNotificationReady)){
    await this.d.locked('notify-conversation:'+r.id,async()=>{
     let suppressed=null;
     // Read the settled state under the writer barrier: an in-flight save may

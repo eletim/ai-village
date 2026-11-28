@@ -27,7 +27,7 @@ export function iconLabel(agent,workshops,state,attention=false,unread=false){
 }
 export function statusIcon(agent,{mode='dots',workshops=[],state='',stateLabel=state,attention=false,unread=false,answerComplete=false,sidebar=false,projects=[]}={}){
  const leader=isProjectLeader(agent,projects);
- const label=escape(iconLabel(agent,workshops,stateLabel,attention,unread)+(answerComplete?' · 回答済み':'')+(leader?' · Projectリーダー（仕事の管理役）':''));
+ const label=escape(iconLabel(agent,workshops,stateLabel,attention,unread)+(answerComplete?' · 返答・報告あり':'')+(leader?' · Projectリーダー（仕事の管理役）':''));
 
  return `<span class="dot ${sidebar?'agent-dot':'header-status'}${mode==='roles'?' status-icon':''}${leader?' has-leader':''}" ${sidebar?`data-agent-dot="${escape(agent.id)}"`:''} data-state="${escape(state)}" data-unread="${!!unread}" data-attention="${!!attention}" data-answer-complete="${!!answerComplete}" role="img" title="${label}" aria-label="${label}">${mode==='roles'||leader?roleSVG(agent,workshops,leader):''}</span>`;
 }

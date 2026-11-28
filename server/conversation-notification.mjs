@@ -1,3 +1,4 @@
+import {accepted,runState} from './run-lifecycle.mjs';
 import {conversationDisplayMode,decisionState,deliveryOf,purposeDecisionRequired,REPORT_DELIVERY_KINDS} from './conversation-purpose.mjs';
 // External notification policy for a normally completed secretary conversation run.
 // It decides only whether to notify; on-screen display (conversationDisplayMode) is unchanged.
@@ -37,4 +38,17 @@ export function conversationNotification(data,r,{presentAt,now=Date.now()}={}){
  const decided=(c?.purposeDecisions||[]).some(d=>d.actorRunId===r.id&&['accept','question'].includes(d.kind)&&decisionState(data,c,d)==='committed');
  if(!decided&&operationsOf(c,r).some(a=>WORK_DISPATCH_ACTIONS.includes(a)))return {notify:false,reason:'work-dispatch-only'};
  return {notify:true,reason:decided?'purpose-decision':'conversation-reply'};
+}
+
+// Shared terminal boundary; transport reservations/results are not display facts.
+export const conversationNotificationReady=r=>!!r.conversationId&&r.notificationPolicy==='conversation'&&accepted(r)&&runState(r)==='completed';
+export function conversationNotificationTarget(data,r){
+ if(!conversationNotificationReady(r))return false;
+ // Preserve settled semantic exclusions, including older policies. Presence is
+ // delivery suppression only; without presentAt the same policy decides meaning.
+ if(r.notificationSuppressed&&r.notificationSuppressed.reason!=='human-present-quick-reply')return false;
+ // A claimed reservation already passed the policy. Keep that decision across
+ // later history changes, regardless of transport success, OFF, failure or delay.
+ if(r.notification&&r.notification.status!=='pending')return true;
+ return conversationNotification(data,r).notify;
 }

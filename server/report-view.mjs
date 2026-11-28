@@ -1,4 +1,4 @@
-import {secretaryAnswerComplete} from './secretary-completion.mjs';
+import {notificationEntries} from './notification-review.mjs';
 import {currentRunMailbox} from './conversation-request-owner.mjs';
 import {conversationDisplayMode} from './conversation-purpose.mjs';
 import {conversationControl,conversationSummary,conversationTurn,answerJobs,conversationJob} from './conversation-status.mjs';
@@ -64,7 +64,8 @@ export function humanProjection(data){
   if(r.recovery)r.recovery={status:r.recovery.status,reason:r.phase==='report'?'報告のみ再試行できます。元作業は再実行しません。':'停止理由を確認して復旧してください'};
  }
  for(const q of view.requests)if(q.conversationId){const s=conversationJob(data,q);q.purposeStatus={code:s.code,label:s.label,reason:s.reason};}
- for(const a of view.agents)a.answerComplete=secretaryAnswerComplete(view,a);
+ const notified=new Set(notificationEntries(data).map(e=>e.agentId));
+ for(const a of view.agents)a.answerComplete=notified.has(a.id);
  view.recoveryRequests=recoveryRequests(data);
  return view;
 }

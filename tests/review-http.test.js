@@ -26,7 +26,7 @@ test('real Agent view HTTP validates revision, persists across restart and does 
   assert.equal((await write('/agents/'+agentId,{revision:0,name:'Lost update'},'PUT')).status,409);
   const discovery=await(await fetch(base+'/api/direct/agents')).json();assert.equal(discovery.agents[0].projectName,'Explicit Project');assert.ok(discovery.management.help);
   assert.equal((await write('/projects/'+project.id,{revision:0,name:'Renamed Project'},'PUT')).status,200);
-  await stop();await start();const state=await(await fetch(base+'/api/direct')).json();assert.equal(state.agentReviews[agentId],key);assert.equal(state.reviews[agentId].unreviewed,false);assert.equal(state.runs.length,2);assert.equal(state.projects[0].name,'Renamed Project');assert.equal(state.agents[0].projectId,project.id);assert.equal(state.agents[0].name,'New display');
+  await stop();await start();const state=await(await fetch(base+'/api/direct')).json();assert.equal(state.agentReviews?.[agentId],undefined,'untracked legacy terminals are not notification targets');assert.equal(state.reviews[agentId].unreviewed,false);assert.equal(state.runs.length,2);assert.equal(state.projects[0].name,'Renamed Project');assert.equal(state.agents[0].projectId,project.id);assert.equal(state.agents[0].name,'New display');
   assert.equal((await fetch(base+'/api/direct/agents/'+agentId+'/view',{method:'POST',headers:{'Content-Type':'application/json',Origin:'https://wrong.example'},body:JSON.stringify({revision:key})})).status,403);
   await assert.rejects(readFile(join(dir,'local-audit.jsonl')),{code:'ENOENT'});await assert.rejects(readFile(join(dir,'notifications.jsonl')),{code:'ENOENT'});
  }finally{await stop();await rm(dir,{recursive:true,force:true});}

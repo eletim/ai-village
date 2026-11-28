@@ -27,7 +27,7 @@ import {migrateMarkerStore} from './marker-migration.mjs';
 import {remoteVillageConnection,connectionCommand,checkRemoteConnection} from './agent-connection.mjs';
 import {AgentRules} from './agent-rules.mjs';
 import {migrateCanonicalStore} from './canonical-migration.mjs';
-import {requestStatus} from './request-lifecycle.mjs';
+import {requestStatus,requestNotificationTarget} from './request-lifecycle.mjs';
 import {agentControls,bindAgent,agentChange,runtimeObservation,projectControls} from './agent-lifecycle.mjs';
 import {migrateAgentStore} from './agent-migration.mjs';
 import {changeRun,observeRun,tracking,modelOf,runState} from './run-lifecycle.mjs';
@@ -42,7 +42,7 @@ import {deleteAgent} from './agent-deletion.mjs';
 import {deletionPlan,deleteProject} from './project-deletion.mjs';
 import {stageAttachment} from './attachment-transfer.mjs';
 import {RequestFlow} from './requests.mjs';
-import {completedEntries} from '../src/completions.js';
+import {notificationEntries,reviewRevision,migrateNotificationReviews} from './notification-review.mjs';
 import {agentIdentity,agentPlaceName} from '../src/agent-identity.js';
 import {RuntimeReader} from './runtime-reader.mjs';
 import {inputMatches,resolveInputPosition,correlate,terminalBoundary,outputBetween} from './runtime-events.mjs';
@@ -123,6 +123,7 @@ export class DirectAgents {
     for(const p of this.data.projects)if(!p.deletedAt)await this.projectGuides.initialize(p);
     this.data.conversations ||= [];
     this.flow.init();this.conversations.init();
+    migrateNotificationReviews(this.data,humanProjection(this.data));
     await this.save();
     if(watch){for(const name of ['local-audit.jsonl','ssh-audit.jsonl'])void maintainAudit(this.dir,name).catch(()=>{});this.flow.reporting.start();this.monitor=new EventMonitor(this,this.hostFactory?{hostFactory:this.hostFactory}:{});this.monitor.start();void this.progress().catch(()=>{});}
   }
@@ -130,19 +131,18 @@ export class DirectAgents {
   presentation(){
     if(!this.presentationCache){const view=humanProjection(this.data);this.presentationCache={...view,projects:view.projects.filter(p=>!p.deletedAt),capabilities:{secretaryConversations:true,presence:true,requestSplitting:true,requestInbox:true,steering:true,travelContexts:true,attachments:!!this.attachments},reviews:this.reviewStates(view)};}
     // Completion emphasis follows the existing revision-bound read receipt.
-    // Keep normal-terminal/session checks in humanProjection; never use attention.
+    // Semantic notification eligibility is shared with delivery; no runtime-idle gate.
     const live=new Map(this.data.agents.map(a=>[a.id,a]));
     return {...this.presentationCache,agents:this.presentationCache.agents.map(a=>({...a,answerComplete:a.answerComplete===true&&this.presentationCache.reviews[a.id]?.unreviewed===true,lastCheckedAt:live.get(a.id)?.lastCheckedAt,runtime:live.get(a.id)?.runtime})),notification:this.notifier.status()};
   }
   snapshot(){return structuredClone(this.presentation());}
   reviewStates(view=humanProjection(this.data)){
     const keys=new Map(this.data.agents.map(a=>[a.id,[]]));
-    for(const entry of completedEntries(view))keys.get(entry.agentId)?.push(entry.key);
-    const finalRequests=(this.data.requests||[]).filter(q=>!q.conversationId&&requestStatus(q)==='completed');
-    for(const q of finalRequests)keys.get(q.finalAgentId)?.push('request:'+q.id+':'+q.finalRunId);
+    for(const entry of notificationEntries(this.data))keys.get(entry.agentId)?.push(entry.key);
+    const finalRequests=(this.data.requests||[]).filter(requestNotificationTarget);
     const legacy=new Set(this.data.reviewedCompletions||[]);
     return Object.fromEntries([...keys].map(([id,entries])=>{
-      const revision=createHash('sha256').update(JSON.stringify(entries.sort())).digest('hex');
+      const revision=reviewRevision(entries);
       const reviewed=this.data.agentReviews?.[id]===revision||(!this.data.agentReviews?.[id]&&entries.every(k=>legacy.has(k)));
       const attention=finalRequests.filter(q=>q.finalAgentId===id&&!q.reviewedAt).map(q=>q.id);
       return [id,{revision,hasCompleted:entries.length>0,unreviewed:entries.length>0&&!reviewed,attention:attention.length>0,attentionRequestIds:attention}];

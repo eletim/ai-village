@@ -15,7 +15,7 @@ import {node} from './state/requests.ts';
 import {quarantinedRun} from './request-integrity.mjs';
 import {projectRequest,projectRun} from './state-projection.mjs';
 import {agentControls} from './agent-lifecycle.mjs';
-import {observeRequest,requestStatus,resultEntries} from './request-lifecycle.mjs';
+import {observeRequest,requestStatus,resultEntries,requestNotificationTarget} from './request-lifecycle.mjs';
 import {runState,accepted,initializeRun,initializeResume,changeRun} from './run-lifecycle.mjs';
 import {canCancelQueued} from '../src/queued-run.js';
 import {normalizeTravelContexts,sameTravelContexts} from '../src/travel-context.js';
@@ -427,11 +427,11 @@ export class RequestFlow {
  if(wait){await dispatched;await Promise.allSettled([...this.dispatching.values()]);}
  }
  async notifications(requests=this.requests){
-  for(const q of requests.filter(q=>!q.conversationId&&requestStatus(q)==='completed'&&q.notification?.status==='pending')){
+  for(const q of requests.filter(q=>requestNotificationTarget(q)&&q.notification?.status==='pending')){
    await this.d.locked('notify:'+q.id,async()=>{
     const claimed=await this.d.persist(async()=>{
      // Recheck after waiting for any in-flight settlement to commit or roll back.
-     if(requestStatus(q)!=='completed'||q.notification?.status!=='pending')return false;
+     if(!requestNotificationTarget(q)||q.notification?.status!=='pending')return false;
      q.notification=transitionDelivery(q.notification,{type:'claim',at:now()});await this.d.save();return true;
     });
     if(!claimed)return;
