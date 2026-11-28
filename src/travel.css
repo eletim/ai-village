@@ -28,7 +28,4 @@ html:not([data-theme=dark]) .agent-panel form[data-send]>textarea{background:tra
 .agent-panel form[data-send] .travel-add svg{display:block;pointer-events:none;flex-shrink:0}
 @media(hover:hover){.agent-panel form[data-send] .travel-add:hover{background:color-mix(in srgb,currentColor 8%,transparent)}}
 .agent-panel form[data-send] .travel-add:is(:active,[aria-expanded=true]){background:color-mix(in srgb,currentColor 12%,transparent)}
-.agent-panel form[data-send]>:is(.scope-draft,select[name=requestTarget]){grid-column:1/-1;min-width:0}
-.agent-panel .input-scope select{max-width:100%;width:100%;min-width:0}
-
-.agent-panel .scope-draft{text-align:left;white-space:normal;overflow-wrap:anywhere}
+.agent-panel form[data-send]>:is(.legacy-addressed-input,select[name=requestTarget]){grid-column:1/-1;min-width:0}
