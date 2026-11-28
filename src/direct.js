@@ -242,7 +242,7 @@ function renderBoard(){
   profileViewer.update(a,state.projects||[]);
   let card=cards.get(a.id);
   if(!card){card=document.createElement('article');card.className='agent-panel';card.id='agent-'+a.id;card.setAttribute('aria-labelledby','heading-'+a.id);card.tabIndex=0;card.hidden=true;
-   card.innerHTML=`<div class="panel-heading"><span class="dot"></span><h2></h2><span class="request-attention"></span><span class="unread-badge"></span><button data-zoom="${esc(a.id)}" title="このAgentを拡大" aria-label="このAgentを拡大">⤢</button><button data-manage-agent="${esc(a.id)}" title="Agentの操作" aria-label="Agentの操作">…</button></div><div class="panel-info"></div><p class="current-action"></p><div class="agent-recovery-host"></div><div class="runs" tabindex="0" aria-label="会話履歴"></div><form data-send="${esc(a.id)}"><select name="requestTarget" aria-label="依頼・補足先" hidden><option value="">新しい依頼</option></select><textarea name="instruction" aria-label="このAgentに直接指示" placeholder="" maxlength="16000" rows="1"></textarea><button type="submit">送信</button><button type="button" data-reconcile="${esc(a.id)}" hidden>送信結果を確認</button><details class="input-scope" hidden><summary>別Projectの仕事を指定</summary><label>対象の仕事<select name="scopeWork"><option value="">指定なし</option></select></label><span>この入力で許可する操作</span><label><input type="checkbox" name="scopeAction" value="supplement">補足</label><label><input type="checkbox" name="scopeAction" value="continue">継続</label><label><input type="checkbox" name="scopeAction" value="cancel">中止</label><label><input type="checkbox" name="scopeAction" value="accept">成果採用</label><small>対象の選択だけでは実行しません。指示文と一緒に送信して確定します。</small></details><div class="travel-slot"></div></form>`;
+   card.innerHTML=`<div class="panel-heading"><span class="dot"></span><h2></h2><span class="request-attention"></span><span class="unread-badge"></span><button data-zoom="${esc(a.id)}" title="このAgentを拡大" aria-label="このAgentを拡大">⤢</button><button data-manage-agent="${esc(a.id)}" title="Agentの操作" aria-label="Agentの操作">…</button></div><div class="panel-info"></div><p class="current-action"></p><div class="agent-recovery-host"></div><div class="runs" tabindex="0" aria-label="会話履歴"></div><form data-send="${esc(a.id)}"><select name="requestTarget" aria-label="依頼・補足先" hidden><option value="">新しい依頼</option></select><textarea name="instruction" aria-label="このAgentに直接指示" placeholder="" maxlength="16000" rows="1"></textarea><button type="submit">送信</button><button type="button" data-reconcile="${esc(a.id)}" hidden>送信結果を確認</button><button type="button" class="scope-draft" data-edit-scope hidden></button><div class="travel-slot"></div></form><dialog class="input-scope"><div class="dialog-heading"><h2>他のプロジェクトに依頼</h2><button type="button" data-close>閉じる</button></div><label>対象の仕事<select name="scopeWork"><option value="">指定なし</option></select></label><span>依頼する操作</span><label><input type="checkbox" name="scopeAction" value="supplement">補足</label><label><input type="checkbox" name="scopeAction" value="continue">継続</label><label><input type="checkbox" name="scopeAction" value="cancel">中止</label><label><input type="checkbox" name="scopeAction" value="accept">成果採用</label><small>対象の選択だけでは実行しません。閉じた後、入力欄の依頼文と一緒に送信して確定します。</small></dialog>`;
    const input=card.querySelector('textarea');input.value=drafts.get(a.id)||'';card.autogrow=autogrowInput(input,{panel:card});
    travelEditors.set(a.id,travelComposer(card.querySelector('.travel-slot'),travelDrafts.get(a.id)||[],value=>{travelDrafts.set(a.id,value);storeDrafts();}));
    fileEditors.set(a.id,attachmentComposer({host:card.querySelector('.travel-slot'),key:'agent:'+a.id,supported:()=>!!state?.capabilities?.attachments}));
@@ -289,14 +289,16 @@ function renderBoard(){
   const send=card.querySelector('[data-send] button:not([data-reconcile])');
   const choice=card.querySelector('[name=requestTarget]');
   const scopeBox=card.querySelector('.input-scope'),scopeChoice=card.querySelector('[name=scopeWork]');
-  scopeBox.hidden=!(a.location==='mayor'&&a.projectId);
-  if(!scopeBox.hidden){
+  const hasScope=a.location==='mayor'&&a.projectId;
+  if(hasScope){
    const selected=scopeDrafts.get(a.id)?.workId||scopeChoice.value;
    const targets=(state.inputTargets||[]).filter(t=>t.projectId!==a.projectId).map(t=>({value:t.workId,label:(state.projects.find(p=>p.id===t.projectId)?.name||'Project')+' / '+t.instruction+' / '+(state.agents.find(a=>a.id===t.assignee)?.name||'担当')+' / '+new Date(t.createdAt).toLocaleString()}));
    const options='<option value="">指定なし（通常の会話）</option>'+(selected&&!targets.some(t=>t.value===selected)?'<option value="'+esc(selected)+'" disabled>対象を確認できません。選び直してください</option>':'')+targets.map(t=>'<option value="'+esc(t.value)+'">'+esc(t.label)+'</option>').join('');
    if(scopeChoice.innerHTML!==options){scopeChoice.innerHTML=options;scopeChoice.value=selected;}
    card.querySelectorAll('[name=scopeAction]').forEach(x=>x.checked=!!scopeDrafts.get(a.id)?.actions.includes(x.value));
-   scopeBox.onchange=()=>{scopeDrafts.set(a.id,{workId:scopeChoice.value,actions:[...card.querySelectorAll('[name=scopeAction]:checked')].map(x=>x.value)});draftVersions.set(a.id,(draftVersions.get(a.id)||0)+1);storeDrafts();};
+   const badge=card.querySelector('[data-edit-scope]');badge.hidden=!selected;badge.textContent=selected?'依頼先: '+(targets.find(t=>t.value===selected)?.label||'対象を確認してください')+'（変更）':'';
+   scopeBox.querySelector('[data-close]').onclick=()=>scopeBox.close();
+   scopeBox.onchange=()=>{scopeDrafts.set(a.id,{workId:scopeChoice.value,actions:[...card.querySelectorAll('[name=scopeAction]:checked')].map(x=>x.value)});draftVersions.set(a.id,(draftVersions.get(a.id)||0)+1);storeDrafts();const selected=targets.find(t=>t.value===scopeChoice.value);badge.hidden=!scopeChoice.value;badge.textContent=scopeChoice.value?'依頼先: '+(selected?.label||'対象を確認してください')+'（変更）':'';};
   }
 
   if(state.capabilities?.requestInbox){
@@ -538,6 +540,7 @@ function openMetadata(id){
  const a=state.agents.find(a=>a.id===id);metadataId=id;metadataRevision=a.metadataRevision||0;
  const f=$('#metadata-form');f.elements.name.value=a.name;projectOptions(f.elements.projectId);f.elements.projectId.value=a.projectId||'';
  $('#manage-requests').dataset.requestComposition=id;
+ $('#manage-addressed').hidden=!(a.location==='mayor'&&a.projectId);$('#manage-addressed').onclick=()=>{$('#metadata-dialog').close();cards.get(id).querySelector('.input-scope').showModal();};
  $('#metadata-id').textContent=a.name+' · '+a.id;$('#stop-form').reset();$('#stop-form button').disabled=!a.tabId;
  $('#metadata-dialog .dialog-error').textContent='';$('#metadata-dialog').showModal();
 }
@@ -669,9 +672,9 @@ $('#agents').onsubmit=async e=>{
  const requestTarget=f.elements.requestTarget?.value;
  const conversation=!requestTarget&&state.capabilities?.secretaryConversations&&state.agents.some(a=>a.id===id&&a.location==='mayor'&&a.projectId);
  const target=state.agents.find(a=>a.id===id),steerTarget=!state.capabilities?.requestInbox&&target?.canSteer?structuredClone(target.steerTarget):null;
- const selectedWork=f.elements.scopeWork?.value;
+ const selectedWork=f.closest('.agent-panel').querySelector('[name=scopeWork]')?.value;
  let scope;
- if(selectedWork){const q=(state.inputTargets||[]).find(q=>q.workId===selectedWork),actions=[...f.querySelectorAll('[name=scopeAction]:checked')].map(x=>x.value);if(!conversation||!q||!actions.length){$('#error').textContent='別Projectの仕事と許可する操作を確認してください。送信していません。';return;}scope={projectId:q.projectId,workId:selectedWork,actions};}
+ if(selectedWork){const q=(state.inputTargets||[]).find(q=>q.workId===selectedWork),actions=[...f.closest('.agent-panel').querySelectorAll('[name=scopeAction]:checked')].map(x=>x.value);if(!conversation||!q||!actions.length){$('#error').textContent='別Projectの仕事と許可する操作を確認してください。送信していません。';return;}scope={projectId:q.projectId,workId:selectedWork,actions};}
  const receipt={...(scope?{scope}:{}),...(conversation?{mode:'conversation'}:{}),...(requestTarget?{requestTarget}:{}),...(steerTarget?{steerTarget}:{}),instruction:f.elements.instruction.value,attachments:[],travelContexts:structuredClone(travelEditors.get(id).value),requestId:newRequestId()};
  const message={...receipt,createdAt:new Date().toISOString(),draftVersion:draftVersions.get(id)||0,files:fileEditors.get(id).summaries,mode:requestTarget||steerTarget?'steering':!target?.canSend?'queue':'direct',stage:fileEditors.get(id).count?'uploading':'preparing'};
  outbox.set(id,message);storeDrafts();scrolls.get(id).latest();
@@ -717,7 +720,7 @@ $('#agents').onclick=e=>{
    else {const full=await api('/requests/get',{humanRequestId:q.id});await api(r.state==='completed'?'/human/requests/resume':'/human/requests/retry',{humanRequestId:q.id,workId:r.workId,revision:full.revision,operationId:newRequestId(),instruction:'失敗・中断からの復旧です。既存変更・PR・外部操作・requests get/resultsの子作業を確認し、未完了部分だけ進めてください。子作業の再委任や二重操作を避け、モデルは変更しないでください。委任ありのまとめ役だけfinishで申告してください。\n元の指示（全文はrequests getで確認）:\n'+(full.instruction||'').slice(0,12000)});}
   });return;
  }
- const reconcile=e.target.closest('[data-reconcile]');if(reconcile){if(navigator.onLine===false){browserOffline();return;}const id=reconcile.dataset.reconcile,receipt=pending.get(id);if(receipt)action(reconcile.closest('article'),async()=>{if(receipt.requestTarget){const [humanRequestId,workId]=receipt.requestTarget.split(':');await api('/human/requests/supplement',{humanRequestId,workId,operationId:receipt.requestId,instruction:receipt.instruction,attachments:receipt.attachments,travelContexts:receipt.travelContexts});}else await api('/agents/'+id+'/runs',receipt);await refresh();});return;}const manage=e.target.closest('[data-manage-agent]'),zoom=e.target.closest('[data-zoom]');if(manage)openMetadata(manage.dataset.manageAgent);if(zoom){toggleZoom(zoom.dataset.zoom);void refresh(true);}};
+ const reconcile=e.target.closest('[data-reconcile]');if(reconcile){if(navigator.onLine===false){browserOffline();return;}const id=reconcile.dataset.reconcile,receipt=pending.get(id);if(receipt)action(reconcile.closest('article'),async()=>{if(receipt.requestTarget){const [humanRequestId,workId]=receipt.requestTarget.split(':');await api('/human/requests/supplement',{humanRequestId,workId,operationId:receipt.requestId,instruction:receipt.instruction,attachments:receipt.attachments,travelContexts:receipt.travelContexts});}else await api('/agents/'+id+'/runs',receipt);await refresh();});return;}const scope=e.target.closest('[data-edit-scope]');if(scope){scope.closest('.agent-panel').querySelector('.input-scope').showModal();return;}const manage=e.target.closest('[data-manage-agent]'),zoom=e.target.closest('[data-zoom]');if(manage)openMetadata(manage.dataset.manageAgent);if(zoom){toggleZoom(zoom.dataset.zoom);void refresh(true);}};
 void refresh();subscribeChanges(()=>refresh(true),{onDisconnect:()=>{if(navigator.onLine===false){browserOffline();return;}connected=false;connectionStatus($('#connection'),'変更通知に再接続しています');if(state)renderBoard();}});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)restartSync();});
 window.addEventListener('pageshow',e=>{if(e.persisted)restartSync();});

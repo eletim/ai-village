@@ -49,7 +49,7 @@ export function continuationStatus(r,options={}){
  const unresolved=normal?'応答の結果はまだ届いていません':repair?'担当の起動設定の修復が必要です':e.available?'どこまでできたか、成果と残作業の確認が必要です':e.unresolved?.includes('接続')?'接続と現在の実行状況を確認できません':e.observed==='native-terminal'?'今、安全に再開できるかは未確認です':'受付または応答の結果を確認できません';
  const continuation=normal?'応答中です。再開操作は不要です':repair?'設定の修復が必要です':e.available?'成果を確認してから、残りの作業を続けられます':'確認が済むまで、続けてよいか判断できません';
  const next=normal?'':repair?'秘書に担当の起動設定の修復を依頼してください':e.available?'秘書が成果を確認し、残りの作業を担当へ依頼します':e.next?.operation==='agents list'?'秘書に担当の登録確認を依頼してください':e.unresolved?.includes('接続')?'秘書に接続確認を依頼してください':'秘書に受付・応答の確認を依頼してください';
- return {...e,human:{compact:normal,known,unresolved,continuation,next}};
+ return {...e,human:{compact:(!!options.agent&&['queued','sent','running'].includes(r.runModel.state.kind)&&!e.cause&&!r.errorCode&&options.agent?.agentModel?.observation?.connected!==false&&options.agent?.runtime?.alive!==false),known,unresolved,continuation,next}};
 }
 
 export function continuationScopeIntact(d,r){

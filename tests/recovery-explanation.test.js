@@ -36,7 +36,7 @@ test('missing registered assignee is diagnosed before any status observation sug
 test('normal density, plain abnormal guidance, and queued label are separated from technical instructions',async()=>{
  const normal=ended();normal.runModel.state={kind:'running'};normal.runModel.facts=[input];
  const e=continuationStatus(normal,{agent:{id:'a'}}),html=recoveryExplanationHTML(e);
- assert.match(html,/<details[^>]*><summary>受付の確認内容/);assert.doesNotMatch(html,/role="status"|継続:/);assert.equal(e.human.continuation,'応答中です。再開操作は不要です');
+ assert.equal(html,'');assert.doesNotMatch(html,/role="status"|継続:/);assert.equal(e.human.continuation,'応答中です。再開操作は不要です');
  const repair=ended();repair.runModel.state={kind:'ended',outcome:'unconfirmed',reason:'startup-contract-rejected'};repair.runModel.facts=[{type:'dispatch-blocked',at:1}];
  const rejected=continuationStatus(repair,{agent:{id:'a',initialInput:{},inputEnvelope:{mode:'blocked'}}});assert.equal(rejected.next.operation,'agents prepare-runtime');assert.match(recoveryExplanationHTML(rejected),/設定の修復が必要/);
  for(const v of [rejected,continuationStatus(ended(),{agent:{id:'a'}}),continuationStatus(normal,{agent:{id:'a',agentModel:{observation:{connected:false}}}})]){
@@ -44,4 +44,12 @@ test('normal density, plain abnormal guidance, and queued label are separated fr
   assert.match(recoveryExplanationHTML(v),/確認済み:.*未確認・必要な確認:.*継続:.*次の対応:/);
  }
  const {answerJobsHTML}=await import('../src/conversation-status.js');assert.match(answerJobsHTML({answerJobs:[{id:'q',code:'queued'}]}),/保存済み・送信待ち/);assert.doesNotMatch(answerJobsHTML({answerJobs:[{id:'q',code:'queued'}]}),/受付済み/);
+});
+
+test('healthy receipt wait is quiet from its first projection; unknown and disconnection stay explicit',()=>{
+ const r=ended('conversation');r.runModel.state={kind:'sent',sessionId:'s',sentAt:1};r.runModel.facts=[];
+ assert.match(recoveryExplanationHTML(conversationTurn(r).explanation),/次の対応/);
+ const a={id:'a'};assert.equal(recoveryExplanationHTML(conversationTurn(r,a).explanation),'');
+ for(const agent of [{id:'a',error:'unreachable'},{id:'a',runtime:{alive:false}}])assert.match(recoveryExplanationHTML(conversationTurn(r,agent).explanation),/次の対応/);
+ r.runModel.state={kind:'ended',outcome:'unconfirmed',reason:'timeout'};assert.match(recoveryExplanationHTML(conversationTurn(r,a).explanation),/次の対応/);
 });

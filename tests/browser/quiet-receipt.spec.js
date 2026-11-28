@@ -1,0 +1,17 @@
+import {test,expect,notifySnapshot} from './helpers/change-events.js';
+import {conversationTurn} from '../../server/conversation-status.mjs';
+test('send through receipt wait and response is quiet, errors remain, draft and disclosure survive refresh/revisit',async({page},info)=>{
+ const a={id:'s',name:'秘書',projectId:'p',location:'mayor',state:'idle',canSend:true,connection:{}};
+ const prior={id:'prior',agentId:'s',conversationId:'c',origin:'human',instruction:'前の質問',finalOutput:'回答本文は省略しません。'.repeat(30),output:'回答本文は省略しません。'.repeat(30),state:'completed',acceptedAt:'2026-01-01',displayMode:'progress',createdAt:'2026-01-01T00:00:00Z',conversationLifecycle:{code:'answered'}};
+ const state={agents:[a],projects:[{id:'p',name:'専用'}],workshops:[],runs:[prior],notification:{},capabilities:{secretaryConversations:true,requestInbox:true},requests:[]};let pending,run;
+ const update=(kind,error)=>{run.runModel.state=kind==='ended'?{kind,outcome:'unconfirmed',reason:'timeout'}:{kind,sessionId:'s',turnId:'t',inputId:'i',sentAt:1};run.runModel.facts=kind==='running'?[{type:'input',sessionId:'s',turnId:'t',inputId:'i'}]:[];run.error=error;run.state=kind==='sent'?'awaiting_input':kind;run.conversationLifecycle=conversationTurn(run,a);};
+ await page.route('**/api/**',route=>{const r=route.request();if(r.url().includes('?view=workspace'))return route.fulfill({json:state});if(r.method()==='POST'&&r.url().endsWith('/runs')){pending=route;const v=r.postDataJSON();run={id:'new',agentId:'s',conversationId:'c',origin:'human',conversationSource:{kind:'human'},requestId:v.requestId,instruction:v.instruction,createdAt:new Date().toISOString(),runModel:{phase:'conversation',facts:[],state:{kind:'queued'}}};update('queued');return;}return route.fulfill({json:{}});});
+ await page.goto('/agents');const card=page.locator('#agent-s'),input=card.locator('textarea'),log=card.locator('.runs');await expect(card.locator('form .input-scope')).toHaveCount(0);
+ await input.fill('新しい質問');await card.locator('[type=submit]').click();await expect(card.locator('.send-progress')).toContainText('送信');await expect(card.locator('.recovery-explanation')).toHaveCount(0);await page.screenshot({path:'/tmp/village-quiet-ui-2b18ba93/'+('sending.png')});
+ state.runs.push(run);await pending.fulfill({json:run});await notifySnapshot(page);await expect(card.locator('.run-status').last()).toHaveText('保存済み・送信待ち');await input.fill('次の下書き');
+ for(const kind of ['sent','running']){update(kind);await notifySnapshot(page);await expect(card.locator('.run-status').last()).toHaveText(kind==='sent'?'送信を確認中':'応答中');await expect(card.locator('.recovery-explanation')).toHaveCount(0);await expect(input).toHaveValue('次の下書き');await page.screenshot({path:'/tmp/village-quiet-ui-2b18ba93/'+(kind+'.png')});}
+ const summary=log.locator('details summary').first();if(await summary.count()){await summary.click();const opened=await summary.locator('..').evaluate(e=>e.open);await notifySnapshot(page);await expect.poll(()=>summary.locator('..').evaluate(e=>e.open)).toBe(opened);}
+ await log.evaluate(e=>e.scrollTop=0);await notifySnapshot(page);await expect.poll(()=>log.evaluate(e=>e.scrollTop)).toBe(0);
+ update('ended','connection-lost');await notifySnapshot(page);await expect(card.locator('.recovery-explanation')).toContainText('次の対応');await page.screenshot({path:'/tmp/village-quiet-ui-2b18ba93/'+('unknown.png')});
+ await page.reload();await expect(input).toHaveValue('次の下書き');await expect(card.locator('.recovery-explanation')).toContainText('次の対応');
+});
