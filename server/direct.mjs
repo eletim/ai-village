@@ -1,3 +1,4 @@
+import {inputScopesIntact} from './conversation-input-scope.mjs';
 import {initialInputObservation,applyInitialObservation,reserveInitialInput} from './initial-input.mjs';
 import {settleSupersededConversation} from './conversation-turn-observation.mjs';
 import {continuationBoundary,continuationScopeIntact} from './purpose-continuation.mjs';
@@ -5,14 +6,13 @@ import {initialRelayObservation,bindInitialRelayRuntime} from './relay-initial-l
 import {previewMessages} from './secretary-preview.mjs';
 import {retireDecisionReminder} from './conversation-decision-recovery.mjs';
 import {secretaryHandoverPlan,handoverSecretary} from './secretary-handover.mjs';
-import {retirementOption,retirementRecord,retirementIntact,retirementRunAllowed,latestRetirement} from './legacy-retirement.mjs';
-import {adoptionFreshProof,noCurrentRuntimeSends} from './adopted-fresh-runtime.mjs';
+import {retirementIntact,retirementRunAllowed,latestRetirement} from './legacy-retirement.mjs';
+import {noCurrentRuntimeSends} from './adopted-fresh-runtime.mjs';
 import {launchProfile as parseLaunchProfile,launchReceiptMatches,launchProfileReady} from './launch-profile.mjs';
 import {stoppedRuntimeEvidence} from '../src/stopped-runtime.js';
-import {sameRuntimeAttributes,currentRuntimeWorkplaceAllowed} from '../src/runtime-connection-identity.js';
+import {currentRuntimeWorkplaceAllowed} from '../src/runtime-connection-identity.js';
 import {SecretaryCommands} from './secretary-commands.mjs';
 import {Conversations} from './conversations.mjs';
-import {enrollLegacy,legacyAllowed,legacyContext,legacyReviewDue} from './legacy-contract.mjs';
 import {migrateCommonRequests} from './common-request-migration.mjs';
 import {PartitionStore} from './partition-store.mjs';
 import {RequestUnits} from './request-units.mjs';
@@ -27,7 +27,7 @@ import {migrateMarkerStore} from './marker-migration.mjs';
 import {remoteVillageConnection,connectionCommand,checkRemoteConnection} from './agent-connection.mjs';
 import {AgentRules} from './agent-rules.mjs';
 import {migrateCanonicalStore} from './canonical-migration.mjs';
-import {requestStatus} from './request-lifecycle.mjs';
+import {requestStatus,requestNotificationTarget} from './request-lifecycle.mjs';
 import {agentControls,bindAgent,agentChange,runtimeObservation,projectControls} from './agent-lifecycle.mjs';
 import {migrateAgentStore} from './agent-migration.mjs';
 import {changeRun,observeRun,tracking,modelOf,runState} from './run-lifecycle.mjs';
@@ -42,7 +42,7 @@ import {deleteAgent} from './agent-deletion.mjs';
 import {deletionPlan,deleteProject} from './project-deletion.mjs';
 import {stageAttachment} from './attachment-transfer.mjs';
 import {RequestFlow} from './requests.mjs';
-import {completedEntries} from '../src/completions.js';
+import {notificationEntries,reviewRevision,migrateNotificationReviews} from './notification-review.mjs';
 import {agentIdentity,agentPlaceName} from '../src/agent-identity.js';
 import {RuntimeReader} from './runtime-reader.mjs';
 import {inputMatches,resolveInputPosition,correlate,terminalBoundary,outputBetween} from './runtime-events.mjs';
@@ -74,6 +74,14 @@ export class DirectAgents {
     this.projectGuides=new ProjectGuides(undefined,this);
     this.flow=new RequestFlow(this);this.conversations=new Conversations(this);this.secretaryCommands=new SecretaryCommands(this);this.events=new EventEmitter();
     this.persistence=new PersistenceBoundary();
+    // Read committed Project settings at the final transport boundary. The gate
+    // starts transport synchronously; its network completion does not hold the writer barrier.
+    this.notifier.deliveryGate=(message,start)=>this.persistence.run(()=>{
+      const projectId=message.projectId||this.data.agents.find(a=>a.id===message.agentId)?.projectId;
+      const p=this.data.projects.find(p=>p.id===projectId);
+      const reason=p?.externalNotifications===false?'project-external-notifications-disabled':p?.externalNotificationsAfter&&!(Number(message.eventAt)>Date.parse(p.externalNotificationsAfter))?'project-notification-before-enable':null;
+      return reason?{reason,projectId}:{pending:start()};
+    });
     this.queue=Promise.resolve(); this.locks=new Map(); this.monitors=new Map();
     this.units=new RequestUnits(this);
     this.store=new PartitionStore({dir:this.dir,capture:()=>this.data,selection:()=>this.units.selection(),affected:c=>this.units.affected(c)});
@@ -105,7 +113,6 @@ export class DirectAgents {
     for(const a of this.data.agents) {
       a.connection.connectionType ||= 'ssh';
       a.inputEnvelope ||= {mode:'legacy'};
-      enrollLegacy(a);
       if(a.inputEnvelope.mode==='startup-v2'&&a.inputEnvelope.hash!==createHash('sha256').update(this.startupInstructions(a)).digest('hex'))a.inputEnvelope={...a.inputEnvelope,mode:'migration-required',reason:a.inputEnvelope.reason||'startup-contract-upgrade-required'};
       a.modelInfo={available:false};
       bindAgent(a);delete a.steerTarget;
@@ -116,6 +123,7 @@ export class DirectAgents {
     for(const p of this.data.projects)if(!p.deletedAt)await this.projectGuides.initialize(p);
     this.data.conversations ||= [];
     this.flow.init();this.conversations.init();
+    migrateNotificationReviews(this.data,humanProjection(this.data));
     await this.save();
     if(watch){for(const name of ['local-audit.jsonl','ssh-audit.jsonl'])void maintainAudit(this.dir,name).catch(()=>{});this.flow.reporting.start();this.monitor=new EventMonitor(this,this.hostFactory?{hostFactory:this.hostFactory}:{});this.monitor.start();void this.progress().catch(()=>{});}
   }
@@ -123,19 +131,18 @@ export class DirectAgents {
   presentation(){
     if(!this.presentationCache){const view=humanProjection(this.data);this.presentationCache={...view,projects:view.projects.filter(p=>!p.deletedAt),capabilities:{secretaryConversations:true,presence:true,requestSplitting:true,requestInbox:true,steering:true,travelContexts:true,attachments:!!this.attachments},reviews:this.reviewStates(view)};}
     // Completion emphasis follows the existing revision-bound read receipt.
-    // Keep normal-terminal/session checks in humanProjection; never use attention.
+    // Semantic notification eligibility is shared with delivery; no runtime-idle gate.
     const live=new Map(this.data.agents.map(a=>[a.id,a]));
     return {...this.presentationCache,agents:this.presentationCache.agents.map(a=>({...a,answerComplete:a.answerComplete===true&&this.presentationCache.reviews[a.id]?.unreviewed===true,lastCheckedAt:live.get(a.id)?.lastCheckedAt,runtime:live.get(a.id)?.runtime})),notification:this.notifier.status()};
   }
   snapshot(){return structuredClone(this.presentation());}
   reviewStates(view=humanProjection(this.data)){
     const keys=new Map(this.data.agents.map(a=>[a.id,[]]));
-    for(const entry of completedEntries(view))keys.get(entry.agentId)?.push(entry.key);
-    const finalRequests=(this.data.requests||[]).filter(q=>!q.conversationId&&requestStatus(q)==='completed');
-    for(const q of finalRequests)keys.get(q.finalAgentId)?.push('request:'+q.id+':'+q.finalRunId);
+    for(const entry of notificationEntries(this.data))keys.get(entry.agentId)?.push(entry.key);
+    const finalRequests=(this.data.requests||[]).filter(requestNotificationTarget);
     const legacy=new Set(this.data.reviewedCompletions||[]);
     return Object.fromEntries([...keys].map(([id,entries])=>{
-      const revision=createHash('sha256').update(JSON.stringify(entries.sort())).digest('hex');
+      const revision=reviewRevision(entries);
       const reviewed=this.data.agentReviews?.[id]===revision||(!this.data.agentReviews?.[id]&&entries.every(k=>legacy.has(k)));
       const attention=finalRequests.filter(q=>q.finalAgentId===id&&!q.reviewedAt).map(q=>q.id);
       return [id,{revision,hasCompleted:entries.length>0,unreviewed:entries.length>0&&!reviewed,attention:attention.length>0,attentionRequestIds:attention}];
@@ -171,7 +178,7 @@ export class DirectAgents {
     await this.save();
     return {...current,unreviewed:false,attention:false,attentionRequestIds:[]};
   }));}
-  discovery(){return {agents:this.data.agents.filter(a=>!a.deletedAt).map(a=>({...agentIdentity(a),leaderForProjects:this.data.projects.filter(p=>p.leaderAgentId===a.id&&!p.deletedAt).map(p=>p.id),projectId:a.projectId||null,projectName:this.data.projects.find(p=>p.id===a.projectId)?.name||null,metadataRevision:a.metadataRevision||0,displayOrder:a.displayOrder??null})),projects:structuredClone(this.data.projects.filter(p=>!p.deletedAt)),workshops:structuredClone(this.data.workshops),management:{workshopConnection:'PUT /api/direct/workshops/:id {villageConnection:{url?,cliPath,authFile?}|null}; SSH next-session connection only; never include credentials; existing runtimes unchanged',workshopPattern:'PUT /api/direct/workshops/:id {iconPattern:[none|line|diamond x8]}; null resets to stable default; omitted fields preserved',help:'node scripts/village.mjs help',agentUpdate:'PUT /api/direct/agents/:id {revision,name?,projectId?,displayOrder?:integer|null}',projects:'POST /api/direct/projects {requestId,name}; PUT /api/direct/projects/:id {revision,name?,suspended?:boolean,displayOrder?:integer|null (display only)}',projectDelete:'GET /api/direct/projects/:id/delete-plan; POST /api/direct/projects/:id/delete {operationId,revision,members}; deletes all member Agents, retry same operation on partial result',namePolicy:'村の表示名のみ変更。PurpleMuxのラベル、ID、セッション、接続先は維持。',requests:{help:'node scripts/village.mjs help',list:'GET /api/direct/requests',get:'POST /api/direct/requests/get {humanRequestId}',operations:'delegate / results / finish: POST /api/direct/requests/:operation',policy:'人間の依頼ごとに通知権1枚。正式delegateで親子を登録し、委任なしはnative正常終了、委任ありは子結果を確認後のfinishとnative正常終了で全体完了。生PurpleMux送信・旧runを自動関連付けしない。'}}};}
+  discovery(){return {agents:this.data.agents.filter(a=>!a.deletedAt).map(a=>({...agentIdentity(a),leaderForProjects:this.data.projects.filter(p=>p.leaderAgentId===a.id&&!p.deletedAt).map(p=>p.id),projectId:a.projectId||null,projectName:this.data.projects.find(p=>p.id===a.projectId)?.name||null,metadataRevision:a.metadataRevision||0,displayOrder:a.displayOrder??null})),projects:structuredClone(this.data.projects.filter(p=>!p.deletedAt)),workshops:structuredClone(this.data.workshops),management:{workshopConnection:'PUT /api/direct/workshops/:id {villageConnection:{url?,cliPath,authFile?}|null}; SSH next-session connection only; never include credentials; existing runtimes unchanged',workshopPattern:'PUT /api/direct/workshops/:id {iconPattern:[none|line|diamond x8]}; null resets to stable default; omitted fields preserved',help:'node scripts/village.mjs help',agentUpdate:'PUT /api/direct/agents/:id {revision,name?,projectId?,displayOrder?:integer|null}',projects:'POST /api/direct/projects {requestId,name}; PUT /api/direct/projects/:id {revision,name?,externalNotifications?:boolean (external delivery only; no replay),suspended?:boolean,displayOrder?:integer|null (display only)}',projectDelete:'GET /api/direct/projects/:id/delete-plan; POST /api/direct/projects/:id/delete {operationId,revision,members}; deletes all member Agents, retry same operation on partial result',namePolicy:'村の表示名のみ変更。PurpleMuxのラベル、ID、セッション、接続先は維持。',requests:{help:'node scripts/village.mjs help',list:'GET /api/direct/requests',get:'POST /api/direct/requests/get {humanRequestId}',operations:'delegate / results / finish: POST /api/direct/requests/:operation',policy:'人間の依頼ごとに通知権1枚。正式delegateで親子を登録し、委任なしはnative正常終了、委任ありは子結果を確認後のfinishとnative正常終了で全体完了。生PurpleMux送信・旧runを自動関連付けしない。'}}};}
   project(id){return this.data.projects.find(p=>p.id===id)||fail('Projectがありません',404);}
   projectDeletePlan(id){return deletionPlan(this,id);}
   deleteProject(id,input){return deleteProject(this,id,input);}
@@ -186,14 +193,16 @@ export class DirectAgents {
     if('pinned' in input)fail('先頭固定は廃止されました。表示順を指定してください',400);
     if(id){
       const p=this.writableProject(id);
-      if (!('name' in input)&&!('suspended' in input)&&!('displayOrder' in input)&&!('leaderAgentId' in input))fail('名前、suspendedまたはdisplayOrderを指定してください',400);
+      if (!('name' in input)&&!('suspended' in input)&&!('displayOrder' in input)&&!('leaderAgentId' in input)&&!('externalNotifications' in input))fail('名前、suspendedまたはdisplayOrderを指定してください',400);
+      if('externalNotifications' in input&&typeof input.externalNotifications!=='boolean')fail('externalNotificationsはbooleanです',400);
       if ('suspended' in input&&typeof input.suspended!=='boolean')fail('suspendedはbooleanです',400);
       if('displayOrder' in input&&input.displayOrder!==null&&!Number.isSafeInteger(input.displayOrder))fail('displayOrderは安全な整数またはnullです',400);
       if('leaderAgentId' in input&&input.leaderAgentId!==null){const leader=this.writableAgent(this.agent(input.leaderAgentId));if(leader.projectId!==id||leader.location!=='workshop')fail('同じProjectの工房Agentをリーダーに指定してください');}
       const name='name' in input?this.validName(input.name):p.name;
       if(!Number.isInteger(input.revision)||input.revision!==p.revision)fail('Projectが更新されています。再読込してください');
       if(this.data.projects.some(p=>!p.deletedAt&&p.id!==id&&p.name===name))fail('同名のProjectがあります');
-      Object.assign(p,{name,...('leaderAgentId' in input?{leaderAgentId:input.leaderAgentId}:{}),...('displayOrder' in input?{displayOrder:input.displayOrder}:{}),...('suspended' in input?{suspended:input.suspended}:{}),revision:p.revision+1,updatedAt:now()});
+      const enabledAfter=input.externalNotifications===true&&p.externalNotifications===false?{externalNotificationsAfter:now()}:{};
+      Object.assign(p,{name,...enabledAfter,...('externalNotifications' in input?{externalNotifications:input.externalNotifications}:{}),...('leaderAgentId' in input?{leaderAgentId:input.leaderAgentId}:{}),...('displayOrder' in input?{displayOrder:input.displayOrder}:{}),...('suspended' in input?{suspended:input.suspended}:{}),revision:p.revision+1,updatedAt:now()});
       await this.save();return {...p};
     }
     const name=this.validName(input.name);
@@ -279,10 +288,10 @@ export class DirectAgents {
       legacyRetirement:a.runtimeMigrations?.at(-1)?.legacyRetirement||null,
       retirementHolds:runs.filter(r=>r.queuedReason==='legacy-retirement-held').map(r=>({runId:r.id,workId:r.workId,humanRequestId:r.humanRequestId,reason:r.error})),
       queued:runs.filter(r=>modelOf(r).state.kind==='queued').map(r=>r.id),
-      legacyCompatibility:a.legacyContract||null,legacyDispatchAllowed:legacyAllowed(a),legacyMigrationReviewDue:legacyReviewDue(a),runtimeUpgrade:a.runtimeUpgrade||null,
+      legacyCompatibility:a.legacyContract||null,legacyDispatchAllowed:false,legacyMigrationReviewDue:!!a.legacyContract,runtimeUpgrade:a.runtimeUpgrade||null,
       conversations:(this.data.conversations||[]).filter(c=>c.agentId===id).map(c=>({conversationId:c.id,requiredRead:['conversations','get',c.id]})),
       requests:this.data.requests.flatMap(q=>q.requestGraph?.nodes.filter(n=>n.assignee===id&&n.state.kind==='active').map(n=>({humanRequestId:q.id,workId:n.id,currentRunId:n.currentRunId,revision:q.revision}))||[]),
-      migration:'依頼で許可された対象だけ agents prepare-runtime AGENT_ID {operationId,revision}で次送信を保留。現在runの正常終了・idleを確認。同じ登録属性の未使用新Agentをcreate。agents adopt-runtime AGENT_ID {operationId,revision,replacementAgentId,replacementRevision,handover}で既存IDへランタイム採用。queuedは同じrunを保持。sent/runningは終端待ち。旧ランタイムの停止は別途判断。'};
+      migration:'状況確認→必要ならprepare-runtimeで設定修復→通常followup。セッション交換は同じAgentを使用し、管理対象の停止確認後にadopt-runtime {operationId,revision,handover}。別Agentを作成・指定しない。未確認の実行は自動再送しない。'};
   }
   async prepareRuntime(id,x){
     if(!x||typeof x.operationId!=='string'||! /^[\w-]{8,100}$/.test(x.operationId)||!Number.isInteger(x.revision)||Object.keys(x).some(k=>!['operationId','revision'].includes(k)))fail('prepare-runtimeの入力が不正です',400);
@@ -301,85 +310,62 @@ export class DirectAgents {
       a.runtimeUpgrade={state:'prepared',operationId:x.operationId,revision:x.revision,at:now()};a.metadataRevision=(a.metadataRevision||0)+1;await this.save();return structuredClone(a.runtimeUpgrade);
     }));
   }
-  async adoptRuntime(id,x,{human=false}={}){
-    if(x?.retireLegacyHistory&&!human)fail('限定退役は人間専用画面APIで承認してください',403);
-    if(!x||typeof x.operationId!=='string'||! /^[\w-]{8,100}$/.test(x.operationId)||typeof x.replacementAgentId!=='string'||x.replacementAgentId===id||!Number.isInteger(x.revision)||!Number.isInteger(x.replacementRevision)||Object.keys(x).some(k=>!['operationId','replacementAgentId','revision','replacementRevision','handover','retireLegacyHistory'].includes(k)))fail('runtime adoptionの入力が不正です',400);
-    if(x.handover!==undefined&&(typeof x.handover!=='string'||!x.handover.trim()||x.handover.length>30000))fail('handoverは1〜30000文字です',400);
-    retirementOption(x.retireLegacyHistory);
-    const payload=JSON.stringify({...(x.retireLegacyHistory?{retireLegacyHistory:x.retireLegacyHistory}:{}),replacementAgentId:x.replacementAgentId,revision:x.revision,replacementRevision:x.replacementRevision,...(x.handover!==undefined?{handover:x.handover}:{})});
-    return this.locked('projects',()=>this.locked(id,()=>this.locked(x.replacementAgentId,async()=>{
-      const a=this.agent(id),b=this.agent(x.replacementAgentId),receipt=a.runtimeMigrations?.find(m=>m.operationId===x.operationId);
-      if(receipt){if(receipt.payload!==payload)fail('operationIdの再利用です');return structuredClone(receipt);}
-      this.writableAgent(a);this.writableAgent(b);
-      if(latestRetirement(a))fail('限定退役の保留履歴があります。追加のruntime交換は別途設計・確認が必要です');
-      if((a.metadataRevision||0)!==x.revision||(b.metadataRevision||0)!==x.replacementRevision)fail('Agentが更新されています。再読込してください');
-      const checkIdentity=()=>{
-        if(!sameRuntimeAttributes(a,b))fail('同じ場所・Project・provider・接続の未使用Agentを指定してください');
-        const workshop=this.data.workshops.find(w=>w.id===a.workshopId);
-        if(!currentRuntimeWorkplaceAllowed(a,workshop))fail('現在の工房の接続先と作業場所の許可を確認してください');
+  async adoptRuntime(id,x){
+    if(!x||typeof x.operationId!=='string'||! /^[\w-]{8,100}$/.test(x.operationId)||!Number.isInteger(x.revision)||typeof x.handover!=='string'||!x.handover.trim()||x.handover.length>30000||Object.keys(x).some(k=>!['operationId','revision','handover'].includes(k)))fail('同じAgentのセッション交換にはoperationId/revision/handoverを指定してください。別Agentとの交換は廃止しました',400);
+    const payload=JSON.stringify(x);
+    return this.locked('projects',()=>this.locked(id,async()=>{
+      const a=this.agent(id),old=a.runtimeMigrations?.find(m=>m.operationId===x.operationId);
+      if(old){if(old.payload!==payload)fail('operationIdの再利用です');return structuredClone(old);}
+      const pending=a.runtimeUpgrade;
+      if(pending?.candidate){if(pending.operationId!==x.operationId||pending.payload!==payload)fail('先行するセッション準備の結果を確認してください。新しく作成しません');return structuredClone(pending);}
+      this.writableAgent(a);
+      if((a.metadataRevision||0)!==x.revision)fail('Agentが更新されています。状態を再確認してください');
+      if(a.provider!=='codex'||a.connection.connectionType!=='local')fail('この接続先は同Agent内のセッション交換に未対応です。通常の入力・観測は継続できます');
+      if(latestRetirement(a))fail('旧履歴の移行判断が残っています。保存資料を確認してください');
+      if(!stoppedRuntimeEvidence(a))fail('現在のAgentの停止確認が必要です。状況を確認し、停止権限のある担当が通常の停止操作を行ってください。成果プロセスの終了は交換条件にしていません');
+      if(this.data.runs.some(r=>r.agentId===id&&(['sent','running'].includes(modelOf(r).state.kind)||modelOf(r).state.outcome==='unconfirmed')))fail('受付不明・未終了の実行があります。保存事実を変更せず、先に状態を確認してください');
+      const workshop=this.data.workshops.find(w=>w.id===a.workshopId);
+      if(!currentRuntimeWorkplaceAllowed(a,workshop))fail('登録された接続先・作業場所を確認してください');
+      const cap=await this.pmux(a,'tab','capabilities');
+      if(cap.initialCodexLaunch?.ownedInput!==1||cap.initialCodexLaunch?.client!==1)fail('PurpleMuxの所有付き初回入力に対応していません');
+      const proof=JSON.stringify([a.ownedProcesses,a.processVerification,a.terminatedAt,a.workspaceId,a.tabId,a.sessionName]);
+      const absent=async()=>{
+        const checkTabs=async()=>{const {tabs}=await this.pmux(a,'tab','list','-w',a.workspaceId);
+          if(!Array.isArray(tabs)||tabs.some(t=>!t||typeof t.tabId!=='string'||t.tabId===a.tabId||t.sessionName===a.sessionName))fail('旧セッションの不在を確認できません');};
+        await checkTabs();
+        const p=JSON.parse(await this.execute(a,['python3','-c',verifyAbsentProcessesScript,JSON.stringify(a.ownedProcesses)]));
+        if(p.absent!==true||p.checked!==a.ownedProcesses.length)fail('管理対象だった旧プロセスの不在を確認できません');
+        await checkTabs();
       };
-      checkIdentity();
-      if(!b.tabId||b.tabId===a.tabId||!b.workspaceId||b.workspaceId===a.workspaceId)fail('独立した新ランタイムが必要です');
-      if(this.data.runs.some(r=>r.agentId===b.id)||this.data.requests.some(q=>q.requestGraph?.nodes.some(n=>n.assignee===b.id)))fail('移行元ランタイムは未使用である必要があります');
-      if(this.data.runs.some(r=>r.agentId===id&&['sent','running'].includes(modelOf(r).state.kind)))fail('受付不明・実行中runの追跡が残っています。自動再送せず終端を確認してください');
-      if(this.data.runs.some(r=>r.agentId===id&&r.dispatchAttemptedAt)&&!x.handover?.trim())fail('過去の外部操作・未完了事項・不明点を確認したhandoverが必要です',400);
-      const retirement=x.retireLegacyHistory?retirementRecord(this.data,a,b,x.retireLegacyHistory):null;
-      const stopped=a.agentModel?.intent==='stop';
-      const stopProof=()=>JSON.stringify([a.agentModel,a.terminatedAt,a.ownedProcesses,a.processVerification,a.workspaceId,a.tabId,a.sessionName]);
-      const proof=stopProof();
-      if(stopped&&!stoppedRuntimeEvidence(a))fail('停止済ランタイムの永続証拠が不足しています');
-      const unresolved=()=>this.data.runs.some(r=>r.agentId===id&&( ['sent','running'].includes(modelOf(r).state.kind)||modelOf(r).state.outcome==='unconfirmed'));
-      if(stopped&&!retirement&&unresolved())fail('停止済ランタイムに受付不明の履歴が残っています。確認が必要です');
-      if(stopped&&!x.handover?.trim())fail('停止済ランタイムの外部操作・未完了事項を確認したhandoverが必要です',400);
-      const oldSnapshot=stopped?{available:false,inputs:[],turns:a.nativeTurns||[]}:await this.observe(a),fresh=await this.observe(b);
-      if((oldSnapshot.inputs.length||oldSnapshot.turns.length)&&!x.handover?.trim())fail('native履歴の外部操作・未完了事項・不明点を確認したhandoverが必要です',400);
-      if((!stopped&&(!agentControls(a).canSend||!oldSnapshot.available))||!agentControls(b).canSend||!(fresh.available||b.provider==='claude'&&fresh.unrecorded===true)||fresh.inputs.length||fresh.turns.length)fail('両ランタイムのidleと新ランタイムの未使用を確認できません');
-      if(this.data.runs.some(r=>r.agentId===id&&['sent','running'].includes(modelOf(r).state.kind)))fail('受付中runが発生しました');
-      if(!launchProfileReady(b))fail('新ランタイムのlaunchProfile/startup観測を確認できません');
-      if(a.launchProfile&&JSON.stringify(a.launchProfile)!==JSON.stringify(b.launchProfile))fail('移行前のlaunchProfileを保持してください');
-      await this.verifyInstructions(b);
-      if(b.inputEnvelope?.mode!=='startup-v2'||b.inputEnvelope.hash!==createHash('sha256').update(this.startupInstructions(b)).digest('hex'))fail('新ランタイムの固定起動契約を確認できません');
-      let stoppedVerification=null;
-      const verifyStopped=async()=>{
-        const checkTab=async()=>{
-          const {tabs}=await this.pmux(a,'tab','list','-w',a.workspaceId);
-          if(!Array.isArray(tabs)||tabs.some(t=>!t||typeof t.tabId!=='string'||t.tabId===a.tabId||t.sessionName===a.sessionName))fail('旧tabの不在を確認できません');
-        };
-        await checkTab();
-        const check=JSON.parse(await this.execute(a,['python3','-c',verifyAbsentProcessesScript,JSON.stringify(a.ownedProcesses)]));
-        if(check.absent!==true||check.checked!==a.ownedProcesses.length)fail('旧プロセスの不在を確認できません');
-        await checkTab();
-        stoppedVerification={at:now(),tabAbsent:true,...check};
-      };
-      if(stopped)await verifyStopped();
-      const freshProof=adoptionFreshProof(a,b,this.data.runs,oldSnapshot);
-      const oldObservation=structuredClone(a.agentModel.observation),freshObservation=structuredClone(b.agentModel.observation);
-      const keys=['villageConnection','secretaryGuideSeen','launchProfile','launchEvidence','workspaceId','initialTabId','tabId','sessionName','terminalUrl','runtime','observedSessionId','inputEnvelope','modelInfo','setupRequired','ownedProcesses','processVerification','terminatedAt','lastCheckedAt'];
-      const fields=o=>Object.fromEntries(keys.filter(k=>o[k]!==undefined).map(k=>[k,structuredClone(o[k])]));
-      const old=fields(a),replacement=fields(b);
-      return this.persist(async()=>{
-        // Workshop edits can occur during native observation. Recheck at the atomic swap.
-        checkIdentity();
-        if(retirement){
-          await verifyStopped();
-          const lastFresh=await this.observe(b);await this.verifyInstructions(b);
-          if(!(lastFresh.available||b.provider==='claude'&&lastFresh.unrecorded===true)||lastFresh.inputs.length||lastFresh.turns.length)fail('保存前に新runtimeの未使用を確認できません');
-          if(!agentControls(b).canSend||JSON.stringify(retirementRecord(this.data,a,b,x.retireLegacyHistory))!==JSON.stringify(retirement))fail('退役保存前の履歴・予約・新runtime証拠が変化しました');
-        }
-        if(JSON.stringify(adoptionFreshProof(a,b,this.data.runs,oldSnapshot))!==JSON.stringify(freshProof))fail('採用前の履歴・runtime証明が変化しました');
-        if(stopped&&(!stoppedRuntimeEvidence(a)||stopProof()!==proof||!retirement&&unresolved()||!agentControls(b).canSend))fail('停止済ランタイムの証拠または追跡状態が変更されました');
-        // No request, run, input, result or notification is reissued or reassigned.
-        const record={operationId:x.operationId,payload,...(retirement?{legacyRetirement:retirement}:{}),...(freshProof?{freshProof}:{}),...(stoppedVerification?{stoppedVerification}:{}),at:now(),agentId:id,replacementAgentId:b.id,oldRuntime:structuredClone(old),newRuntime:structuredClone(replacement),handover:x.handover||null,requestContexts:this.data.requests.flatMap(q=>(q.requestGraph?.nodes||[]).filter(n=>n.assignee===id).map(n=>({humanRequestId:q.id,workId:n.id})))};
-        a.nativeTurns=(a.nativeTurns||[]).map(t=>({...t,sessionId:t.sessionId||a.observedSessionId}));
-        for(const k of keys){delete a[k];delete b[k];}Object.assign(a,replacement);Object.assign(b,old);
-        a.agentModel={...a.agentModel,intent:null,observation:freshObservation};
-        b.agentModel={...b.agentModel,intent:stopped?'stop':null,observation:oldObservation};
-        b.inputEnvelope={...b.inputEnvelope,mode:'migration-required',reason:'runtime-retired'};b.runtimeRetiredTo=a.id;b.name=b.name+'（旧ランタイム保管）';b.nativeTurns=[];
-        delete a.error;delete a.steerTarget;delete b.steerTarget;a.metadataRevision=(a.metadataRevision||0)+1;b.metadataRevision=(b.metadataRevision||0)+1;
-        if(a.runtimeUpgrade)a.runtimeUpgrade={...a.runtimeUpgrade,state:'adopted',adoptionOperationId:x.operationId};
-        (a.runtimeMigrations ||= []).push(record);await this.save();return structuredClone(record);
-      });
-    })));
+      await absent();
+      if(!stoppedRuntimeEvidence(a)||proof!==JSON.stringify([a.ownedProcesses,a.processVerification,a.terminatedAt,a.workspaceId,a.tabId,a.sessionName]))fail('交換前の所有条件が変更されています');
+      const candidate={id:a.id,name:a.name,location:a.location,projectId:a.projectId,workshopId:a.workshopId,connection:structuredClone(a.connection),cwd:a.cwd,provider:a.provider};
+      bindAgent(candidate);agentChange(candidate,{type:'start',actor:'human'});
+      await this.persist(async()=>{a.runtimeUpgrade={state:'creating',operationId:x.operationId,payload,revision:x.revision,at:now(),candidate};a.metadataRevision=(a.metadataRevision||0)+1;await this.save();});
+      try{
+        const ws=await this.pmux(candidate,'workspace','create','--cwd',candidate.cwd,'--name',`AI村 ${a.name} · ${id} · session ${a.metadataRevision}`);
+        if(!ws.id||!ws.initialTab?.tabId)throw Error('workspaceの作成受付を確認できません');
+        await this.persist(async()=>{Object.assign(candidate,{workspaceId:ws.id,initialTabId:ws.initialTab.tabId});await this.save();});
+        await this.installInstructions(candidate);
+        if(candidate.inputEnvelope?.mode!=='startup-v2')throw Error('新しい起動契約の配置を確認できません');
+        const {tabs}=await this.pmux(candidate,'tab','list','-w',ws.id),tab=tabs?.find(t=>t.workspaceId===ws.id&&t.tabId===ws.initialTab.tabId&&!t.agentProviderId);
+        if(!tab?.sessionName)throw Error('新しい未使用shellの所有を確認できません');
+        const url=new URL(workshop.baseUrl);url.searchParams.set('workspace',ws.id);url.searchParams.set('tab',tab.tabId);
+        Object.assign(candidate,{tabId:tab.tabId,sessionName:tab.sessionName,initialInput:{shellTabId:tab.tabId,sessionName:tab.sessionName},terminalUrl:url.href});
+        await absent();
+        if(!stoppedRuntimeEvidence(a)||proof!==JSON.stringify([a.ownedProcesses,a.processVerification,a.terminatedAt,a.workspaceId,a.tabId,a.sessionName])||!currentRuntimeWorkplaceAllowed(a,this.data.workshops.find(w=>w.id===a.workshopId)))throw Error('交換前の所有・接続条件が変化しました');
+        return await this.persist(async()=>{
+          const keys=['workspaceId','initialTabId','tabId','sessionName','terminalUrl','runtime','observedSessionId','inputEnvelope','initialInput','modelInfo','setupRequired','ownedProcesses','processVerification','terminatedAt','lastCheckedAt','nativeTurns','launchReceipt','launchEvidence','contractVerifiedSessionId','secretaryGuideSeen'];
+          const fields=o=>Object.fromEntries(keys.filter(k=>o[k]!==undefined).map(k=>[k,structuredClone(o[k])]));
+          const record={operationId:x.operationId,payload,at:now(),agentId:id,generation:a.metadataRevision,oldRuntime:fields(a),newRuntime:fields(candidate),handover:x.handover,closedExecutions:this.data.runs.filter(r=>r.agentId===id&&this.data.requests.some(q=>q.requestGraph.nodes.some(w=>w.currentRunId===r.id))&&r.runModel?.state.kind==='ended'&&['normal','failed','interrupted'].includes(r.runModel.state.outcome)&&r.runModel.state.reason==='native-terminal').map(r=>({runId:r.id,outcome:r.runModel.state.outcome,factsDigest:createHash('sha256').update(JSON.stringify(r.runModel.facts)).digest('hex')})),requestContexts:this.data.requests.flatMap(q=>q.requestGraph.nodes.filter(w=>w.assignee===id).map(w=>({humanRequestId:q.id,workId:w.id})))};
+          for(const key of keys)delete a[key];Object.assign(a,fields(candidate));a.agentModel=candidate.agentModel;a.nativeTurns=[];delete a.error;delete a.steerTarget;
+          a.runtimeUpgrade={state:'adopted',operationId:x.operationId};(a.runtimeMigrations||=[]).push(record);await this.save();return structuredClone(record);
+        });
+      }catch(error){
+        if(error.persistenceFailure)throw error;
+        return this.persist(async()=>{a.runtimeUpgrade.state='unknown';a.runtimeUpgrade.error='新セッションの準備結果を確認できません。保存された対象を確認し、自動作成・切替はしません。 '+error.message;await this.save();return structuredClone(a.runtimeUpgrade);});
+      }
+    }));
   }
   // The fixed contract text an Agent was (or is to be) started with: version 3 or 2.
   startupInstructions(a){const rules=this.connectionRules(a);return a?.inputEnvelope?.contract===3?rules.startup3():rules.startup();}
@@ -521,13 +507,16 @@ export class DirectAgents {
     const a=this.agent(r.agentId);
     const blocked=(reason,message=reason)=>this.persist(async()=>{changeRun(r,{type:modelOf(r).state.kind==='queued'?'dispatch-blocked':'lost',actor:'program',at:Date.now(),reason});r.error=message;await this.save();return r;});
     const retirementHold=()=>this.holdRetiredRun(r);
+    if(r.autoRecoveryFrom||r.purposeContinuation?.deliveryId||r.relayRecoveryOf||r.conversationSource?.kind==='secretary')return blocked('legacy-recovery-read-only','旧回復形式は履歴・進行中の観測専用です。未送信の旧入力は自動送信しません。');
+    if(r.humanRequestId&&!this.flow.work(this.flow.root(r.humanRequestId),r.workId).inbox)return blocked('legacy-work-read-only','旧形式の仕事は履歴と送信済みの観測専用です。未送信の処理は移行判断まで保留します。');
+    if(!inputScopesIntact(this,r))return blocked('dispatch-boundary-changed','入力の対象許可が変わりました。新しい指示を確認してください。');
     if(!retirementRunAllowed(this.data,a,r))return retirementHold();
+    if(r.childContinuation)return blocked('legacy-continuation-held','旧形式の未送信継続は保留しています。仕事の移行確認が必要です。再送はしていません。');
     if(this.agentDeleting(a)||(a.agentModel?.intent==='stop'||agentControls(a).state==='terminated')||!a.tabId)return blocked('target-unavailable-before-dispatch');
     const baseline=await this.observe(a);
     if(!retirementIntact(this.data,a))return retirementHold();
     if(this.agentDeleting(a))return blocked('project-deletion-before-dispatch');
-    if(r.purposeContinuation&&(!continuationScopeIntact(this,r)||!continuationBoundary(this.flow.run(r.runModel.retryOf),baseline,a.runtime)))return blocked('dispatch-boundary-changed','継続元の実行境界が変わりました。現在の入力・終端を再観測してください。');
-    if(r.childContinuation&&!this.flow.childContinuationBoundary(this.flow.run(r.runModel.retryOf),baseline,a.runtime))return blocked('dispatch-boundary-changed','継続元の終了境界が変わりました。自動送信せず状況確認が必要です。');
+    if(r.purposeContinuation&&(!continuationScopeIntact(this,r)||!continuationBoundary(this.flow.run(r.runModel.retryOf),baseline,a.runtime,a)))return blocked('dispatch-boundary-changed','継続元の実行境界が変わりました。現在の入力・終端を再観測してください。');
     // Resolve at dispatch, under the agent lock. Earlier queued input and every
     // unacknowledged send retain their place; another conversation never steers.
     const chooseConversationTarget=snapshot=>{if(r.conversationId&&r.conversationSource?.kind==='human'&&!r.dispatchAttemptedAt){
@@ -551,11 +540,10 @@ export class DirectAgents {
     let confirmed=r.attachments?.length?await this.observe(a):baseline;
     chooseConversationTarget(confirmed);
     if(!allowed(confirmed)||this.agentDeleting(a)){if(r.steerTarget)return blocked('dispatch-boundary-changed','添付転送中に補足対象が変わりました。自動送信しません。');return r;}
-    if(r.childContinuation&&!this.flow.childContinuationBoundary(this.flow.run(r.runModel.retryOf),confirmed,a.runtime))return blocked('dispatch-boundary-changed','添付転送中に継続元の終了境界が変わりました。自動送信しません。');
-    if(r.autoRecoveryFrom&&(Date.now()>r.recoveryDeadline||!this.flow.recoveryBoundary(this.flow.run(r.autoRecoveryFrom),confirmed,a.runtime)))return blocked('dispatch-boundary-changed','自動再試行前に新しい入力または状態変化を検出しました。requests getで確認し手動で復旧してください。');
+
     await this.verifyInstructions(a);
     if(a.initialInput&&confirmed.initialInputReady&&a.inputEnvelope?.mode!=='startup-v2')return blocked('startup-contract-rejected','未起動workspaceの契約を確認できません。agents prepare-runtimeで契約を再配置後、通常followupを使用してください。');
-    if(a.runtimeUpgrade?.state==='prepared'||a.runtimeRetiredTo||(a.inputEnvelope?.mode!=='startup-v2'&&!legacyAllowed(a))){
+    if(a.runtimeUpgrade?.state==='prepared'||a.runtimeRetiredTo||a.inputEnvelope?.mode!=='startup-v2'){
       if(r.queuedReason==='startup-contract-migration-required')return r;
       return this.persist(async()=>{r.queuedReason='startup-contract-migration-required';r.error='起動契約の更新待ち。未送信のまま保留しています。runtime adoption後に同じrunを送信します。';await this.save();return r;});
     }
@@ -569,8 +557,7 @@ export class DirectAgents {
       confirmed=await this.observe(a);chooseConversationTarget(confirmed);
       if(!allowed(confirmed))return r;
     }
-    if(r.relayRecoveryOf)return blocked('legacy-recovery-read-only','旧回復形式は履歴・進行中の観測専用です。未送信の旧入力は自動送信しません。');
-    if(r.purposeContinuation&&(!continuationScopeIntact(this,r)||!continuationBoundary(this.flow.run(r.runModel.retryOf),confirmed,a.runtime)))return blocked('dispatch-boundary-changed','送信前に継続元の実行境界が変わりました。自動送信しません。');
+    if(r.purposeContinuation&&(!continuationScopeIntact(this,r)||!continuationBoundary(this.flow.run(r.runModel.retryOf),confirmed,a.runtime,a)))return blocked('dispatch-boundary-changed','送信前に継続元の実行境界が変わりました。自動送信しません。');
     const status=a.runtime;
     if(runState(r)!=='queued'||r.phase==='report'&&!this.flow.reportCurrent(r))return r;
     // Contract 3 secretary turn (4.1, 4.4): only the tag; the Project policy is mentioned once when
@@ -579,14 +566,15 @@ export class DirectAgents {
     const guide=plain&&a.projectId?await this.projectGuides.get(a.projectId,'secretary').catch(()=>null):null;
     if(r.purposeContinuation){
       confirmed=await this.observe(a);
-      if(!continuationScopeIntact(this,r)||!continuationBoundary(this.flow.run(r.runModel.retryOf),confirmed,a.runtime))return blocked('dispatch-boundary-changed','照会待ち中に継続元の状態が変わりました。現在の入力・終端を再観測してください。');
+      if(!continuationScopeIntact(this,r)||!continuationBoundary(this.flow.run(r.runModel.retryOf),confirmed,a.runtime,a))return blocked('dispatch-boundary-changed','照会待ち中に継続元の状態が変わりました。現在の入力・終端を再観測してください。');
     }
     const deliveredInstruction=await this.persist(async()=>{
+      if(!inputScopesIntact(this,r)){changeRun(r,{type:'dispatch-blocked',actor:'program',at:Date.now(),reason:'dispatch-boundary-changed'});r.error='入力の対象許可が変わりました。再送していません。';await this.save();return null;}
       if(retireDecisionReminder(this.data,r)){await this.save();return null;}
       if(r.purposeContinuation&&!continuationScopeIntact(this,r)){changeRun(r,{type:'dispatch-blocked',actor:'program',at:Date.now(),reason:'dispatch-boundary-changed'});r.error='後着入力または目的が変わりました。現在の指示を確認してください。';await this.save();return null;}
       if(this.agentDeleting(a)||runState(r)!=='queued'||r.phase==='report'&&!this.flow.reportCurrent(r))return null;
       if(!retirementIntact(this.data,a)||!retirementRunAllowed(this.data,a,r))return null;
-      const compatibility=legacyAllowed(a);if(a.inputEnvelope?.mode!=='startup-v2'&&!compatibility)return null;
+      if(a.inputEnvelope?.mode!=='startup-v2')return null;
       if(confirmed.unrecorded===true&&!confirmed.initialInputReady&&!noCurrentRuntimeSends(a,this.data.runs,a.runtime,confirmed,createHash('sha256').update(this.startupInstructions(a)).digest('hex')))return null;
       const instruction=r.phase==='report'?this.flow.reportPrompt(this.flow.root(r.humanRequestId)):r.instruction;
       r.instruction=instruction;r.attachmentFiles=files;r.attachmentError=null;delete r.queuedReason;delete r.error;
@@ -599,11 +587,11 @@ export class DirectAgents {
       // fingerprint; never relax matching or reinterpret already-dispatched runs.
       const policy=guide?.available&&a.secretaryGuideSeen!==a.projectId+':'+guide.hash?'Projectの方針が更新されました（projects guide '+a.projectId+' secretary で読めます）。\n\n':'';
       if(policy)a.secretaryGuideSeen=a.projectId+':'+guide.hash;
-      const body=policy+instruction+(plain?'':this.secretaryContext(a))+this.flow.context(r)+(compatibility?legacyContext(this.rules,r,a):'');
+      const body=policy+instruction+(plain?'':this.secretaryContext(a))+this.flow.context(r);
       const text=a.provider==='codex'?body.trim():body;
       if(r.steerTarget){const previous=this.flow.run(r.steerTarget.runId);if(r.conversationId)changeRun(previous,{type:'supersede',actor:'human',successorId:r.id});else changeRun(previous,{type:'close-tracking',actor:'human',reason:'steering-successor-dispatched'});}
       changeRun(r,{type:'dispatch',actor:'program',at:Date.now(),sessionId:confirmed.sessionId||null,agentIdle:true});
-      Object.assign(r,{inputCorrelation:inputCorrelation(text,a.provider),inputEnvelopeMode:compatibility?'legacy-compat':'startup-v2',dispatchAttemptedAt:now(),baselineRuntime:{sessionId:confirmed.sessionId,cursor:confirmed.cursor,fileIdentity:confirmed.fileIdentity},agentSessionId:status.agentSessionId||null});
+      Object.assign(r,{inputCorrelation:inputCorrelation(text,a.provider),inputEnvelopeMode:'startup-v2',dispatchAttemptedAt:now(),baselineRuntime:{sessionId:confirmed.sessionId,cursor:confirmed.cursor,fileIdentity:confirmed.fileIdentity},agentSessionId:status.agentSessionId||null});
       reserveInitialInput(a,r,text);
       await this.save();return text;
     });
@@ -778,7 +766,7 @@ export class DirectAgents {
           if(q)await this.units.run(id,async()=>{await this.flow.pump(false,[q],false);await this.flow.notifications([q]);});
           this.store.acknowledge(id,version);
         }
-        await this.conversations.relayService?.returns();
+        // Legacy relay records are observed, never create new return executions.
         await this.conversations.recoverDecisions();
         await this.conversations.notifications();
         await this.flow.dispatchReady();

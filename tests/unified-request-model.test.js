@@ -46,7 +46,7 @@ test('manual closure cannot hide an executing dependency; terminal failure is pr
 for(const action of ['respond','finish'])for(const decision of ['accept','rework'])for(const outcome of ['normal','failed','interrupted','unconfirmed'])test(`${action} ${decision} commits only on its own normal end: ${outcome}`,()=>{
  const runs=[run('p','parent'),run('c','child','ended')];let g=reconcileGraph(fixture(),runs);
  const event={type:action,actor:'agent',requestId:'parent',runId:'p',operationId:'claim',at:1,results:[{requestId:'child',resultId:'c',version:1,decision}]};
- g=transitionGraph(g,event,runs).value;
+ if(decision==='rework'){assert.equal(transitionGraph(g,event,runs).ok,false);g.nodes[0].claims.push({...event.results[0],actor:'agent',actorRunId:'p',operationId:'claim'});}else g=transitionGraph(g,event,runs).value;
  assert.equal(g.nodes[0].claims.length,1);assert.equal(g.nodes[0].handling.length,0);assert.equal(g.nodes[1].state.kind,'submitted');assert.equal(graphSteps(g,runs).length,1);
  const ended=[run('p','parent','ended',outcome),runs[1]];g=reconcileGraph(g,ended);
  assert.equal(g.nodes[0].handling.length,outcome==='normal'?1:0);assert.equal(g.nodes[1].state.kind,outcome==='normal'&&decision==='accept'?'completed':'submitted');
@@ -56,7 +56,7 @@ for(const action of ['respond','finish'])for(const decision of ['accept','rework
 test('partial claims remain uncommitted after failure; a later valid run can make a different decision',()=>{
  const runs=[run('p','parent'),run('c','child','ended')];let g=reconcileGraph(fixture(),runs);
  const claim={type:'respond',actor:'agent',requestId:'parent',runId:'p',operationId:'old',at:1,results:[{requestId:'child',resultId:'c',version:1,decision:'rework'}]};
- g=transitionGraph(g,claim,runs).value;runs[0]=run('p','parent','ended','failed');g=reconcileGraph(g,runs);
+ g.nodes[0].claims.push({...claim.results[0],actor:'agent',actorRunId:'p',operationId:'old'});runs[0]=run('p','parent','ended','failed');g=reconcileGraph(g,runs);
  const next=run('next','parent','queued');next.run.retryOf='p';runs.push(next);
  g=transitionGraph(g,{type:'attempt',actor:'human',requestId:'parent',runId:'next',report:false},runs).value;
  runs[2]=run('next','parent');runs[2].run.retryOf='p';
@@ -67,9 +67,10 @@ test('partial claims remain uncommitted after failure; a later valid run can mak
 test('replacement reservation is not dependency resolution until the declaring run succeeds',()=>{
  for(const outcome of ['normal','failed','interrupted','unconfirmed']){
   const runs=[run('p','parent'),run('c','child','ended')];let g=reconcileGraph(fixture(),runs);
-  g=transitionGraph(g,{type:'respond',actor:'agent',requestId:'parent',runId:'p',operationId:'rework',at:1,results:[{requestId:'child',resultId:'c',version:1,decision:'rework'}]},runs).value;
+  g.nodes[0].claims.push({requestId:'child',resultId:'c',version:1,decision:'rework',actor:'agent',actorRunId:'p',operationId:'rework'});
   const replacement=request('newchild','parent','nc');g=transitionGraph(g,{type:'add',actor:'agent',request:replacement},runs).value;runs.push(run('nc','newchild'));
-  g=transitionGraph(g,{type:'replace',actor:'agent',requestId:'parent',childId:'child',replacementId:'newchild'},runs).value;
+  // Reconcile a pre-upgrade reservation; no new replacement writer.
+  g.nodes[1].replacements.push({replacementId:'newchild',actorRunId:'p',resultId:'c',version:1});
   assert.equal(g.nodes[1].replacementId,undefined);assert.equal(g.nodes[1].state.kind,'submitted');
   runs[0]=run('p','parent','ended',outcome);g=reconcileGraph(g,runs);
   assert.equal(g.nodes[1].replacementId,outcome==='normal'?'newchild':undefined);assert.equal(g.nodes[1].replacements.length,1);

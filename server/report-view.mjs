@@ -1,4 +1,4 @@
-import {secretaryAnswerComplete} from './secretary-completion.mjs';
+import {notificationEntries} from './notification-review.mjs';
 import {currentRunMailbox} from './conversation-request-owner.mjs';
 import {conversationDisplayMode} from './conversation-purpose.mjs';
 import {conversationControl,conversationSummary,conversationTurn,answerJobs,conversationJob} from './conversation-status.mjs';
@@ -33,7 +33,7 @@ export function humanProjection(data){
  }
  for(const r of view.runs){
   const mailbox=currentRunMailbox(data,r);if(mailbox!==r.agentId){r.originalAgentId=r.agentId;r.agentId=mailbox;}
-  if(r.conversationId){r.conversationLifecycle=conversationTurn(r);r.answerJobs=answerJobs(data,r);r.conversationAnswer=accepted(r)&&runState(r)==='completed';r.displayMode=r.conversationAnswer?conversationDisplayMode(data,r):'reply';r.conversationStatus=r.conversationSource?.kind==='human'?'秘書との会話':r.conversationSource?.kind==='secretary'?'秘書からの連絡への返答':r.conversationSource?.relayReturnId?'連絡結果への返答':'リーダーの資料への返答';if(r.conversationSource?.kind!=='human')r.suppressUser=true;r.reportStatus=r.conversationLifecycle.label;}
+  if(r.conversationId){r.conversationLifecycle=conversationTurn(r,data.agents.find(a=>a.id===r.agentId));r.answerJobs=answerJobs(data,r);r.conversationAnswer=accepted(r)&&runState(r)==='completed';r.displayMode=r.conversationAnswer?conversationDisplayMode(data,r):'reply';r.conversationStatus=r.conversationSource?.kind==='human'?'秘書との会話':r.conversationSource?.kind==='secretary'?'秘書からの連絡への返答':r.conversationSource?.relayReturnId?'連絡結果への返答':'リーダーの資料への返答';if(r.conversationSource?.kind!=='human')r.suppressUser=true;r.reportStatus=r.conversationLifecycle.label;}
   if(r.origin==='inbox')r.suppressUser=true;
   const q=protectedRequests.get(r.humanRequestId);if(!q)continue;
   if(q.status!=='completed'&&r.phase!=='report'){r.hiddenCompletion=true;continue;}
@@ -64,7 +64,8 @@ export function humanProjection(data){
   if(r.recovery)r.recovery={status:r.recovery.status,reason:r.phase==='report'?'報告のみ再試行できます。元作業は再実行しません。':'停止理由を確認して復旧してください'};
  }
  for(const q of view.requests)if(q.conversationId){const s=conversationJob(data,q);q.purposeStatus={code:s.code,label:s.label,reason:s.reason};}
- for(const a of view.agents)a.answerComplete=secretaryAnswerComplete(view,a);
+ const notified=new Set(notificationEntries(data).map(e=>e.agentId));
+ for(const a of view.agents)a.answerComplete=notified.has(a.id);
  view.recoveryRequests=recoveryRequests(data);
  return view;
 }

@@ -13,6 +13,8 @@ export async function compose(flow,x,action,actor){
   const payload=JSON.stringify({type:action,actor,parentWorkId:x.parentWorkId||null,workId:x.workId||null,actorRunId:x.actorRunId||null,instruction:x.instruction||null,reportAt:x.reportAt||null,completionAt:x.completionAt||null,agentId:x.agentId||null,replacesRequestId:x.replacesRequestId||null});
   const old=q.requestGraph.operations.find(o=>o.id===x.operationId);
   if(old){if(old.payload!==payload)fail('operationIdの再利用です');return workDTO(flow.work(q,old.childId));}
+  if(x.replacesRequestId)fail('旧置換予約は廃止しました。同じ仕事へのfollowupを使ってください');
+  if(!q.inputProtocol)fail('旧形式の仕事は閲覧専用です。新しい子仕事は作成できません');
   flow.active(q);
   const w=creating?flow.work(q,x.parentWorkId):flow.work(q,x.workId),parent=creating?w:flow.work(q,w.parentId);
   if(actor==='agent'){if(!x.actorRunId)fail('actorRunIdが必要です');await flow.actor(q,parent,x.actorRunId);}
@@ -23,15 +25,20 @@ export async function compose(flow,x,action,actor){
   const assignee=x.agentId|| (creating?null:w.assignee);
   if(assignee&&action!=='discard'){
    const a=flow.d.writableAgent(flow.d.agent(assignee));
+   if(actor==='agent'&&q.projectId&&a.projectId!==q.projectId)fail('同じProjectの担当だけ指定できます');
    if(!a.tabId||['terminated','stopping'].includes(agentControls(a).state))fail('宛先Agentを利用できません');
    for(let p=parent;p;p=p.parentId?flow.work(q,p.parentId):null)if(p.assignee===assignee)fail('祖先と同じAgentには委任できません');
   }
   let child=w;
   if(creating){
    if(action==='delegate'&&!assignee)fail('担当Agentを指定してください');
-   child=newNode(q,{id:randomUUID(),parentId:parent.id,assignee,createdBy:actor,planned:true,metadata:{reporting:initialDeadlines(x),instruction:x.instruction,operationId:x.operationId,actorRunId:x.actorRunId||null,...(x.replacesRequestId?{replacesRequestId:x.replacesRequestId}:{}),createdAt:new Date().toISOString()}});
-   applyGraph(flow.d.data,q,{type:'add',actor,request:child});child=flow.work(q,child.id);
-   if(action==='delegate'){flow.enqueue(q,child,x.instruction,'delegate:'+x.operationId,'delegation');if(x.replacesRequestId)applyGraph(flow.d.data,q,{type:'replace',actor:'agent',requestId:parent.id,childId:x.replacesRequestId,replacementId:child.id});}
+   const spec={parentId:parent.id,assignee,createdBy:actor,metadata:{reporting:initialDeadlines(x),instruction:x.instruction,operationId:x.operationId,actorRunId:x.actorRunId||null,createdAt:new Date().toISOString()}};
+   if(action==='delegate'){
+    child=flow.createWork(q,spec,x.instruction,'delegate:'+x.operationId,'delegation').work;
+   }else{
+    child=newNode(q,{...spec,id:randomUUID(),planned:true});
+    applyGraph(flow.d.data,q,{type:'add',actor,request:child});child=flow.work(q,child.id);
+   }
   }else if(action==='discard')applyGraph(flow.d.data,q,{type:'discard-plan',actor,requestId:w.id});
   else {
    if(!assignee)fail('担当Agentを選んでください');

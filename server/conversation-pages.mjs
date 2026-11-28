@@ -93,5 +93,6 @@ export function workspaceSnapshot(view,ranges={},focus=null,{lean=false,lazyBodi
  // runs are referenced by controls, but their bodies are carried only once in conversations.
  const controlFields='id requestId agentId humanRequestId workId phase state turnId sessionId agentSessionId createdAt hiddenCompletion'.split(' ');
  const controls=runs.map(r=>Object.fromEntries(controlFields.filter(k=>r[k]!==undefined).map(k=>[k,r[k]])));
- return {version:view.version,recoveryRequests:view.recoveryRequests||[],agents,workshops:view.workshops,projects:view.projects,capabilities:view.capabilities,reviews:view.reviews,notification:view.notification,requests,runs:controls,conversations};
+ const inputTargets=(view.requests||[]).filter(q=>q.conversationId&&q.projectId&&!q.integrity).flatMap(q=>(q.requestGraph?.nodes||[]).filter(w=>w.id===q.rootWorkId&&w.state.kind!=='withdrawn').map(w=>({workId:w.id,projectId:q.projectId,assignee:w.assignee,instruction:String(q.instruction||'仕事').slice(0,70),createdAt:q.createdAt})));
+ return {inputTargets,version:view.version,recoveryRequests:view.recoveryRequests||[],agents,workshops:view.workshops,projects:view.projects,capabilities:view.capabilities,reviews:view.reviews,notification:view.notification,requests,runs:controls,conversations};
 }

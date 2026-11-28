@@ -74,7 +74,7 @@ test('the CLI explains a missing or foreign run, wrong arguments, and accepts lo
  const {f,human}=await purposeFixture(t),village=cli(f);
  assert.match((await village('order','指示')).error,/--run に発言の末尾/);
  assert.match((await village('order','--run','not-a-run','指示')).error,/--run に発言末尾/);
- assert.match((await village('order','--run',randomUUID(),'指示')).error,/秘書の会話の回ではありません/);
+ assert.match((await village('order','--run',randomUUID(),'指示')).error,/この実行の仕事を確認できません/);
  assert.match((await village('order','--run',human.id,'a','b')).error,/引数の数が違います/);
  // A finished run cannot act; the village says which run to use.
  const old=await village('order','--run',human.id,'終わった回から');assert.equal(old.ok,false);assert.match(old.error,/案内: --run には、今答えている回/);
