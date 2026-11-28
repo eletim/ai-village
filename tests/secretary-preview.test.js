@@ -53,3 +53,18 @@ test('message IDs deduplicate repeated native items but retain repeated legitima
  const m=(id,offset,text)=>({id,offset,text,phase:'commentary'});
  assert.deepEqual(previewMessages({messageOffsets:true,messages:[m('a',1,'same'),m('b',2,'same'),m('a',3,'updated')]},0).map(m=>[m.id,m.text]),[['b','same'],['a','updated']]);
 });
+
+test('normal steered input shows continuation without duplicating an answer; uncertain previews remain uncertain',async()=>{
+ const {conversationTurn}=await import('../server/conversation-status.mjs');
+ const {conversationTurnHTML}=await import('../src/conversation-status.js');
+ const run={...r,state:'superseded',preview:p,runModel:{state:{kind:'ended',outcome:'normal'},supersededBy:'next'}};
+ const before=structuredClone(run);const c=conversationTurn(run);
+ assert.equal(c.code,'steered');assert.equal(c.label,'追加入力へ継続（回答は後続の入力に表示）');
+ assert.equal(visiblePreview(a,run,'s').label,'追加入力へ継続');
+ assert(!conversationTurnHTML({...run,conversationLifecycle:c}).includes('未確定'));
+ assert.deepEqual(run,before);assert.equal(run.conversationAnswer,undefined);assert.equal(run.finalOutput,undefined);
+ for(const outcome of ['unconfirmed','failed','interrupted']){
+  const old={...run,runModel:{...run.runModel,state:{kind:'ended',outcome}}};
+  assert.equal(visiblePreview(a,old,'s').label,'途中で終了・未確定');assert(conversationTurn(old).label.includes('未確定'));
+ }
+});
