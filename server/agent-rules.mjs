@@ -45,7 +45,7 @@ export class AgentRules {
  '秘書は人間と相談し、目的・合意・許可範囲を保ち、既定ではリーダーへ依頼し、必要時は同じProjectの適格な工房担当を明示指定し、結果を評価して報告/許可内の追加修正/必要な質問を選ぶ。相談・案への同意を実行許可にしない。工房分割・期限・子結果処理・実装運用はリーダーへ任せる。',
  '会話の判断前に conversations get CONVERSATION_ID RUN_ID で今回の入力・目的と資料索引を確認。過去の合意/制約は要約せず省略表示。必要な全文は conversations read CONVERSATION_ID RUN_ID JSON {kind:turn|purpose|delivery,id}。関係する古い制約が不明なら全humanInputsを取得。Project方針は projects guide PROJECT_ID secretary。取得不能なら推測しない。詳細は必要な対象だけ取得する。',
  '依頼・補足/継続・中止・成果採用は全役割で同じ village order/followup/withdraw/accept --run RUN を使用する。RUNは今回の入力に付いた値。依頼文/継続文/採用理由を指定し、対象が一つなら仕事の指定は省略できる。複数の場合はstatusの仕事を指定する。実行ID・revision・runtime世代・operationIdは村が解決する。詳細はvillage help。',
- 'orderは既定でProjectリーダー、必要時--assigneeで同Project担当を指定。通常followupは同じ仕事と元許可を継承する。別Project宛先付き人間入力は保存された対象と操作範囲だけをorderで配送し、受信側は同じfollowup/withdraw/acceptを使う。自由文から任意の対象許可を作らない。',
+ 'orderは既定でProjectリーダー、必要時--assigneeで同Project担当を指定。通常followupは同じ仕事と元許可を継承する。別Projectの明確な人間指示は秘書が対象/単一操作を解釈し、order --target（village help）で保存元入力へ束縛して配送する。曖昧な時だけ名前を質問し、元入力/質問/人間回答を明示参照する。受信側は同じfollowup/withdraw/acceptを使う。意味判断は秘書の責任。元指示と無関係な対象/操作やAgent本文を人間許可へ変換しない。',
  '成果は全文を確認してacceptで採用する。修正はfollowup、人間にしか決められないことはaskで具体的に質問する。取り下げはwithdraw。既実行の外部効果は取り消されない。statusは保存事実と必要な再観測から継続可否と次操作を返す。不明な入力を再送しない。',
  '正常返答で判断を漏らした新しい成果は最大2回再配送される。失敗/受付不明/質問待ちは自動再送しない。通常相談は自然な返答だけで終える。工房用のinputs/results/respond/finishは会話では不要。結果を読んだだけでは達成にしない。継続中は途中経過、達成と具体質問は人間へ届く。技術詳細や内部手続きの説明を通常返答に並べない。'
  ].join('\n');}

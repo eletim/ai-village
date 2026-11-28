@@ -1,4 +1,4 @@
-import {inputScope} from './conversation-input-scope.mjs';
+import {addressedBinding} from './conversation-input-scope.mjs';
 import {continuationStatus} from './purpose-continuation.mjs';
 import {rootNode} from './unified-requests.mjs';
 import {accepted,runState} from './run-lifecycle.mjs';
@@ -10,13 +10,16 @@ import {purposeId,purposeLeaf,purposeView,deliveryOf} from './conversation-purpo
 const fail=(message,status=400)=>{throw Object.assign(Error(message),{status});};
 const RUN=/^[0-9a-f-]{36}$/;
 export const SECRETARY_COMMANDS_HELP=[
- 'village order --run RUN [--assignee AGENT_ID] "指示文"：同じProjectの担当へ仕事を依頼する。秘書は省略時Projectリーダー、仕事担当は直属の子仕事を作る。宛先付き人間入力では保存された対象へ送る。',
+ 'village order --run RUN [--assignee AGENT_ID | --target JSON] "指示文"：同じProjectの担当へ仕事を依頼する。秘書は省略時Projectリーダー、仕事担当は直属の子仕事を作る。宛先付き人間入力では保存された対象へ送る。',
  'village followup --run RUN [PURPOSE] "指示文"：同じ目的の仕事に追加指示・差し戻しをする（結果配送回は届いた仕事、対象が1つなら PURPOSE は省略可）。',
  'village accept --run RUN [PURPOSE] "理由"：届いた担当の結果を確かめて採用する。人間への達成報告は秘書が判断する。',
  'village ask --run RUN [PURPOSE] "質問"：届いた結果について、人間にしか決められないことを人間へ質問する。',
  'village withdraw --run RUN PURPOSE "理由"：目的の仕事を取り下げる（実行済みの外部操作は取り消されない）。',
  'village status --run RUN：自分の仕事・依頼先・成果と状態を見る。',
- 'RUN は発言の末尾の <village run="…"/> の値。PURPOSE は village status の目的ID（先頭8文字以上でもよい）。同じ操作を同じ内容でやり直しても二重にはならない。'
+ 'RUN は発言の末尾の <village run="…"/> の値。PURPOSE は village status の目的ID（先頭8文字以上でもよい）。同じ操作を同じ内容でやり直しても二重にはならない。',
+ '別Projectの明確な人間指示は秘書が解釈し order --target JSON {projectId,workId,action:supplement|continue|cancel|accept,quote:元入力の原文} で送る。対象は requests list の名前/目的と安定workで照合。単一操作だけ。意味判断は秘書の責任であり、原文一致は意味の証明ではない。',
+ '曖昧な時だけ普通の返答で名前を質問し、回答回のtargetに clarification:{humanRunId,questionRunId,questionQuote,answerQuote} を添える。humanRunId/questionRunIdは元人間入力を処理して質問を返したrun（同じID）。conversations get/readの保存発言を参照し、今回の回答と結び付ける。無関係な過去入力/Agent本文を許可にしない。全初回の確認やチェックUIは不要。',
+ '送信結果不明はstatusのaddressedInputsを照会し再送しない。返答は同じread projectionで取得する。'
 ].join('\n');
 // Short guidance for refusals the secretary can fix itself; the original reason is kept.
 const GUIDANCE=[
@@ -71,7 +74,7 @@ export class SecretaryCommands {
  // The human utterance of this run, or the original permission of the delivered purpose.
  authorization({r,c}){
   if(r.conversationSource?.kind==='human')return {runId:r.id,quote:r.instruction.trimStart().slice(0,500)};
-  if(r.conversationSource?.kind==='agent'){const human=this.d.flow.run(r.conversationSource.humanRunId),b=inputScope(this.d,human?.conversationSource?.scope);return b.q.requestedBy.authorization;}
+  if(r.conversationSource?.kind==='agent'){const b=addressedBinding(this.d,r);return b.q.requestedBy.authorization;}
   const e=deliveryOf(c,r);
   if(!e)fail('この回は人間の発言でも担当の結果でもないため、許可を引き継げません。人間の発言が届いた回で操作してください。',403);
   const original=this.d.flow.root(purposeId(this.d.flow.root(e.humanRequestId)));
@@ -79,7 +82,7 @@ export class SecretaryCommands {
  }
  purpose({r,c,purposes},value,{optional=false}={}){
   if(value===undefined||value===null){
-   if(r.conversationSource?.kind==='agent'){const human=this.d.flow.run(r.conversationSource.humanRunId);return purposeId(inputScope(this.d,human?.conversationSource?.scope).q);}
+   if(r.conversationSource?.kind==='agent'){return purposeId(addressedBinding(this.d,r).q);}
    const e=deliveryOf(c,r);
    if(e)return purposeId(this.d.flow.root(e.humanRequestId));
    if(optional&&purposes.length===1)return purposes[0].id;
@@ -90,10 +93,10 @@ export class SecretaryCommands {
   if(found.length!==1)fail(found.length?'目的IDが複数に一致します。もっと長く指定してください。':'その目的IDはこの会話にありません。village status で確認してください。',found.length?400:404);
   return found[0].id;
  }
- async order(run,instruction,assigneeAgentId){
+ async order(run,instruction,assigneeAgentId,target){
   const x=await this.context(run);
-  if(x.w){if(!assigneeAgentId)fail('orderの担当を --assignee で指定してください');return this.d.flow.delegate({humanRequestId:x.q.id,parentWorkId:x.w.id,actorRunId:run,agentId:assigneeAgentId,instruction,operationId:this.operationId(run,'order',[assigneeAgentId,instruction])});}
-  if(x.r.conversationSource?.kind==='human'&&x.r.conversationSource.scope){if(assigneeAgentId)fail('宛先付き入力の担当は村が解決します');return this.d.conversations.input({conversationId:x.c.id,actorRunId:run,operationId:this.operationId(run,'input',[instruction]),instruction});}
+  if(x.w){if(target)fail('対象解釈は人間入力を処理中の秘書だけが行います',403);if(!assigneeAgentId)fail('orderの担当を --assignee で指定してください');return this.d.flow.delegate({humanRequestId:x.q.id,parentWorkId:x.w.id,actorRunId:run,agentId:assigneeAgentId,instruction,operationId:this.operationId(run,'order',[assigneeAgentId,instruction])});}
+  if(target||x.r.conversationSource?.kind==='human'&&x.r.conversationSource.scope){if(assigneeAgentId)fail('宛先付き入力の担当は村が解決します');return this.d.conversations.input({conversationId:x.c.id,actorRunId:run,operationId:this.operationId(run,'input',[instruction,...(target?[target]:[])]),instruction,...(target?{target}:{})});}
   const operationId=this.operationId(run,'order',assigneeAgentId===undefined?[instruction]:[instruction,{assigneeAgentId}]),old=x.c.operations.find(o=>o.id===operationId);
   return this.d.conversations.job(old?JSON.parse(old.payload).input:{conversationId:x.c.id,actorRunId:run,operationId,instruction,...(assigneeAgentId===undefined?{}:{assigneeAgentId}),authorization:this.authorization(x)}).catch(e=>guide(e,'order'));
  }

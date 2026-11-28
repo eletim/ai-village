@@ -1,4 +1,4 @@
-import {inputScope,addressedScope} from './conversation-input-scope.mjs';
+import {inputScope,addressedScope,resolveInput} from './conversation-input-scope.mjs';
 import {initialInputObservation} from './initial-input.mjs';
 import {continuationBoundary} from './purpose-continuation.mjs';
 import {SecretaryRelay} from './secretary-relay.mjs';
@@ -138,22 +138,22 @@ export class Conversations {
  // Addressed input uses the same conversation queue. Its scope comes only from
  // the saved human input; the sender cannot supply or enlarge a received scope.
  async input(x){
-  if(Object.keys(x).some(k=>!['conversationId','actorRunId','operationId','instruction'].includes(k)))fail('宛先は保存済みの人間入力から決まります',403);
+  if(Object.keys(x).some(k=>!['conversationId','actorRunId','operationId','instruction','target'].includes(k)))fail('宛先は保存済みの人間入力から決まります',403);
   key(x.operationId);text(x.instruction);
   return this.d.locked('request-graph',()=>this.d.persist(async()=>{
    const c=this.record(x.conversationId),payload=JSON.stringify({action:'input',input:x}),old=c.operations.find(o=>o.id===x.operationId);
    if(old){if(old.payload!==payload)fail('operationIdの再利用です');return structuredClone(old.receipt);}
    const actor=this.actor(c,x.actorRunId);
    if(actor.conversationSource?.kind!=='human')fail('宛先を指定した人間入力の回で送信してください。自動転送はしません',403);
-   const b=inputScope(this.d,actor.conversationSource.scope);
+   const b=x.target?resolveInput(this.d,c,actor,x.target):inputScope(this.d,actor.conversationSource.scope);
    if(b.c.id===c.id||b.c.agentId===c.agentId)fail('別の会話の対象を選択してください');
-   if(JSON.stringify(b.q.requestedBy.authorization)!==JSON.stringify(actor.conversationSource.targetPermission))fail('対象仕事の元許可が変わりました');
+   if(!x.target&&JSON.stringify(b.q.requestedBy.authorization)!==JSON.stringify(actor.conversationSource.targetPermission))fail('対象仕事の元許可が変わりました');
    if(this.d.data.runs.some(r=>r.conversationId===c.id&&r.conversationSource?.kind==='human'&&!r.queueCancelledAt&&r.conversationSequence>actor.conversationSequence))fail('後着の人間入力があります。新しい入力を確認してください');
    const duplicate=c.operations.find(o=>o.receipt?.sourceRunId===actor.id);
-   if(duplicate){if(JSON.parse(duplicate.payload).input.instruction!==x.instruction)fail('この入力は配送済みです。変更した内容を再送しません');return structuredClone(duplicate.receipt);}
-   const r=this.enqueue(b.c,{requestId:'conversation-input:'+actor.id,source:{kind:'agent',agentId:c.agentId,conversationId:c.id,runId:actor.id,humanRunId:actor.id},instruction:'別のAgentからの入力です。人間の元指示: '+actor.instruction+'\n対象の目的: '+b.q.instruction+'\n許可された操作: '+b.scope.actions.join(', ')+'。範囲外の操作と自動転送はできません。通常のfollowup/withdraw/acceptで対象仕事を扱ってください。\n'+x.instruction});
+   if(duplicate){if(JSON.parse(duplicate.payload).input.instruction!==x.instruction||JSON.stringify(JSON.parse(duplicate.payload).input.target)!==JSON.stringify(x.target))fail('この入力は配送済みです。変更した内容を再送しません');return structuredClone(duplicate.receipt);}
+   const r=this.enqueue(b.c,{requestId:'conversation-input:'+actor.id,source:{kind:'agent',agentId:c.agentId,conversationId:c.id,runId:actor.id,humanRunId:b.human?.id||actor.id},instruction:'別のAgentからの入力です。人間の元指示: '+(b.human||actor).instruction+(b.human&&b.human.id!==actor.id?'\n人間の確認回答: '+actor.instruction:'')+'\n対象の目的: '+b.q.instruction+'\n許可された操作: '+b.scope.actions.join(', ')+'。範囲外の操作と自動転送はできません。通常のfollowup/withdraw/acceptで対象仕事を扱ってください。\n'+x.instruction});
    const receipt={conversationId:b.c.id,runId:r.id,sourceRunId:actor.id,workId:b.w.id,purposeId:purposeId(b.q)};
-   c.operations.push({id:x.operationId,payload,receipt,at:now()});await this.d.save();return structuredClone(receipt);
+   c.operations.push({id:x.operationId,payload,receipt,...(b.resolution?{resolution:b.resolution}:{}),at:now()});await this.d.save();return structuredClone(receipt);
   }));
  }
  // Only accepted successors in the exact native turn extend an actor's authority.
